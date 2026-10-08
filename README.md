@@ -582,4 +582,5 @@ count, focus management, working dropdown), slide 1 carrying no animation class
 before *and* after the layout while slide 2 still does, and the header/hero
 offset pairing. Suites total 123 assertions across four files, 0 failures.
 #   i w v p l  
+ #   i w v p l  
  
