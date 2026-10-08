@@ -1,0 +1,50 @@
+== rest: pages ==
+  saved pages: 0
+== rest: posts ==
+  posts: page 1 (+4) total=4
+  saved posts: 4
+== rest: teams ==
+  !! https://www.iwvpl.asia/wp-json/wp/v2/sp_team?per_page=100&page=1&_embed=1 -> HTTP Error 404: Not Found
+  saved teams: 0
+== rest: players ==
+  !! https://www.iwvpl.asia/wp-json/wp/v2/sp_player?per_page=100&page=1&_embed=1 -> HTTP Error 404: Not Found
+  saved players: 0
+== rest: staff ==
+  !! https://www.iwvpl.asia/wp-json/wp/v2/sp_staff?per_page=100&page=1&_embed=1 -> HTTP Error 404: Not Found
+  saved staff: 0
+== rest: events ==
+  !! https://www.iwvpl.asia/wp-json/wp/v2/sp_event?per_page=100&page=1&_embed=1 -> HTTP Error 404: Not Found
+  saved events: 0
+== rest: tournaments ==
+  !! https://www.iwvpl.asia/wp-json/wp/v2/sp_tournament?per_page=100&page=1&_embed=1 -> HTTP Error 404: Not Found
+  saved tournaments: 0
+== rest: calendars ==
+  !! https://www.iwvpl.asia/wp-json/wp/v2/sp_calendar?per_page=100&page=1&_embed=1 -> HTTP Error 404: Not Found
+  saved calendars: 0
+== rest: tables ==
+  !! https://www.iwvpl.asia/wp-json/wp/v2/sp_table?per_page=100&page=1&_embed=1 -> HTTP Error 404: Not Found
+  saved tables: 0
+== rest: lists ==
+  !! https://www.iwvpl.asia/wp-json/wp/v2/sp_list?per_page=100&page=1&_embed=1 -> HTTP Error 404: Not Found
+  saved lists: 0
+== rest: products ==
+  products: page 1 (+2) total=2
+  saved products: 2
+== rest: media ==
+  media: page 1 (+98) total=98
+  saved media: 98
+== rest: menus ==
+  !! https://www.iwvpl.asia/wp-json/wp/v2/menu-items?per_page=100&page=1&_embed=1 -> HTTP Error 401: Unauthorized
+  saved menus: 0
+== rest: tax_leagues ==
+  !! https://www.iwvpl.asia/wp-json/wp/v2/sp_league?per_page=100&page=1&_embed=1 -> HTTP Error 404: Not Found
+  saved tax_leagues: 0
+== rest: tax_seasons ==
+  !! https://www.iwvpl.asia/wp-json/wp/v2/sp_season?per_page=100&page=1&_embed=1 -> HTTP Error 404: Not Found
+  saved tax_seasons: 0
+== rest: tax_positions ==
+  !! https://www.iwvpl.asia/wp-json/wp/v2/sp_position?per_page=100&page=1&_embed=1 -> HTTP Error 404: Not Found
+  saved tax_positions: 0
+== rest: tax_venues ==
+  !! https://www.iwvpl.asia/wp-json/wp/v2/sp_venue?per_page=100&page=1&_embed=1 -> HTTP Error 404: Not Found
+  saved tax_venues: 0

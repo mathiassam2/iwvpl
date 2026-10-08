@@ -1,0 +1,82 @@
+<style id="elementor-post-4882">.elementor-4882 .elementor-element.elementor-element-79f8173d{--display:flex;}/* Start custom CSS for shortcode, class: .elementor-element-32c8ddbd *//* 1. Membungkus form menjadi bentuk Card yang modern */
+.um.um-login {
+    max-width: 450px !important;
+    margin: 0 auto;
+    background: #ffffff;
+    padding: 35px 30px !important;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+    border: 1px solid #f0f0f0;
+}
+
+/* 2. Mempercantik Label Teks */
+.um-login .um-field-label {
+    color: #444444 !important;
+    font-weight: 600 !important;
+    font-size: 14px !important;
+}
+
+/* 3. Gaya Kolom Input (Username & Password) */
+.um-login .um-field-area input[type="text"],
+.um-login .um-field-area input[type="password"],
+.um-login .um-field-area input[type="email"] {
+    padding: 12px 15px !important;
+    border: 1px solid #dcdcdc !important;
+    border-radius: 8px !important;
+    background: #fafafa !important;
+    transition: all 0.3s ease !important;
+}
+
+/* 4. Efek saat kolom input diklik/fokus (Warna Merah #E41B23) */
+.um-login .um-field-area input:focus {
+    border-color: #E41B23 !important;
+    background: #ffffff !important;
+    box-shadow: 0 0 0 3px rgba(228, 27, 35, 0.1) !important;
+    outline: none !important;
+}
+
+/* 5. Tombol Utama (Login) */
+.um-login .um-button {
+    background-color: #E41B23 !important;
+    color: #ffffff !important;
+    border-radius: 8px !important;
+    padding: 14px 20px !important;
+    font-weight: bold !important;
+    font-size: 16px !important;
+    transition: all 0.3s ease !important;
+}
+
+.um-login .um-button:hover {
+    background-color: #b5151b !important; /* Warna merah lebih gelap saat hover */
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(228, 27, 35, 0.3);
+}
+
+/* 6. Tombol Sekunder (Register) */
+.um-login .um-button.um-alt {
+    background-color: #f5f5f5 !important;
+    color: #666666 !important;
+    border: 1px solid #e0e0e0 !important;
+    border-radius: 8px !important;
+}
+
+.um-login .um-button.um-alt:hover {
+    background-color: #e8e8e8 !important;
+    color: #333333 !important;
+}
+
+/* 7. Warna Ikon Centang (Keep me signed in) */
+.um-login .um-field-checkbox.active i {
+    color: #E41B23 !important;
+}
+
+/* 8. Warna Tautan (Forgot Password) */
+.um-login .um-form a.um-link-alt {
+    color: #E41B23 !important;
+    transition: color 0.3s ease;
+}
+
+.um-login .um-form a.um-link-alt:hover {
+    color: #b5151b !important;
+    text-decoration: underline !important;
+}/* End custom CSS */</style>[{"id":4882,"date":"2026-08-06T17:46:33","date_gmt":"2026-08-06T09:46:33","guid":{"rendered":"https:\/\/www.iwvpl.asia\/login\/"},"modified":"2026-08-21T04:22:23","modified_gmt":"2026-08-20T20:22:23","slug":"login","status":"publish","type":"page","link":"https:\/\/www.iwvpl.asia\/login\/","title":{"rendered":"Login"},"content":{"rendered":"\t\t<div data-elementor-type=\"wp-page\" data-elementor-id=\"4882\" class=\"elementor elementor-4882\" data-elementor-post-type=\"page\">\n\t\t\t\t<div class=\"elementor-element elementor-element-79f8173d e-flex e-con-boxed e-con e-parent\" data-id=\"79f8173d\" data-element_type=\"container\" data-e-type=\"container\">\n\t\t\t\t\t<div class=\"e-con-inner\">\n\t\t\t\t<div class=\"elementor-element elementor-element-32c8ddbd elementor-widget elementor-widget-shortcode\" data-id=\"32c8ddbd\" data-element_type=\"widget\" data-e-type=\"widget\" data-widget_type=\"shortcode.default\">\n\t\t\t\t<div class=\"elementor-widget-container\">\n\t\t\t\t\t\t\t<div class=\"elementor-shortcode\">\n<div class=\"um um-login um-5748\">\n\t<div class=\"um-form\">\n\t\t<form method=\"post\" action=\"\" autocomplete=\"off\">\n\t\t\t<div class=\"um-row _um_row_1 \" style=\"margin: 0 0 30px 0;\"><div class=\"um-col-1\"><div  id=\"um_field_5748_username\" class=\"um-field um-field-text  um-field-username um-field-text um-field-type_text\" data-key=\"username\"><div class=\"um-field-label\"><label for=\"username-5748\">Username or Email<\/label><div class=\"um-clear\"><\/div><\/div><div class=\"um-field-area\"><input  autocomplete=\"off\" class=\"um-form-field valid \" type=\"text\" name=\"username-5748\" id=\"username-5748\" value=\"\" placeholder=\"\" data-validate=\"unique_username_or_email\" data-key=\"username\"  aria-invalid=\"false\" \/>\n\n\t\t\t\t\t\t<\/div><\/div><div  id=\"um_field_5748_user_password\" class=\"um-field um-field-password  um-field-user_password um-field-password um-field-type_password\" data-key=\"user_password\"><div class=\"um-field-label\"><label for=\"user_password-5748\">Password<\/label><div class=\"um-clear\"><\/div><\/div><div class=\"um-field-area\"><div class=\"um-field-area-password\">\n\t\t\t\t\t\t\t\t\t<input class=\"um-form-field valid \" type=\"password\" name=\"user_password-5748\" id=\"user_password-5748\" value=\"\" placeholder=\"\" data-validate=\"\" data-key=\"user_password\"  aria-invalid=\"false\" \/>\n\t\t\t\t\t\t\t\t\t<span class=\"um-toggle-password\"><i class=\"um-icon-eye\"><\/i><\/span>\n\t\t\t\t\t\t\t\t<\/div>\n\t\t\t\t\t\t\t<\/div><\/div><\/div><\/div>\t<input type=\"hidden\" name=\"form_id\" id=\"form_id_5748\" value=\"5748\" \/>\n\t\t<p class=\"um_request_name\">\n\t\t<label for=\"um_request_5748\">Only fill in if you are not human<\/label>\n\t\t<input type=\"hidden\" name=\"um_request\" id=\"um_request_5748\" class=\"input\" value=\"\" size=\"25\" autocomplete=\"off\" \/>\n\t<\/p>\n\t<input type=\"hidden\" id=\"_wpnonce\" name=\"_wpnonce\" value=\"efca4eb339\" \/><input type=\"hidden\" name=\"_wp_http_referer\" value=\"\/wp-json\/wp\/v2\/pages?per_page=1&#038;page=10\" \/>\n\t<div class=\"um-col-alt\">\n\n\t\t\n\n\t\t\t<div class=\"um-field um-field-c\">\n\t\t\t\t<div class=\"um-field-area\">\n\t\t\t\t\t<label class=\"um-field-checkbox\">\n\t\t\t\t\t\t<input type=\"checkbox\" name=\"rememberme\" value=\"1\"  \/>\n\t\t\t\t\t\t<span class=\"um-field-checkbox-state\"><i class=\"um-icon-android-checkbox-outline-blank\"><\/i><\/span>\n\t\t\t\t\t\t<span class=\"um-field-checkbox-option\"> Keep me signed in<\/span>\n\t\t\t\t\t<\/label>\n\t\t\t\t<\/div>\n\t\t\t<\/div>\n\n\t\t\t\t\t\t<div class=\"um-clear\"><\/div>\n\t\t\n\t\t\t<div class=\"um-left um-half\">\n\t\t\t\t<input type=\"submit\" value=\"Login\" class=\"um-button\" id=\"um-submit-btn\" \/>\n\t\t\t<\/div>\n\t\t\t<div class=\"um-right um-half\">\n\t\t\t\t<a href=\"https:\/\/www.iwvpl.asia\/register\/\" class=\"um-button um-alt\">\n\t\t\t\t\tRegister\t\t\t\t<\/a>\n\t\t\t<\/div>\n\n\t\t\n\t\t<div class=\"um-clear\"><\/div>\n\n\t<\/div>\n\n\t\n\t<div class=\"um-col-alt-b\">\n\t\t<a href=\"https:\/\/www.iwvpl.asia\/password-reset\/\" class=\"um-link-alt\">\n\t\t\tForgot your password?\t\t<\/a>\n\t<\/div>\n\n\t\t\t<\/form>\n\t<\/div>\n<\/div>\n<style>\n\t\t\t.um-5748.um {\n\t\t\tmax-width: 450px;\n\t\t}\n\t\t<\/style>\n<\/div>\n\t\t\t\t\t\t<\/div>\n\t\t\t\t<\/div>\n\t\t\t\t\t<\/div>\n\t\t\t\t<\/div>\n\t\t\t\t<\/div>\n\t\t","protected":false},"excerpt":{"rendered":"","protected":false},"author":1,"featured_media":0,"parent":0,"menu_order":0,"comment_status":"closed","ping_status":"closed","template":"","meta":{"_acf_changed":false,"footnotes":""},"class_list":["post-4882","page","type-page","status-publish","hentry"],"acf":[],"_links":{"self":[{"href":"https:\/\/www.iwvpl.asia\/wp-json\/wp\/v2\/pages\/4882","targetHints":{"allow":["GET"]}}],"collection":[{"href":"https:\/\/www.iwvpl.asia\/wp-json\/wp\/v2\/pages"}],"about":[{"href":"https:\/\/www.iwvpl.asia\/wp-json\/wp\/v2\/types\/page"}],"author":[{"embeddable":true,"href":"https:\/\/www.iwvpl.asia\/wp-json\/wp\/v2\/users\/1"}],"replies":[{"embeddable":true,"href":"https:\/\/www.iwvpl.asia\/wp-json\/wp\/v2\/comments?post=4882"}],"version-history":[{"count":0,"href":"https:\/\/www.iwvpl.asia\/wp-json\/wp\/v2\/pages\/4882\/revisions"}],"wp:attachment":[{"href":"https:\/\/www.iwvpl.asia\/wp-json\/wp\/v2\/media?parent=4882"}],"curies":[{"name":"wp","href":"https:\/\/api.w.org\/{rel}","templated":true}]}}]

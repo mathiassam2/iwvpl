@@ -1,0 +1,57 @@
+== pages ==
+  saved pages: 0
+== posts ==
+  posts: +4 total=4
+  saved posts: 4
+== teams ==
+  !! https://www.iwvpl.asia/wp-json/wp/v2/teams?per_page=100&page=1 -> HTTP Error 404: Not Found
+  saved teams: 0
+== players ==
+  !! https://www.iwvpl.asia/wp-json/wp/v2/players?per_page=100&page=1 -> HTTP Error 404: Not Found
+  saved players: 0
+== staff ==
+  !! https://www.iwvpl.asia/wp-json/wp/v2/staff?per_page=100&page=1 -> HTTP Error 404: Not Found
+  saved staff: 0
+== events ==
+  !! https://www.iwvpl.asia/wp-json/wp/v2/events?per_page=100&page=1 -> HTTP Error 404: Not Found
+  saved events: 0
+== tournaments ==
+  !! https://www.iwvpl.asia/wp-json/wp/v2/tournaments?per_page=100&page=1 -> HTTP Error 404: Not Found
+  saved tournaments: 0
+== calendars ==
+  !! https://www.iwvpl.asia/wp-json/wp/v2/calendars?per_page=100&page=1 -> HTTP Error 404: Not Found
+  saved calendars: 0
+== tables ==
+  !! https://www.iwvpl.asia/wp-json/wp/v2/tables?per_page=100&page=1 -> HTTP Error 404: Not Found
+  saved tables: 0
+== lists ==
+  !! https://www.iwvpl.asia/wp-json/wp/v2/lists?per_page=100&page=1 -> HTTP Error 404: Not Found
+  saved lists: 0
+== products ==
+  products: +2 total=2
+  saved products: 2
+== media ==
+  media: +98 total=98
+  saved media: 98
+== menu-items ==
+  !! https://www.iwvpl.asia/wp-json/wp/v2/menu-items?per_page=100&page=1 -> HTTP Error 401: Unauthorized
+  saved menu-items: 0
+== taxonomies ==
+  !! https://www.iwvpl.asia/wp-json/wp/v2/menus?per_page=100 -> HTTP Error 401: Unauthorized
+  !! https://www.iwvpl.asia/wp-json/wp/v2/leagues?per_page=100 -> HTTP Error 404: Not Found
+  !! https://www.iwvpl.asia/wp-json/wp/v2/seasons?per_page=100 -> HTTP Error 404: Not Found
+  !! https://www.iwvpl.asia/wp-json/wp/v2/venues?per_page=100 -> HTTP Error 404: Not Found
+  !! https://www.iwvpl.asia/wp-json/wp/v2/positions?per_page=100 -> HTTP Error 404: Not Found
+  !! https://www.iwvpl.asia/wp-json/wp/v2/roles?per_page=100 -> HTTP Error 404: Not Found
+  tax category: 10
+  tax post_tag: 24
+  tax nav_menu: 0
+  tax wp_pattern_category: 0
+  tax product_brand: 1
+  tax product_cat: 9
+  tax product_tag: 26
+  tax sp_league: 0
+  tax sp_season: 0
+  tax sp_venue: 0
+  tax sp_position: 0
+  tax sp_role: 0

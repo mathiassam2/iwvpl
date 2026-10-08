@@ -1,0 +1,653 @@
+@import 'tailwindcss';
+
+/* `dark:` must follow the in-app toggle, not the OS preference — otherwise
+   a user on a light OS who picks dark mode would get a half-themed page. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ============================================================
+   IWVPL v2 — Design System (dual-theme)
+
+   Dark  : ink surface ramp + electric lime accent
+   Light : warm paper neutrals, same lime accent, deeper text
+   Both themes share one token name so every component works
+   in either mode without `dark:` duplication.
+   ============================================================ */
+
+@theme {
+  /* ---- Type ---- */
+  --font-display: 'Sora (display)', 'Sora', system-ui, sans-serif;
+  --font-body: 'Inter (body)', 'Inter', system-ui, -apple-system, sans-serif;
+  --font-condensed: 'Oswald (condensed)', 'Oswald', 'Inter (body)', sans-serif;
+
+  /* ---- Accent (theme-invariant) ---- */
+  --color-volt-50: #f6ffe6;
+  --color-volt-100: #e8ffb8;
+  --color-volt-200: #d8ff85;
+  --color-volt-300: #c8ff3d;
+  --color-volt-400: #b0e91f;
+  --color-volt-500: #92c40d;
+  --color-volt-600: #6f970a;
+  --color-volt-700: #4d6a09;
+  --color-volt-900: #1d2a05;
+
+  --color-gold-300: #ffd75e;
+  --color-gold-400: #ffc53d;
+  --color-gold-500: #e8a317;
+  --color-gold-700: #8a5f08;
+
+  --color-flame-400: #ff5a5a;
+  --color-flame-500: #e5243c;
+  --color-flame-600: #b81a2d;
+
+  /* ---- Motion ---- */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* ---- Radii ---- */
+  --radius-card: 16px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+}
+
+/* ============================================================
+   Theme surfaces — one set of semantic names per mode
+   ============================================================ */
+
+/* ---------- DARK (default) ---------- */
+:root,
+.dark {
+  --bg: #0a0b0d;
+  --bg-deep: #07080a;
+  --bg-raised: #0e1013;
+  --surface: linear-gradient(160deg, #12151a 0%, #0e1013 100%);
+  --surface-solid: #12151a;
+  --surface-2: #191d23;
+  --surface-hover: rgb(255 255 255 / 0.045);
+
+  --text: #eef0f3;
+  --text-strong: #ffffff;
+  --text-muted: #98a1ae;
+  --text-faint: #7d8592;
+
+  --border: #232830;
+  --border-strong: #313742;
+
+  --glass-bg: rgb(10 11 13 / 0.75);
+  --glass-border: rgb(255 255 255 / 0.07);
+
+  --on-volt: #07080a;
+  --on-gold: #1a1200;
+  --on-flame: #ffffff;
+
+  /* Bright lime reads well on ink. */
+  --accent: #c8ff3d;
+  --accent-hover: #d8ff85;
+  --accent-text: #c8ff3d;
+  --accent-tint: rgb(200 255 61 / 0.12);
+  --accent-ring: rgb(200 255 61 / 0.3);
+  --accent-solid: #c8ff3d;
+  /* Fill that carries dark text - used for the form-guide pills, where the
+     mid-tone --accent would only reach 4.06:1 on paper. */
+  --accent-on-fill: #c8ff3d;
+
+  /* Softer companion for gold/flame text. */
+  --gold-text: #ffd75e;
+  --flame-text: #ff7a7a;
+  --danger-text: #ff7a7a;
+
+  /* Position-badge pairs, verified against WCAG AA in both themes. */
+  --badge-up-bg: rgb(200 255 61 / 0.15);
+  --badge-up-fg: #c8ff3d;
+  --badge-down-bg: rgb(229 36 60 / 0.16);
+  --badge-down-fg: #ff8a8a;
+  --badge-gold-bg: rgb(255 197 61 / 0.16);
+  --badge-gold-fg: #ffd75e;
+
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px -12px rgb(0 0 0 / 0.7);
+  --shadow-lift: 0 2px 4px rgb(0 0 0 / 0.4), 0 18px 40px -16px rgb(0 0 0 / 0.85);
+
+  --grid-line: rgb(255 255 255 / 0.028);
+  --plate: radial-gradient(70% 70% at 50% 40%, rgb(255 255 255 / 0.07) 0%, transparent 72%),
+    linear-gradient(160deg, rgb(255 255 255 / 0.045), rgb(255 255 255 / 0.012));
+
+  --scrim: rgb(0 0 0 / 0.6);
+  --hero-ink: 10 11 13;
+  --hero-scrim-a: 0.62;
+  --hero-scrim-b: 0.82;
+  --hero-scrim-side: 0.86;
+  --hero-scrim-poster: 0.5;
+  --hero-img-opacity: 0.55;
+}
+
+/* ---------- LIGHT ----------
+   Raw lime (#c8ff3d) on paper fails WCAG badly, so the accent switches to a
+   deep olive-lime for TEXT and keeps the vivid lime only for large fills.
+   The paper is a warm stone rather than pure white: a pure-white canvas made
+   the hero imagery look like a grey smear on a void. */
+.light {
+  --bg: #eeefe8;
+  --bg-deep: #e2e4d9;
+  --bg-raised: #fbfcf8;
+  --surface: linear-gradient(160deg, #fbfcf8 0%, #f3f4ec 100%);
+  --surface-solid: #fbfcf8;
+  --surface-2: #e6e8dd;
+  --surface-hover: rgb(20 24 18 / 0.055);
+
+  --text: #262a30;
+  --text-strong: #08090c;
+  --text-muted: #4e555f;
+  --text-faint: #5c636e;
+
+  --border: #d5d9cb;
+  --border-strong: #b8bfac;
+
+  --glass-bg: rgb(251 252 248 / 0.86);
+  --glass-border: rgb(20 24 18 / 0.09);
+
+  /* The vivid lime stays as the button fill, so the label switches to near-black
+     for a ~17:1 contrast ratio instead of the 3.5:1 white-on-mid-green it had. */
+  --on-volt: #0d1206;
+  --on-gold: #ffffff;
+  --on-flame: #ffffff;
+
+  --accent: #5c7f06;
+  --accent-hover: #6f970a;
+  --accent-text: #4a6a04;
+  --accent-tint: rgb(92 127 6 / 0.11);
+  --accent-ring: rgb(92 127 6 / 0.32);
+  --accent-solid: #c8ff3d;
+  --accent-on-fill: #a8d419;
+
+  --gold-text: #8a5f08;
+  --flame-text: #c0142b;
+  --danger-text: #c0142b;
+
+  --badge-up-bg: #dfe9c6;
+  --badge-up-fg: #375200;
+  --badge-down-bg: #f6dbdf;
+  --badge-down-fg: #96101f;
+  --badge-gold-bg: #f9ecc9;
+  --badge-gold-fg: #6f4a05;
+
+  --shadow-card: 0 1px 2px rgb(20 26 6 / 0.06), 0 8px 24px -14px rgb(20 26 6 / 0.18);
+  --shadow-lift: 0 2px 4px rgb(20 26 6 / 0.07), 0 18px 40px -18px rgb(20 26 6 / 0.28);
+
+  --grid-line: rgb(20 24 18 / 0.05);
+  --plate: radial-gradient(70% 70% at 50% 40%, rgb(20 24 18 / 0.05) 0%, transparent 72%),
+    linear-gradient(160deg, rgb(251 252 248 / 0.94), rgb(243 244 236 / 0.6));
+
+  --scrim: rgb(20 24 18 / 0.4);
+
+  /* Hero scrims are ink, not paper. Fading a colourful campaign image toward
+     white just produced a grey haze; a warm ink wash keeps the colour and makes
+     the overlaid copy legible in both themes. */
+  --hero-ink: 22 26 20;
+  --hero-scrim-a: 0.42;
+  --hero-scrim-b: 0.68;
+  --hero-scrim-side: 0.72;
+  --hero-scrim-poster: 0.62;
+}
+
+/* ============================================================
+   Base
+   ============================================================ */
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+    background-color: var(--bg);
+  }
+
+  body {
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-feature-settings: 'cv11', 'ss01';
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    overflow-x: hidden;
+    transition: background-color 0.35s var(--ease-out-expo), color 0.35s var(--ease-out-expo);
+  }
+
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+    color: var(--text-strong);
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-volt-400);
+    outline-offset: 3px;
+    border-radius: 4px;
+  }
+
+  ::selection {
+    background: var(--color-volt-300);
+    color: var(--on-volt);
+  }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: var(--bg-deep); }
+  ::-webkit-scrollbar-thumb {
+    background: var(--border-strong);
+    border-radius: 99px;
+    border: 2px solid var(--bg-deep);
+  }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-faint); }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* ============================================================
+   Utilities
+   ============================================================ */
+@layer utilities {
+  .bg-grid {
+    background-image:
+      linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+    background-size: 56px 56px;
+  }
+
+  .bg-radial-volt {
+    background-image: radial-gradient(60% 55% at 50% 0%, var(--accent-tint) 0%, transparent 70%);
+  }
+
+  .surface {
+    background: var(--surface);
+    border: 1px solid var(--border);
+  }
+
+  .glass {
+    background: var(--glass-bg);
+    backdrop-filter: blur(18px) saturate(160%);
+    -webkit-backdrop-filter: blur(18px) saturate(160%);
+    border-bottom: 1px solid var(--glass-border);
+  }
+
+  .text-gradient {
+    background: linear-gradient(120deg, var(--text-strong) 10%, var(--color-volt-300) 60%, var(--color-volt-400) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .crest-plate {
+    background: var(--plate);
+  }
+
+  .numeric {
+    font-family: var(--font-condensed);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.01em;
+  }
+
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { scrollbar-width: none; }
+
+  /* Slim scrollbar for in-panel lists so the thumb stays inside the frame */
+  .scroll-slim {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+  .scroll-slim::-webkit-scrollbar { width: 6px; }
+  .scroll-slim::-webkit-scrollbar-track {
+    background: transparent;
+    margin: 4px 0;
+  }
+  .scroll-slim::-webkit-scrollbar-thumb {
+    background: var(--border-strong);
+    border-radius: 99px;
+    border: none;
+  }
+  .scroll-slim::-webkit-scrollbar-thumb:hover {
+    background: var(--text-faint);
+  }
+
+  .nav-underline {
+    position: relative;
+  }
+  .nav-underline::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -6px;
+    height: 2px;
+    background: var(--color-volt-300);
+    transform: scaleX(0);
+    transform-origin: center;
+    transition: transform 0.35s var(--ease-out-expo);
+    border-radius: 2px;
+  }
+  .nav-underline:hover::after,
+  .nav-underline[data-active='true']::after {
+    transform: scaleX(1);
+  }
+}
+
+/* ============================================================
+   Components
+   ============================================================ */
+@layer components {
+  /* --------------------------------------------------------------- Tables
+     One track list, applied to the header row and every body row. Real spaces
+     (not Tailwind's underscore shorthand) because this is plain CSS. The track
+     count matches the cells that are visible at each breakpoint, so the header
+     and its values stay locked together at every width. */
+  /* Track count must equal the number of *visible* cells at each breakpoint:
+     4 base, 7 from sm (W/D/GD appear), 9 from md (GF/GA), 10 from lg (Form). */
+  .tbl-tpl {
+    grid-template-columns: 3.5rem minmax(0, 1fr) 3.5rem 4rem;
+  }
+  @media (min-width: 640px) {
+    .tbl-tpl {
+      grid-template-columns: 3.5rem minmax(0, 1fr) 3.5rem 3.5rem 3.5rem 3.5rem 4rem;
+    }
+  }
+  @media (min-width: 768px) {
+    .tbl-tpl {
+      grid-template-columns:
+        3.5rem minmax(0, 1fr) 3.5rem 3.5rem 3.5rem 3.5rem 3.5rem 3.5rem 4rem;
+    }
+  }
+  @media (min-width: 1024px) {
+    /* The last track holds the W/L/D form guide, so it is wide enough for five
+       pills plus inner padding and never touches the card's right edge. */
+    .tbl-tpl {
+      grid-template-columns:
+        3.5rem minmax(0, 1fr) 3.5rem 3.5rem 3.5rem 3.5rem 3.5rem 3.5rem 4rem 10rem;
+    }
+  }
+
+  /* --------------------------------------------------------- Transfer log
+     Same one-template approach. Under 640px the From/arrow columns drop and
+     the destination is shown under the player's name instead, so the log fits a
+     phone with no horizontal scrolling at any width. */
+  .trf-tpl {
+    grid-template-columns: 5.25rem minmax(0, 1fr) minmax(0, 1fr);
+  }
+  @media (min-width: 640px) {
+    .trf-tpl {
+      grid-template-columns: 7rem minmax(0, 1.1fr) minmax(0, 1fr) 1.75rem minmax(0, 1fr);
+    }
+  }
+
+  /* Destination line, shown only while the To column is hidden. */
+  .trf-club-line {
+    display: flex;
+  }
+  @media (min-width: 640px) {
+    .trf-club-line {
+      display: none;
+    }
+  }
+
+  /* ------------------------------------------------------------------ Hero
+     Three stacked scrims. `--hero-ink` is the page background expressed as an
+     RGB triple, so light mode can wash toward a warm ink instead of toward
+     paper - fading a colourful campaign image to white just reads as haze. */
+
+  /* Vignette: ink from the top and bottom edges into the middle. */
+  .hero-scrim {
+    background: linear-gradient(
+      to bottom,
+      rgb(var(--hero-ink) / var(--hero-scrim-a)) 0%,
+      rgb(var(--hero-ink) / calc(var(--hero-scrim-a) * 0.35)) 38%,
+      rgb(var(--hero-ink) / var(--hero-scrim-b)) 82%,
+      rgb(var(--hero-ink) / 1) 100%
+    );
+  }
+
+  /* Side wash that keeps the copy column readable without flattening the
+     artwork's right-hand side. */
+  .hero-scrim-side {
+    background: linear-gradient(
+      to right,
+      rgb(var(--hero-ink) / var(--hero-scrim-side)) 0%,
+      rgb(var(--hero-ink) / calc(var(--hero-scrim-side) * 0.8)) 42%,
+      rgb(var(--hero-ink) / 0) 100%
+    );
+  }
+
+  /* Poster slides already carry a centred headline, so they only get an even
+     darkening - no directional wash that would fight the baked-in type. */
+  .hero-scrim-poster {
+    background: linear-gradient(
+      to bottom,
+      rgb(var(--hero-ink) / calc(var(--hero-scrim-poster) * 0.5)) 0%,
+      rgb(var(--hero-ink) / calc(var(--hero-scrim-poster) * 0.3)) 55%,
+      rgb(var(--hero-ink) / 1) 100%
+    );
+  }
+
+  /* `lift` is opt-in. Cards that should stay flat on hover simply omit it. */
+  .lift {
+    transition:
+      transform 0.35s var(--ease-out-expo),
+      box-shadow 0.35s var(--ease-out-expo);
+  }
+  .lift:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lift);
+  }
+
+  /* Subtle lift with no colour change — used where a green border would read
+     as an error state. */
+  .lift-quiet {
+    transition:
+      transform 0.35s var(--ease-out-expo),
+      box-shadow 0.35s var(--ease-out-expo),
+      background-color 0.35s var(--ease-out-expo);
+  }
+  .lift-quiet:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-lift);
+    background: var(--surface-solid);
+  }
+
+  .shimmer {
+    position: relative;
+    overflow: hidden;
+    background: var(--surface-2);
+  }
+  .shimmer::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.07), transparent);
+    animation: shimmer 1.6s infinite;
+  }
+
+  .pulse-dot {
+    position: relative;
+  }
+  .pulse-dot::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 999px;
+    background: currentColor;
+    animation: ping 1.8s var(--ease-out-expo) infinite;
+  }
+
+  /* Hover row: the highlight is a pseudo-element so it fills the row edge to
+     edge and can never disagree with the container's shape. */
+  .row-hover {
+    position: relative;
+    isolation: isolate;
+  }
+  .row-hover::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--surface-hover);
+    opacity: 0;
+    transition: opacity 0.25s var(--ease-out-expo);
+    z-index: -1;
+  }
+  .row-hover:hover::before,
+  .row-hover:focus-visible::before {
+    opacity: 1;
+  }
+}
+
+/* ============================================================
+   Hero motion
+   A slow cinematic push on the imagery plus two drifting light
+   sweeps. Entirely transform/opacity, so it stays on the
+   compositor and never triggers layout.
+   ============================================================ */
+@keyframes kenburns {
+  0%   { transform: scale(1.04) translate3d(0, 0, 0); }
+  100% { transform: scale(1.18) translate3d(-1.4%, -1.6%, 0); }
+}
+
+.hero-kenburns {
+  animation: kenburns 26s ease-out forwards;
+  will-change: transform;
+  transform-origin: 62% 40%;
+}
+
+@keyframes sweep {
+  0%   { transform: translate3d(-120%, 0, 0) rotate(18deg); opacity: 0; }
+  12%  { opacity: 0.5; }
+  55%  { opacity: 0.28; }
+  100% { transform: translate3d(220%, 0, 0) rotate(18deg); opacity: 0; }
+}
+
+.hero-sweep {
+  animation: sweep 9s cubic-bezier(0.4, 0.05, 0.2, 1) infinite;
+  will-change: transform, opacity;
+}
+.hero-sweep--delay { animation-delay: 4.5s; }
+
+/* Drifting light streaks behind the copy */
+@keyframes drift-a {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50%      { transform: translate3d(4%, -6%, 0) scale(1.12); }
+}
+@keyframes drift-b {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1.08); }
+  50%      { transform: translate3d(-5%, 5%, 0) scale(0.94); }
+}
+
+.hero-glow-a { animation: drift-a 17s ease-in-out infinite; }
+.hero-glow-b { animation: drift-b 21s ease-in-out infinite; }
+
+/* A single slow conic shimmer along the bottom edge of the hero */
+@keyframes conic-spin {
+  to { transform: rotate(360deg); }
+}
+.hero-conic {
+  animation: conic-spin 26s linear infinite;
+}
+
+/* Carousel progress: the active dot fills left to right for exactly the slide
+   duration, so the visitor can see how long is left. `animation-play-state` is
+   driven from React and pauses on hover / focus. */
+@keyframes hero-dot-fill {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+.hero-dot-fill {
+  transform-origin: left center;
+  animation-name: hero-dot-fill;
+  animation-timing-function: linear;
+  animation-fill-mode: both;
+}
+
+/* Cart count badge: a short pop so adding an item is noticeable. */
+@keyframes cart-pop {
+  0%   { transform: scale(0.5); }
+  60%  { transform: scale(1.22); }
+  100% { transform: scale(1); }
+}
+.cart-badge {
+  animation: cart-pop 0.32s var(--ease-out-expo);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cart-badge { animation: none; }
+  .hero-kenburns,
+  .hero-sweep,
+  .hero-glow-a,
+  .hero-glow-b,
+  .hero-conic {
+    animation: none !important;
+  }
+  .hero-kenburns { transform: scale(1.06); }
+  /* Fill the progress track outright rather than animating it. */
+  .hero-dot-fill {
+    animation: none !important;
+    transform: scaleX(1);
+  }
+}
+
+@keyframes shimmer {
+  100% { transform: translateX(100%); }
+}
+
+@keyframes ping {
+  0%   { transform: scale(1); opacity: 0.75; }
+  75%  { transform: scale(2.6); opacity: 0; }
+  100% { transform: scale(2.6); opacity: 0; }
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes score-pop {
+  0%   { transform: scale(0.85); opacity: 0; }
+  60%  { transform: scale(1.08); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.animate-fade-up { animation: fade-up 0.6s var(--ease-out-expo) both; }
+.animate-score-pop { animation: score-pop 0.5s var(--ease-spring) both; }
+
+.reveal {
+  opacity: 0;
+  transform: translateY(20px);
+  transition:
+    opacity 0.7s var(--ease-out-expo),
+    transform 0.7s var(--ease-out-expo);
+}
+.reveal.in-view {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.page-enter {
+  animation: fade-up 0.45s var(--ease-out-expo) both;
+}
+
+/* ============================================================
+   Parallax
+   Layers opt in with data-speed. The JS writes a CSS var; the
+   transform stays in CSS so it never triggers layout.
+   ============================================================ */
+.parallax-layer {
+  will-change: transform;
+  transform: translate3d(0, var(--parallax-y, 0px), 0);
+  backface-visibility: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .parallax-layer { transform: none !important; }
+}

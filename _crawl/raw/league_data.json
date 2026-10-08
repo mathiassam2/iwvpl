@@ -1,0 +1,2519 @@
+{
+ "standings_by_division": {
+  "Premier League": {
+   "columns": [
+    "Pos",
+    "Team",
+    "Pl",
+    "W",
+    "D",
+    "L",
+    "GF",
+    "GA",
+    "GD",
+    "Pts",
+    "Form",
+    "Next"
+   ],
+   "rows": [
+    {
+     "pos": 1,
+     "team": "KITA KITA VFC",
+     "flag": "🇲🇾",
+     "pl": 17,
+     "w": 16,
+     "d": 1,
+     "l": 0,
+     "gf": 56,
+     "ga": 6,
+     "gd": 50,
+     "pts": 49,
+     "form": [
+      "W",
+      "W",
+      "W",
+      "W",
+      "W"
+     ]
+    },
+    {
+     "pos": 2,
+     "team": "THE ROYAL BLOOD VFC",
+     "flag": "🇲🇾",
+     "pl": 17,
+     "w": 12,
+     "d": 1,
+     "l": 4,
+     "gf": 30,
+     "ga": 12,
+     "gd": 18,
+     "pts": 37,
+     "form": [
+      "W",
+      "L",
+      "W",
+      "W",
+      "W"
+     ]
+    },
+    {
+     "pos": 3,
+     "team": "REUNION VFC",
+     "flag": "🇲🇾",
+     "pl": 17,
+     "w": 11,
+     "d": 3,
+     "l": 3,
+     "gf": 28,
+     "ga": 14,
+     "gd": 14,
+     "pts": 36,
+     "form": [
+      "D",
+      "L",
+      "W",
+      "W",
+      "D"
+     ]
+    },
+    {
+     "pos": 4,
+     "team": "PENYAMUNZ VFC",
+     "flag": "🇸🇬",
+     "pl": 17,
+     "w": 9,
+     "d": 6,
+     "l": 2,
+     "gf": 34,
+     "ga": 16,
+     "gd": 18,
+     "pts": 33,
+     "form": [
+      "L",
+      "W",
+      "W",
+      "W",
+      "W"
+     ]
+    },
+    {
+     "pos": 5,
+     "team": "SOBAT VFC",
+     "flag": "🇮🇩",
+     "pl": 17,
+     "w": 9,
+     "d": 3,
+     "l": 5,
+     "gf": 25,
+     "ga": 15,
+     "gd": 10,
+     "pts": 30,
+     "form": [
+      "W",
+      "D",
+      "W",
+      "L",
+      "L"
+     ]
+    },
+    {
+     "pos": 6,
+     "team": "ONxON OG",
+     "flag": "🇲🇾",
+     "pl": 17,
+     "w": 10,
+     "d": 0,
+     "l": 7,
+     "gf": 31,
+     "ga": 28,
+     "gd": 3,
+     "pts": 30,
+     "form": [
+      "W",
+      "L",
+      "L",
+      "W",
+      "W"
+     ]
+    },
+    {
+     "pos": 7,
+     "team": "ILLUMINATION VFC",
+     "flag": "🇲🇾",
+     "pl": 17,
+     "w": 9,
+     "d": 2,
+     "l": 6,
+     "gf": 33,
+     "ga": 29,
+     "gd": 4,
+     "pts": 29,
+     "form": [
+      "W",
+      "L",
+      "W",
+      "L",
+      "W"
+     ]
+    },
+    {
+     "pos": 8,
+     "team": "THE CRAZY BOYS VFC",
+     "flag": "🇸🇬",
+     "pl": 17,
+     "w": 8,
+     "d": 4,
+     "l": 5,
+     "gf": 17,
+     "ga": 12,
+     "gd": 5,
+     "pts": 28,
+     "form": [
+      "W",
+      "W",
+      "D",
+      "W",
+      "D"
+     ]
+    },
+    {
+     "pos": 9,
+     "team": "KOEMPOEL KEBOW VFC",
+     "flag": "🇮🇩",
+     "pl": 17,
+     "w": 8,
+     "d": 4,
+     "l": 5,
+     "gf": 18,
+     "ga": 22,
+     "gd": -4,
+     "pts": 28,
+     "form": [
+      "D",
+      "W",
+      "W",
+      "W",
+      "D"
+     ]
+    },
+    {
+     "pos": 10,
+     "team": "ELITE FIGHTING FORCE VFC",
+     "flag": "🇲🇾",
+     "pl": 17,
+     "w": 8,
+     "d": 2,
+     "l": 7,
+     "gf": 11,
+     "ga": 22,
+     "gd": -11,
+     "pts": 26,
+     "form": [
+      "W",
+      "L",
+      "D",
+      "W",
+      "W"
+     ]
+    },
+    {
+     "pos": 11,
+     "team": "KEPALA NAGA FC",
+     "flag": "🇸🇬",
+     "pl": 17,
+     "w": 8,
+     "d": 1,
+     "l": 8,
+     "gf": 20,
+     "ga": 25,
+     "gd": -5,
+     "pts": 25,
+     "form": [
+      "L",
+      "L",
+      "L",
+      "W",
+      "L"
+     ]
+    },
+    {
+     "pos": 12,
+     "team": "VIRTUA CLUB DE FUTBOL",
+     "flag": "🇲🇾",
+     "pl": 17,
+     "w": 7,
+     "d": 2,
+     "l": 8,
+     "gf": 11,
+     "ga": 22,
+     "gd": -11,
+     "pts": 23,
+     "form": [
+      "W",
+      "L",
+      "L",
+      "L",
+      "L"
+     ]
+    },
+    {
+     "pos": 13,
+     "team": "PASE MAGICO VFC",
+     "flag": "🇲🇾",
+     "pl": 17,
+     "w": 6,
+     "d": 3,
+     "l": 8,
+     "gf": 18,
+     "ga": 23,
+     "gd": -5,
+     "pts": 21,
+     "form": [
+      "W",
+      "L",
+      "W",
+      "L",
+      "W"
+     ]
+    },
+    {
+     "pos": 14,
+     "team": "PENANGMARIII VFC",
+     "flag": "🇲🇾",
+     "pl": 17,
+     "w": 5,
+     "d": 1,
+     "l": 11,
+     "gf": 13,
+     "ga": 27,
+     "gd": -14,
+     "pts": 16,
+     "form": [
+      "W",
+      "L",
+      "W",
+      "W",
+      "L"
+     ]
+    },
+    {
+     "pos": 15,
+     "team": "PROGOAL XI",
+     "flag": "🇲🇾",
+     "pl": 17,
+     "w": 4,
+     "d": 1,
+     "l": 12,
+     "gf": 8,
+     "ga": 30,
+     "gd": -22,
+     "pts": 13,
+     "form": [
+      "L",
+      "L",
+      "L",
+      "L",
+      "L"
+     ]
+    },
+    {
+     "pos": 16,
+     "team": "TOTAL 23",
+     "flag": "🇸🇬",
+     "pl": 17,
+     "w": 3,
+     "d": 1,
+     "l": 13,
+     "gf": 17,
+     "ga": 24,
+     "gd": -7,
+     "pts": 10,
+     "form": [
+      "L",
+      "L",
+      "D",
+      "L",
+      "L"
+     ]
+    },
+    {
+     "pos": 17,
+     "team": "LOS TIGRELEON",
+     "flag": "🇸🇬",
+     "pl": 17,
+     "w": 2,
+     "d": 1,
+     "l": 14,
+     "gf": 5,
+     "ga": 15,
+     "gd": -10,
+     "pts": 7,
+     "form": [
+      "L",
+      "L",
+      "D",
+      "L",
+      "L"
+     ]
+    },
+    {
+     "pos": 18,
+     "team": "RHYTHM X",
+     "flag": "🇸🇬",
+     "pl": 17,
+     "w": 0,
+     "d": 0,
+     "l": 17,
+     "gf": 1,
+     "ga": 34,
+     "gd": -33,
+     "pts": 0,
+     "form": [
+      "L",
+      "L",
+      "L",
+      "L",
+      "L"
+     ]
+    }
+   ]
+  }
+ },
+ "standings": [
+  {
+   "pos": 1,
+   "team": "KITA KITA VFC",
+   "flag": "🇲🇾",
+   "pl": 17,
+   "w": 16,
+   "d": 1,
+   "l": 0,
+   "gf": 56,
+   "ga": 6,
+   "gd": 50,
+   "pts": 49,
+   "form": [
+    "W",
+    "W",
+    "W",
+    "W",
+    "W"
+   ]
+  },
+  {
+   "pos": 2,
+   "team": "THE ROYAL BLOOD VFC",
+   "flag": "🇲🇾",
+   "pl": 17,
+   "w": 12,
+   "d": 1,
+   "l": 4,
+   "gf": 30,
+   "ga": 12,
+   "gd": 18,
+   "pts": 37,
+   "form": [
+    "W",
+    "L",
+    "W",
+    "W",
+    "W"
+   ]
+  },
+  {
+   "pos": 3,
+   "team": "REUNION VFC",
+   "flag": "🇲🇾",
+   "pl": 17,
+   "w": 11,
+   "d": 3,
+   "l": 3,
+   "gf": 28,
+   "ga": 14,
+   "gd": 14,
+   "pts": 36,
+   "form": [
+    "D",
+    "L",
+    "W",
+    "W",
+    "D"
+   ]
+  },
+  {
+   "pos": 4,
+   "team": "PENYAMUNZ VFC",
+   "flag": "🇸🇬",
+   "pl": 17,
+   "w": 9,
+   "d": 6,
+   "l": 2,
+   "gf": 34,
+   "ga": 16,
+   "gd": 18,
+   "pts": 33,
+   "form": [
+    "L",
+    "W",
+    "W",
+    "W",
+    "W"
+   ]
+  },
+  {
+   "pos": 5,
+   "team": "SOBAT VFC",
+   "flag": "🇮🇩",
+   "pl": 17,
+   "w": 9,
+   "d": 3,
+   "l": 5,
+   "gf": 25,
+   "ga": 15,
+   "gd": 10,
+   "pts": 30,
+   "form": [
+    "W",
+    "D",
+    "W",
+    "L",
+    "L"
+   ]
+  },
+  {
+   "pos": 6,
+   "team": "ONxON OG",
+   "flag": "🇲🇾",
+   "pl": 17,
+   "w": 10,
+   "d": 0,
+   "l": 7,
+   "gf": 31,
+   "ga": 28,
+   "gd": 3,
+   "pts": 30,
+   "form": [
+    "W",
+    "L",
+    "L",
+    "W",
+    "W"
+   ]
+  },
+  {
+   "pos": 7,
+   "team": "ILLUMINATION VFC",
+   "flag": "🇲🇾",
+   "pl": 17,
+   "w": 9,
+   "d": 2,
+   "l": 6,
+   "gf": 33,
+   "ga": 29,
+   "gd": 4,
+   "pts": 29,
+   "form": [
+    "W",
+    "L",
+    "W",
+    "L",
+    "W"
+   ]
+  },
+  {
+   "pos": 8,
+   "team": "THE CRAZY BOYS VFC",
+   "flag": "🇸🇬",
+   "pl": 17,
+   "w": 8,
+   "d": 4,
+   "l": 5,
+   "gf": 17,
+   "ga": 12,
+   "gd": 5,
+   "pts": 28,
+   "form": [
+    "W",
+    "W",
+    "D",
+    "W",
+    "D"
+   ]
+  },
+  {
+   "pos": 9,
+   "team": "KOEMPOEL KEBOW VFC",
+   "flag": "🇮🇩",
+   "pl": 17,
+   "w": 8,
+   "d": 4,
+   "l": 5,
+   "gf": 18,
+   "ga": 22,
+   "gd": -4,
+   "pts": 28,
+   "form": [
+    "D",
+    "W",
+    "W",
+    "W",
+    "D"
+   ]
+  },
+  {
+   "pos": 10,
+   "team": "ELITE FIGHTING FORCE VFC",
+   "flag": "🇲🇾",
+   "pl": 17,
+   "w": 8,
+   "d": 2,
+   "l": 7,
+   "gf": 11,
+   "ga": 22,
+   "gd": -11,
+   "pts": 26,
+   "form": [
+    "W",
+    "L",
+    "D",
+    "W",
+    "W"
+   ]
+  },
+  {
+   "pos": 11,
+   "team": "KEPALA NAGA FC",
+   "flag": "🇸🇬",
+   "pl": 17,
+   "w": 8,
+   "d": 1,
+   "l": 8,
+   "gf": 20,
+   "ga": 25,
+   "gd": -5,
+   "pts": 25,
+   "form": [
+    "L",
+    "L",
+    "L",
+    "W",
+    "L"
+   ]
+  },
+  {
+   "pos": 12,
+   "team": "VIRTUA CLUB DE FUTBOL",
+   "flag": "🇲🇾",
+   "pl": 17,
+   "w": 7,
+   "d": 2,
+   "l": 8,
+   "gf": 11,
+   "ga": 22,
+   "gd": -11,
+   "pts": 23,
+   "form": [
+    "W",
+    "L",
+    "L",
+    "L",
+    "L"
+   ]
+  },
+  {
+   "pos": 13,
+   "team": "PASE MAGICO VFC",
+   "flag": "🇲🇾",
+   "pl": 17,
+   "w": 6,
+   "d": 3,
+   "l": 8,
+   "gf": 18,
+   "ga": 23,
+   "gd": -5,
+   "pts": 21,
+   "form": [
+    "W",
+    "L",
+    "W",
+    "L",
+    "W"
+   ]
+  },
+  {
+   "pos": 14,
+   "team": "PENANGMARIII VFC",
+   "flag": "🇲🇾",
+   "pl": 17,
+   "w": 5,
+   "d": 1,
+   "l": 11,
+   "gf": 13,
+   "ga": 27,
+   "gd": -14,
+   "pts": 16,
+   "form": [
+    "W",
+    "L",
+    "W",
+    "W",
+    "L"
+   ]
+  },
+  {
+   "pos": 15,
+   "team": "PROGOAL XI",
+   "flag": "🇲🇾",
+   "pl": 17,
+   "w": 4,
+   "d": 1,
+   "l": 12,
+   "gf": 8,
+   "ga": 30,
+   "gd": -22,
+   "pts": 13,
+   "form": [
+    "L",
+    "L",
+    "L",
+    "L",
+    "L"
+   ]
+  },
+  {
+   "pos": 16,
+   "team": "TOTAL 23",
+   "flag": "🇸🇬",
+   "pl": 17,
+   "w": 3,
+   "d": 1,
+   "l": 13,
+   "gf": 17,
+   "ga": 24,
+   "gd": -7,
+   "pts": 10,
+   "form": [
+    "L",
+    "L",
+    "D",
+    "L",
+    "L"
+   ]
+  },
+  {
+   "pos": 17,
+   "team": "LOS TIGRELEON",
+   "flag": "🇸🇬",
+   "pl": 17,
+   "w": 2,
+   "d": 1,
+   "l": 14,
+   "gf": 5,
+   "ga": 15,
+   "gd": -10,
+   "pts": 7,
+   "form": [
+    "L",
+    "L",
+    "D",
+    "L",
+    "L"
+   ]
+  },
+  {
+   "pos": 18,
+   "team": "RHYTHM X",
+   "flag": "🇸🇬",
+   "pl": 17,
+   "w": 0,
+   "d": 0,
+   "l": 17,
+   "gf": 1,
+   "ga": 34,
+   "gd": -33,
+   "pts": 0,
+   "form": [
+    "L",
+    "L",
+    "L",
+    "L",
+    "L"
+   ]
+  }
+ ],
+ "divisions": [
+  "Championship",
+  "Division 1",
+  "Division 2",
+  "Division 3",
+  "Premier League"
+ ],
+ "seasons": [
+  "2026 Season 1"
+ ],
+ "leaderboards": [
+  {
+   "title": "TOP SCORER",
+   "rows": [
+    {
+     "pos": 1,
+     "name": "LethaL_ShoTs11",
+     "team": "KITA KITA VFC",
+     "team_flag": "🇲🇾",
+     "value": 21,
+     "avatar": "https://www.iwvpl.asia/wp-content/uploads/2026/08/default-profile.webp",
+     "team_logo": "",
+     "url": "https://www.iwvpl.asia/player/lethal_shots11/"
+    },
+    {
+     "pos": 2,
+     "name": "PembunuhEncem",
+     "team": "BALLOTZ VFC",
+     "team_flag": "",
+     "value": 12,
+     "avatar": "data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%200%200'%3E%3C/svg%3E",
+     "team_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/09/Untitled-300-x-300-px-150x150.webp",
+     "url": "https://www.iwvpl.asia/player/pembunuhencem/"
+    },
+    {
+     "pos": 3,
+     "name": "alexis_aniq",
+     "team": "KITA KITA VFC",
+     "team_flag": "🇲🇾",
+     "value": 11,
+     "avatar": "https://www.iwvpl.asia/wp-content/uploads/2026/08/default-profile.webp",
+     "team_logo": "",
+     "url": "https://www.iwvpl.asia/player/alexis_aniq/"
+    },
+    {
+     "pos": 4,
+     "name": "wansid",
+     "team": "PENYAMUNZ VFC",
+     "team_flag": "🇸🇬",
+     "value": 9,
+     "avatar": "https://www.iwvpl.asia/wp-content/uploads/2026/08/default-profile.webp",
+     "team_logo": "",
+     "url": "https://www.iwvpl.asia/player/wansid/"
+    },
+    {
+     "pos": 5,
+     "name": "afiqkensei",
+     "team": "LACOZ VFC",
+     "team_flag": "",
+     "value": 7,
+     "avatar": "https://www.iwvpl.asia/wp-content/uploads/2026/08/default-profile.webp",
+     "team_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/09/Untitled-300-x-300-px-1-150x150.webp",
+     "url": "https://www.iwvpl.asia/player/afiqkensei/"
+    },
+    {
+     "pos": 6,
+     "name": "hakimhashim",
+     "team": "KEPALA NAGA FC",
+     "team_flag": "🇸🇬",
+     "value": 7,
+     "avatar": "https://www.iwvpl.asia/wp-content/uploads/2026/08/default-profile.webp",
+     "team_logo": "",
+     "url": "https://www.iwvpl.asia/player/hakimhashim/"
+    },
+    {
+     "pos": 7,
+     "name": "T3S-xMcDeMarco",
+     "team": "KITA KITA VFC",
+     "team_flag": "🇲🇾",
+     "value": 6,
+     "avatar": "https://www.iwvpl.asia/wp-content/uploads/2026/08/default-profile.webp",
+     "team_logo": "",
+     "url": "https://www.iwvpl.asia/player/t3s-xmcdemarco/"
+    },
+    {
+     "pos": 8,
+     "name": "Miknaf19",
+     "team": "SOBAT VFC",
+     "team_flag": "🇮🇩",
+     "value": 6,
+     "avatar": "https://www.iwvpl.asia/wp-content/uploads/2026/08/default-profile.webp",
+     "team_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-5-150x150.png",
+     "url": "https://www.iwvpl.asia/player/miknaf19/"
+    },
+    {
+     "pos": 9,
+     "name": "Izzyx_13",
+     "team": "PASE MAGICO VFC",
+     "team_flag": "🇲🇾",
+     "value": 6,
+     "avatar": "https://www.iwvpl.asia/wp-content/uploads/2026/08/default-profile.webp",
+     "team_logo": "",
+     "url": "https://www.iwvpl.asia/player/izzyx_13/"
+    },
+    {
+     "pos": 10,
+     "name": "zi_zidane01",
+     "team": "ONxON OG",
+     "team_flag": "🇲🇾",
+     "value": 5,
+     "avatar": "https://www.iwvpl.asia/wp-content/uploads/2026/08/default-profile.webp",
+     "team_logo": "",
+     "url": "https://www.iwvpl.asia/player/zi_zidane01/"
+    }
+   ]
+  },
+  {
+   "title": "TOP ASSIST",
+   "rows": [
+    {
+     "pos": 1,
+     "name": "AbdulR_",
+     "team": "PENYAMUNZ VFC",
+     "team_flag": "🇸🇬",
+     "value": 13,
+     "avatar": "https://www.iwvpl.asia/wp-content/uploads/2026/08/default-profile.webp",
+     "team_logo": "",
+     "url": "https://www.iwvpl.asia/player/abdulr_/"
+    },
+    {
+     "pos": 2,
+     "name": "HakuryuuXI",
+     "team": "KITA KITA VFC",
+     "team_flag": "🇲🇾",
+     "value": 10,
+     "avatar": "https://www.iwvpl.asia/wp-content/uploads/2026/08/default-profile.webp",
+     "team_logo": "",
+     "url": "https://www.iwvpl.asia/player/hakuryuuxi/"
+    },
+    {
+     "pos": 3,
+     "name": "Yalwaysme2307",
+     "team": "KITA KITA VFC",
+     "team_flag": "🇲🇾",
+     "value": 7,
+     "avatar": "https://www.iwvpl.asia/wp-content/uploads/2026/08/default-profile.webp",
+     "team_logo": "",
+     "url": "https://www.iwvpl.asia/player/yalwaysme2307/"
+    },
+    {
+     "pos": 4,
+     "name": "alexis_aniq",
+     "team": "KITA KITA VFC",
+     "team_flag": "🇲🇾",
+     "value": 7,
+     "avatar": "https://www.iwvpl.asia/wp-content/uploads/2026/08/default-profile.webp",
+     "team_logo": "",
+     "url": "https://www.iwvpl.asia/player/alexis_aniq/"
+    },
+    {
+     "pos": 5,
+     "name": "Ginga_Bogota",
+     "team": "THE ROYAL BLOOD VFC",
+     "team_flag": "🇲🇾",
+     "value": 6,
+     "avatar": "https://www.iwvpl.asia/wp-content/uploads/2026/08/default-profile.webp",
+     "team_logo": "",
+     "url": "https://www.iwvpl.asia/player/ginga_bogota/"
+    },
+    {
+     "pos": 6,
+     "name": "T23_Mililiters",
+     "team": "TOTAL 23",
+     "team_flag": "🇸🇬",
+     "value": 6,
+     "avatar": "https://www.iwvpl.asia/wp-content/uploads/2026/08/default-profile.webp",
+     "team_logo": "",
+     "url": "https://www.iwvpl.asia/player/t23_mililiters/"
+    },
+    {
+     "pos": 7,
+     "name": "mxverickjr",
+     "team": "ONxON OG",
+     "team_flag": "🇲🇾",
+     "value": 4,
+     "avatar": "https://www.iwvpl.asia/wp-content/uploads/2026/08/default-profile.webp",
+     "team_logo": "",
+     "url": "https://www.iwvpl.asia/player/mxverickjr/"
+    },
+    {
+     "pos": 8,
+     "name": "zi_zidane01",
+     "team": "ONxON OG",
+     "team_flag": "🇲🇾",
+     "value": 4,
+     "avatar": "https://www.iwvpl.asia/wp-content/uploads/2026/08/default-profile.webp",
+     "team_logo": "",
+     "url": "https://www.iwvpl.asia/player/zi_zidane01/"
+    },
+    {
+     "pos": 9,
+     "name": "LJN_AYOIZ",
+     "team": "THE ROYAL BLOOD VFC",
+     "team_flag": "🇲🇾",
+     "value": 4,
+     "avatar": "https://www.iwvpl.asia/wp-content/uploads/2026/08/default-profile.webp",
+     "team_logo": "",
+     "url": "https://www.iwvpl.asia/player/ljn_ayoiz/"
+    },
+    {
+     "pos": 10,
+     "name": "MikaaSavio",
+     "team": "ILLUMINATION VFC",
+     "team_flag": "🇲🇾",
+     "value": 4,
+     "avatar": "https://www.iwvpl.asia/wp-content/uploads/2026/08/default-profile.webp",
+     "team_logo": "",
+     "url": "https://www.iwvpl.asia/player/mikaasavio/"
+    }
+   ]
+  },
+  {
+   "title": "TOP SAVES",
+   "rows": [
+    {
+     "pos": 1,
+     "name": "Eldeonix",
+     "team": "PENYAMUNZ VFC",
+     "team_flag": "🇸🇬",
+     "value": 50,
+     "avatar": "https://www.iwvpl.asia/wp-content/uploads/2026/09/profile_photo-190x190-3-150x150.jpeg",
+     "team_logo": "",
+     "url": "https://www.iwvpl.asia/player/eldeonix/"
+    },
+    {
+     "pos": 2,
+     "name": "Belalai_gajah",
+     "team": "ILLUMINATION VFC",
+     "team_flag": "🇲🇾",
+     "value": 49,
+     "avatar": "https://www.iwvpl.asia/wp-content/uploads/2026/08/default-profile.webp",
+     "team_logo": "",
+     "url": "https://www.iwvpl.asia/player/belalai_gajah/"
+    },
+    {
+     "pos": 3,
+     "name": "nickymartynn",
+     "team": "PASE MAGICO VFC",
+     "team_flag": "🇲🇾",
+     "value": 31,
+     "avatar": "https://www.iwvpl.asia/wp-content/uploads/2026/08/default-profile.webp",
+     "team_logo": "",
+     "url": "https://www.iwvpl.asia/player/nickymartynn/"
+    },
+    {
+     "pos": 4,
+     "name": "Arnep98",
+     "team": "THE ROYAL BLOOD VFC",
+     "team_flag": "🇲🇾",
+     "value": 30,
+     "avatar": "https://www.iwvpl.asia/wp-content/uploads/2026/08/default-profile.webp",
+     "team_logo": "",
+     "url": "https://www.iwvpl.asia/player/arnep98/"
+    },
+    {
+     "pos": 5,
+     "name": "Arz_ARPP",
+     "team": "KEPALA NAGA FC",
+     "team_flag": "🇸🇬",
+     "value": 26,
+     "avatar": "https://www.iwvpl.asia/wp-content/uploads/2026/08/default-profile.webp",
+     "team_logo": "",
+     "url": "https://www.iwvpl.asia/player/arz_arpp/"
+    },
+    {
+     "pos": 6,
+     "name": "Nsrddin",
+     "team": "PENANGMARIII VFC",
+     "team_flag": "🇲🇾",
+     "value": 24,
+     "avatar": "https://www.iwvpl.asia/wp-content/uploads/2026/08/default-profile.webp",
+     "team_logo": "",
+     "url": "https://www.iwvpl.asia/player/nsrddn/"
+    },
+    {
+     "pos": 7,
+     "name": "ApekScha",
+     "team": "KITA KITA VFC",
+     "team_flag": "🇲🇾",
+     "value": 16,
+     "avatar": "https://www.iwvpl.asia/wp-content/uploads/2026/08/default-profile.webp",
+     "team_logo": "",
+     "url": "https://www.iwvpl.asia/player/apekscha/"
+    },
+    {
+     "pos": 8,
+     "name": "Luqmanmbs",
+     "team": "VIRTUA CLUB DE FUTBOL",
+     "team_flag": "🇲🇾",
+     "value": 15,
+     "avatar": "https://www.iwvpl.asia/wp-content/uploads/2026/08/default-profile.webp",
+     "team_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-2-150x150.webp",
+     "url": "https://www.iwvpl.asia/player/luqmanmbs/"
+    },
+    {
+     "pos": 9,
+     "name": "rainKingz",
+     "team": "ELITE FIGHTING FORCE VFC",
+     "team_flag": "🇲🇾",
+     "value": 14,
+     "avatar": "https://www.iwvpl.asia/wp-content/uploads/2026/08/default-profile.webp",
+     "team_logo": "",
+     "url": "https://www.iwvpl.asia/player/rainkingz/"
+    },
+    {
+     "pos": 10,
+     "name": "WanNastazio",
+     "team": "REUNION VFC",
+     "team_flag": "🇲🇾",
+     "value": 13,
+     "avatar": "https://www.iwvpl.asia/wp-content/uploads/2026/08/default-profile.webp",
+     "team_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-6-150x150.png",
+     "url": "https://www.iwvpl.asia/player/wannastazio/"
+    }
+   ]
+  }
+ ],
+ "results": [
+  {
+   "date": "Friday, 02 October 2026",
+   "time": "00:00",
+   "home": "KOEMPOEL KEBOW VFC",
+   "home_flag": "🇮🇩",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/2-150x150.webp",
+   "away": "THE CRAZY BOYS VFC",
+   "away_flag": "🇸🇬",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/17-150x150.webp",
+   "score": "0 : 0",
+   "hs": "0",
+   "as": "0",
+   "url": "https://www.iwvpl.asia/event/koempoel-kebow-vfc-%f0%9f%87%ae%f0%9f%87%a9-vs-the-crazy-boys-vfc-%f0%9f%87%b8%f0%9f%87%ac/"
+  },
+  {
+   "date": "Thursday, 01 October 2026",
+   "time": "23:30",
+   "home": "SOBAT VFC",
+   "home_flag": "🇮🇩",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-5-150x150.png",
+   "away": "THE CRAZY BOYS VFC",
+   "away_flag": "🇸🇬",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/17-150x150.webp",
+   "score": "0 : 1",
+   "hs": "0",
+   "as": "1",
+   "url": "https://www.iwvpl.asia/event/sobat-vfc-%f0%9f%87%ae%f0%9f%87%a9-vs-the-crazy-boys-vfc-%f0%9f%87%b8%f0%9f%87%ac/"
+  },
+  {
+   "date": "Thursday, 01 October 2026",
+   "time": "23:00",
+   "home": "SOBAT VFC",
+   "home_flag": "🇮🇩",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-5-150x150.png",
+   "away": "THE ROYAL BLOOD VFC",
+   "away_flag": "🇲🇾",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/12-150x150.webp",
+   "score": "2 : 3",
+   "hs": "2",
+   "as": "3",
+   "url": "https://www.iwvpl.asia/event/sobat-vfc-%f0%9f%87%ae%f0%9f%87%a9-vs-the-royal-blood-vfc-%f0%9f%87%b2%f0%9f%87%be/"
+  },
+  {
+   "date": "Thursday, 01 October 2026",
+   "time": "23:00",
+   "home": "THE CRAZY BOYS VFC",
+   "home_flag": "🇸🇬",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/17-150x150.webp",
+   "away": "REUNION VFC",
+   "away_flag": "🇲🇾",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-6-150x150.png",
+   "score": "0 : 0",
+   "hs": "0",
+   "as": "0",
+   "url": "https://www.iwvpl.asia/event/the-crazy-boys-vfc-%f0%9f%87%b8%f0%9f%87%ac-vs-reunion-vfc-%f0%9f%87%b2%f0%9f%87%be/"
+  },
+  {
+   "date": "Wednesday, 30 September 2026",
+   "time": "00:00",
+   "home": "KOEMPOEL KEBOW VFC",
+   "home_flag": "🇮🇩",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/2-150x150.webp",
+   "away": "VIRTUA CLUB DE FUTBOL",
+   "away_flag": "🇲🇾",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-2-150x150.webp",
+   "score": "1 : 0",
+   "hs": "1",
+   "as": "0",
+   "url": "https://www.iwvpl.asia/event/koempoel-kebow-vfc-%f0%9f%87%ae%f0%9f%87%a9-vs-virtua-club-de-futbol-%f0%9f%87%b2%f0%9f%87%be/"
+  },
+  {
+   "date": "Wednesday, 30 September 2026",
+   "time": "00:00",
+   "home": "PASE MAGICO VFC",
+   "home_flag": "🇲🇾",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-4-150x150.png",
+   "away": "PENANGMARIII VFC",
+   "away_flag": "🇲🇾",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-9-150x150.png",
+   "score": "1 : 0",
+   "hs": "1",
+   "as": "0",
+   "url": "https://www.iwvpl.asia/event/pase-magico-vfc-%f0%9f%87%b2%f0%9f%87%be-vs-penangmariii-vfc-%f0%9f%87%b2%f0%9f%87%be/"
+  },
+  {
+   "date": "Wednesday, 30 September 2026",
+   "time": "00:00",
+   "home": "REUNION VFC",
+   "home_flag": "🇲🇾",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-6-150x150.png",
+   "away": "VIRTUA CLUB DE FUTBOL",
+   "away_flag": "🇲🇾",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-2-150x150.webp",
+   "score": "1 : 0",
+   "hs": "1",
+   "as": "0",
+   "url": "https://www.iwvpl.asia/event/reunion-vfc-%f0%9f%87%b2%f0%9f%87%be-vs-virtua-club-de-futbol-%f0%9f%87%b2%f0%9f%87%be/"
+  },
+  {
+   "date": "Tuesday, 29 September 2026",
+   "time": "23:40",
+   "home": "REUNION VFC",
+   "home_flag": "🇲🇾",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-6-150x150.png",
+   "away": "KEPALA NAGA FC",
+   "away_flag": "🇸🇬",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-1-150x150.webp",
+   "score": "2 : 1",
+   "hs": "2",
+   "as": "1",
+   "url": "https://www.iwvpl.asia/event/reunion-vfc-%f0%9f%87%b2%f0%9f%87%be-vs-kepala-naga-fc-%f0%9f%87%b8%f0%9f%87%ac/"
+  },
+  {
+   "date": "Tuesday, 29 September 2026",
+   "time": "23:00",
+   "home": "PENYAMUNZ VFC",
+   "home_flag": "🇸🇬",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/3-150x150.webp",
+   "away": "PASE MAGICO VFC",
+   "away_flag": "🇲🇾",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-4-150x150.png",
+   "score": "4 : 0",
+   "hs": "4",
+   "as": "0",
+   "url": "https://www.iwvpl.asia/event/penyamunz-vfc-%f0%9f%87%b8%f0%9f%87%ac-vs-pase-magico-vfc-%f0%9f%87%b2%f0%9f%87%be/"
+  },
+  {
+   "date": "Sunday, 27 September 2026",
+   "time": "02:00",
+   "home": "PASE MAGICO VFC",
+   "home_flag": "🇲🇾",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-4-150x150.png",
+   "away": "PROGOAL XI",
+   "away_flag": "🇲🇾",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/11-150x150.webp",
+   "score": "1 : 0",
+   "hs": "1",
+   "as": "0",
+   "url": "https://www.iwvpl.asia/event/pase-magico-vfc-%f0%9f%87%b2%f0%9f%87%be-vs-progoal-xi-%f0%9f%87%b2%f0%9f%87%be/"
+  },
+  {
+   "date": "Sunday, 27 September 2026",
+   "time": "00:00",
+   "home": "PENANGMARIII VFC",
+   "home_flag": "🇲🇾",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-9-150x150.png",
+   "away": "PROGOAL XI",
+   "away_flag": "🇲🇾",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/11-150x150.webp",
+   "score": "1 : 0",
+   "hs": "1",
+   "as": "0",
+   "url": "https://www.iwvpl.asia/event/penangmariii-vfc-%f0%9f%87%b2%f0%9f%87%be-vs-progoal-xi-%f0%9f%87%b2%f0%9f%87%be/"
+  },
+  {
+   "date": "Saturday, 26 September 2026",
+   "time": "21:00",
+   "home": "KEPALA NAGA FC",
+   "home_flag": "🇸🇬",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-1-150x150.webp",
+   "away": "RHYTHM X",
+   "away_flag": "🇸🇬",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/13-150x150.webp",
+   "score": "1 : 0",
+   "hs": "1",
+   "as": "0",
+   "url": "https://www.iwvpl.asia/event/kepala-naga-fc-%f0%9f%87%b8%f0%9f%87%ac-vs-rhythm-x-%f0%9f%87%b8%f0%9f%87%ac/"
+  },
+  {
+   "date": "Saturday, 26 September 2026",
+   "time": "21:00",
+   "home": "KITA KITA VFC",
+   "home_flag": "🇲🇾",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2023/06/Untitled-design-10-150x150.webp",
+   "away": "LOS TIGRELEON",
+   "away_flag": "🇸🇬",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/7-150x150.webp",
+   "score": "1 : 0",
+   "hs": "1",
+   "as": "0",
+   "url": "https://www.iwvpl.asia/event/kita-kita-vfc-%f0%9f%87%b2%f0%9f%87%be-vs-los-tigreleon-%f0%9f%87%b8%f0%9f%87%ac/"
+  },
+  {
+   "date": "Saturday, 26 September 2026",
+   "time": "21:00",
+   "home": "ONxON OG",
+   "home_flag": "🇲🇾",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-8-150x150.png",
+   "away": "RHYTHM X",
+   "away_flag": "🇸🇬",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/13-150x150.webp",
+   "score": "1 : 0",
+   "hs": "1",
+   "as": "0",
+   "url": "https://www.iwvpl.asia/event/onxon-og-%f0%9f%87%b2%f0%9f%87%be-vs-rhythm-x-%f0%9f%87%b8%f0%9f%87%ac/"
+  },
+  {
+   "date": "Saturday, 26 September 2026",
+   "time": "21:00",
+   "home": "TOTAL 23",
+   "home_flag": "🇸🇬",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-11-150x150.webp",
+   "away": "PENYAMUNZ VFC",
+   "away_flag": "🇸🇬",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/3-150x150.webp",
+   "score": "0 : 1",
+   "hs": "0",
+   "as": "1",
+   "url": "https://www.iwvpl.asia/event/total-23-%f0%9f%87%b8%f0%9f%87%ac-vs-penyamunz-vfc-%f0%9f%87%b8%f0%9f%87%ac/"
+  },
+  {
+   "date": "Saturday, 26 September 2026",
+   "time": "21:00",
+   "home": "RHYTHM X",
+   "home_flag": "🇸🇬",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/13-150x150.webp",
+   "away": "THE ROYAL BLOOD VFC",
+   "away_flag": "🇲🇾",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/12-150x150.webp",
+   "score": "0 : 1",
+   "hs": "0",
+   "as": "1",
+   "url": "https://www.iwvpl.asia/event/rhythm-x-%f0%9f%87%b8%f0%9f%87%ac-vs-the-royal-blood-vfc-%f0%9f%87%b2%f0%9f%87%be/"
+  },
+  {
+   "date": "Saturday, 26 September 2026",
+   "time": "21:00",
+   "home": "ILLUMINATION VFC",
+   "home_flag": "🇲🇾",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/8-150x150.webp",
+   "away": "LOS TIGRELEON",
+   "away_flag": "🇸🇬",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/7-150x150.webp",
+   "score": "1 : 0",
+   "hs": "1",
+   "as": "0",
+   "url": "https://www.iwvpl.asia/event/illumination-vfc-%f0%9f%87%b2%f0%9f%87%be-vs-los-tigreleon-%f0%9f%87%b8%f0%9f%87%ac/"
+  },
+  {
+   "date": "Saturday, 26 September 2026",
+   "time": "21:00",
+   "home": "TOTAL 23",
+   "home_flag": "🇸🇬",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-11-150x150.webp",
+   "away": "PENANGMARIII VFC",
+   "away_flag": "🇲🇾",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-9-150x150.png",
+   "score": "0 : 1",
+   "hs": "0",
+   "as": "1",
+   "url": "https://www.iwvpl.asia/event/total-23-%f0%9f%87%b8%f0%9f%87%ac-vs-penangmariii-vfc-%f0%9f%87%b2%f0%9f%87%be/"
+  },
+  {
+   "date": "Saturday, 26 September 2026",
+   "time": "21:00",
+   "home": "LOS TIGRELEON",
+   "home_flag": "🇸🇬",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/7-150x150.webp",
+   "away": "TOTAL 23",
+   "away_flag": "🇸🇬",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-11-150x150.webp",
+   "score": "0 : 0",
+   "hs": "0",
+   "as": "0",
+   "url": "https://www.iwvpl.asia/event/los-tigreleon-%f0%9f%87%b8%f0%9f%87%ac-vs-total-23-%f0%9f%87%b8%f0%9f%87%ac/"
+  },
+  {
+   "date": "Friday, 25 September 2026",
+   "time": "00:10",
+   "home": "KEPALA NAGA FC",
+   "home_flag": "🇸🇬",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-1-150x150.webp",
+   "away": "SOBAT VFC",
+   "away_flag": "🇮🇩",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-5-150x150.png",
+   "score": "1 : 3",
+   "hs": "1",
+   "as": "3",
+   "url": "https://www.iwvpl.asia/event/kepala-naga-fc-%f0%9f%87%b8%f0%9f%87%ac-vs-sobat-vfc-%f0%9f%87%ae%f0%9f%87%a9/"
+  },
+  {
+   "date": "Friday, 25 September 2026",
+   "time": "00:00",
+   "home": "THE ROYAL BLOOD VFC",
+   "home_flag": "🇲🇾",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/12-150x150.webp",
+   "away": "ILLUMINATION VFC",
+   "away_flag": "🇲🇾",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/8-150x150.webp",
+   "score": "2 : 0",
+   "hs": "2",
+   "as": "0",
+   "url": "https://www.iwvpl.asia/event/the-royal-blood-vfc-%f0%9f%87%b2%f0%9f%87%be-vs-illumination-vfc-%f0%9f%87%b2%f0%9f%87%be/"
+  },
+  {
+   "date": "Friday, 25 September 2026",
+   "time": "00:00",
+   "home": "ELITE FIGHTING FORCE VFC",
+   "home_flag": "🇲🇾",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-7-150x150.png",
+   "away": "PROGOAL XI",
+   "away_flag": "🇲🇾",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/11-150x150.webp",
+   "score": "1 : 0",
+   "hs": "1",
+   "as": "0",
+   "url": "https://www.iwvpl.asia/event/elite-fighting-force-fc-%f0%9f%87%b2%f0%9f%87%be-vs-progoal-xi-%f0%9f%87%b2%f0%9f%87%be/"
+  },
+  {
+   "date": "Thursday, 24 September 2026",
+   "time": "23:55",
+   "home": "ONxON OG",
+   "home_flag": "🇲🇾",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-8-150x150.png",
+   "away": "PASE MAGICO VFC",
+   "away_flag": "🇲🇾",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-4-150x150.png",
+   "score": "4 : 1",
+   "hs": "4",
+   "as": "1",
+   "url": "https://www.iwvpl.asia/event/onxon-og-%f0%9f%87%b2%f0%9f%87%be-vs-pase-magico-vfc-%f0%9f%87%b2%f0%9f%87%be/"
+  },
+  {
+   "date": "Thursday, 24 September 2026",
+   "time": "23:40",
+   "home": "KEPALA NAGA FC",
+   "home_flag": "🇸🇬",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-1-150x150.webp",
+   "away": "ILLUMINATION VFC",
+   "away_flag": "🇲🇾",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/8-150x150.webp",
+   "score": "2 : 4",
+   "hs": "2",
+   "as": "4",
+   "url": "https://www.iwvpl.asia/event/kepala-naga-fc-%f0%9f%87%b8%f0%9f%87%ac-vs-illumination-vfc-%f0%9f%87%b2%f0%9f%87%be/"
+  },
+  {
+   "date": "Thursday, 24 September 2026",
+   "time": "23:30",
+   "home": "PENANGMARIII VFC",
+   "home_flag": "🇲🇾",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-9-150x150.png",
+   "away": "PENYAMUNZ VFC",
+   "away_flag": "🇸🇬",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/3-150x150.webp",
+   "score": "0 : 2",
+   "hs": "0",
+   "as": "2",
+   "url": "https://www.iwvpl.asia/event/penangmariii-vfc-%f0%9f%87%b2%f0%9f%87%be-vs-penyamunz-vfc-%f0%9f%87%b8%f0%9f%87%ac/"
+  },
+  {
+   "date": "Thursday, 24 September 2026",
+   "time": "23:30",
+   "home": "ELITE FIGHTING FORCE VFC",
+   "home_flag": "🇲🇾",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-7-150x150.png",
+   "away": "REUNION VFC",
+   "away_flag": "🇲🇾",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-6-150x150.png",
+   "score": "1 : 0",
+   "hs": "1",
+   "as": "0",
+   "url": "https://www.iwvpl.asia/event/elite-fighting-force-fc-%f0%9f%87%b2%f0%9f%87%be-vs-reunion-vfc-%f0%9f%87%b2%f0%9f%87%be/"
+  },
+  {
+   "date": "Thursday, 24 September 2026",
+   "time": "23:30",
+   "home": "KITA KITA VFC",
+   "home_flag": "🇲🇾",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2023/06/Untitled-design-10-150x150.webp",
+   "away": "THE ROYAL BLOOD VFC",
+   "away_flag": "🇲🇾",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/12-150x150.webp",
+   "score": "2 : 0",
+   "hs": "2",
+   "as": "0",
+   "url": "https://www.iwvpl.asia/event/kita-kita-vfc-%f0%9f%87%b2%f0%9f%87%be-vs-the-royal-blood-vfc-%f0%9f%87%b2%f0%9f%87%be/"
+  },
+  {
+   "date": "Thursday, 24 September 2026",
+   "time": "23:10",
+   "home": "KEPALA NAGA FC",
+   "home_flag": "🇸🇬",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-1-150x150.webp",
+   "away": "KITA KITA VFC",
+   "away_flag": "🇲🇾",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2023/06/Untitled-design-10-150x150.webp",
+   "score": "0 : 3",
+   "hs": "0",
+   "as": "3",
+   "url": "https://www.iwvpl.asia/event/kepala-naga-fc-%f0%9f%87%b8%f0%9f%87%ac-vs-kita-kita-vfc-%f0%9f%87%b2%f0%9f%87%be/"
+  },
+  {
+   "date": "Thursday, 24 September 2026",
+   "time": "23:00",
+   "home": "SOBAT VFC",
+   "home_flag": "🇮🇩",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-5-150x150.png",
+   "away": "ELITE FIGHTING FORCE VFC",
+   "away_flag": "🇲🇾",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-7-150x150.png",
+   "score": "0 : 0",
+   "hs": "0",
+   "as": "0",
+   "url": "https://www.iwvpl.asia/event/sobat-vfc-%f0%9f%87%ae%f0%9f%87%a9-vs-elite-fighting-force-fc-%f0%9f%87%b2%f0%9f%87%be/"
+  },
+  {
+   "date": "Thursday, 24 September 2026",
+   "time": "23:00",
+   "home": "ILLUMINATION VFC",
+   "home_flag": "🇲🇾",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/8-150x150.webp",
+   "away": "THE CRAZY BOYS VFC",
+   "away_flag": "🇸🇬",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/17-150x150.webp",
+   "score": "1 : 5",
+   "hs": "1",
+   "as": "5",
+   "url": "https://www.iwvpl.asia/event/illumination-vfc-%f0%9f%87%b2%f0%9f%87%be-vs-the-crazy-boys-vfc-%f0%9f%87%b8%f0%9f%87%ac/"
+  },
+  {
+   "date": "Thursday, 24 September 2026",
+   "time": "22:30",
+   "home": "ILLUMINATION VFC",
+   "home_flag": "🇲🇾",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/8-150x150.webp",
+   "away": "ONxON OG",
+   "away_flag": "🇲🇾",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-8-150x150.png",
+   "score": "6 : 2",
+   "hs": "6",
+   "as": "2",
+   "url": "https://www.iwvpl.asia/event/illumination-vfc-%f0%9f%87%b2%f0%9f%87%be-vs-onxon-og-%f0%9f%87%b2%f0%9f%87%be/"
+  },
+  {
+   "date": "Thursday, 24 September 2026",
+   "time": "22:00",
+   "home": "KOEMPOEL KEBOW VFC",
+   "home_flag": "🇮🇩",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/2-150x150.webp",
+   "away": "ELITE FIGHTING FORCE VFC",
+   "away_flag": "🇲🇾",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-7-150x150.png",
+   "score": "1 : 0",
+   "hs": "1",
+   "as": "0",
+   "url": "https://www.iwvpl.asia/event/koempoel-kebow-vfc-%f0%9f%87%ae%f0%9f%87%a9-vs-elite-fighting-force-fc-%f0%9f%87%b2%f0%9f%87%be-2/"
+  },
+  {
+   "date": "Thursday, 24 September 2026",
+   "time": "21:00",
+   "home": "ELITE FIGHTING FORCE VFC",
+   "home_flag": "🇲🇾",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-7-150x150.png",
+   "away": "VIRTUA CLUB DE FUTBOL",
+   "away_flag": "🇲🇾",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-2-150x150.webp",
+   "score": "1 : 0",
+   "hs": "1",
+   "as": "0",
+   "url": "https://www.iwvpl.asia/event/elite-fighting-force-fc-%f0%9f%87%b2%f0%9f%87%be-vs-virtua-club-de-futbol-%f0%9f%87%b2%f0%9f%87%be/"
+  },
+  {
+   "date": "Thursday, 24 September 2026",
+   "time": "21:00",
+   "home": "PROGOAL XI",
+   "home_flag": "🇲🇾",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/11-150x150.webp",
+   "away": "PENYAMUNZ VFC",
+   "away_flag": "🇸🇬",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/3-150x150.webp",
+   "score": "0 : 1",
+   "hs": "0",
+   "as": "1",
+   "url": "https://www.iwvpl.asia/event/6623/"
+  },
+  {
+   "date": "Thursday, 24 September 2026",
+   "time": "21:00",
+   "home": "KOEMPOEL KEBOW VFC",
+   "home_flag": "🇮🇩",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/2-150x150.webp",
+   "away": "PROGOAL XI",
+   "away_flag": "🇲🇾",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/11-150x150.webp",
+   "score": "1 : 0",
+   "hs": "1",
+   "as": "0",
+   "url": "https://www.iwvpl.asia/event/koempoel-kebow-vfc-%f0%9f%87%ae%f0%9f%87%a9-vs-progoal-xi-%f0%9f%87%b2%f0%9f%87%be/"
+  },
+  {
+   "date": "Thursday, 24 September 2026",
+   "time": "21:00",
+   "home": "VIRTUA CLUB DE FUTBOL",
+   "home_flag": "🇲🇾",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-2-150x150.webp",
+   "away": "SOBAT VFC",
+   "away_flag": "🇮🇩",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-5-150x150.png",
+   "score": "0 : 1",
+   "hs": "0",
+   "as": "1",
+   "url": "https://www.iwvpl.asia/event/virtua-club-de-futbol-%f0%9f%87%b2%f0%9f%87%be-vs-sobat-vfc-%f0%9f%87%ae%f0%9f%87%a9/"
+  },
+  {
+   "date": "Thursday, 24 September 2026",
+   "time": "00:00",
+   "home": "PENYAMUNZ VFC",
+   "home_flag": "🇸🇬",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/3-150x150.webp",
+   "away": "KITA KITA VFC",
+   "away_flag": "🇲🇾",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2023/06/Untitled-design-10-150x150.webp",
+   "score": "0 : 2",
+   "hs": "0",
+   "as": "2",
+   "url": "https://www.iwvpl.asia/event/penyamunz-vfc-%f0%9f%87%b8%f0%9f%87%ac-vs-kita-kita-vfc-%f0%9f%87%b2%f0%9f%87%be/"
+  },
+  {
+   "date": "Wednesday, 23 September 2026",
+   "time": "23:00",
+   "home": "REUNION VFC",
+   "home_flag": "🇲🇾",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-6-150x150.png",
+   "away": "KOEMPOEL KEBOW VFC",
+   "away_flag": "🇮🇩",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/2-150x150.webp",
+   "score": "2 : 2",
+   "hs": "2",
+   "as": "2",
+   "url": "https://www.iwvpl.asia/event/reunion-vfc-%f0%9f%87%b2%f0%9f%87%be-vs-koempoel-kebow-vfc-%f0%9f%87%ae%f0%9f%87%a9/"
+  },
+  {
+   "date": "Wednesday, 23 September 2026",
+   "time": "23:00",
+   "home": "ONxON OG",
+   "home_flag": "🇲🇾",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-8-150x150.png",
+   "away": "KITA KITA VFC",
+   "away_flag": "🇲🇾",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2023/06/Untitled-design-10-150x150.webp",
+   "score": "0 : 5",
+   "hs": "0",
+   "as": "5",
+   "url": "https://www.iwvpl.asia/event/onxon-og-%f0%9f%87%b2%f0%9f%87%be-vs-kita-kita-vfc-%f0%9f%87%b2%f0%9f%87%be/"
+  },
+  {
+   "date": "Monday, 21 September 2026",
+   "time": "19:14",
+   "home": "THE CRAZY BOYS VFC",
+   "home_flag": "🇸🇬",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/17-150x150.webp",
+   "away": "RHYTHM X",
+   "away_flag": "🇸🇬",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/13-150x150.webp",
+   "score": "1 : 0",
+   "hs": "1",
+   "as": "0",
+   "url": "https://www.iwvpl.asia/event/the-crazy-boys-vfc-%f0%9f%87%b8%f0%9f%87%ac-vs-rhythm-x-%f0%9f%87%b8%f0%9f%87%ac/"
+  },
+  {
+   "date": "Monday, 21 September 2026",
+   "time": "00:00",
+   "home": "RHYTHM X",
+   "home_flag": "🇸🇬",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/13-150x150.webp",
+   "away": "VIRTUA CLUB DE FUTBOL",
+   "away_flag": "🇲🇾",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-2-150x150.webp",
+   "score": "0 : 1",
+   "hs": "0",
+   "as": "1",
+   "url": "https://www.iwvpl.asia/event/rhythm-x-%f0%9f%87%b8%f0%9f%87%ac-vs-virtua-club-de-futbol-%f0%9f%87%b2%f0%9f%87%be/"
+  },
+  {
+   "date": "Monday, 21 September 2026",
+   "time": "00:00",
+   "home": "LOS TIGRELEON",
+   "home_flag": "🇸🇬",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/7-150x150.webp",
+   "away": "PENANGMARIII VFC",
+   "away_flag": "🇲🇾",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-9-150x150.png",
+   "score": "0 : 1",
+   "hs": "0",
+   "as": "1",
+   "url": "https://www.iwvpl.asia/event/los-tigreleon-%f0%9f%87%b8%f0%9f%87%ac-vs-penangmariii-vfc-%f0%9f%87%b2%f0%9f%87%be/"
+  },
+  {
+   "date": "Monday, 21 September 2026",
+   "time": "00:00",
+   "home": "PASE MAGICO VFC",
+   "home_flag": "🇲🇾",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-4-150x150.png",
+   "away": "LOS TIGRELEON",
+   "away_flag": "🇸🇬",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/7-150x150.webp",
+   "score": "1 : 0",
+   "hs": "1",
+   "as": "0",
+   "url": "https://www.iwvpl.asia/event/pase-magico-vfc-%f0%9f%87%b2%f0%9f%87%be-vs-los-tigreleon-%f0%9f%87%b8%f0%9f%87%ac/"
+  },
+  {
+   "date": "Monday, 21 September 2026",
+   "time": "00:00",
+   "home": "TOTAL 23",
+   "home_flag": "🇸🇬",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-11-150x150.webp",
+   "away": "ONxON OG",
+   "away_flag": "🇲🇾",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-8-150x150.png",
+   "score": "0 : 1",
+   "hs": "0",
+   "as": "1",
+   "url": "https://www.iwvpl.asia/event/total-23-%f0%9f%87%b8%f0%9f%87%ac-vs-onxon-og-%f0%9f%87%b2%f0%9f%87%be/"
+  },
+  {
+   "date": "Monday, 21 September 2026",
+   "time": "00:00",
+   "home": "THE ROYAL BLOOD VFC",
+   "home_flag": "🇲🇾",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/12-150x150.webp",
+   "away": "TOTAL 23",
+   "away_flag": "🇸🇬",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-11-150x150.webp",
+   "score": "1 : 0",
+   "hs": "1",
+   "as": "0",
+   "url": "https://www.iwvpl.asia/event/the-royal-blood-vfc-%f0%9f%87%b2%f0%9f%87%be-vs-total-23-%f0%9f%87%b8%f0%9f%87%ac/"
+  },
+  {
+   "date": "Thursday, 17 September 2026",
+   "time": "23:30",
+   "home": "THE CRAZY BOYS VFC",
+   "home_flag": "🇸🇬",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/17-150x150.webp",
+   "away": "KITA KITA VFC",
+   "away_flag": "🇲🇾",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2023/06/Untitled-design-10-150x150.webp",
+   "score": "0 : 2",
+   "hs": "0",
+   "as": "2",
+   "url": "https://www.iwvpl.asia/event/the-crazy-boys-vfc-%f0%9f%87%b8%f0%9f%87%ac-vs-kita-kita-vfc-%f0%9f%87%b2%f0%9f%87%be/"
+  },
+  {
+   "date": "Thursday, 17 September 2026",
+   "time": "23:30",
+   "home": "PENANGMARIII VFC",
+   "home_flag": "🇲🇾",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-9-150x150.png",
+   "away": "ONxON OG",
+   "away_flag": "🇲🇾",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-8-150x150.png",
+   "score": "0 : 1",
+   "hs": "0",
+   "as": "1",
+   "url": "https://www.iwvpl.asia/event/penangmariii-vfc-%f0%9f%87%b2%f0%9f%87%be-vs-onxon-og-%f0%9f%87%b2%f0%9f%87%be/"
+  },
+  {
+   "date": "Thursday, 17 September 2026",
+   "time": "23:30",
+   "home": "VIRTUA CLUB DE FUTBOL",
+   "home_flag": "🇲🇾",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-2-150x150.webp",
+   "away": "ILLUMINATION VFC",
+   "away_flag": "🇲🇾",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/8-150x150.webp",
+   "score": "2 : 2",
+   "hs": "2",
+   "as": "2",
+   "url": "https://www.iwvpl.asia/event/virtua-club-de-futbol-%f0%9f%87%b2%f0%9f%87%be-vs-illumination-vfc-%f0%9f%87%b2%f0%9f%87%be/"
+  },
+  {
+   "date": "Thursday, 17 September 2026",
+   "time": "23:30",
+   "home": "PASE MAGICO VFC",
+   "home_flag": "🇲🇾",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-4-150x150.png",
+   "away": "THE ROYAL BLOOD VFC",
+   "away_flag": "🇲🇾",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/12-150x150.webp",
+   "score": "0 : 1",
+   "hs": "0",
+   "as": "1",
+   "url": "https://www.iwvpl.asia/event/pase-magico-vfc-%f0%9f%87%b2%f0%9f%87%be-vs-the-royal-blood-vfc-%f0%9f%87%b2%f0%9f%87%be/"
+  },
+  {
+   "date": "Thursday, 17 September 2026",
+   "time": "23:10",
+   "home": "KEPALA NAGA FC",
+   "home_flag": "🇸🇬",
+   "home_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-1-150x150.webp",
+   "away": "PASE MAGICO VFC",
+   "away_flag": "🇲🇾",
+   "away_logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-4-150x150.png",
+   "score": "2 : 1",
+   "hs": "2",
+   "as": "1",
+   "url": "https://www.iwvpl.asia/event/kepala-naga-fc-%f0%9f%87%b8%f0%9f%87%ac-vs-pase-magico-vfc-%f0%9f%87%b2%f0%9f%87%be/"
+  }
+ ],
+ "clubs": [
+  {
+   "name": "ACOUSTICSSS FC",
+   "flag": "",
+   "code": "",
+   "url": "https://www.iwvpl.asia/team/acousticsss-fc/",
+   "logo": "",
+   "players": 0,
+   "status": "Pending Approval",
+   "raw": "Pending Approval"
+  },
+  {
+   "name": "ACTINIUM ESPORTS",
+   "flag": "",
+   "code": "",
+   "url": "https://www.iwvpl.asia/team/actinium-esports/",
+   "logo": "https://www.iwvpl.asia/wp-content/uploads/2026/10/Untitled-300-x-300-px-7-128x128.png",
+   "players": 0,
+   "status": "Pending Approval",
+   "raw": "Pending Approval"
+  },
+  {
+   "name": "BALLOTZ VFC",
+   "flag": "",
+   "code": "",
+   "url": "https://www.iwvpl.asia/team/ballotz-vfc/",
+   "logo": "https://www.iwvpl.asia/wp-content/uploads/2026/09/Untitled-300-x-300-px-128x128.webp",
+   "players": 0,
+   "status": "Pending Approval",
+   "raw": "Pending Approval"
+  },
+  {
+   "name": "DEADSET VFC",
+   "flag": "",
+   "code": "",
+   "url": "https://www.iwvpl.asia/team/deadset-vfc/",
+   "logo": "https://www.iwvpl.asia/wp-content/uploads/2026/09/Untitled-design-17-102x128.webp",
+   "players": 0,
+   "status": "Pending Approval",
+   "raw": "Pending Approval"
+  },
+  {
+   "name": "DEFAULT VFC",
+   "flag": "",
+   "code": "",
+   "url": "https://www.iwvpl.asia/team/default-vfc/",
+   "logo": "https://www.iwvpl.asia/wp-content/uploads/2026/09/Untitled-design-18-102x128.webp",
+   "players": 0,
+   "status": "Pending Approval",
+   "raw": "Pending Approval"
+  },
+  {
+   "name": "ELEGANTE",
+   "flag": "",
+   "code": "",
+   "url": "https://www.iwvpl.asia/team/nusa-lombok-fc-2/",
+   "logo": "https://www.iwvpl.asia/wp-content/uploads/2026/09/Elegante-128x128.webp",
+   "players": 0,
+   "status": "Pending Approval",
+   "raw": "Pending Approval"
+  },
+  {
+   "name": "ELITE FIGHTING FORCE VFC",
+   "flag": "🇲🇾",
+   "code": "EFF",
+   "url": "https://www.iwvpl.asia/team/elite-fighting-force/",
+   "logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-7-128x128.png",
+   "players": 13,
+   "status": "Non-Active",
+   "raw": "13 Players Non-Active"
+  },
+  {
+   "name": "EQUINOX XI",
+   "flag": "",
+   "code": "",
+   "url": "https://www.iwvpl.asia/team/raven-noir-vfc/",
+   "logo": "https://www.iwvpl.asia/wp-content/uploads/2026/09/Untitled-300-x-300-px-3-1-128x128.webp",
+   "players": 0,
+   "status": "Pending Approval",
+   "raw": "Pending Approval"
+  },
+  {
+   "name": "FORFIT ESPORTS",
+   "flag": "",
+   "code": "",
+   "url": "https://www.iwvpl.asia/team/forfit-esports/",
+   "logo": "https://www.iwvpl.asia/wp-content/uploads/2026/10/Forfite-128x128.webp",
+   "players": 0,
+   "status": "Pending Approval",
+   "raw": "Pending Approval"
+  },
+  {
+   "name": "GEREK GAMERS",
+   "flag": "",
+   "code": "",
+   "url": "https://www.iwvpl.asia/team/gerek-gamers/",
+   "logo": "https://www.iwvpl.asia/wp-content/uploads/2026/09/Untitled-design-20-102x128.webp",
+   "players": 0,
+   "status": "Pending Approval",
+   "raw": "Pending Approval"
+  },
+  {
+   "name": "ILLUMINATION VFC",
+   "flag": "🇲🇾",
+   "code": "ILL",
+   "url": "https://www.iwvpl.asia/team/illumination-vfc/",
+   "logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/8-128x128.webp",
+   "players": 18,
+   "status": "Active",
+   "raw": "18 Players Active ✔"
+  },
+  {
+   "name": "INVICTUS ELITE VFC",
+   "flag": "",
+   "code": "",
+   "url": "https://www.iwvpl.asia/team/invictus-elite-vfc/",
+   "logo": "https://www.iwvpl.asia/wp-content/uploads/2026/10/63089321-3328-45D4-B20A-DA527B4E518C-128x102.png",
+   "players": 0,
+   "status": "Pending Approval",
+   "raw": "Pending Approval"
+  },
+  {
+   "name": "JEBAT DERHAKA VFC",
+   "flag": "",
+   "code": "JDT",
+   "url": "https://www.iwvpl.asia/team/jebat-derhaka-vfc/",
+   "logo": "https://www.iwvpl.asia/wp-content/uploads/2026/09/1-300-x-300-px-128x128.webp",
+   "players": 0,
+   "status": "Pending Approval",
+   "raw": "Pending Approval"
+  },
+  {
+   "name": "KEPALA NAGA FC",
+   "flag": "🇸🇬",
+   "code": "KFC",
+   "url": "https://www.iwvpl.asia/team/kepala-naga-fc/",
+   "logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-1-128x128.webp",
+   "players": 17,
+   "status": "Non-Active",
+   "raw": "17 Players Non-Active"
+  },
+  {
+   "name": "KITA KITA VFC",
+   "flag": "🇲🇾",
+   "code": "KKV",
+   "url": "https://www.iwvpl.asia/team/the-ravens-athletic/",
+   "logo": "https://www.iwvpl.asia/wp-content/uploads/2023/06/Untitled-design-10-128x128.webp",
+   "players": 21,
+   "status": "Active",
+   "raw": "21 Players Active ✔"
+  },
+  {
+   "name": "KOEMPOEL KEBOW VFC",
+   "flag": "🇮🇩",
+   "code": "KKV",
+   "url": "https://www.iwvpl.asia/team/koempoel-kebow-vfc/",
+   "logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/2-128x128.webp",
+   "players": 26,
+   "status": "Non-Active",
+   "raw": "26 Players Non-Active"
+  },
+  {
+   "name": "LACOZ VFC",
+   "flag": "",
+   "code": "",
+   "url": "https://www.iwvpl.asia/team/lacoz-vfc/",
+   "logo": "https://www.iwvpl.asia/wp-content/uploads/2026/09/Untitled-300-x-300-px-1-128x128.webp",
+   "players": 0,
+   "status": "Pending Approval",
+   "raw": "Pending Approval"
+  },
+  {
+   "name": "LOS PRIMOS VFC",
+   "flag": "",
+   "code": "LPV",
+   "url": "https://www.iwvpl.asia/team/los-primos-vfc/",
+   "logo": "https://www.iwvpl.asia/wp-content/uploads/2026/09/1-300-x-300-px-2-128x128.webp",
+   "players": 0,
+   "status": "Pending Approval",
+   "raw": "Pending Approval"
+  },
+  {
+   "name": "LOS TIGRELEON",
+   "flag": "🇸🇬",
+   "code": "LT",
+   "url": "https://www.iwvpl.asia/team/los-tigreleon/",
+   "logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/7-128x128.webp",
+   "players": 18,
+   "status": "Non-Active",
+   "raw": "18 Players Non-Active"
+  },
+  {
+   "name": "ONxON OG",
+   "flag": "🇲🇾",
+   "code": "OXO",
+   "url": "https://www.iwvpl.asia/team/onxon-og/",
+   "logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-8-128x128.png",
+   "players": 18,
+   "status": "Non-Active",
+   "raw": "18 Players Non-Active"
+  },
+  {
+   "name": "PASE MAGICO VFC",
+   "flag": "🇲🇾",
+   "code": "PMV",
+   "url": "https://www.iwvpl.asia/team/pase-magico-vfc/",
+   "logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-4-128x128.png",
+   "players": 20,
+   "status": "Non-Active",
+   "raw": "20 Players Non-Active"
+  },
+  {
+   "name": "PENANGMARIII VFC",
+   "flag": "🇲🇾",
+   "code": "PM",
+   "url": "https://www.iwvpl.asia/team/penangmariii-vfc/",
+   "logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-9-128x128.png",
+   "players": 19,
+   "status": "Pending Approval",
+   "raw": "19 Players Pending Approval"
+  },
+  {
+   "name": "PENDEKAR VFC",
+   "flag": "",
+   "code": "",
+   "url": "https://www.iwvpl.asia/team/pendekar-vfc/",
+   "logo": "https://www.iwvpl.asia/wp-content/uploads/2026/09/Untitled-300-x-300-px-2-1-128x128.webp",
+   "players": 0,
+   "status": "Pending Approval",
+   "raw": "Pending Approval"
+  },
+  {
+   "name": "PENYAMUNZ VFC",
+   "flag": "🇸🇬",
+   "code": "PNV",
+   "url": "https://www.iwvpl.asia/team/penyamunz-vfc/",
+   "logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/3-128x128.webp",
+   "players": 21,
+   "status": "Non-Active",
+   "raw": "21 Players Non-Active"
+  },
+  {
+   "name": "PROGOAL XI",
+   "flag": "🇲🇾",
+   "code": "PG",
+   "url": "https://www.iwvpl.asia/team/progoal-xi/",
+   "logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/11-128x128.webp",
+   "players": 19,
+   "status": "Non-Active",
+   "raw": "19 Players Non-Active"
+  },
+  {
+   "name": "REUNION VFC",
+   "flag": "🇲🇾",
+   "code": "RV",
+   "url": "https://www.iwvpl.asia/team/reunion-vfc/",
+   "logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-6-128x128.png",
+   "players": 16,
+   "status": "Pending Approval",
+   "raw": "16 Players Pending Approval"
+  },
+  {
+   "name": "RHYTHM X",
+   "flag": "🇸🇬",
+   "code": "RTX",
+   "url": "https://www.iwvpl.asia/team/rhythm-x/",
+   "logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/13-128x123.webp",
+   "players": 15,
+   "status": "Pending Approval",
+   "raw": "15 Players Pending Approval"
+  },
+  {
+   "name": "ROYAL GUARDIANS",
+   "flag": "",
+   "code": "",
+   "url": "https://www.iwvpl.asia/team/royal-guardians/",
+   "logo": "https://www.iwvpl.asia/wp-content/uploads/2026/10/Untitled-300-x-300-px-5-128x128.webp",
+   "players": 0,
+   "status": "Pending Approval",
+   "raw": "Pending Approval"
+  },
+  {
+   "name": "SABER PUNK FC",
+   "flag": "",
+   "code": "",
+   "url": "https://www.iwvpl.asia/team/saber-punk-fc-2/",
+   "logo": "https://www.iwvpl.asia/wp-content/uploads/2026/09/Untitled-design-19-102x128.webp",
+   "players": 0,
+   "status": "Pending Approval",
+   "raw": "Pending Approval"
+  },
+  {
+   "name": "SOBAT VFC",
+   "flag": "🇮🇩",
+   "code": "SFC",
+   "url": "https://www.iwvpl.asia/team/sobat-football-club/",
+   "logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-5-128x128.png",
+   "players": 20,
+   "status": "Non-Active",
+   "raw": "20 Players Non-Active"
+  },
+  {
+   "name": "TEMPOE FC",
+   "flag": "",
+   "code": "",
+   "url": "https://www.iwvpl.asia/team/tempoe-fc/",
+   "logo": "https://www.iwvpl.asia/wp-content/uploads/2026/09/TempoeVFC-128x128.webp",
+   "players": 0,
+   "status": "Pending Approval",
+   "raw": "Pending Approval"
+  },
+  {
+   "name": "THE CRAZY BOYS VFC",
+   "flag": "🇸🇬",
+   "code": "TCB",
+   "url": "https://www.iwvpl.asia/team/kita-kita-vfc/",
+   "logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/17-128x128.webp",
+   "players": 25,
+   "status": "Pending Approval",
+   "raw": "25 Players Pending Approval"
+  },
+  {
+   "name": "THE ROYAL BLOOD VFC",
+   "flag": "🇲🇾",
+   "code": "TRB",
+   "url": "https://www.iwvpl.asia/team/the-royal-blood/",
+   "logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/12-128x126.webp",
+   "players": 20,
+   "status": "Non-Active",
+   "raw": "20 Players Non-Active"
+  },
+  {
+   "name": "TORJÄGER VFC",
+   "flag": "",
+   "code": "",
+   "url": "https://www.iwvpl.asia/team/torjager-vfc/",
+   "logo": "https://www.iwvpl.asia/wp-content/uploads/2026/10/112737-128x128.png",
+   "players": 0,
+   "status": "Pending Approval",
+   "raw": "Pending Approval"
+  },
+  {
+   "name": "TOTAL 23",
+   "flag": "🇸🇬",
+   "code": "T23",
+   "url": "https://www.iwvpl.asia/team/total-23/",
+   "logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-11-128x128.webp",
+   "players": 17,
+   "status": "Non-Active",
+   "raw": "17 Players Non-Active"
+  },
+  {
+   "name": "VIRTUA CLUB DE FUTBOL",
+   "flag": "🇲🇾",
+   "code": "VCF",
+   "url": "https://www.iwvpl.asia/team/virtua-club-de-futbol/",
+   "logo": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-2-128x128.webp",
+   "players": 16,
+   "status": "Non-Active",
+   "raw": "16 Players Non-Active"
+  },
+  {
+   "name": "X-VIPERS FC",
+   "flag": "",
+   "code": "",
+   "url": "https://www.iwvpl.asia/team/x-vipers-fc/",
+   "logo": "https://www.iwvpl.asia/wp-content/uploads/2026/10/Viper-128x128.webp",
+   "players": 2026,
+   "status": "Pending Approval",
+   "raw": "Pending Approval IWVPL is an independent league promoter and is not affiliated with, sponsored, or endorsed by Electronic Arts Inc. EA SPORTS and EA FC are registered trademarks of Electronic Arts Inc. © 2026 Island-Wide Virtual Premier League. All rights reserved. ESSENTIAL LINKS ABOUT US CONTACT SCHEDULE MATCH RESULT STANDINGS PARTICIPANTS Terms of Use & Policies IN TOUCH Discord Instagram Tiktok iwvplofficial@gmail.com"
+  }
+ ],
+ "all_team_names": [
+  "Select Team",
+  "ACOUSTICSSS FC",
+  "ACTINIUM ESPORTS",
+  "BALLOTZ VFC",
+  "DEADSET VFC",
+  "DEFAULT VFC",
+  "ELEGANTE",
+  "ELITE FIGHTING FORCE VFC",
+  "EQUINOX XI",
+  "FORFIT ESPORTS",
+  "GEREK GAMERS",
+  "ILLUMINATION VFC",
+  "INVICTUS ELITE VFC",
+  "JEBAT DERHAKA VFC",
+  "KEPALA NAGA FC",
+  "KITA KITA VFC",
+  "KOEMPOEL KEBOW VFC",
+  "LACOZ VFC",
+  "LOS PRIMOS VFC",
+  "LOS TIGRELEON",
+  "ONxON OG",
+  "PASE MAGICO VFC",
+  "PENANGMARIII VFC",
+  "PENDEKAR VFC",
+  "PENYAMUNZ VFC",
+  "PROGOAL XI",
+  "REUNION VFC",
+  "RHYTHM X",
+  "ROYAL GUARDIANS",
+  "SABER PUNK FC",
+  "SOBAT VFC",
+  "TEMPOE FC",
+  "THE CRAZY BOYS VFC",
+  "THE ROYAL BLOOD VFC",
+  "TORJÄGER VFC",
+  "TOTAL 23",
+  "VIRTUA CLUB DE FUTBOL",
+  "X-VIPERS FC"
+ ],
+ "team_ids": {
+  "Select Team": {
+   "id": "0",
+   "name": "Select Team",
+   "flag": ""
+  },
+  "ACOUSTICSSS FC": {
+   "id": "6972",
+   "name": "ACOUSTICSSS FC",
+   "flag": ""
+  },
+  "ACTINIUM ESPORTS": {
+   "id": "6970",
+   "name": "ACTINIUM ESPORTS",
+   "flag": ""
+  },
+  "BALLOTZ VFC": {
+   "id": "6652",
+   "name": "BALLOTZ VFC",
+   "flag": ""
+  },
+  "DEADSET VFC": {
+   "id": "6603",
+   "name": "DEADSET VFC",
+   "flag": ""
+  },
+  "DEFAULT VFC": {
+   "id": "6631",
+   "name": "DEFAULT VFC",
+   "flag": ""
+  },
+  "ELEGANTE": {
+   "id": "6592",
+   "name": "ELEGANTE",
+   "flag": ""
+  },
+  "ELITE FIGHTING FORCE VFC": {
+   "id": "4325",
+   "name": "ELITE FIGHTING FORCE VFC",
+   "flag": "🇲🇾"
+  },
+  "EQUINOX XI": {
+   "id": "6574",
+   "name": "EQUINOX XI",
+   "flag": ""
+  },
+  "FORFIT ESPORTS": {
+   "id": "6715",
+   "name": "FORFIT ESPORTS",
+   "flag": ""
+  },
+  "GEREK GAMERS": {
+   "id": "6644",
+   "name": "GEREK GAMERS",
+   "flag": ""
+  },
+  "ILLUMINATION VFC": {
+   "id": "4348",
+   "name": "ILLUMINATION VFC",
+   "flag": "🇲🇾"
+  },
+  "INVICTUS ELITE VFC": {
+   "id": "6823",
+   "name": "INVICTUS ELITE VFC",
+   "flag": ""
+  },
+  "JEBAT DERHAKA VFC": {
+   "id": "6522",
+   "name": "JEBAT DERHAKA VFC",
+   "flag": ""
+  },
+  "KEPALA NAGA FC": {
+   "id": "4350",
+   "name": "KEPALA NAGA FC",
+   "flag": "🇸🇬"
+  },
+  "KITA KITA VFC": {
+   "id": "1897",
+   "name": "KITA KITA VFC",
+   "flag": "🇲🇾"
+  },
+  "KOEMPOEL KEBOW VFC": {
+   "id": "4331",
+   "name": "KOEMPOEL KEBOW VFC",
+   "flag": "🇮🇩"
+  },
+  "LACOZ VFC": {
+   "id": "6693",
+   "name": "LACOZ VFC",
+   "flag": ""
+  },
+  "LOS PRIMOS VFC": {
+   "id": "6507",
+   "name": "LOS PRIMOS VFC",
+   "flag": ""
+  },
+  "LOS TIGRELEON": {
+   "id": "4337",
+   "name": "LOS TIGRELEON",
+   "flag": "🇸🇬"
+  },
+  "ONxON OG": {
+   "id": "4341",
+   "name": "ONxON OG",
+   "flag": "🇲🇾"
+  },
+  "PASE MAGICO VFC": {
+   "id": "4327",
+   "name": "PASE MAGICO VFC",
+   "flag": "🇲🇾"
+  },
+  "PENANGMARIII VFC": {
+   "id": "4323",
+   "name": "PENANGMARIII VFC",
+   "flag": "🇲🇾"
+  },
+  "PENDEKAR VFC": {
+   "id": "6697",
+   "name": "PENDEKAR VFC",
+   "flag": ""
+  },
+  "PENYAMUNZ VFC": {
+   "id": "4333",
+   "name": "PENYAMUNZ VFC",
+   "flag": "🇸🇬"
+  },
+  "PROGOAL XI": {
+   "id": "4329",
+   "name": "PROGOAL XI",
+   "flag": "🇲🇾"
+  },
+  "REUNION VFC": {
+   "id": "4335",
+   "name": "REUNION VFC",
+   "flag": "🇲🇾"
+  },
+  "RHYTHM X": {
+   "id": "4343",
+   "name": "RHYTHM X",
+   "flag": "🇸🇬"
+  },
+  "ROYAL GUARDIANS": {
+   "id": "6821",
+   "name": "ROYAL GUARDIANS",
+   "flag": ""
+  },
+  "SABER PUNK FC": {
+   "id": "6636",
+   "name": "SABER PUNK FC",
+   "flag": ""
+  },
+  "SOBAT VFC": {
+   "id": "4339",
+   "name": "SOBAT VFC",
+   "flag": "🇮🇩"
+  },
+  "TEMPOE FC": {
+   "id": "6674",
+   "name": "TEMPOE FC",
+   "flag": ""
+  },
+  "THE CRAZY BOYS VFC": {
+   "id": "4352",
+   "name": "THE CRAZY BOYS VFC",
+   "flag": "🇸🇬"
+  },
+  "THE ROYAL BLOOD VFC": {
+   "id": "4346",
+   "name": "THE ROYAL BLOOD VFC",
+   "flag": "🇲🇾"
+  },
+  "TORJÄGER VFC": {
+   "id": "6971",
+   "name": "TORJÄGER VFC",
+   "flag": ""
+  },
+  "TOTAL 23": {
+   "id": "4354",
+   "name": "TOTAL 23",
+   "flag": "🇸🇬"
+  },
+  "VIRTUA CLUB DE FUTBOL": {
+   "id": "4356",
+   "name": "VIRTUA CLUB DE FUTBOL",
+   "flag": "🇲🇾"
+  },
+  "X-VIPERS FC": {
+   "id": "7123",
+   "name": "X-VIPERS FC",
+   "flag": ""
+  }
+ },
+ "club_logos": {
+  "ACTINIUM ESPORTS": "https://www.iwvpl.asia/wp-content/uploads/2026/10/Untitled-300-x-300-px-7-128x128.png",
+  "BALLOTZ VFC": "https://www.iwvpl.asia/wp-content/uploads/2026/09/Untitled-300-x-300-px-128x128.webp",
+  "DEADSET VFC": "https://www.iwvpl.asia/wp-content/uploads/2026/09/Untitled-design-17-102x128.webp",
+  "DEFAULT VFC": "https://www.iwvpl.asia/wp-content/uploads/2026/09/Untitled-design-18-102x128.webp",
+  "ELEGANTE": "https://www.iwvpl.asia/wp-content/uploads/2026/09/Elegante-128x128.webp",
+  "ELITE FIGHTING FORCE VFC": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-7-128x128.png",
+  "EQUINOX XI": "https://www.iwvpl.asia/wp-content/uploads/2026/09/Untitled-300-x-300-px-3-1-128x128.webp",
+  "FORFIT ESPORTS": "https://www.iwvpl.asia/wp-content/uploads/2026/10/Forfite-128x128.webp",
+  "GEREK GAMERS": "https://www.iwvpl.asia/wp-content/uploads/2026/09/Untitled-design-20-102x128.webp",
+  "ILLUMINATION VFC": "https://www.iwvpl.asia/wp-content/uploads/2026/07/8-128x128.webp",
+  "INVICTUS ELITE VFC": "https://www.iwvpl.asia/wp-content/uploads/2026/10/63089321-3328-45D4-B20A-DA527B4E518C-128x102.png",
+  "JEBAT DERHAKA VFC": "https://www.iwvpl.asia/wp-content/uploads/2026/09/1-300-x-300-px-128x128.webp",
+  "KEPALA NAGA FC": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-1-128x128.webp",
+  "KITA KITA VFC": "https://www.iwvpl.asia/wp-content/uploads/2023/06/Untitled-design-10-128x128.webp",
+  "KOEMPOEL KEBOW VFC": "https://www.iwvpl.asia/wp-content/uploads/2026/07/2-128x128.webp",
+  "LACOZ VFC": "https://www.iwvpl.asia/wp-content/uploads/2026/09/Untitled-300-x-300-px-1-128x128.webp",
+  "LOS PRIMOS VFC": "https://www.iwvpl.asia/wp-content/uploads/2026/09/1-300-x-300-px-2-128x128.webp",
+  "LOS TIGRELEON": "https://www.iwvpl.asia/wp-content/uploads/2026/07/7-128x128.webp",
+  "ONxON OG": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-8-128x128.png",
+  "PASE MAGICO VFC": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-4-128x128.png",
+  "PENANGMARIII VFC": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-9-128x128.png",
+  "PENDEKAR VFC": "https://www.iwvpl.asia/wp-content/uploads/2026/09/Untitled-300-x-300-px-2-1-128x128.webp",
+  "PENYAMUNZ VFC": "https://www.iwvpl.asia/wp-content/uploads/2026/07/3-128x128.webp",
+  "PROGOAL XI": "https://www.iwvpl.asia/wp-content/uploads/2026/07/11-128x128.webp",
+  "REUNION VFC": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-6-128x128.png",
+  "RHYTHM X": "https://www.iwvpl.asia/wp-content/uploads/2026/07/13-128x123.webp",
+  "ROYAL GUARDIANS": "https://www.iwvpl.asia/wp-content/uploads/2026/10/Untitled-300-x-300-px-5-128x128.webp",
+  "SABER PUNK FC": "https://www.iwvpl.asia/wp-content/uploads/2026/09/Untitled-design-19-102x128.webp",
+  "SOBAT VFC": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-5-128x128.png",
+  "TEMPOE FC": "https://www.iwvpl.asia/wp-content/uploads/2026/09/TempoeVFC-128x128.webp",
+  "THE CRAZY BOYS VFC": "https://www.iwvpl.asia/wp-content/uploads/2026/07/17-128x128.webp",
+  "THE ROYAL BLOOD VFC": "https://www.iwvpl.asia/wp-content/uploads/2026/07/12-128x126.webp",
+  "TORJÄGER VFC": "https://www.iwvpl.asia/wp-content/uploads/2026/10/112737-128x128.png",
+  "TOTAL 23": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-11-128x128.webp",
+  "VIRTUA CLUB DE FUTBOL": "https://www.iwvpl.asia/wp-content/uploads/2026/07/Untitled-design-2-128x128.webp",
+  "X-VIPERS FC": "https://www.iwvpl.asia/wp-content/uploads/2026/10/Viper-128x128.webp"
+ },
+ "leagues": [
+  "All Leagues",
+  "Championship",
+  "Division 1",
+  "Division 2",
+  "Division 3",
+  "IWVPL Champions League",
+  "IWVPL FUT League",
+  "IWVPL Pro Club League",
+  "Premier League"
+ ],
+ "all_seasons": [
+  "All Seasons",
+  "2026 Season 1"
+ ],
+ "news": [
+  {
+   "id": 6688,
+   "slug": "%f0%9f%94%a5-iwvpl-season-1-registration-is-open-%f0%9f%94%a5",
+   "title": "🔥 IWVPL SEASON 1 — REGISTRATION IS OPEN! 🔥",
+   "date": "2026-09-28",
+   "categories": [
+    "Pro Club League"
+   ],
+   "tags": [
+    "SEASON 1"
+   ],
+   "excerpt": "Hi everyone! 👋 We are officially 1 WEEK away from the end of our BETA Season! 🏆 We hope all 18 teams that participated in our BETA Season have enjoyed competing with us and experienced our league system. ❤️ Now, we are calling out to NEW TEAMS to join us for: ⚽ ISLAND-WIDE VIRTUAL PREMIER…",
+   "body": "Hi everyone! 👋 We are officially 1 WEEK away from the end of our BETA Season! 🏆 We hope all 18 teams that participated in our BETA Season have enjoyed competing with us and experienced our league system. ❤️ Now, we are calling out to NEW TEAMS to join us for: ⚽ ISLAND-WIDE VIRTUAL PREMIER LEAGUE — SEASON 1 🎮 EAFC27 PRO-CLUB 💰 Registration Fee: SGD 35 per team 🏆 36 TEAMS ONLY We currently have 18 teams registered, which means… 🚨 ONLY 18 SLOTS LEFT! 🚨 We are looking for: ✅ New competitors ✅ Competitive teams ✅ Supportive managers ✅ Teams who are ready to grow with IWVPL A huge THANK YOU to everyone who has supported Island-Wide VPL from the beginning. 🙏 We are still a new league, but we will continue working hard, improving our system and creating a better experience for every team and player. 🚀 We may be new today, but we are building for the future. 18 TEAMS IN. 18 SLOTS LEFT. 🔥 ARE YOU READY TO JOIN US? LET’S GO! 🏆⚽🔥",
+   "images": [],
+   "featured": ""
+  },
+  {
+   "id": 5659,
+   "slug": "are-you-ready-for-the-ultimate-1v1-showcase-iwvpl-champions-league-is-coming-soon",
+   "title": "Are You Ready for the Ultimate 1v1 Showcase? IWVPL Champions League is Coming Soon!",
+   "date": "2026-08-11",
+   "categories": [
+    "Champions League"
+   ],
+   "tags": [
+    "1VS1"
+   ],
+   "excerpt": "Hello IWVPL Community! The heat from the Pro Club League is still burning, and we’ve been overwhelmed by your incredible response. But we know many of you are also itching for a different kind of competition—the pure, head-to-head, raw-skill battle of 1v1. We are absolutely thrilled to announce that the most anticipated game mode in…",
+   "body": "Hello IWVPL Community! The heat from the Pro Club League is still burning, and we’ve been overwhelmed by your incredible response. But we know many of you are also itching for a different kind of competition—the pure, head-to-head, raw-skill battle of 1v1 . We are absolutely thrilled to announce that the most anticipated game mode in IWVPL is on the horizon: the official IWVPL Champions League 1v1 is Coming Soon! This league is designed for those who believe in their personal skill above all. No more relying on a full squad—it’s just you, your controller, and your tactical brilliance against your opponent. What to Expect: Icons of European Football The Champions League mode will pit you against other players using only the most iconic clubs from top European flights. You will take control of giants like Real Madrid, Bayern Munich, Manchester City, Paris Saint-Germain , and others to conquer the league. This isn’t just about playing with any team; it’s about leading the grandest names in club football to IWVPL glory in a pure 1v1 showcase. Feature Spotlight: Select Your Dream Team, Your Way! We have a special feature in this league that we know you’ll love. In the IWVPL Champions League 1v1, players are not locked out from selecting the same team. Yes, you heard that right! If you are a die-hard Madridista and your friend is too, both of you can choose to compete as Real Madrid in your respective matches. There’s no need to pick a secondary team anymore—focus solely on mastering your favorite European side and prove who is the better manager and player. Key Information Coming Soon This is just the first taste. Detailed information regarding the following will be released in the coming weeks: League Format and Structure Registration Dates and Methods Prize Pool Details Start Dates and Schedules In the meantime, dust off your controllers, perfect your 1v1 strategies, and get ready to climb the ladder of the Champions League. The road to European dominance in IWVPL begins now. Keep your eyes on our website and social media channels for the next official update! — The IWVPL Admin Team",
+   "images": [],
+   "featured": ""
+  },
+  {
+   "id": 5655,
+   "slug": "pro-club-league-update-beta-phase-and-massive-plans-for-next-season",
+   "title": "Pro Club League Update: Beta Phase and Massive Plans for Next Season!",
+   "date": "2026-08-11",
+   "categories": [
+    "Premier League",
+    "Pro Club League"
+   ],
+   "tags": [
+    "NEXT SEASON",
+    "PRO CLUB LEAGUE"
+   ],
+   "excerpt": "Hello managers and players! We want to give you a quick update regarding the current status of the Pro Club League here at the Island-Wide Virtual Premier League. The enthusiasm shown by the community so far has been absolutely incredible, and we want to ensure you all stay informed about the league’s development. 🧪 Current…",
+   "body": "Hello managers and players! We want to give you a quick update regarding the current status of the Pro Club League here at the Island-Wide Virtual Premier League. The enthusiasm shown by the community so far has been absolutely incredible, and we want to ensure you all stay informed about the league’s development. 🧪 Current Status: The Beta Phase For your information, the current run of the Pro Club League is still in its Beta (testing) phase . This phase is crucial for our development and admin teams to test the competition systems, ensure stability, and figure out exactly what needs to be improved before we launch the league on a much larger scale. Even though we are still in Beta, we are incredibly proud to announce that we already have 18 officially registered teams actively participating and heating up the competition! We want to extend a massive thank you to all 18 teams for jumping in early and helping us perfect the ecosystem of this league. 🏆 What Awaits Us Next Season? Seeing the high level of interest and the burning competitive spirit from all of you, we are definitely not stopping here. We have already laid out massive plans to ensure next season is significantly bigger and more challenging! Here is a sneak peek at what we are preparing for the upcoming season: Expansion to 3 – 5 Divisions: To accommodate more teams and create a fairer competitive environment, we plan to divide the Pro Club League into 3 to 5 distinct divisions next season. This means the promotion and relegation system will be much more rigorous, and every team will compete against opponents that truly match their skill level. A Much Larger Prize Pool: As the league grows and divisions expand, we will also be offering a total prize pool that is significantly larger than before! Prepare your teams as best as you can, because fantastic rewards await the champions. Keep the Support and Feedback Coming! Keeping in mind that we are still in active development, feedback from our players and managers is incredibly valuable to us. Keep playing, compete fairly, and do not hesitate to provide suggestions or report any issues to the admin team. Let’s use this Beta phase to build a strong foundation for an epic next season. Keep honing your tactics, strengthen your teamwork, and get ready to face even bigger challenges! — The Island-Wide Virtual Premier League Admin Team",
+   "images": [],
+   "featured": ""
+  },
+  {
+   "id": 5647,
+   "slug": "welcome-to-the-official-island-wide-virtual-premier-league-website",
+   "title": "Welcome to the Official Island-Wide Virtual Premier League Website!",
+   "date": "2026-08-11",
+   "categories": [
+    "Announcements"
+   ],
+   "tags": [
+    "Annoucement",
+    "Sneak Peek",
+    "Website Update"
+   ],
+   "excerpt": "Hello everyone, and welcome! We are incredibly thrilled to announce the launch of the official website for the Island-Wide Virtual Premier League. Moving forward, this website will serve as the ultimate central hub for our community. Whether you are a star player, a strategic team manager, or a dedicated fan, this is where you will…",
+   "body": "Hello everyone, and welcome! We are incredibly thrilled to announce the launch of the official website for the Island-Wide Virtual Premier League . Moving forward, this website will serve as the ultimate central hub for our community. Whether you are a star player, a strategic team manager, or a dedicated fan, this is where you will find everything you need to know about the league. 🚧 Pardon Our Dust: We Are Still in Development While we couldn’t wait to open our digital doors to the public, please keep in mind that the website is currently still under active development . You might notice that a few pages are missing, or some areas look a bit bare. Don’t worry! Our development team is working hard behind the scenes to build a robust, feature-rich platform that matches the passion and competitive spirit of our league. Expect to see many new features, visual improvements, and quality-of-life updates rolling out in the near future. 🚀 Sneak Peek: What is Coming in the Next Update? We are already gearing up for our first major update, which will completely transform how you interact with the league. Here is a look at the exciting features coming soon: For Players: Register & Login: Create your own secure personal account. Profile Customization: Personalize your presence in the league! You will be able to edit your profile, update your player information, and showcase your unique identity to the rest of the community. For Team Managers: Manager Portals: Dedicated registration and login access specifically for team managers. Team Customization: Take full control of your club’s identity. You will be able to customize your team’s page, update logos, and manage your roster. Match Management: Managers will have the ability to input and update match results, keeping the league standings accurate and up-to-date in real time. Note: We will announce the exact release date for these features very soon, so be sure to check back regularly! Thank You for Your Support! We want to give a massive thank you to our entire community for your continued support and patience as we build this platform. The Island-Wide Virtual Premier League is about to get a whole lot bigger, and we are glad you are here for the journey. Stay tuned for more updates, and get ready for an amazing season ahead! — The Island-Wide Virtual Premier League Admin Team",
+   "images": [],
+   "featured": ""
+  }
+ ],
+ "copy": {
+  "about-us": "Cart Total Items ( 0 ) Cart Search for: Pro Club League SCHEDULE MATCH RESULT STANDINGS LEADERBOARD PARTICIPANTS FUT League Champions League TRANSFER NEWS Best for driving engagement and emphasizing the competitive gaming spirit. Forging Virtual Football Champions. The Island-Wide Virtual Premier League (IWVPL) is your home for top-tier EA FC 26 competitive action. Step onto the virtual pitch and make your mark. Facebook-f Twitter Behance Youtube Pro Club League SCHEDULE MATCH RESULT STANDINGS LEADERBOARD PARTICIPANTS FUT League Champions League TRANSFER NEWS Login Login 0 Island-Wide Virtual Premier League > ABOUT US ABOUT US ABOUT ABOUT US Island-Wide Virtual Premier League The Island-Wide Virtual Premier League (IWVPL) is an independent esports organisation built by passionate gamers, for the community. Unlike large organisations or associations, IWVPL is operated independently with the support of our valued sponsors. Every league, tournament, event, and community initiative is organised by our dedicated team, driven by passion rather than profit. PRO CLUB LEAGUE 11 vs 11 FUT LEAGUE 1 vs 1 CHAMPIONS LEAGUE 1 vs 1 CLUB MEMBER 0 PLAYERS 0 LEAGUE 0 DIVISION 0 COMMUNITY JOIN OUR COMMUNITY Discord Instagram Tiktok Our vision is simple: To unite the EA SPORTS FC community across Southeast Asia on one platform. We organise a variety of EA SPORTS FC competitions, including: • Pro Clubs (11v11) • 1 v 1 Competitions • 2 v 2 Competitions (Coming Soon) • More exciting tournaments and leagues in the future. Our primary communities are: • Singapore • Malaysia • Indonesia • Thailand • Brunei At IWVPL, we believe every player deserves a professional, fair, and enjoyable competitive experience. Our team is committed to providing the best possible administrative support before, during, and after every competition. Whether it’s match scheduling, resolving disputes, or answering your questions, we’ll always do our best to support our community. As we continue to grow, we warmly welcome: • New sponsors and business partners • Community feedback and ideas • Content creators and streamers • Volunteers who share our passion for growing the EA SPORTS FC scene Most importantly, we don’t want IWVPL to feel like just another organisation. We want it to feel like family. Every player, manager, streamer, sponsor, and supporter is an important part of our journey. We’ll celebrate your victories, help you through challenges, and continue building a community where everyone feels welcome. Whether you’re competing on the virtual pitch or simply hanging out in our Discord, our promise remains the same: IWVPL will always be here for you—both in the game and beyond it. One Community. One Passion. One League. Island-Wide Virtual Premier League (IWVPL). SPONSOR PROUDLY SPONSORED BY A special thanks to our generous partners. ",
+  "contact": "Cart Total Items ( 0 ) Cart Search for: Pro Club League SCHEDULE MATCH RESULT STANDINGS LEADERBOARD PARTICIPANTS FUT League Champions League TRANSFER NEWS Best for driving engagement and emphasizing the competitive gaming spirit. Forging Virtual Football Champions. The Island-Wide Virtual Premier League (IWVPL) is your home for top-tier EA FC 26 competitive action. Step onto the virtual pitch and make your mark. Facebook-f Twitter Behance Youtube Pro Club League SCHEDULE MATCH RESULT STANDINGS LEADERBOARD PARTICIPANTS FUT League Champions League TRANSFER NEWS Login Login 0 Island-Wide Virtual Premier League > CONTACT CONTACT Island-Wide Virtual Premier League Base in Singapore CONTACT US iwvplofficial@gmail.com GET IN TOUCH Name Email Message Send ",
+  "history": "Cart Total Items ( 0 ) Cart Search for: Pro Club League SCHEDULE MATCH RESULT STANDINGS LEADERBOARD PARTICIPANTS FUT League Champions League TRANSFER NEWS Best for driving engagement and emphasizing the competitive gaming spirit. Forging Virtual Football Champions. The Island-Wide Virtual Premier League (IWVPL) is your home for top-tier EA FC 26 competitive action. Step onto the virtual pitch and make your mark. Facebook-f Twitter Behance Youtube Pro Club League SCHEDULE MATCH RESULT STANDINGS LEADERBOARD PARTICIPANTS FUT League Champions League TRANSFER NEWS Login Login 0 Island-Wide Virtual Premier League > HISTORY HISTORY JOURNEY WAS STARTED t is one of the most popular football club that offer training programs for the youth. 1965 1990 UEFA CHAMPION 1990 t is one of the most popular football club that offer training programs for the youth. CLOWN REWARD 2016 t is one of the most popular football club that offer training programs for the youth. 2010 2020 WORLD CLUB CUP CHAMPION t is one of the most popular football club that offer training programs for the youth. TROPHY OUR AWARDS It is one of the most popular football clubs that offer training programs for the youth, as well as summer camps. SEASON 2015 FINAL TOUR SEASON 2015 FINAL TOUR SEASON 2015 FINAL TOUR SEASON 2015 FINAL TOUR ",
+  "faq": "Cart Total Items ( 0 ) Cart Search for: Pro Club League SCHEDULE MATCH RESULT STANDINGS LEADERBOARD PARTICIPANTS FUT League Champions League TRANSFER NEWS Best for driving engagement and emphasizing the competitive gaming spirit. Forging Virtual Football Champions. The Island-Wide Virtual Premier League (IWVPL) is your home for top-tier EA FC 26 competitive action. Step onto the virtual pitch and make your mark. Facebook-f Twitter Behance Youtube Pro Club League SCHEDULE MATCH RESULT STANDINGS LEADERBOARD PARTICIPANTS FUT League Champions League TRANSFER NEWS Login Login 0 Island-Wide Virtual Premier League > FAQ FAQ SOME Q. & ANSWERS 01. What is your pricing strategy and why? Key business questions are the questions that your data expert will be tasked with answering. They are the questions you have about business performance that are central to the overall strategy 02. What problem does your business solve? Key business questions are the questions that your data expert will be tasked with answering. They are the questions you have about business performance that are central to the overall strategy 03. How does your business generat income? Key business questions are the questions that your data expert will be tasked with answering. They are the questions you have about business performance that are central to the overall strategy SOME Q. & ANSWERS 01. What is your favorite family vacation? Key business questions are the questions that your data expert will be tasked with answering. They are the questions you have about business performance that are central to the overall strategy 02. What really makes you angry? Key business questions are the questions that your data expert will be tasked with answering. They are the questions you have about business performance that are central to the overall strategy 03. Purchases & balance transfers for the first?? Key business questions are the questions that your data expert will be tasked with answering. They are the questions you have about business performance that are central to the overall strategy ",
+  "leaderboard": "Cart Total Items ( 0 ) Cart Search for: Pro Club League SCHEDULE MATCH RESULT STANDINGS LEADERBOARD PARTICIPANTS FUT League Champions League TRANSFER NEWS Best for driving engagement and emphasizing the competitive gaming spirit. Forging Virtual Football Champions. The Island-Wide Virtual Premier League (IWVPL) is your home for top-tier EA FC 26 competitive action. Step onto the virtual pitch and make your mark. Facebook-f Twitter Behance Youtube Pro Club League SCHEDULE MATCH RESULT STANDINGS LEADERBOARD PARTICIPANTS FUT League Champions League TRANSFER NEWS Login Login 0 Island-Wide Virtual Premier League > LEADERBOARD LEADERBOARD TOP SCORER 1 LethaL_ShoTs11 KITA KITA VFC 🇲🇾 21 2 PembunuhEncem BALLOTZ VFC 12 3 alexis_aniq KITA KITA VFC 🇲🇾 11 4 wansid PENYAMUNZ VFC 🇸🇬 9 5 afiqkensei LACOZ VFC 7 6 hakimhashim KEPALA NAGA FC 🇸🇬 7 7 T3S-xMcDeMarco KITA KITA VFC 🇲🇾 6 8 Miknaf19 SOBAT VFC 🇮🇩 6 9 Izzyx_13 PASE MAGICO VFC 🇲🇾 6 10 zi_zidane01 ONxON OG 🇲🇾 5 TOP ASSIST 1 AbdulR_ PENYAMUNZ VFC 🇸🇬 13 2 HakuryuuXI KITA KITA VFC 🇲🇾 10 3 Yalwaysme2307 KITA KITA VFC 🇲🇾 7 4 alexis_aniq KITA KITA VFC 🇲🇾 7 5 Ginga_Bogota THE ROYAL BLOOD VFC 🇲🇾 6 6 T23_Mililiters TOTAL 23 🇸🇬 6 7 mxverickjr ONxON OG 🇲🇾 4 8 zi_zidane01 ONxON OG 🇲🇾 4 9 LJN_AYOIZ THE ROYAL BLOOD VFC 🇲🇾 4 10 MikaaSavio ILLUMINATION VFC 🇲🇾 4 TOP SAVES 1 Eldeonix PENYAMUNZ VFC 🇸🇬 50 2 Belalai_gajah ILLUMINATION VFC 🇲🇾 49 3 nickymartynn PASE MAGICO VFC 🇲🇾 31 4 Arnep98 THE ROYAL BLOOD VFC 🇲🇾 30 5 Arz_ARPP KEPALA NAGA FC 🇸🇬 26 6 Nsrddin PENANGMARIII VFC 🇲🇾 24 7 ApekScha KITA KITA VFC 🇲🇾 16 8 Luqmanmbs VIRTUA CLUB DE FUTBOL 🇲🇾 15 9 rainKingz ELITE FIGHTING FORCE VFC 🇲🇾 14 10 WanNastazio REUNION VFC 🇲🇾 13 ",
+  "standings": "Cart Total Items ( 0 ) Cart Search for: Pro Club League SCHEDULE MATCH RESULT STANDINGS LEADERBOARD PARTICIPANTS FUT League Champions League TRANSFER NEWS Best for driving engagement and emphasizing the competitive gaming spirit. Forging Virtual Football Champions. The Island-Wide Virtual Premier League (IWVPL) is your home for top-tier EA FC 26 competitive action. Step onto the virtual pitch and make your mark. Facebook-f Twitter Behance Youtube Pro Club League SCHEDULE MATCH RESULT STANDINGS LEADERBOARD PARTICIPANTS FUT League Champions League TRANSFER NEWS Login Login 0 Island-Wide Virtual Premier League > STANDINGS STANDINGS League IWVPL Pro Club League Season 2026 Season 1 Division Championship Division 1 Division 2 Division 3 Premier League Show PREMIER LEAGUE Pos Team Pl W D L GF GA GD Pts Form Next 1 - KITA KITA VFC 🇲🇾 17 16 1 0 56 6 50 49 W W W W W - 2 - THE ROYAL BLOOD VFC 🇲🇾 17 12 1 4 30 12 18 37 W L W W W - 3 - REUNION VFC 🇲🇾 17 11 3 3 28 14 14 36 D L W W D - 4 - PENYAMUNZ VFC 🇸🇬 17 9 6 2 34 16 18 33 L W W W W - 5 - SOBAT VFC 🇮🇩 17 9 3 5 25 15 10 30 W D W L L - 6 - ONxON OG 🇲🇾 17 10 0 7 31 28 3 30 W L L W W - 7 - ILLUMINATION VFC 🇲🇾 17 9 2 6 33 29 4 29 W L W L W - 8 - THE CRAZY BOYS VFC 🇸🇬 17 8 4 5 17 12 5 28 W W D W D - 9 - KOEMPOEL KEBOW VFC 🇮🇩 17 8 4 5 18 22 -4 28 D W W W D - 10 - ELITE FIGHTING FORCE VFC 🇲🇾 17 8 2 7 11 22 -11 26 W L D W W - 11 - KEPALA NAGA FC 🇸🇬 17 8 1 8 20 25 -5 25 L L L W L - 12 - VIRTUA CLUB DE FUTBOL 🇲🇾 17 7 2 8 11 22 -11 23 W L L L L - 13 - PASE MAGICO VFC 🇲🇾 17 6 3 8 18 23 -5 21 W L W L W - 14 - PENANGMARIII VFC 🇲🇾 17 5 1 11 13 27 -14 16 W L W W L - 15 - PROGOAL XI 🇲🇾 17 4 1 12 8 30 -22 13 L L L L L - 16 - TOTAL 23 🇸🇬 17 3 1 13 17 24 -7 10 L L D L L - 17 - LOS TIGRELEON 🇸🇬 17 2 1 14 5 15 -10 7 L L D L L - 18 - RHYTHM X 🇸🇬 17 0 0 17 1 34 -33 0 L L L L L - ",
+  "participants": "Cart Total Items ( 0 ) Cart Search for: Pro Club League SCHEDULE MATCH RESULT STANDINGS LEADERBOARD PARTICIPANTS FUT League Champions League TRANSFER NEWS Best for driving engagement and emphasizing the competitive gaming spirit. Forging Virtual Football Champions. The Island-Wide Virtual Premier League (IWVPL) is your home for top-tier EA FC 26 competitive action. Step onto the virtual pitch and make your mark. Facebook-f Twitter Behance Youtube Pro Club League SCHEDULE MATCH RESULT STANDINGS LEADERBOARD PARTICIPANTS FUT League Champions League TRANSFER NEWS Login Login 0 Island-Wide Virtual Premier League > PARTICIPANTS PARTICIPANTS CLUBS IWVPL PRO CLUB LEAGUE League All Leagues Championship Division 1 Division 2 Division 3 IWVPL Champions League IWVPL FUT League IWVPL Pro Club League Premier League Season All Seasons 2026 Season 1 Show ACOUSTICSSS FC Pending Approval ACTINIUM ESPORTS Pending Approval BALLOTZ VFC Pending Approval DEADSET VFC Pending Approval DEFAULT VFC Pending Approval ELEGANTE Pending Approval EFF ELITE FIGHTING FORCE VFC 🇲🇾 13 Players Non-Active EQUINOX XI Pending Approval FORFIT ESPORTS Pending Approval GEREK GAMERS Pending Approval ILL ILLUMINATION VFC 🇲🇾 18 Players Active ✔ INVICTUS ELITE VFC Pending Approval JDT JEBAT DERHAKA VFC Pending Approval KFC KEPALA NAGA FC 🇸🇬 17 Players Non-Active KKV KITA KITA VFC 🇲🇾 21 Players Active ✔ KKV KOEMPOEL KEBOW VFC 🇮🇩 26 Players Non-Active LACOZ VFC Pending Approval LPV LOS PRIMOS VFC Pending Approval LT LOS TIGRELEON 🇸🇬 18 Players Non-Active OXO ONxON OG 🇲🇾 18 Players Non-Active PMV PASE MAGICO VFC 🇲🇾 20 Players Non-Active PM PENANGMARIII VFC 🇲🇾 19 Players Pending Approval PENDEKAR VFC Pending Approval PNV PENYAMUNZ VFC 🇸🇬 21 Players Non-Active PG PROGOAL XI 🇲🇾 19 Players Non-Active RV REUNION VFC 🇲🇾 16 Players Pending Approval RTX RHYTHM X 🇸🇬 15 Players Pending Approval ROYAL GUARDIANS Pending Approval SABER PUNK FC Pending Approval SFC SOBAT VFC 🇮🇩 20 Players Non-Active TEMPOE FC Pending Approval TCB THE CRAZY BOYS VFC 🇸🇬 25 Players Pending Approval TRB THE ROYAL BLOOD VFC 🇲🇾 20 Players Non-Active TORJÄGER VFC Pending Approval T23 TOTAL 23 🇸🇬 17 Players Non-Active VCF VIRTUA CLUB DE FUTBOL 🇲🇾 16 Players Non-Active X-VIPERS FC Pending Approval ",
+  "match-schedule": "Cart Total Items ( 0 ) Cart Search for: Pro Club League SCHEDULE MATCH RESULT STANDINGS LEADERBOARD PARTICIPANTS FUT League Champions League TRANSFER NEWS Best for driving engagement and emphasizing the competitive gaming spirit. Forging Virtual Football Champions. The Island-Wide Virtual Premier League (IWVPL) is your home for top-tier EA FC 26 competitive action. Step onto the virtual pitch and make your mark. Facebook-f Twitter Behance Youtube Pro Club League SCHEDULE MATCH RESULT STANDINGS LEADERBOARD PARTICIPANTS FUT League Champions League TRANSFER NEWS Login Login 0 Island-Wide Virtual Premier League > MATCH SCHEDULE MATCH SCHEDULE ",
+  "match-result": "Cart Total Items ( 0 ) Cart Search for: Pro Club League SCHEDULE MATCH RESULT STANDINGS LEADERBOARD PARTICIPANTS FUT League Champions League TRANSFER NEWS Best for driving engagement and emphasizing the competitive gaming spirit. Forging Virtual Football Champions. The Island-Wide Virtual Premier League (IWVPL) is your home for top-tier EA FC 26 competitive action. Step onto the virtual pitch and make your mark. Facebook-f Twitter Behance Youtube Pro Club League SCHEDULE MATCH RESULT STANDINGS LEADERBOARD PARTICIPANTS FUT League Champions League TRANSFER NEWS Login Login 0 Island-Wide Virtual Premier League > MATCH RESULT MATCH RESULT League IWVPL Pro Club League Season 2026 Season 1 Division Championship Division 1 Division 2 Division 3 Premier League Team Select Team ACOUSTICSSS FC ACTINIUM ESPORTS BALLOTZ VFC DEADSET VFC DEFAULT VFC ELEGANTE ELITE FIGHTING FORCE VFC 🇲🇾 EQUINOX XI FORFIT ESPORTS GEREK GAMERS ILLUMINATION VFC 🇲🇾 INVICTUS ELITE VFC JEBAT DERHAKA VFC KEPALA NAGA FC 🇸🇬 KITA KITA VFC 🇲🇾 KOEMPOEL KEBOW VFC 🇮🇩 LACOZ VFC LOS PRIMOS VFC LOS TIGRELEON 🇸🇬 ONxON OG 🇲🇾 PASE MAGICO VFC 🇲🇾 PENANGMARIII VFC 🇲🇾 PENDEKAR VFC PENYAMUNZ VFC 🇸🇬 PROGOAL XI 🇲🇾 REUNION VFC 🇲🇾 RHYTHM X 🇸🇬 ROYAL GUARDIANS SABER PUNK FC SOBAT VFC 🇮🇩 TEMPOE FC THE CRAZY BOYS VFC 🇸🇬 THE ROYAL BLOOD VFC 🇲🇾 TORJÄGER VFC TOTAL 23 🇸🇬 VIRTUA CLUB DE FUTBOL 🇲🇾 X-VIPERS FC Show Time Match Friday, 02 October 2026 00:00 KOEMPOEL KEBOW VFC 🇮🇩 0 : 0 THE CRAZY BOYS VFC 🇸🇬 Thursday, 01 October 2026 23:30 SOBAT VFC 🇮🇩 0 : 1 THE CRAZY BOYS VFC 🇸🇬 23:00 SOBAT VFC 🇮🇩 2 : 3 THE ROYAL BLOOD VFC 🇲🇾 23:00 THE CRAZY BOYS VFC 🇸🇬 0 : 0 REUNION VFC 🇲🇾 Wednesday, 30 September 2026 00:00 KOEMPOEL KEBOW VFC 🇮🇩 1 : 0 VIRTUA CLUB DE FUTBOL 🇲🇾 00:00 PASE MAGICO VFC 🇲🇾 1 : 0 PENANGMARIII VFC 🇲🇾 00:00 REUNION VFC 🇲🇾 1 : 0 VIRTUA CLUB DE FUTBOL 🇲🇾 Tuesday, 29 September 2026 23:40 REUNION VFC 🇲🇾 2 : 1 KEPALA NAGA FC 🇸🇬 23:00 PENYAMUNZ VFC 🇸🇬 4 : 0 PASE MAGICO VFC 🇲🇾 Sunday, 27 September 2026 02:00 PASE MAGICO VFC 🇲🇾 1 : 0 PROGOAL XI 🇲🇾 00:00 PENANGMARIII VFC 🇲🇾 1 : 0 PROGOAL XI 🇲🇾 Saturday, 26 September 2026 21:00 KEPALA NAGA FC 🇸🇬 1 : 0 RHYTHM X 🇸🇬 21:00 KITA KITA VFC 🇲🇾 1 : 0 LOS TIGRELEON 🇸🇬 21:00 ONxON OG 🇲🇾 1 : 0 RHYTHM X 🇸🇬 21:00 TOTAL 23 🇸🇬 0 : 1 PENYAMUNZ VFC 🇸🇬 21:00 RHYTHM X 🇸🇬 0 : 1 THE ROYAL BLOOD VFC 🇲🇾 21:00 ILLUMINATION VFC 🇲🇾 1 : 0 LOS TIGRELEON 🇸🇬 21:00 TOTAL 23 🇸🇬 0 : 1 PENANGMARIII VFC 🇲🇾 21:00 LOS TIGRELEON 🇸🇬 0 : 0 TOTAL 23 🇸🇬 Friday, 25 September 2026 00:10 KEPALA NAGA FC 🇸🇬 1 : 3 SOBAT VFC 🇮🇩 00:00 THE ROYAL BLOOD VFC 🇲🇾 2 : 0 ILLUMINATION VFC 🇲🇾 00:00 ELITE FIGHTING FORCE VFC 🇲🇾 1 : 0 PROGOAL XI 🇲🇾 Thursday, 24 September 2026 23:55 ONxON OG 🇲🇾 4 : 1 PASE MAGICO VFC 🇲🇾 23:40 KEPALA NAGA FC 🇸🇬 2 : 4 ILLUMINATION VFC 🇲🇾 23:30 PENANGMARIII VFC 🇲🇾 0 : 2 PENYAMUNZ VFC 🇸🇬 23:30 ELITE FIGHTING FORCE VFC 🇲🇾 1 : 0 REUNION VFC 🇲🇾 23:30 KITA KITA VFC 🇲🇾 2 : 0 THE ROYAL BLOOD VFC 🇲🇾 23:10 KEPALA NAGA FC 🇸🇬 0 : 3 KITA KITA VFC 🇲🇾 23:00 SOBAT VFC 🇮🇩 0 : 0 ELITE FIGHTING FORCE VFC 🇲🇾 23:00 ILLUMINATION VFC 🇲🇾 1 : 5 THE CRAZY BOYS VFC 🇸🇬 22:30 ILLUMINATION VFC 🇲🇾 6 : 2 ONxON OG 🇲🇾 22:00 KOEMPOEL KEBOW VFC 🇮🇩 1 : 0 ELITE FIGHTING FORCE VFC 🇲🇾 21:00 ELITE FIGHTING FORCE VFC 🇲🇾 1 : 0 VIRTUA CLUB DE FUTBOL 🇲🇾 21:00 PROGOAL XI 🇲🇾 0 : 1 PENYAMUNZ VFC 🇸🇬 21:00 KOEMPOEL KEBOW VFC 🇮🇩 1 : 0 PROGOAL XI 🇲🇾 21:00 VIRTUA CLUB DE FUTBOL 🇲🇾 0 : 1 SOBAT VFC 🇮🇩 00:00 PENYAMUNZ VFC 🇸🇬 0 : 2 KITA KITA VFC 🇲🇾 Wednesday, 23 September 2026 23:00 REUNION VFC 🇲🇾 2 : 2 KOEMPOEL KEBOW VFC 🇮🇩 23:00 ONxON OG 🇲🇾 0 : 5 KITA KITA VFC 🇲🇾 Monday, 21 September 2026 19:14 THE CRAZY BOYS VFC 🇸🇬 1 : 0 RHYTHM X 🇸🇬 00:00 RHYTHM X 🇸🇬 0 : 1 VIRTUA CLUB DE FUTBOL 🇲🇾 00:00 LOS TIGRELEON 🇸🇬 0 : 1 PENANGMARIII VFC 🇲🇾 00:00 PASE MAGICO VFC 🇲🇾 1 : 0 LOS TIGRELEON 🇸🇬 00:00 TOTAL 23 🇸🇬 0 : 1 ONxON OG 🇲🇾 00:00 THE ROYAL BLOOD VFC 🇲🇾 1 : 0 TOTAL 23 🇸🇬 Thursday, 17 September 2026 23:30 THE CRAZY BOYS VFC 🇸🇬 0 : 2 KITA KITA VFC 🇲🇾 23:30 PENANGMARIII VFC 🇲🇾 0 : 1 ONxON OG 🇲🇾 23:30 VIRTUA CLUB DE FUTBOL 🇲🇾 2 : 2 ILLUMINATION VFC 🇲🇾 23:30 PASE MAGICO VFC 🇲🇾 0 : 1 THE ROYAL BLOOD VFC 🇲🇾 23:10 KEPALA NAGA FC 🇸🇬 2 : 1 PASE MAGICO VFC 🇲🇾 ",
+  "transfer-window": "Cart Total Items ( 0 ) Cart Search for: Pro Club League SCHEDULE MATCH RESULT STANDINGS LEADERBOARD PARTICIPANTS FUT League Champions League TRANSFER NEWS Best for driving engagement and emphasizing the competitive gaming spirit. Forging Virtual Football Champions. The Island-Wide Virtual Premier League (IWVPL) is your home for top-tier EA FC 26 competitive action. Step onto the virtual pitch and make your mark. Facebook-f Twitter Behance Youtube Pro Club League SCHEDULE MATCH RESULT STANDINGS LEADERBOARD PARTICIPANTS FUT League Champions League TRANSFER NEWS Login Login 0 Island-Wide Virtual Premier League > TRANSFER WINDOW TRANSFER WINDOW Date Player From To 2026-10-08 13:33 Idir_odari 🛡️ Free Agent » X-VIPERS FC 2026-10-08 13:30 Ajeek_Beng1204 🛡️ Free Agent » X-VIPERS FC 2026-10-08 13:19 amirabdulsamad 🛡️ Free Agent » X-VIPERS FC 2026-10-08 13:04 KaybeeSpurs 🛡️ Free Agent » X-VIPERS FC 2026-10-08 09:48 istolapinto 🛡️ Free Agent » FORFIT ESPORTS 2026-10-07 21:11 jalalmeister FORFIT ESPORTS » FORFIT ESPORTS 2026-10-07 21:04 wwtkchll FORFIT ESPORTS » FORFIT ESPORTS 2026-10-07 20:44 P2Imran 🛡️ Free Agent » FORFIT ESPORTS 2026-10-07 20:22 wwtkchll 🛡️ Free Agent » FORFIT ESPORTS 2026-10-07 20:15 xDanialzm FORFIT ESPORTS » FORFIT ESPORTS 2026-10-07 17:37 Mumucak 🛡️ Free Agent » LOS PRIMOS VFC 2026-10-07 16:32 jefferin21 🛡️ Free Agent » TEMPOE FC 2026-10-07 16:09 JGR_Too_Coo 🛡️ Free Agent » TORJÄGER VFC 2026-10-07 16:04 K4Y 🛡️ Free Agent » FORFIT ESPORTS 2026-10-07 16:03 oKayys 🛡️ Free Agent » TORJÄGER VFC 2026-10-07 16:00 isfan 🛡️ Free Agent » TORJÄGER VFC 2026-10-07 15:58 Snerys 🛡️ Free Agent » TEMPOE FC 2026-10-07 15:47 Bloodszilla 🛡️ Free Agent » TORJÄGER VFC 2026-10-07 14:48 fadnoire LACOZ VFC » LACOZ VFC 2026-10-07 14:22 luqmanperem 🛡️ Free Agent » FORFIT ESPORTS 2026-10-07 14:20 Zamzam3000 🛡️ Free Agent » FORFIT ESPORTS 2026-10-07 14:19 whodatmoy 🛡️ Free Agent » FORFIT ESPORTS 2026-10-07 14:17 EleenaXtreme 🛡️ Free Agent » FORFIT ESPORTS 2026-10-07 14:10 Kimiidrus 🛡️ Free Agent » FORFIT ESPORTS 2026-10-07 13:49 danialsalju ILLUMINATION VFC 🇲🇾 » LOS PRIMOS VFC 2026-10-07 12:31 Gard 🛡️ Free Agent » FORFIT ESPORTS 2026-10-07 12:31 aryreeza 🛡️ Free Agent » FORFIT ESPORTS 2026-10-07 12:15 jalalmeister 🛡️ Free Agent » FORFIT ESPORTS 2026-10-07 11:51 Posty_Maloney 🛡️ Free Agent » LACOZ VFC 2026-10-07 11:42 fadnoire 🛡️ Free Agent » LACOZ VFC 2026-10-07 11:06 TadashiMal 🛡️ Free Agent » EQUINOX XI 2026-10-07 10:56 Bloomer755 🛡️ Free Agent » LACOZ VFC 2026-10-07 03:32 xDanialzm 🛡️ Free Agent » FORFIT ESPORTS 2026-10-07 02:05 Idan 🛡️ Free Agent » FORFIT ESPORTS 2026-10-07 01:57 slittycoco 🛡️ Free Agent » FORFIT ESPORTS 2026-10-07 01:55 bobthebosco 🛡️ Free Agent » FORFIT ESPORTS 2026-10-07 01:54 Jeongyeonnn 🛡️ Free Agent » FORFIT ESPORTS 2026-10-07 01:44 zafrano 🛡️ Free Agent » FORFIT ESPORTS 2026-10-07 00:54 hyedil 🛡️ Free Agent » LOS PRIMOS VFC 2026-10-07 00:27 afiqkensei THE CRAZY BOYS VFC 🇸🇬 » LACOZ VFC 2026-10-06 23:37 Jaheerman 🛡️ Free Agent » TEMPOE FC 2026-10-06 23:27 ryansyaffiq7 🛡️ Free Agent » GEREK GAMERS 2026-10-06 23:17 Thrillux 🛡️ Free Agent » LOS PRIMOS VFC 2026-10-06 23:17 Secret Agent 🛡️ Free Agent » LOS PRIMOS VFC 2026-10-06 22:53 Bobjunior_27 🛡️ Free Agent » LOS PRIMOS VFC 2026-10-06 22:25 Van-damszk 🛡️ Free Agent » TEMPOE FC 2026-10-06 22:12 Harlyson 🛡️ Free Agent » TEMPOE FC 2026-10-06 21:52 ryanugerah 🛡️ Free Agent » TEMPOE FC 2026-10-06 21:27 Dott 🛡️ Free Agent » LACOZ VFC 2026-10-06 21:27 amsyar2606 🛡️ Free Agent » LACOZ VFC 2026-10-06 21:10 Zinvox 🛡️ Free Agent » LACOZ VFC 2026-10-06 20:58 salsa_shaker 🛡️ Free Agent » LACOZ VFC 2026-10-06 20:49 Syafiq3010 🛡️ Free Agent » LACOZ VFC 2026-10-06 20:48 Wakbanjir45 LACOZ VFC » LACOZ VFC 2026-10-06 20:26 O__len 🛡️ Free Agent » TEMPOE FC 2026-10-06 19:37 Darkhanzgaming 🛡️ Free Agent » ILLUMINATION VFC 🇲🇾 2026-10-06 19:10 faisalhamdi36 🛡️ Free Agent » TEMPOE FC 2026-10-06 18:56 TankBadja 🛡️ Free Agent » TEMPOE FC 2026-10-06 18:53 KurumiXSasha 🛡️ Free Agent » LACOZ VFC 2026-10-06 18:42 Wakbanjir45 🛡️ Free Agent » LACOZ VFC 2026-10-06 18:41 THETRBLMKR 🛡️ Free Agent » LACOZ VFC 2026-10-06 18:30 AiZyff_89 🛡️ Free Agent » ILLUMINATION VFC 🇲🇾 2026-10-06 18:29 xN4ZW4Nx 🛡️ Free Agent » LACOZ VFC 2026-10-06 18:15 Mercury ELITE FIGHTING FORCE VFC 🇲🇾 » INVICTUS ELITE VFC 2026-10-06 18:04 hanasira 🛡️ Free Agent » TEMPOE FC 2026-10-06 17:40 Irunxrendy 🛡️ Free Agent » TEMPOE FC 2026-10-06 16:46 jaycbboy 🛡️ Free Agent » TEMPOE FC 2026-10-06 16:46 Adrianbl11 🛡️ Free Agent » TEMPOE FC 2026-10-06 16:37 Lost_Child316 🛡️ Free Agent » TEMPOE FC 2026-10-06 15:36 nazone ELITE FIGHTING FORCE VFC 🇲🇾 » INVICTUS ELITE VFC 2026-10-06 15:27 M1rssi ELITE FIGHTING FORCE VFC 🇲🇾 » INVICTUS ELITE VFC 2026-10-06 07:09 DarioMarley 🛡️ Free Agent » INVICTUS ELITE VFC 2026-10-06 03:18 AKIRAY 🛡️ Free Agent » INVICTUS ELITE VFC 2026-10-06 02:33 sporty_coleslaw ELITE FIGHTING FORCE VFC 🇲🇾 » INVICTUS ELITE VFC 2026-10-06 02:21 BossGamingSK-YT ELITE FIGHTING FORCE VFC 🇲🇾 » INVICTUS ELITE VFC 2026-10-06 02:17 Salihan Zaki ELITE FIGHTING FORCE VFC 🇲🇾 » INVICTUS ELITE VFC 2026-10-06 01:32 AhmadUnal 🛡️ Free Agent » LOS PRIMOS VFC 2026-10-06 01:19 jimmin 🛡️ Free Agent » ELEGANTE 2026-10-06 00:18 EGT_Graywake 🛡️ Free Agent » ELEGANTE 2026-10-05 23:34 iSquiGGY 🛡️ Free Agent » LOS PRIMOS VFC 2026-10-05 23:31 Malicun 🛡️ Free Agent » ILLUMINATION VFC 🇲🇾 2026-10-05 23:29 inara_is_red 🛡️ Free Agent » LOS PRIMOS VFC 2026-10-05 23:22 mRon1n 🛡️ Free Agent » LOS PRIMOS VFC 2026-10-05 23:06 CynicalG21 🛡️ Free Agent » GEREK GAMERS 2026-10-05 22:32 shahrins 🛡️ Free Agent » GEREK GAMERS 2026-10-05 21:47 King_Elmie 🛡️ Free Agent » DEFAULT VFC 2026-10-05 21:37 MacTommy1912 🛡️ Free Agent » ILLUMINATION VFC 🇲🇾 2026-10-05 21:04 ohowell93 🛡️ Free Agent » BALLOTZ VFC 2026-10-05 20:36 nabilsibilly 🛡️ Free Agent » LOS PRIMOS VFC 2026-10-05 18:29 Nuisance04 DEFAULT VFC » DEFAULT VFC 2026-10-05 18:12 Unknown EQUINOX XI » DEFAULT VFC 2026-10-05 16:51 Rielz 🛡️ Free Agent » EQUINOX XI 2026-10-05 15:39 Ady_79 🛡️ Free Agent » JEBAT DERHAKA VFC 2026-10-05 14:37 Deeboi_3000 🛡️ Free Agent » JEBAT DERHAKA VFC 2026-10-05 13:23 hilmeyreeza 🛡️ Free Agent » FORFIT ESPORTS 2026-10-05 12:58 AdaL_Osaka77 🛡️ Free Agent » BALLOTZ VFC 2026-10-05 11:21 CobraKhai 🛡️ Free Agent » EQUINOX XI 2026-10-05 10:00 ad19bappe 🛡️ Free Agent » EQUINOX XI 2026-10-05 09:56 blondedonnnn 🛡️ Free Agent » BALLOTZ VFC 2026-10-05 00:59 AlexJebon 🛡️ Free Agent » BALLOTZ VFC 2026-10-05 00:47 mattzyus 🛡️ Free Agent » BALLOTZ VFC 2026-10-05 00:43 Gudap 🛡️ Free Agent » BALLOTZ VFC 2026-10-05 00:18 KAMARKS 🛡️ Free Agent » JEBAT DERHAKA VFC 2026-10-05 00:07 Supastrikas369 🛡️ Free Agent » JEBAT DERHAKA VFC 2026-10-04 23:45 AshLokals 🛡️ Free Agent » JEBAT DERHAKA VFC 2026-10-04 23:15 Sticky_SnowMan 🛡️ Free Agent » JEBAT DERHAKA VFC 2026-10-04 23:13 Xmsyxr 🛡️ Free Agent » JEBAT DERHAKA VFC 2026-10-04 23:10 ELJEFFE1312 🛡️ Free Agent » JEBAT DERHAKA VFC 2026-10-04 23:04 Ab rahmad 🛡️ Free Agent » EQUINOX XI 2026-10-04 20:04 Fyan_Mulisha 🛡️ Free Agent » JEBAT DERHAKA VFC 2026-10-04 19:55 Ewan_Beck7 🛡️ Free Agent » JEBAT DERHAKA VFC 2026-10-04 19:51 DE_MAESTRO 🛡️ Free Agent » JEBAT DERHAKA VFC 2026-10-04 19:22 GAMEFACE 🛡️ Free Agent » JEBAT DERHAKA VFC 2026-10-04 19:20 el_izn 🛡️ Free Agent » JEBAT DERHAKA VFC 2026-10-04 19:07 Tasstheonlyone 🛡️ Free Agent » JEBAT DERHAKA VFC 2026-10-04 16:40 Ziqrul990 🛡️ Free Agent » BALLOTZ VFC 2026-10-04 16:08 Foxaking 🛡️ Free Agent » BALLOTZ VFC 2026-10-04 12:32 Nuisance04 🛡️ Free Agent » DEFAULT VFC 2026-10-04 11:55 Jikan590 🛡️ Free Agent » DEFAULT VFC 2026-10-04 09:43 Ronin24k 🛡️ Free Agent » DEFAULT VFC 2026-10-04 09:39 Mdfahmyz3 🛡️ Free Agent » DEFAULT VFC 2026-10-04 09:03 Modernday_26 🛡️ Free Agent » DEFAULT VFC 2026-10-04 08:25 Zanio 🛡️ Free Agent » DEFAULT VFC 2026-10-04 07:35 AqilNabil_ 🛡️ Free Agent » DEFAULT VFC 2026-10-04 02:56 Yoeputra99 🛡️ Free Agent » EQUINOX XI 2026-10-04 02:12 Unknown EQUINOX XI » DEFAULT VFC 2026-10-04 00:53 Sonic_Pulse_09 🛡️ Free Agent » DEFAULT VFC 2026-10-03 23:37 RAIMAN 🛡️ Free Agent » EQUINOX XI 2026-10-03 18:25 silencrow08 🛡️ Free Agent » EQUINOX XI 2026-10-03 16:21 nrsafiq07 🛡️ Free Agent » EQUINOX XI 2026-10-03 16:14 Tuan Arif 🛡️ Free Agent » EQUINOX XI 2026-10-03 13:47 Zyrone 🛡️ Free Agent » EQUINOX XI 2026-10-03 13:18 acap0104 🛡️ Free Agent » EQUINOX XI 2026-10-02 21:12 PembunuhEncem ONxON OG 🇲🇾 » BALLOTZ VFC 2026-10-02 20:42 Jojo PENYAMUNZ VFC 🇸🇬 » BALLOTZ VFC 2026-10-02 17:26 FarhanSarip 🛡️ Free Agent » DEADSET VFC 2026-10-02 16:00 WaOne17 🛡️ Free Agent » DEADSET VFC 2026-10-02 15:32 Azfar Johar 🛡️ Free Agent » DEADSET VFC 2026-10-02 15:08 faisepet 🛡️ Free Agent » DEADSET VFC 2026-10-02 13:35 Azuzu 🛡️ Free Agent » DEADSET VFC 2026-10-02 13:29 Kont1k1 🛡️ Free Agent » DEADSET VFC 2026-10-02 13:11 Sachok 🛡️ Free Agent » DEADSET VFC 2026-10-02 12:53 AmIshaky 🛡️ Free Agent » DEADSET VFC 2026-10-02 11:32 Rayreus ONxON OG 🇲🇾 » ELEGANTE 2026-10-02 03:33 mrnb VIRTUA CLUB DE FUTBOL 🇲🇾 » BALLOTZ VFC 2026-09-12 03:51 Setsuna0009 🛡️ Free Agent » THE CRAZY BOYS VFC 🇸🇬 2026-09-12 01:10 mcderimi 🛡️ Free Agent » KITA KITA VFC 🇲🇾 2026-09-11 22:06 Thrillux 🛡️ Free Agent » LOS PRIMOS VFC 2026-09-11 14:34 GreenTimeeIpan 🛡️ Free Agent » REUNION VFC 🇲🇾 2026-09-10 22:47 shahreiza 🛡️ Free Agent » PENANGMARIII VFC 🇲🇾 2026-09-10 15:13 cacingperut16 🛡️ Free Agent » KOEMPOEL KEBOW VFC 🇮🇩 2026-09-10 12:26 Mr_Karloz55 🛡️ Free Agent » KOEMPOEL KEBOW VFC 🇮🇩 2026-09-10 02:15 Akimovic 🛡️ Free Agent » PENANGMARIII VFC 🇲🇾 2026-09-10 01:53 shahreiza 🛡️ Free Agent » PENANGMARIII VFC 🇲🇾 2026-09-10 01:40 r0dTekkz 🛡️ Free Agent » PENANGMARIII VFC 🇲🇾 2026-09-10 00:45 FettJango 🛡️ Free Agent » REUNION VFC 🇲🇾 2026-09-09 23:20 firdausrazak175 🛡️ Free Agent » PROGOAL XI 🇲🇾 2026-09-09 21:17 MalKaizer 🛡️ Free Agent » ILLUMINATION VFC 🇲🇾 2026-09-09 20:58 GreenTimeeIpan 🛡️ Free Agent » REUNION VFC 🇲🇾 2026-09-09 19:50 Frostergray 🛡️ Free Agent » ONxON OG 🇲🇾 2026-09-09 18:05 civic_grid14 🛡️ Free Agent » PROGOAL XI 🇲🇾 2026-09-09 16:18 Akhyar_Rashid19 🛡️ Free Agent » PENANGMARIII VFC 🇲🇾 2026-09-09 14:11 Ayie 🛡️ Free Agent » PENANGMARIII VFC 🇲🇾 2026-09-09 08:44 kang geun doung 🛡️ Free Agent » SOBAT VFC 🇮🇩 2026-09-09 08:11 iTzChuuu 🛡️ Free Agent » PENYAMUNZ VFC 🇸🇬 2026-09-09 00:54 kambing 🛡️ Free Agent » PENANGMARIII VFC 🇲🇾 2026-09-09 00:09 TheAsianPerson_ 🛡️ Free Agent » KITA KITA VFC 🇲🇾 2026-09-08 20:31 Jonathan 🛡️ Free Agent » KOEMPOEL KEBOW VFC 🇮🇩 2026-09-08 14:14 NewJnz_ 🛡️ Free Agent » KITA KITA VFC 🇲🇾 2026-09-08 00:43 elotix PENANGMARIII VFC 🇲🇾 » PENANGMARIII VFC 🇲🇾 2026-09-08 00:11 NotAceus 🛡️ Free Agent » PENANGMARIII VFC 🇲🇾 2026-09-07 20:40 aimankurnain 🛡️ Free Agent » PENYAMUNZ VFC 🇸🇬 2026-09-07 19:45 jeebthekiller 🛡️ Free Agent » PENYAMUNZ VFC 🇸🇬 2026-09-07 18:08 yakuzagt100 🛡️ Free Agent » THE CRAZY BOYS VFC 🇸🇬 2026-09-07 18:08 Simpfuhny22 PENYAMUNZ VFC 🇸🇬 » PENYAMUNZ VFC 🇸🇬 2026-09-07 17:58 teeks123 PENYAMUNZ VFC 🇸🇬 » PENYAMUNZ VFC 🇸🇬 2026-09-07 17:45 Wansid PENYAMUNZ VFC 🇸🇬 » PENYAMUNZ VFC 🇸🇬 2026-09-07 16:42 nazone 🛡️ Free Agent » 🛡️ ELITE FIGHTING FORCE FC 🇲🇾 2026-09-07 16:40 Frostergray 🛡️ Free Agent » ONxON OG 🇲🇾 2026-09-07 16:30 Jakpo11 ONxON OG 🇲🇾 » ONxON OG 🇲🇾 2026-09-07 16:10 TheAsianPerson_ 🛡️ Free Agent » KITA KITA VFC 🇲🇾 2026-09-07 15:21 IceLemonTea77 🛡️ Free Agent » ILLUMINATION VFC 🇲🇾 2026-09-07 13:08 AmirNina88 🛡️ Free Agent » KITA KITA VFC 🇲🇾 2026-09-07 01:26 WannJiroo 🛡️ Free Agent » ILLUMINATION VFC 🇲🇾 2026-09-07 01:20 ScarlettMY 🛡️ Free Agent » ILLUMINATION VFC 🇲🇾 2026-09-06 23:20 Yeesa 🛡️ Free Agent » THE CRAZY BOYS VFC 🇸🇬 2026-09-06 23:17 Yeesa 🛡️ Free Agent » THE CRAZY BOYS VFC 🇸🇬 2026-09-06 22:57 Setsuna0009 🛡️ Free Agent » THE CRAZY BOYS VFC 🇸🇬 2026-09-06 22:37 yaboin4s 🛡️ Free Agent » PENANGMARIII VFC 🇲🇾 2026-09-06 21:47 M1rssi 🛡️ Free Agent » 🛡️ ELITE FIGHTING FORCE FC 🇲🇾 2026-09-06 20:48 BossGamingSK-YT 🛡️ Free Agent » 🛡️ ELITE FIGHTING FORCE FC 🇲🇾 2026-09-06 20:42 Ray_1910 🛡️ Free Agent » 🛡️ ELITE FIGHTING FORCE FC 🇲🇾 2026-09-06 19:49 Salihan Zaki 🛡️ Free Agent » 🛡️ ELITE FIGHTING FORCE FC 🇲🇾 2026-09-06 18:48 AmirNina88 🛡️ Free Agent » KITA KITA VFC 🇲🇾 2026-09-06 16:01 WannJiroo 🛡️ Free Agent » ILLUMINATION VFC 🇲🇾 2026-09-06 15:50 FiqVicious 🛡️ Free Agent » PENYAMUNZ VFC 🇸🇬 2026-09-06 14:08 ilharmy 🛡️ Free Agent » THE CRAZY BOYS VFC 🇸🇬 2026-09-06 13:10 Amrlsyfq12 🛡️ Free Agent » 🛡️ ELITE FIGHTING FORCE FC 🇲🇾 2026-09-06 12:19 T3S_Sameon 🛡️ Free Agent » 🛡️ ELITE FIGHTING FORCE FC 🇲🇾 2026-09-06 12:18 Ray_1910 🛡️ Free Agent » 🛡️ ELITE FIGHTING FORCE FC 🇲🇾 2026-09-06 11:37 M1rssi 🛡️ Free Agent » 🛡️ ELITE FIGHTING FORCE FC 🇲🇾 2026-09-06 11:35 BossGamingSK-YT 🛡️ Free Agent » 🛡️ ELITE FIGHTING FORCE FC 🇲🇾 2026-09-06 11:17 sirafosm 🛡️ ELITE FIGHTING FORCE FC 🇲🇾 » 🛡️ ELITE FIGHTING FORCE FC 🇲🇾 2026-09-06 10:50 sporty_coleslaw 🛡️ ELITE FIGHTING FORCE FC 🇲🇾 » 🛡️ ELITE FIGHTING FORCE FC 🇲🇾 2026-09-06 06:53 ScarlettMY 🛡️ Free Agent » ILLUMINATION VFC 🇲🇾 2026-09-06 03:26 Bealdhild 🛡️ Free Agent » THE CRAZY BOYS VFC 🇸🇬 2026-09-06 02:54 Arep_SuplexCity 🛡️ Free Agent » THE CRAZY BOYS VFC 🇸🇬 2026-09-03 17:22 oBey_Gooners 🛡️ Free Agent » TOTAL 23 🇸🇬 2026-08-27 20:01 Unknown 🛡️ Free Agent » ILLUMINATION VFC 🇲🇾 2026-08-24 01:51 Unknown 🛡️ Free Agent » 🛡️ BumbleBee FC ",
+  "news": "Cart Total Items ( 0 ) Cart Search for: Pro Club League SCHEDULE MATCH RESULT STANDINGS LEADERBOARD PARTICIPANTS FUT League Champions League TRANSFER NEWS Best for driving engagement and emphasizing the competitive gaming spirit. Forging Virtual Football Champions. The Island-Wide Virtual Premier League (IWVPL) is your home for top-tier EA FC 26 competitive action. Step onto the virtual pitch and make your mark. Facebook-f Twitter Behance Youtube Pro Club League SCHEDULE MATCH RESULT STANDINGS LEADERBOARD PARTICIPANTS FUT League Champions League TRANSFER NEWS Login Login 0 Island-Wide Virtual Premier League > NEWS Blog September 28, 2026 🔥 IWVPL SEASON 1 — REGISTRATION IS OPEN! 🔥 Hi everyone! 👋 We are officially 1 WEEK away from the end of our BETA Season! 🏆 We hope all 18 teams that participated in our BETA Season have enjoyed competing with us and experienced our league system. ❤️... August 11, 2026 Are You Ready for the Ultimate 1v1 Showcase? IWVPL Champions League is Coming Soon! Hello IWVPL Community! The heat from the Pro Club League is still burning, and we’ve been overwhelmed by your incredible response. But we know many of you are also itching for a different kind of competition—the pure, head-to-head, raw-skill... August 11, 2026 Pro Club League Update: Beta Phase and Massive Plans for Next Season! Hello managers and players! We want to give you a quick update regarding the current status of the Pro Club League here at the Island-Wide Virtual Premier League. The enthusiasm shown by the community so far has been absolutely... August 11, 2026 Welcome to the Official Island-Wide Virtual Premier League Website! Hello everyone, and welcome! We are incredibly thrilled to announce the launch of the official website for the Island-Wide Virtual Premier League. Moving forward, this website will serve as the ultimate central hub for our community. Whether you are... Search Search Recent Posts 🔥 IWVPL SEASON 1 — REGISTRATION IS OPEN! 🔥 Are You Ready for the Ultimate 1v1 Showcase? IWVPL Champions League is Coming Soon! Pro Club League Update: Beta Phase and Massive Plans for Next Season! Welcome to the Official Island-Wide Virtual Premier League Website! Recent Comments No comments to show. ",
+  "shop": "Cart Total Items ( 0 ) Cart Search for: Pro Club League SCHEDULE MATCH RESULT STANDINGS LEADERBOARD PARTICIPANTS FUT League Champions League TRANSFER NEWS Best for driving engagement and emphasizing the competitive gaming spirit. Forging Virtual Football Champions. The Island-Wide Virtual Premier League (IWVPL) is your home for top-tier EA FC 26 competitive action. Step onto the virtual pitch and make your mark. Facebook-f Twitter Behance Youtube Pro Club League SCHEDULE MATCH RESULT STANDINGS LEADERBOARD PARTICIPANTS FUT League Champions League TRANSFER NEWS Login Login 0 Island-Wide Virtual Premier League > Shop Shop Showing all 2 results Sorted by latest Sort by popularity Sort by latest Sort by price: low to high Sort by price: high to low IWVPL CHAMPIONS LEAGUE $ 15.00 Select options This product has multiple variants. The options may be chosen on the product page IWVPL PRO CLUB SEASON 1 $ 35.00 Add to cart ",
+  "register": "Cart Total Items ( 0 ) Cart Search for: Pro Club League SCHEDULE MATCH RESULT STANDINGS LEADERBOARD PARTICIPANTS FUT League Champions League TRANSFER NEWS Best for driving engagement and emphasizing the competitive gaming spirit. Forging Virtual Football Champions. The Island-Wide Virtual Premier League (IWVPL) is your home for top-tier EA FC 26 competitive action. Step onto the virtual pitch and make your mark. Facebook-f Twitter Behance Youtube Pro Club League SCHEDULE MATCH RESULT STANDINGS LEADERBOARD PARTICIPANTS FUT League Champions League TRANSFER NEWS Login Login 0 Island-Wide Virtual Premier League > Register Register REGISTRATION PENDAFTARAN Account Username Email Address Password Confirm Password Profile EA ID / PSN ID / XBOX ID In-game Known As Discord ID Birth Date Terms of Use Welcome to the official website of Island-Wide Virtual Premier League (IWVPL). By accessing this website, registering for an IWVPL competition, or using any of our services, you agree to comply with these Terms of Use. If you do not agree with these terms, please discontinue the use of our website and services. IWVPL is an independent esports organization dedicated to delivering competitive EA SPORTS FC tournaments and leagues across Singapore, Malaysia, and Indonesia. Our goal is to provide a fair, competitive, and enjoyable environment for every participant. Users are expected to provide accurate registration information, comply with all league rules, respect fellow participants, and maintain good sportsmanship throughout every competition. IWVPL reserves the right to modify competition formats, league schedules, rules, website content, and these Terms of Use at any time. Continued use of our website constitutes acceptance of any updates. Any participant found cheating, abusing game mechanics, engaging in match-fixing, using offensive language, or violating IWVPL rules may be suspended or permanently removed from all IWVPL competitions. All logos, graphics, league branding, website content, videos, fixtures, and promotional materials are the intellectual property of IWVPL unless otherwise stated and may not be reproduced without written permission. IWVPL operates independently and is not affiliated with, endorsed by, or sponsored by Electronic Arts Inc., EA SPORTS, UEFA, the Premier League, or any other football governing body unless expressly stated. IWVPL Policies IWVPL is committed to maintaining a professional, transparent, and competitive esports environment. All players, team owners, captains, managers, and community members are expected to comply with our official policies throughout every season. Our policies include: Fair Play and Competitive Integrity Player Eligibility and Registration Team Management Match Scheduling Prize Distribution Code of Conduct Anti-Cheat Policy Privacy and Data Protection Appeals and Disciplinary Procedures Participants are responsible for staying informed of the latest policy updates published on the official IWVPL website and communication channels. Failure to comply with IWVPL policies may result in warnings, point deductions, match forfeits, suspension, or permanent removal from competitions. IWVPL reserves the right to investigate any suspected rule violations and make final decisions in the best interest of competitive integrity. Contact Us Thank you for your interest in the Island-Wide Virtual Premier League. Whether you are a player, team owner, sponsor, content creator, or community member, our team is here to assist you. Please contact us for enquiries relating to: League Registration Tournament Information Sponsorship Opportunities Partnership Enquiries Media Requests Technical Support Rule Clarifications General Feedback Official Website https://iwvpl.asia/ Email iwvplofficial@gmail.com Discord ISLAND-WIDE VIRTUAL PREMIER LEAGUE Our administration team aims to respond to all enquiries as quickly as possible during business hours. Show privacy policy Please confirm that you agree to our privacy policy Only fill in if you are not human ",
+  "login": "Cart Total Items ( 0 ) Cart Search for: Pro Club League SCHEDULE MATCH RESULT STANDINGS LEADERBOARD PARTICIPANTS FUT League Champions League TRANSFER NEWS Best for driving engagement and emphasizing the competitive gaming spirit. Forging Virtual Football Champions. The Island-Wide Virtual Premier League (IWVPL) is your home for top-tier EA FC 26 competitive action. Step onto the virtual pitch and make your mark. Facebook-f Twitter Behance Youtube Pro Club League SCHEDULE MATCH RESULT STANDINGS LEADERBOARD PARTICIPANTS FUT League Champions League TRANSFER NEWS Login Login 0 Island-Wide Virtual Premier League > Login Login Username or Email Password Only fill in if you are not human Keep me signed in Register Forgot your password? ",
+  "gallery": "Cart Total Items ( 0 ) Cart Search for: Pro Club League SCHEDULE MATCH RESULT STANDINGS LEADERBOARD PARTICIPANTS FUT League Champions League TRANSFER NEWS Best for driving engagement and emphasizing the competitive gaming spirit. Forging Virtual Football Champions. The Island-Wide Virtual Premier League (IWVPL) is your home for top-tier EA FC 26 competitive action. Step onto the virtual pitch and make your mark. Facebook-f Twitter Behance Youtube Pro Club League SCHEDULE MATCH RESULT STANDINGS LEADERBOARD PARTICIPANTS FUT League Champions League TRANSFER NEWS Login Login 0 Island-Wide Virtual Premier League > GALLERY GALLERY FIFA 2023 UEFA CUP WARM-UP NATIONAL FIFA 2023 UEFA CUP WARM-UP NATIONAL ",
+  "tournament": "404 Page Not Found Sorry, we couldn't find the page you where looking for. We suggest that you return to homepage. Back to Homepage"
+ },
+ "home_copy": "Island-Wide Virtual Premier League – Virtual Premier League Competition, Base Singapore Cart Total Items ( 0 ) Cart Search for: Pro Club League SCHEDULE MATCH RESULT STANDINGS LEADERBOARD PARTICIPANTS FUT League Champions League TRANSFER NEWS Best for driving engagement and emphasizing the competitive gaming spirit. Forging Virtual Football Champions. The Island-Wide Virtual Premier League (IWVPL) is your home for top-tier EA FC 26 competitive action. Step onto the virtual pitch and make your mark. Facebook-f Twitter Behance Youtube Pro Club League SCHEDULE MATCH RESULT STANDINGS LEADERBOARD PARTICIPANTS FUT League Champions League TRANSFER NEWS Login Login 0 Games UPCOMING MATCH Pro Club League 🔥 IWVPL SEASON 1 — REGISTRATION IS Read More Champions League Are You Ready for the Ultimate 1v1 Read More Premier League Pro Club League Update: Beta Phase and Read More Games IWVPL PRO CLUB PREMIER LEAGUE RESULTS Pos Club P W D L GD Pts 1 KITA KITA VFC 🇲🇾 17 16 1 0 50 49 2 THE ROYAL BLOOD VFC 🇲🇾 17 12 1 4 18 37 3 REUNION VFC 🇲🇾 17 11 3 3 14 36 4 PENYAMUNZ VFC 🇸🇬 17 9 6 2 18 33 5 SOBAT VFC 🇮🇩 17 9 3 5 10 30 6 ONxON OG 🇲🇾 17 10 0 7 3 30 7 ILLUMINATION VFC 🇲🇾 17 9 2 6 4 29 8 THE CRAZY BOYS VFC 🇸🇬 17 8 4 5 5 28 9 KOEMPOEL KEBOW VFC 🇮🇩 17 8 4 5 -4 28 10 ELITE FIGHTING FORCE VFC 🇲🇾 17 8 2 7 -11 26 KOEMPOEL KEBOW VFC 🇮🇩 KKV 0 VS THE CRAZY BOYS VFC 🇸🇬 TCB 0 MATCH DETAILS / October 2, 2026 SOBAT VFC 🇮🇩 SFC 0 VS THE CRAZY BOYS VFC 🇸🇬 TCB 1 MATCH DETAILS / October 1, 2026 SOBAT VFC 🇮🇩 SFC 2 VS THE ROYAL BLOOD VFC 🇲🇾 TRB 3 MATCH DETAILS / October 1, 2026 VIEW FULL TABLE VIEW FULL RESULTS ABOUT ABOUT US Island-Wide Virtual Premier League The Island-Wide Virtual Premier League (IWVPL) is an independent esports organisation built by passionate gamers, for the community. Unlike large organisations or associations, IWVPL is operated independently with the support of our valued sponsors. Every league, tournament, event, and community initiative is organised by our dedicated team, driven by passion rather than profit. PRO CLUB LEAGUE 5 Division CHAMPIONSHIPS 1vs1 League COMPETITIONS 2vs2 (SOON) MORE INFO SPONSOR PROUDLY SPONSORED BY A special thanks to our generous partners. Join Our Community! Kickstart your story and elevate your career alongside IWVPL and your club. Sign Up Insights OUR LATEST NEWS Discover the latest news, upcoming features, and official announcements from the IWVPL admin team. Pro Club League 🔥 IWVPL SEASON 1 — REGISTRATION IS OPEN! 🔥 Clarity XNB September 28, 2026 Champions League Are You Ready for the Ultimate 1v1 Showcase? IWVPL Champions League is Coming Soon! Clarity XNB August 11, 2026 Premier League Pro Club League Update: Beta Phase and Massive Plans for Next Season! Clarity XNB August 11, 2026 IWVPL is an independent league promoter and is not affiliated with, sponsored, or endorsed by Electronic Arts Inc. EA SPORTS and EA FC are registered trademarks of Electronic Arts Inc. © 2026 Island-Wide Virtual Premier League. All rights reserved. ESSENTIAL LINKS ABOUT US CONTACT SCHEDULE MATCH RESULT STANDINGS PARTICIPANTS Terms of Use & Policies IN TOUCH Discord Instagram Tiktok iwvplofficial@gmail.com"
+}
