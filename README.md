@@ -581,6 +581,40 @@ the contact hierarchy (single h1, labelled fields, subject hint, validation
 count, focus management, working dropdown), slide 1 carrying no animation class
 before *and* after the layout while slide 2 still does, and the header/hero
 offset pairing. Suites total 123 assertions across four files, 0 failures.
-#   i w v p l  
- #   i w v p l  
+#   i w v p l 
  
+ #   i w v p l 
+ 
+ 
+
+---
+
+## Deployment (GitHub Pages)
+
+Live at **https://mathiassam2.github.io/iwvpl/**
+
+The site is a static SPA, so two things had to be right for Pages:
+
+- **`base: '/iwvpl/'`** in `vite.config.ts` — Pages serves from a subdirectory,
+  so every asset URL must be prefixed. This is unconditional; a conditional
+  base silently produced a build that 404'd every asset.
+- **`HashRouter`** — Pages has no server-side rewrite, so `BrowserRouter`
+  routes 404 on refresh. Hash routes need no server config.
+
+`public/404.html` redirects stray paths back into the app, and
+`public/.nojekyll` stops Pages running the build through Jekyll.
+
+### Deploying
+Push to `main`. `.github/workflows/deploy.yml` builds and pushes `dist/` to
+the `gh-pages` branch, which is the configured Pages source.
+
+### Local development
+`npm run dev` serves at **http://localhost:3000/iwvpl/** (not the root), because
+the base path is shared. `npm run preview` behaves the same.
+
+### Verified on the live site
+- `/iwvpl/` returns 200 and serves the SPA shell
+- all 158 files under `dist/` return 200
+- all 16 lazy-loaded page chunks return 200
+- all 6 self-hosted fonts return 200
+- no absolute `/assets/` paths remain in any served CSS
