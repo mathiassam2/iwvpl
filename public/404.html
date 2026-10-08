@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Island-Wide Virtual Premier League</title>
+    <script>
+      // GitHub Pages has no SPA fallback. If someone lands on a path that is
+      // not a real file, route them back into the app.
+      ;(function () {
+        var segment = 1 // /<repo>/ is the first path segment
+        var location = window.location
+        var repo = location.pathname.split('/')[segment]
+
+        // Only redirect when the URL is not already pointing at a real asset.
+        if (!repo) {
+          location.replace(
+            location.pathname.replace(/\/?$/, '/') + '#/'
+          )
+        }
+      })()
+    </script>
+  </head>
+  <body></body>
+</html>

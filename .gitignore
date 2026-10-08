@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Build output - the GitHub Pages workflow builds this from source
+dist/
+
+# Local verification tooling and crawl artefacts
+_crawl/
+_source/
+
+# TypeScript incremental build info
+*.tsbuildinfo
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

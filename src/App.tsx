@@ -1,5 +1,5 @@
 import { Suspense, lazy } from 'react'
-import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import { HashRouter, Route, Routes } from 'react-router-dom'
 import { AppShell } from '@/components/layout/AppShell'
 import HomePage from '@/pages/HomePage'
 import { useParallax } from '@/hooks/useParallax'
@@ -38,8 +38,13 @@ function ParallaxDriver() {
 }
 
 export default function App() {
+  /*
+   * HashRouter, not BrowserRouter. GitHub Pages is a static host with no
+   * server-side rewrite, so a BrowserRouter route such as /standings 404s on
+   * a refresh or a direct link. Hash routes work everywhere with zero config.
+   */
   return (
-    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+    <HashRouter>
       <CartProvider>
         <AppShell>
           <ParallaxDriver />
@@ -70,6 +75,6 @@ export default function App() {
           </Suspense>
         </AppShell>
       </CartProvider>
-    </BrowserRouter>
+    </HashRouter>
   )
 }
