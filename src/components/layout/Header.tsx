@@ -235,35 +235,31 @@ export function Header() {
 
   const frosted = scrolled || hovered || focusWithin
 
-  /* Scroll listener only - no synchronous initial check. The initial state is
-     assumed transparent (scrollY = 0). */
+  /* Single source of truth for scroll state:
+     - On mount: read actual scrollY once
+     - On scroll: update from event
+     - On route change: browser handles scroll restoration; we just re-read
+     No programmatic scroll manipulation - avoids race conditions with
+     browser's own scroll restoration. */
   useEffect(() => {
+    // Initial read
+    setScrolled(window.scrollY > 8)
+
     const onScroll = () => setScrolled(window.scrollY > 8)
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
 
-  /* On route change (including hash changes), reset sticky state and ensure
-     scroll is at top for non-hash navigation. This replaces the sibling
-     ScrollToTop component's responsibility for the header's needs, so the
-     header never reads a stale scroll position. */
+  /* Reset sticky state on route change. Browser handles scroll restoration
+     automatically; we just re-read the position. Hash changes preserve position. */
   useEffect(() => {
     setMobileOpen(false)
     setHovered(false)
     setFocusWithin(false)
     if (document.activeElement instanceof HTMLElement) {
-      const y = window.scrollY
       document.activeElement.blur()
-      if (window.scrollY !== y) window.scrollTo({ top: y, behavior: 'instant' as ScrollBehavior })
     }
-
-    /* For non-hash navigation, ensure we're at the top before reading scrollY.
-       Hash navigation (in-page jumps) intentionally preserves scroll position. */
-    if (!hash) {
-      window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior })
-    }
-
-    /* Read scroll after any programmatic scroll has settled. */
+    // Re-read after browser has restored scroll position
     queueMicrotask(() => {
       setScrolled(window.scrollY > 8)
     })
