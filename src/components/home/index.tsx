@@ -59,7 +59,7 @@ const TYPE_MS = 34
 const TYPE_DELAY = 0
 
 /** How long each slide holds. Every slide gets the same dwell time. */
-const SLIDE_MS = 6000
+const SLIDE_MS = 3000
 
 /**
  * Cursor-driven drift for the shoutout slides, in px at the extreme edges of the
@@ -360,16 +360,11 @@ export function Hero() {
 
         <div className="absolute inset-0 bg-grid opacity-50" />
 
-        {/* The scrim ramps from a light wash to the full legibility scrim over 1.5s,
-            slightly behind the copy, so the type arrives onto a background that
-            is still settling rather than snapping onto a finished one. */}
-        <div
-          className={cx(
-            'absolute inset-0 transition-opacity duration-[1500ms] delay-100',
-            'ease-[cubic-bezier(0.33,0,0.15,1)] motion-reduce:transition-none',
-            restReady ? 'opacity-100' : 'opacity-[0.5]',
-          )}
-        >
+        {/* At full strength from the first frame. It used to ramp up from a half wash
+            once the headline finished typing, but the headline now starts
+            immediately - so the copy spent its first second typing onto a
+            low-contrast background and the darkening only caught up afterwards. */}
+        <div className="absolute inset-0">
           <div className="hero-scrim absolute inset-0" />
           <div className="hero-scrim-side absolute inset-y-0 left-0 w-full lg:w-[68%]" />
         </div>

@@ -142,7 +142,7 @@ function LeagueMenu() {
             open ? 'translate-y-0 opacity-100' : '-translate-y-2 opacity-0',
           )}
         >
-          <div className="border-b border-[var(--border)] bg-gradient-to-r from-[var(--accent-tint)] to-transparent px-5 py-4">
+          <div className="border-b border-[var(--border)] bg-[var(--surface-2)] px-5 py-4">
             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--accent-text)]">
               {SITE.season}
             </p>
@@ -295,13 +295,18 @@ export function Header() {
           `backdrop-filter` and `background-color` cannot be transitioned
           smoothly - animating them directly either snaps or does nothing - so
           the bar cross-fades a separate overlay instead. The header box itself
-          carries no background, which is what leaves it bare at the top. */}
+          carries no background, which is what leaves it bare at the top.
+
+          Long and eased both ways. The previous 450ms expo curve accelerated
+          hard out of the gate, which read as a flick rather than a fade; a
+          symmetric ease-in-out over a longer duration gives the bar time to
+          arrive without drawing attention to the transition itself. */}
       <div
         aria-hidden
         data-frosted={frosted ? '' : undefined}
         className={cx(
-          'glass pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-[450ms]',
-          'ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none',
+          'glass pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-[700ms]',
+          'ease-[cubic-bezier(0.45,0,0.55,1)] motion-reduce:transition-none',
           'data-[frosted]:opacity-100',
         )}
       />
