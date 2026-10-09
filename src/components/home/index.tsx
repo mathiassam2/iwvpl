@@ -67,12 +67,22 @@ const TYPE_DELAY = 220
 
 const SLIDE_MS = 7200
 /**
- * How long the poster holds on its own before the layout arrives: half of the
- * slide, so the picture gets a real opening beat instead of a flash. The
- * autoplay interval is deliberately NOT restarted after the poster settles, so
+ * How long the poster holds on its own before the layout arrives. Short enough
+ * that the headline animation starts promptly, long enough that the picture
+ * registers as an opening beat: 550ms read as a flash, half the slide (3600ms)
+ * as a stall. The autoplay interval is deliberately NOT restarted afterwards, so
  * the full slide time still elapses before the next change.
  */
-const POSTER_MS = SLIDE_MS / 2
+const POSTER_MS = 1400
+
+/**
+ * Cursor-driven drift for the shoutout slides, in px at the extreme edges of the
+ * pointer's travel. Enough to notice, not enough to read as a pan.
+ */
+const DRIFT_X = 16
+const DRIFT_Y = 12
+/** Per-frame easing toward the pointer target - the ramp up and down. */
+const DRIFT_EASE = 0.055
 
 /* ------------------------------------------------------------------ typing */
 
@@ -163,6 +173,39 @@ export function Hero() {
   const [intro, setIntro] = useState(true)
   const regionRef = useRef<HTMLElement>(null)
   const copyRef = useRef<HTMLDivElement>(null)
+  const stageRef = useRef<HTMLDivElement>(null)
+
+  /* Pointer-following drift for the shoutout slides.
+   *
+   * The target is written straight to a CSS variable on the stage element, and a
+   * rAF loop eases the live value toward it. Doing the easing in a loop rather
+   * than a CSS transition matters: the target updates continuously as the cursor
+   * moves, and a transition on every change would restart and lag behind. The
+   * easing factor is what produces the ramp up and the ramp back down.
+   *
+   * Live values are kept in refs, not state, so pointer movement never triggers a
+   * React render - the transform is applied by writing to the DOM node directly.
+   */
+  const driftTarget = useRef({ x: 0, y: 0 })
+  const driftCurrent = useRef({ x: 0, y: 0 })
+
+  /** Pointer position as -1..1 from the centre of the hero. */
+  const onPointerMove = (e: React.PointerEvent<HTMLElement>) => {
+    if (reduced) return
+    const el = regionRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    if (!rect.width || !rect.height) return
+    driftTarget.current = {
+      x: ((e.clientX - rect.left) / rect.width - 0.5) * 2,
+      y: ((e.clientY - rect.top) / rect.height - 0.5) * 2,
+    }
+  }
+
+  /** Leaving the hero eases back to centre rather than snapping. */
+  const onPointerLeave = () => {
+    driftTarget.current = { x: 0, y: 0 }
+  }
 
   const count = HERO_SLIDES.length
   const go = useCallback(
@@ -200,6 +243,28 @@ export function Hero() {
     const id = window.setInterval(() => go(index + 1), SLIDE_MS)
     return () => window.clearInterval(id)
   }, [reduced, index, count, go])
+
+  // Pointer drift. Declared after `reduced` so it can read it. Live values stay
+  // in refs and the transform is written to a CSS variable each frame, so cursor
+  // movement never triggers a React render.
+  useEffect(() => {
+    if (reduced) return
+    const stage = stageRef.current
+    if (!stage) return
+
+    let frame = 0
+    const tick = () => {
+      const cur = driftCurrent.current
+      const tgt = driftTarget.current
+      cur.x += (tgt.x - cur.x) * DRIFT_EASE
+      cur.y += (tgt.y - cur.y) * DRIFT_EASE
+      stage.style.setProperty('--drift-x', `${(cur.x * DRIFT_X).toFixed(2)}px`)
+      stage.style.setProperty('--drift-y', `${(cur.y * DRIFT_Y).toFixed(2)}px`)
+      frame = window.requestAnimationFrame(tick)
+    }
+    frame = window.requestAnimationFrame(tick)
+    return () => window.cancelAnimationFrame(frame)
+  }, [reduced])
 
   const slide = HERO_SLIDES[index]
   /** Slide 1 holds on its own art until this flips. */
@@ -249,23 +314,23 @@ export function Hero() {
       aria-label="IWVPL featured"
       tabIndex={-1}
       onKeyDown={onKeyDown}
-      // The hero must be EXACTLY the space left below the header, never taller:
-      // the dot strip and slide badge are pinned to the section's bottom edge, so
-      // any overflow pushes them below the fold. `min-height` let the content
-      // dictate a taller box (the leaders card plus the stats row made it 1211px
-      // in a 700px window). A fixed height plus internal `min-h-0` flex children
-      // lets the copy shrink instead of the box growing.
-      //
-      // No top padding here: AppShell's `<main>` already reserves the fixed
-      // header's height (pt-16 / lg:pt-[72px]) for every route. Padding it again
-      // pushed the hero 64px down while its own height stayed a full viewport
-      // minus the header, so the bottom edge - and the controls - still fell
-      // below the fold by exactly that much.
-      className="relative isolate flex h-[calc(100svh-4rem)] flex-col overflow-hidden focus:outline-none lg:h-[calc(100svh-4.5rem)]"
+      onPointerMove={onPointerMove}
+      onPointerLeave={onPointerLeave}
+      // Pulled up under the fixed header with a negative margin that cancels
+      // AppShell's `<main>` top padding, then given that same space back as its
+      // own padding. The hero therefore starts at y=0 and spans a full viewport,
+      // so the artwork runs *behind* the header - which is the whole point of a
+      // bare header at rest. Without the pull-up the hero began below the bar,
+      // leaving the bar looking at a flat page background, i.e. solid.
+      className="relative isolate -mt-16 flex min-h-[100svh] flex-col overflow-hidden pt-16 focus:outline-none lg:-mt-[72px] lg:h-[100svh] lg:min-h-0 lg:pt-[72px]"
     >
       {/* ---------- imagery ---------- */}
       <div aria-hidden className="absolute inset-0 -z-10">
-        <div data-parallax="0.1" className="parallax-layer absolute inset-0">
+        <div
+          ref={stageRef}
+          data-parallax="0.1"
+          className="parallax-layer hero-stage absolute inset-0"
+        >
           <div className="absolute inset-0">
             {HERO_SLIDES.map((s, i) => {
               const active = i === index
@@ -288,11 +353,10 @@ export function Hero() {
                       alt=""
                       className={cx(
                         'absolute inset-0 h-full w-full object-cover object-center',
-                        // Slide 1 is deliberately static: no Ken Burns, and the
-                        // object-fit never changes between the opening beat and
-                        // the layout. Switching contain -> cover made the whole
-                        // picture jump scale the instant the copy arrived.
-                        i !== 0 && active && 'hero-kenburns',
+                        // Slide 1 is deliberately static: it is the opening
+                        // poster, so it must not drift. Only the shoutouts track
+                        // the cursor.
+                        i !== 0 && 'hero-drift',
                       )}
                       {...({ fetchpriority: i === 0 ? 'high' : 'low' } as Record<string, string>)}
                       loading={i === 0 ? 'eager' : 'lazy'}
@@ -301,14 +365,16 @@ export function Hero() {
                   </div>
 
                   {/* Mobile uses the SAME artwork and the SAME fit as desktop,
-                      so nothing resizes when the layout settles in. */}
+                      so nothing resizes when the layout settles in. Touch
+                      devices have no cursor to follow, so the drift simply never
+                      receives a target and stays put. */}
                   <div className="absolute inset-0 lg:hidden">
                     <img
                       src={s.src}
                       alt=""
                       className={cx(
                         'absolute inset-0 h-full w-full object-cover object-center',
-                        i !== 0 && active && 'hero-kenburns',
+                        i !== 0 && 'hero-drift',
                       )}
                       loading={i === 0 ? 'eager' : 'lazy'}
                       decoding="async"
@@ -382,10 +448,15 @@ export function Hero() {
         size="wide"
         ref={copyRef}
         className={cx(
-          // `min-h-0 flex-1` lets this column absorb the leftover height instead
-          // of pushing the section taller; `pb` leaves room for the dot strip,
-          // which sits in normal flow below rather than absolutely positioned.
-          'relative flex min-h-0 flex-1 items-center pb-4 pt-6 transition-opacity duration-700 lg:pb-6 lg:pt-8',
+          // Phones: natural height, no `flex-1`/`min-h-0`, so the copy and the
+          // leaders card stack at their full size and the section grows to hold
+          // them. Constraining this column is what clipped the card mid-table and
+          // pushed the headline out of view on mobile - `overflow-hidden` on the
+          // section then cut whatever did not fit.
+          //
+          // Desktop: `flex-1 min-h-0` absorbs the leftover viewport height so the
+          // dot strip stays pinned inside the fold.
+          'relative flex items-center pb-4 pt-6 transition-opacity duration-700 lg:min-h-0 lg:flex-1 lg:pb-6 lg:pt-8',
           showLayout ? 'opacity-100' : 'pointer-events-none opacity-0',
         )}
       >

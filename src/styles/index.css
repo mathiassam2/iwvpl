@@ -526,15 +526,18 @@
    sweeps. Entirely transform/opacity, so it stays on the
    compositor and never triggers layout.
    ============================================================ */
-@keyframes kenburns {
-  0%   { transform: scale(1.04) translate3d(0, 0, 0); }
-  100% { transform: scale(1.18) translate3d(-1.4%, -1.6%, 0); }
-}
+/* Cursor-following drift for the shoutout slides.
+   `--drift-x` / `--drift-y` are written to the stage element every frame by a
+   rAF loop that eases toward the pointer's position, so the motion ramps up as
+   the cursor moves and eases back as it leaves. The transform lives here rather
+   than in JS because CSS reads the variable once per frame instead of forcing a
+   style recalculation per slide.
 
-.hero-kenburns {
-  animation: kenburns 26s ease-out forwards;
+   Scaled slightly past 1 so the offset never exposes an edge, and deliberately
+   no zoom animation - the movement is positional only. */
+.hero-drift {
+  transform: translate3d(var(--drift-x, 0px), var(--drift-y, 0px), 0) scale(1.06);
   will-change: transform;
-  transform-origin: 62% 40%;
 }
 
 @keyframes sweep {
@@ -585,27 +588,24 @@
   animation-fill-mode: both;
 }
 
-/* The hero is exactly one viewport tall (see the section's own comment), so on
-   short laptop screens the supporting blocks have to step down rather than push
-   the carousel controls below the fold. Driven by viewport height, not width:
-   a wide-but-short window hits these too. Two tiers - the leaders card goes
-   first because it is the largest single block, then the stat row. */
-@media (max-height: 780px) {
+/* On desktop the hero is exactly one viewport tall (see the section's own
+   comment), so on short laptop screens the supporting blocks step down rather
+   than push the carousel controls below the fold. Two tiers - the leaders card
+   goes first because it is the largest single block, then the stat row.
+
+   Gated on min-width as well as max-height: these are short-and-wide laptop
+   windows. A phone in portrait is also under 780px tall, and applying the same
+   rules there hid the leaders card entirely - the whole table the visitor
+   scrolled to see. Phones now scroll the hero instead (the section is
+   min-height, not height, below lg). */
+@media (min-width: 1024px) and (max-height: 780px) {
   .hero-leaders { display: none; }
   .hero-stats   { margin-top: 1.75rem; padding-top: 1.25rem; }
+  .hero-title   { font-size: 2.25rem; }
 }
 
-@media (max-height: 620px) {
+@media (min-width: 1024px) and (max-height: 620px) {
   .hero-stats { display: none; }
-}
-
-/* Below this the two-column grid has no room to breathe; the leaders card is
-   already hidden, so the copy column gets the full width. */
-@media (max-height: 780px) {
-  .hero-title { font-size: 2.25rem; }
-}
-
-@media (max-height: 620px) {
   .hero-title { font-size: 1.9rem; }
 }
 
@@ -621,14 +621,17 @@
 
 @media (prefers-reduced-motion: reduce) {
   .cart-badge { animation: none; }
-  .hero-kenburns,
   .hero-sweep,
   .hero-glow-a,
   .hero-glow-b,
   .hero-conic {
     animation: none !important;
   }
-  .hero-kenburns { transform: scale(1.06); }
+  /* Park the drift at centre, still scaled so no edge is exposed. The rAF loop
+     is not started at all under reduced motion, so the variable never moves. */
+  .hero-drift {
+    transform: translate3d(0, 0, 0) scale(1.06) !important;
+  }
   /* Fill the progress track outright rather than animating it. */
   .hero-dot-fill {
     animation: none !important;
