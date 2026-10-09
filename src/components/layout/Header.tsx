@@ -242,6 +242,29 @@ export function Header() {
 
   useEffect(() => {
     setMobileOpen(false)
+    /* Hover and focus are sticky across navigation: clicking a nav link leaves
+       focus on it, and the pointer is still sitting over the bar. Both kept the
+       header frosted at the top of a freshly loaded page, so it never returned to
+       transparent. Clear both on route change - `preventScroll` so blurring a
+       focused link cannot itself scroll the page. The blur fires the header's
+       own onBlur, which is harmless now that the state is already reset. */
+    setHovered(false)
+    setFocusWithin(false)
+    if (document.activeElement instanceof HTMLElement) {
+      /* `blur({ preventScroll })` is not in this project's DOM typings, and a
+         plain blur() can scroll the focused element into view. Record the
+         position and put it straight back. */
+      const y = window.scrollY
+      document.activeElement.blur()
+      if (window.scrollY !== y) window.scrollTo({ top: y, behavior: 'instant' as ScrollBehavior })
+    }
+  }, [pathname])
+
+  /* Navigating back to a page restores the previous scroll position, which can
+     land us past the threshold with no scroll event having fired. Re-read on
+     every route change so the bar starts in the right state. */
+  useEffect(() => {
+    setScrolled(window.scrollY > 8)
   }, [pathname])
 
   useEffect(() => {

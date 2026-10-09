@@ -1,5 +1,6 @@
 import {
   forwardRef,
+  useCallback,
   useEffect,
   useId,
   useLayoutEffect,
@@ -514,7 +515,35 @@ export function Select({
   const autoId = useId()
   const triggerId = id ?? autoId
 
+  /* Viewport-relative geometry of the trigger, re-measured while the menu is
+     open. A fixed-position panel cannot track its trigger on its own, so any
+     scroll or resize between opening and picking an option used to leave the
+     menu visually detached from the control. */
+  const [box, setBox] = useState({ top: 0, left: 0, width: 0 })
+
   const selected = options.find((o) => o.value === value)
+
+  const measure = useCallback(() => {
+    const el = document.getElementById(triggerId)
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    setBox((prev) =>
+      prev.top === r.bottom + 6 && prev.left === r.left && prev.width === r.width
+        ? prev
+        : { top: r.bottom + 6, left: r.left, width: r.width },
+    )
+  }, [triggerId])
+
+  useLayoutEffect(() => {
+    if (!open) return
+    measure()
+    window.addEventListener('scroll', measure, { passive: true, capture: true })
+    window.addEventListener('resize', measure)
+    return () => {
+      window.removeEventListener('scroll', measure, { capture: true })
+      window.removeEventListener('resize', measure)
+    }
+  }, [open, measure])
 
   useEffect(() => {
     if (!open) return
@@ -633,9 +662,13 @@ export function Select({
             tabIndex={-1}
             style={{
               position: 'fixed',
-              top: rectTop(triggerId),
-              left: rectLeft(triggerId),
-              width: rectWidth(triggerId),
+              /* Position comes from state, not a one-off measurement. The panel
+                 is `position: fixed`, so its coordinates are viewport-relative:
+                 measuring once at open left it pinned in place while the page
+                 scrolled, detaching it from the trigger. */
+              top: box.top,
+              left: box.left,
+              width: box.width,
               maxHeight: 320,
             }}
             data-overflowing={overflowing || undefined}
@@ -686,19 +719,3 @@ export function Select({
   )
 }
 
-function triggerBox(id: string) {
-  const el = document.getElementById(id)
-  if (!el) return { top: 0, left: 0, width: 240, bottom: 0 }
-  const r = el.getBoundingClientRect()
-  return { top: r.top, left: r.left, width: r.width, bottom: r.bottom }
-}
-function rectTop(id: string) {
-  const r = triggerBox(id)
-  return r.top + r.bottom - r.top + 6
-}
-function rectLeft(id: string) {
-  return triggerBox(id).left
-}
-function rectWidth(id: string) {
-  return triggerBox(id).width
-}
