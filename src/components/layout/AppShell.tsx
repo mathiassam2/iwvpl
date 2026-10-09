@@ -1,18 +1,7 @@
 import type { ReactNode } from 'react'
-import { useEffect } from 'react'
-import { Outlet, useLocation } from 'react-router-dom'
+import { Outlet } from 'react-router-dom'
 import { Header } from './Header'
 import { Footer } from './Footer'
-
-/** Resets scroll on every route change (but preserves in-page hash jumps). */
-function ScrollToTop() {
-  const { pathname, hash } = useLocation()
-  useEffect(() => {
-    if (hash) return
-    window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior })
-  }, [pathname, hash])
-  return null
-}
 
 export function AppShell({ children }: { children?: ReactNode }) {
   return (
@@ -24,7 +13,6 @@ export function AppShell({ children }: { children?: ReactNode }) {
         Skip to content
       </a>
 
-      <ScrollToTop />
       <Header />
 
       <main id="main" className="flex-1 pt-16 lg:pt-[72px]">

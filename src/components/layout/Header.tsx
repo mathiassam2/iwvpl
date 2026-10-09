@@ -231,46 +231,43 @@ export function Header() {
   const [scrolled, setScrolled] = useState(false)
   const [hovered, setHovered] = useState(false)
   const [focusWithin, setFocusWithin] = useState(false)
-  const { pathname } = useLocation()
+  const { pathname, hash } = useLocation()
 
   const frosted = scrolled || hovered || focusWithin
 
   /* Scroll listener only - no synchronous initial check. The initial state is
-     assumed transparent (scrollY = 0). The pathname effect below will read the
-     actual scroll position after ScrollToTop has run, and the listener will
-     handle all subsequent scroll events. */
+     assumed transparent (scrollY = 0). */
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8)
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
 
+  /* On route change (including hash changes), reset sticky state and ensure
+     scroll is at top for non-hash navigation. This replaces the sibling
+     ScrollToTop component's responsibility for the header's needs, so the
+     header never reads a stale scroll position. */
   useEffect(() => {
     setMobileOpen(false)
-    /* Hover and focus are sticky across navigation: clicking a nav link leaves
-       focus on it, and the pointer is still sitting over the bar. Both kept the
-       header frosted at the top of a freshly loaded page, so it never returned to
-       transparent. Clear both on route change - `preventScroll` so blurring a
-       focused link cannot itself scroll the page. The blur fires the header's
-       own onBlur, which is harmless now that the state is already reset. */
     setHovered(false)
     setFocusWithin(false)
     if (document.activeElement instanceof HTMLElement) {
-      /* `blur({ preventScroll })` is not in this project's DOM typings, and a
-         plain blur() can scroll the focused element into view. Record the
-         position and put it straight back. */
       const y = window.scrollY
       document.activeElement.blur()
       if (window.scrollY !== y) window.scrollTo({ top: y, behavior: 'instant' as ScrollBehavior })
     }
 
-    /* Defer the scroll check to the next microtask so ScrollToTop (a sibling
-       component) has time to run and reset scroll to 0. Without this, the check
-       reads the previous page's scroll position and flashes frosted. */
+    /* For non-hash navigation, ensure we're at the top before reading scrollY.
+       Hash navigation (in-page jumps) intentionally preserves scroll position. */
+    if (!hash) {
+      window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior })
+    }
+
+    /* Read scroll after any programmatic scroll has settled. */
     queueMicrotask(() => {
       setScrolled(window.scrollY > 8)
     })
-  }, [pathname])
+  }, [pathname, hash])
 
   useEffect(() => {
     document.body.style.overflow = mobileOpen ? 'hidden' : ''
