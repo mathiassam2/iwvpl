@@ -66,8 +66,13 @@ const TYPE_MS = 34
 const TYPE_DELAY = 220
 
 const SLIDE_MS = 7200
-/** How long the opening picture holds on its own before the layout arrives. */
-const POSTER_MS = 550
+/**
+ * How long the poster holds on its own before the layout arrives: half of the
+ * slide, so the picture gets a real opening beat instead of a flash. The
+ * autoplay interval is deliberately NOT restarted after the poster settles, so
+ * the full slide time still elapses before the next change.
+ */
+const POSTER_MS = SLIDE_MS / 2
 
 /* ------------------------------------------------------------------ typing */
 

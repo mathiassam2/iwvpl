@@ -222,7 +222,23 @@ export function Header() {
   // Open by default: the drawer is mostly league links, so hiding them behind
   // another toggle just added a tap.
   const [mobileLeague, setMobileLeague] = useState(true)
+  /* The bar is bare at the top of the page so the hero artwork runs under it,
+     then frosts in once the content scrolls beneath. Hovering or tab-focusing
+     it also frosts it, so a pointer resting at the top of the page still gets
+     the treatment rather than sitting on unreadable artwork. */
+  const [scrolled, setScrolled] = useState(false)
+  const [hovered, setHovered] = useState(false)
+  const [focusWithin, setFocusWithin] = useState(false)
   const { pathname } = useLocation()
+
+  const frosted = scrolled || hovered || focusWithin
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8)
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
 
   useEffect(() => {
     setMobileOpen(false)
@@ -237,19 +253,37 @@ export function Header() {
 
   return (
     // Fixed height at every breakpoint and scroll position - only the surface
-    // treatment changes on scroll, never the metrics, so nothing "resizes".
+    // treatment changes, never the metrics, so nothing "resizes".
     <header
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onFocus={() => setFocusWithin(true)}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) setFocusWithin(false)
+      }}
       className={cx(
         'fixed inset-x-0 top-0 z-50 h-16 lg:h-[72px]',
-        // Glass is the default surface, at every scroll position. It used to be
-        // gated on `scrolled`, which meant a solid transparent bar at the top of
-        // the page and a different-looking bar after the first 12px - the effect
-        // appeared to "come and go" while scrolling. Only the mobile drawer's
-        // opaque backdrop still overrides it, since it has to hide the page.
-        mobileOpen ? 'border-b border-[var(--border)] bg-[var(--bg-raised)]' : 'glass',
+        // The drawer needs a solid bar plus a seam: both scrim and sheet start
+        // below the header, so nothing behind them should show through.
+        mobileOpen && 'border-b border-[var(--border)] bg-[var(--bg-raised)]',
       )}
     >
-      <div className="mx-auto flex h-full w-full max-w-[110rem] items-center justify-between gap-4 px-5 sm:px-6 lg:px-8">
+      {/* The frost lives on its own layer so it can fade as opacity.
+          `backdrop-filter` and `background-color` cannot be transitioned
+          smoothly - animating them directly either snaps or does nothing - so
+          the bar cross-fades a separate overlay instead. The header box itself
+          carries no background, which is what leaves it bare at the top. */}
+      <div
+        aria-hidden
+        data-frosted={frosted ? '' : undefined}
+        className={cx(
+          'glass pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-[450ms]',
+          'ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none',
+          'data-[frosted]:opacity-100',
+        )}
+      />
+
+      <div className="relative mx-auto flex h-full w-full max-w-[110rem] items-center justify-between gap-4 px-5 sm:px-6 lg:px-8">
         <Logo />
 
         {/* ---------- desktop nav ---------- */}
