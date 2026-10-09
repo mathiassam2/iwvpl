@@ -55,7 +55,8 @@ const HEADLINE = [
 
 const HEADLINE_CHARS = HEADLINE.reduce((n, s) => n + s.text.length, 0)
 const TYPE_MS = 34
-const TYPE_DELAY = 220
+/** No pre-roll delay: the headline starts typing on the first frame. */
+const TYPE_DELAY = 0
 
 /** How long each slide holds. Every slide gets the same dwell time. */
 const SLIDE_MS = 6000
@@ -385,9 +386,8 @@ export function Hero() {
       </div>
 
       {/* ---------- content ----------
-          Always mounted. While slide 1 fills the viewport the copy is faded out
-          and inert, so it still reserves exactly the same space and the block
-          cannot jump as the frame animates down. */}
+          Visible from the first frame. The headline types itself out over it
+          rather than being hidden until it is finished. */}
       <Container
         size="wide"
         ref={copyRef}
@@ -400,10 +400,7 @@ export function Hero() {
           //
           // Desktop: `flex-1 min-h-0` absorbs the leftover viewport height so the
           // dot strip stays pinned inside the fold.
-          'relative flex items-center pb-4 pt-6 transition-opacity duration-700 lg:min-h-0 lg:flex-1 lg:pb-6 lg:pt-8',
-          // Fades in with the headline. There is no poster phase to hide it
-          // behind any more, so it is simply hidden until there is type to show.
-          typed ? 'opacity-100' : 'pointer-events-none opacity-0',
+          'relative flex items-center pb-4 pt-6 lg:min-h-0 lg:flex-1 lg:pb-6 lg:pt-8',
         )}
       >
         <div className="grid w-full items-center gap-12 lg:grid-cols-[1.05fr_0.95fr] lg:gap-16">
