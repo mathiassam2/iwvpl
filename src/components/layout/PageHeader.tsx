@@ -13,7 +13,12 @@ export function PageHeader({
   children?: ReactNode
 }) {
   return (
-    <section className="relative overflow-hidden border-b border-[var(--border)]">
+    /* Pulled behind the fixed header the same way the home page's hero is
+       (`-mt-16`/`lg:-mt-[72px]`), with the same space handed back as padding so
+       the content still clears it. Without this, non-home pages started below
+       the header on a flat page background, so a correctly-transparent bar
+       looked like a solid strip instead of a pane over content. */
+    <section className="relative -mt-16 overflow-hidden border-b border-[var(--border)] pt-16 lg:-mt-[72px] lg:pt-[72px]">
       {/* parallax ambient wash — the layer drifts slower than the page */}
       <div
         aria-hidden
@@ -25,7 +30,7 @@ export function PageHeader({
         data-parallax="0.34"
         className="parallax-layer pointer-events-none absolute inset-0 bg-radial-volt"
       />
-      <Container size="wide" className="relative py-14 sm:py-16 lg:py-20">
+      <Container size="wide" className="relative pb-14 sm:pb-16 lg:pb-20 pt-4">
         <div className="max-w-3xl">
           <Eyebrow className="mb-5">{eyebrow}</Eyebrow>
           <h1 className="text-4xl font-extrabold sm:text-5xl lg:text-[3.5rem]">{title}</h1>
