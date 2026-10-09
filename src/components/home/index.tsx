@@ -15,42 +15,34 @@ import { FormGuide, LeaderboardTable, MatchRow, StatTile, StandingsTable } from 
 import { SITE, siteData } from '@/data'
 import { asset } from '@/lib/assets'
 import { CLUB_PLACEHOLDER, cx, stripFlag, totalGoals } from '@/lib/format'
-import { setInert } from '@/lib/inert'
+
 
 /* ==================================================================== HERO */
 
 /**
- * The four campaign slides the original site rotates through, in its own order.
+ * The hero carousel slides, in rotation order.
  *
- * Only slide 1 gets the opening beat: it is the campaign key art with a
- * headline baked in, so it fills the viewport on its own for a moment, then the
- * working layout settles in over it and the headline types itself out. Slides
- * 2-4 are player shoutouts and show the layout immediately, unchanged.
+ * All three are treated identically: same dwell time, all drift with the cursor,
+ * all show the layout from the first paint. The former campaign key art
+ * (slide-1) and its "poster" opening beat were removed - the poster logic meant
+ * slide 1 behaved differently from the rest, which is not worth the extra state
+ * now that there is no key art to hold on its own.
  */
 const HERO_SLIDES = [
   {
-    src: asset('/assets/hero/slide-1.webp'),
-    alt: 'IWVPL Season 1 campaign — Let the Games Begin, with the league trophy',
-    poster: true,
-    label: 'Season 1 is live',
+    src: asset('/assets/hero/sg-hero.webp'),
+    alt: 'IWVPL hero artwork — Singapore',
+    label: 'Singapore',
   },
   {
-    src: asset('/assets/hero/slide-2.webp'),
-    alt: 'Community shoutout artwork for Osman',
-    poster: false,
-    label: 'Community shoutout · Osman',
+    src: asset('/assets/hero/in-hero.webp'),
+    alt: 'IWVPL hero artwork — Indonesia',
+    label: 'Indonesia',
   },
   {
-    src: asset('/assets/hero/slide-3.webp'),
-    alt: 'Community shoutout artwork for Prabowo',
-    poster: false,
-    label: 'Community shoutout · Prabowo',
-  },
-  {
-    src: asset('/assets/hero/slide-4.webp'),
-    alt: 'Community shoutout artwork for Ainnn',
-    poster: false,
-    label: 'Community shoutout · Ainnn',
+    src: asset('/assets/hero/my-hero.webp'),
+    alt: 'IWVPL hero artwork — Malaysia',
+    label: 'Malaysia',
   },
 ] as const
 
@@ -65,15 +57,8 @@ const HEADLINE_CHARS = HEADLINE.reduce((n, s) => n + s.text.length, 0)
 const TYPE_MS = 34
 const TYPE_DELAY = 220
 
-const SLIDE_MS = 7200
-/**
- * How long the poster holds on its own before the layout arrives. Short enough
- * that the headline animation starts promptly, long enough that the picture
- * registers as an opening beat: 550ms read as a flash, half the slide (3600ms)
- * as a stall. The autoplay interval is deliberately NOT restarted afterwards, so
- * the full slide time still elapses before the next change.
- */
-const POSTER_MS = 1400
+/** How long each slide holds. Every slide gets the same dwell time. */
+const SLIDE_MS = 6000
 
 /**
  * Cursor-driven drift for the shoutout slides, in px at the extreme edges of the
@@ -166,11 +151,6 @@ export function Hero() {
   const top = siteData.standings[0]
 
   const [index, setIndex] = useState(0)
-  const [settled, setSettled] = useState(false)
-  /* The picture-only opening runs ONCE, on the first load. Looping back to
-     slide 1, or clicking its dot, goes straight to the layout - the visitor
-     has already seen the opening. Never reset. */
-  const [intro, setIntro] = useState(true)
   const regionRef = useRef<HTMLElement>(null)
   const copyRef = useRef<HTMLDivElement>(null)
   const stageRef = useRef<HTMLDivElement>(null)
@@ -211,30 +191,17 @@ export function Hero() {
   const go = useCallback(
     (next: number) => {
       setIndex(((next % count) + count) % count)
-      setSettled(false)
     },
     [count],
   )
-  // `go` deliberately leaves `intro` alone - see the comment on the state.
 
   const reduced =
     typeof window !== 'undefined' &&
     window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
-  // Opening beat -> layout. Only the very first slide-1 view holds; every
-  // later arrival - autoplay loop or a dot click - shows the layout straight
-  // away.
-  useEffect(() => {
-    if (reduced || !intro || !HERO_SLIDES[index].poster) {
-      setSettled(true)
-      return
-    }
-    const id = window.setTimeout(() => {
-      setSettled(true)
-      setIntro(false)
-    }, POSTER_MS)
-    return () => window.clearTimeout(id)
-  }, [index, reduced, intro])
+  /* The headline types itself out once, on the first paint, then stays put for
+     the life of the carousel. */
+  const [typed, setTyped] = useState(false)
 
   // Autoplay. Deliberately NOT paused on hover or focus - a visitor reading
   // the copy should not have the slide change mid-sentence.
@@ -268,27 +235,16 @@ export function Hero() {
 
   const slide = HERO_SLIDES[index]
   /** Slide 1 holds on its own art until this flips. */
-  /**
-   * The picture-only beat. Gated on `intro` so it can only ever run on the
-   * first load: without that, arriving back at slide 1 (autoplay loop or a
-   * dot click) flipped showLayout false and straight back to true, which
-   * restarted the typewriter on every visit.
-   */
-  const fullBleed = intro && slide.poster && !settled
-  const showLayout = !fullBleed
-
-  // Typing runs when the layout appears. It never re-runs on a slide change,
-  // so slides 2-4 arrive with everything already in place. Reduced-motion
-  // visitors get the finished headline immediately.
-  const chars = useTypewriter(showLayout && !reduced, HEADLINE_CHARS, reduced)
+  // Runs on the first paint only; `typed` latches so a slide change can never
+  // restart it. Reduced-motion visitors get the finished headline immediately.
+  const chars = useTypewriter(!typed && !reduced, HEADLINE_CHARS, reduced)
   const typing = chars < HEADLINE_CHARS
   /** Supporting copy arrives once the headline has finished typing. */
   const restReady = chars >= HEADLINE_CHARS
 
-  // `inert` must be set imperatively: React 18 drops it as a prop.
   useEffect(() => {
-    setInert(copyRef.current, !showLayout)
-  }, [showLayout])
+    if (restReady) setTyped(true)
+  }, [restReady])
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowRight') {
@@ -334,13 +290,11 @@ export function Hero() {
           <div className="absolute inset-0">
             {HERO_SLIDES.map((s, i) => {
               const active = i === index
-              const poster = active && fullBleed
               return (
                 <div
                   key={s.src}
                   data-slide={i}
                   aria-hidden
-                  data-mode={poster ? 'poster' : 'layout'}
                   className={cx(
                     'absolute inset-0 transition-opacity duration-[1800ms]',
                     'ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none',
@@ -351,31 +305,22 @@ export function Hero() {
                     <img
                       src={s.src}
                       alt=""
-                      className={cx(
-                        'absolute inset-0 h-full w-full object-cover object-center',
-                        // Slide 1 is deliberately static: it is the opening
-                        // poster, so it must not drift. Only the shoutouts track
-                        // the cursor.
-                        i !== 0 && 'hero-drift',
-                      )}
+                      className="hero-drift absolute inset-0 h-full w-full object-cover object-center"
                       {...({ fetchpriority: i === 0 ? 'high' : 'low' } as Record<string, string>)}
                       loading={i === 0 ? 'eager' : 'lazy'}
                       decoding="async"
                     />
                   </div>
 
-                  {/* Mobile uses the SAME artwork and the SAME fit as desktop,
-                      so nothing resizes when the layout settles in. Touch
-                      devices have no cursor to follow, so the drift simply never
-                      receives a target and stays put. */}
+                  {/* Mobile uses the SAME artwork and the SAME fit as desktop, so nothing
+                      resizes between the two. Touch devices have no cursor to
+                      follow, so the drift simply never receives a target and
+                      stays put. */}
                   <div className="absolute inset-0 lg:hidden">
                     <img
                       src={s.src}
                       alt=""
-                      className={cx(
-                        'absolute inset-0 h-full w-full object-cover object-center',
-                        i !== 0 && 'hero-drift',
-                      )}
+                      className="hero-drift absolute inset-0 h-full w-full object-cover object-center"
                       loading={i === 0 ? 'eager' : 'lazy'}
                       decoding="async"
                     />
@@ -414,15 +359,14 @@ export function Hero() {
 
         <div className="absolute inset-0 bg-grid opacity-50" />
 
-        {/* The scrim ramps from a light wash to the full legibility scrim over
-            1.5s, slightly behind the copy. With the picture no longer resizing
-            this is the only thing that moves, so it has to read as a deliberate
-            fade rather than a step. */}
+        {/* The scrim ramps from a light wash to the full legibility scrim over 1.5s,
+            slightly behind the copy, so the type arrives onto a background that
+            is still settling rather than snapping onto a finished one. */}
         <div
           className={cx(
             'absolute inset-0 transition-opacity duration-[1500ms] delay-100',
             'ease-[cubic-bezier(0.33,0,0.15,1)] motion-reduce:transition-none',
-            showLayout ? 'opacity-100' : 'opacity-[0.5]',
+            restReady ? 'opacity-100' : 'opacity-[0.5]',
           )}
         >
           <div className="hero-scrim absolute inset-0" />
@@ -457,7 +401,9 @@ export function Hero() {
           // Desktop: `flex-1 min-h-0` absorbs the leftover viewport height so the
           // dot strip stays pinned inside the fold.
           'relative flex items-center pb-4 pt-6 transition-opacity duration-700 lg:min-h-0 lg:flex-1 lg:pb-6 lg:pt-8',
-          showLayout ? 'opacity-100' : 'pointer-events-none opacity-0',
+          // Fades in with the headline. There is no poster phase to hide it
+          // behind any more, so it is simply hidden until there is type to show.
+          typed ? 'opacity-100' : 'pointer-events-none opacity-0',
         )}
       >
         <div className="grid w-full items-center gap-12 lg:grid-cols-[1.05fr_0.95fr] lg:gap-16">
