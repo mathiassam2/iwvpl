@@ -235,9 +235,12 @@ export function Header() {
 
   const frosted = scrolled || hovered || focusWithin
 
+  /* Scroll listener only - no synchronous initial check. The initial state is
+     assumed transparent (scrollY = 0). The pathname effect below will read the
+     actual scroll position after ScrollToTop has run, and the listener will
+     handle all subsequent scroll events. */
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8)
-    onScroll()
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
@@ -260,13 +263,13 @@ export function Header() {
       document.activeElement.blur()
       if (window.scrollY !== y) window.scrollTo({ top: y, behavior: 'instant' as ScrollBehavior })
     }
-  }, [pathname])
 
-  /* Navigating back to a page restores the previous scroll position, which can
-     land us past the threshold with no scroll event having fired. Re-read on
-     every route change so the bar starts in the right state. */
-  useEffect(() => {
-    setScrolled(window.scrollY > 8)
+    /* Defer the scroll check to the next microtask so ScrollToTop (a sibling
+       component) has time to run and reset scroll to 0. Without this, the check
+       reads the previous page's scroll position and flashes frosted. */
+    queueMicrotask(() => {
+      setScrolled(window.scrollY > 8)
+    })
   }, [pathname])
 
   useEffect(() => {
