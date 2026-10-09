@@ -72,8 +72,13 @@
   --border: #232830;
   --border-strong: #313742;
 
-  --glass-bg: rgb(10 11 13 / 0.75);
-  --glass-border: rgb(255 255 255 / 0.07);
+  /* The header sits directly over the hero artwork, which is the brightest
+     thing on the page. At 0.75 the standings card and hero copy stayed legible
+     through the bar, which read as a bug rather than as glass - the effect has
+     to survive a white face and lime text passing underneath it. Near-opaque,
+     with the blur doing the work of the transparency. */
+  --glass-bg: rgb(9 10 12 / 0.93);
+  --glass-border: rgb(255 255 255 / 0.08);
 
   --on-volt: #07080a;
   --on-gold: #1a1200;
@@ -141,8 +146,8 @@
   --border: #d5d9cb;
   --border-strong: #b8bfac;
 
-  --glass-bg: rgb(251 252 248 / 0.86);
-  --glass-border: rgb(20 24 18 / 0.09);
+  --glass-bg: rgb(250 251 247 / 0.94);
+  --glass-border: rgb(20 24 18 / 0.1);
 
   /* The vivid lime stays as the button fill, so the label switches to near-black
      for a ~17:1 contrast ratio instead of the 3.5:1 white-on-mid-green it had. */
@@ -272,8 +277,18 @@
 
   .glass {
     background: var(--glass-bg);
-    backdrop-filter: blur(18px) saturate(160%);
-    -webkit-backdrop-filter: blur(18px) saturate(160%);
+    /* Blur alone cannot hide high-contrast detail at this alpha - text stayed
+       readable. A thicker blur plus a slight brightness clamp takes the sharp
+       edges off whatever scrolls underneath while keeping the frosted read.
+
+       Order matters: the prefixed declaration has to come FIRST. Lightning CSS
+       treats `backdrop-filter` and `-webkit-backdrop-filter` as aliases of one
+       property and de-duplicates them, keeping whichever it saw last - so with
+       the prefixed version last the minifier emitted ONLY the prefix, which
+       Chromium then ignored. The blur was silently doing nothing, and the bar
+       looked "too transparent" because the flat alpha was the whole effect. */
+    -webkit-backdrop-filter: blur(28px) saturate(175%) brightness(0.94);
+    backdrop-filter: blur(28px) saturate(175%) brightness(0.94);
     border-bottom: 1px solid var(--glass-border);
   }
 
