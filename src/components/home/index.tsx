@@ -79,14 +79,25 @@ const POSTER_MS = 550
  * restart it (an earlier version keyed the copy on the slide index, which
  * remounted and made every element flash on each change).
  */
-function useTypewriter(active: boolean, total: number, speed = TYPE_MS, delay = TYPE_DELAY) {
-  const [chars, setChars] = useState(0)
+function useTypewriter(
+  active: boolean,
+  total: number,
+  instant: boolean,
+  speed = TYPE_MS,
+  delay = TYPE_DELAY,
+) {
+  // Reduced-motion visitors (and the very first paint, before typing starts)
+  // must see the finished headline straight away.
+  const [chars, setChars] = useState(() => (instant ? total : 0))
 
   useEffect(() => {
-    if (!active) {
-      setChars(total)
-      return
-    }
+    // While inactive, hold the current value. An earlier version snapped to
+    // `total` here, which meant the "copy has arrived" flag was true before
+    // typing began: the badge, paragraph, buttons and stats were briefly at
+    // full opacity, then dropped back to zero the moment the layout settled
+    // and the run started - the visible flash-then-fade on load.
+    if (!active) return
+
     setChars(0)
     let interval = 0
     const kick = window.setTimeout(() => {
@@ -111,7 +122,7 @@ function TypedHeadline({ chars, caret }: { chars: number; caret: boolean }) {
   let budget = chars
 
   return (
-    <h1 className="mt-7 text-[2.6rem] font-extrabold leading-[1.02] text-balance sm:text-6xl lg:text-[4.25rem]">
+    <h1 className="hero-title mt-7 text-[2.6rem] font-extrabold leading-[1.02] text-balance sm:text-6xl lg:text-[4.25rem]">
       {HEADLINE.map((seg) => {
         const take = Math.max(0, Math.min(seg.text.length, budget))
         budget -= seg.text.length
@@ -199,7 +210,7 @@ export function Hero() {
   // Typing runs when the layout appears. It never re-runs on a slide change,
   // so slides 2-4 arrive with everything already in place. Reduced-motion
   // visitors get the finished headline immediately.
-  const chars = useTypewriter(showLayout && !reduced, HEADLINE_CHARS)
+  const chars = useTypewriter(showLayout && !reduced, HEADLINE_CHARS, reduced)
   const typing = chars < HEADLINE_CHARS
   /** Supporting copy arrives once the headline has finished typing. */
   const restReady = chars >= HEADLINE_CHARS
@@ -233,14 +244,19 @@ export function Hero() {
       aria-label="IWVPL featured"
       tabIndex={-1}
       onKeyDown={onKeyDown}
-      // Every slide fills the viewport. `min-height` rather than a fixed height,
-      // so short windows still fit the layout even if the content is taller.
-      // The header is fixed, so a plain `100svh` section starts BELOW it and
-      // pushed the dot strip off-screen. Reserve the header's height as top
-      // padding and shrink the content box by the same amount, so
-      // header + (100svh - header) = exactly one viewport and the controls
-      // are visible without scrolling.
-      className="relative isolate min-h-[calc(100svh-4rem)] overflow-hidden pt-16 focus:outline-none lg:min-h-[calc(100svh-4.5rem)] lg:pt-[72px]"
+      // The hero must be EXACTLY the space left below the header, never taller:
+      // the dot strip and slide badge are pinned to the section's bottom edge, so
+      // any overflow pushes them below the fold. `min-height` let the content
+      // dictate a taller box (the leaders card plus the stats row made it 1211px
+      // in a 700px window). A fixed height plus internal `min-h-0` flex children
+      // lets the copy shrink instead of the box growing.
+      //
+      // No top padding here: AppShell's `<main>` already reserves the fixed
+      // header's height (pt-16 / lg:pt-[72px]) for every route. Padding it again
+      // pushed the hero 64px down while its own height stayed a full viewport
+      // minus the header, so the bottom edge - and the controls - still fell
+      // below the fold by exactly that much.
+      className="relative isolate flex h-[calc(100svh-4rem)] flex-col overflow-hidden focus:outline-none lg:h-[calc(100svh-4.5rem)]"
     >
       {/* ---------- imagery ---------- */}
       <div aria-hidden className="absolute inset-0 -z-10">
@@ -361,7 +377,10 @@ export function Hero() {
         size="wide"
         ref={copyRef}
         className={cx(
-          'relative flex items-center pb-20 pt-16 transition-opacity duration-700 lg:pb-24',
+          // `min-h-0 flex-1` lets this column absorb the leftover height instead
+          // of pushing the section taller; `pb` leaves room for the dot strip,
+          // which sits in normal flow below rather than absolutely positioned.
+          'relative flex min-h-0 flex-1 items-center pb-4 pt-6 transition-opacity duration-700 lg:pb-6 lg:pt-8',
           showLayout ? 'opacity-100' : 'pointer-events-none opacity-0',
         )}
       >
@@ -402,7 +421,7 @@ export function Hero() {
 
             <dl
               className={cx(
-                'mt-11 grid max-w-lg grid-cols-3 gap-4 border-t border-[var(--border)] pt-8',
+                'hero-stats mt-11 grid max-w-lg grid-cols-3 gap-4 border-t border-[var(--border)] pt-8',
                 arrive(),
               )}
             >
@@ -421,7 +440,7 @@ export function Hero() {
             </dl>
           </div>
 
-          <div className={arrive()}>
+          <div className={cx('hero-leaders', arrive())}>
             <Card className="overflow-hidden p-0">
               <div className="flex items-center justify-between gap-4 border-b border-[var(--border)] bg-gradient-to-r from-[var(--accent-tint)] to-transparent px-5 py-4">
                 <div>
@@ -500,9 +519,14 @@ export function Hero() {
         </div>
       </Container>
 
-      {/* ---------- controls ---------- */}
-      <div className="absolute inset-x-0 bottom-0">
-        <Container size="wide" className="pb-5">
+      {/* ---------- controls ----------
+          In normal flow as the section's last child rather than absolutely
+          positioned at `bottom-0`: absolute positioning measured from a box
+          that could grow taller than the viewport, which is what pushed these
+          off-screen on shorter laptop screens. In flow they are guaranteed to
+          sit inside the one-viewport hero. */}
+      <div className="relative shrink-0">
+        <Container size="wide" className="pb-4 pt-1">
           <div className="flex items-center gap-3">
             {HERO_SLIDES.map((s, i) => {
               const active = i === index
@@ -591,6 +615,11 @@ export function Formats() {
 }
 
 /* ========================================================= STANDINGS preview */
+/**
+ * Removed from the home page on request - the full table now lives only at
+ * /standings. Kept here (unreferenced) rather than deleted so the component and
+ * its `HOME_TABLE_ROWS` trim are one edit away if the section comes back.
+ */
 const HOME_TABLE_ROWS = 10
 
 export function StandingsPreview() {

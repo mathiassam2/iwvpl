@@ -218,19 +218,11 @@ function CartButton() {
 }
 
 export function Header() {
-  const [scrolled, setScrolled] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   // Open by default: the drawer is mostly league links, so hiding them behind
   // another toggle just added a tap.
   const [mobileLeague, setMobileLeague] = useState(true)
   const { pathname } = useLocation()
-
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 12)
-    onScroll()
-    window.addEventListener('scroll', onScroll, { passive: true })
-    return () => window.removeEventListener('scroll', onScroll)
-  }, [])
 
   useEffect(() => {
     setMobileOpen(false)
@@ -249,11 +241,12 @@ export function Header() {
     <header
       className={cx(
         'fixed inset-x-0 top-0 z-50 h-16 lg:h-[72px]',
-        mobileOpen
-          ? 'border-b border-[var(--border)] bg-[var(--bg-raised)]'
-          : scrolled
-            ? 'glass'
-            : 'border-b border-transparent bg-transparent',
+        // Glass is the default surface, at every scroll position. It used to be
+        // gated on `scrolled`, which meant a solid transparent bar at the top of
+        // the page and a different-looking bar after the first 12px - the effect
+        // appeared to "come and go" while scrolling. Only the mobile drawer's
+        // opaque backdrop still overrides it, since it has to hide the page.
+        mobileOpen ? 'border-b border-[var(--border)] bg-[var(--bg-raised)]' : 'glass',
       )}
     >
       <div className="mx-auto flex h-full w-full max-w-[110rem] items-center justify-between gap-4 px-5 sm:px-6 lg:px-8">

@@ -6,7 +6,6 @@ import {
   NewsSection,
   ResultsPreview,
   Sponsors,
-  StandingsPreview,
 } from '@/components/home'
 
 export default function HomePage() {
@@ -14,7 +13,6 @@ export default function HomePage() {
     <div className="page-enter">
       <Hero />
       <Formats />
-      <StandingsPreview />
       <ResultsPreview />
       <AboutStrip />
       <NewsSection />

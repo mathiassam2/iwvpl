@@ -570,6 +570,30 @@
   animation-fill-mode: both;
 }
 
+/* The hero is exactly one viewport tall (see the section's own comment), so on
+   short laptop screens the supporting blocks have to step down rather than push
+   the carousel controls below the fold. Driven by viewport height, not width:
+   a wide-but-short window hits these too. Two tiers - the leaders card goes
+   first because it is the largest single block, then the stat row. */
+@media (max-height: 780px) {
+  .hero-leaders { display: none; }
+  .hero-stats   { margin-top: 1.75rem; padding-top: 1.25rem; }
+}
+
+@media (max-height: 620px) {
+  .hero-stats { display: none; }
+}
+
+/* Below this the two-column grid has no room to breathe; the leaders card is
+   already hidden, so the copy column gets the full width. */
+@media (max-height: 780px) {
+  .hero-title { font-size: 2.25rem; }
+}
+
+@media (max-height: 620px) {
+  .hero-title { font-size: 1.9rem; }
+}
+
 /* Cart count badge: a short pop so adding an item is noticeable. */
 @keyframes cart-pop {
   0%   { transform: scale(0.5); }
