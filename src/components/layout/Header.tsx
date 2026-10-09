@@ -138,11 +138,13 @@ function LeagueMenu() {
       >
         <div
           className={cx(
-            'overflow-hidden rounded-card border border-[var(--border-strong)] bg-[var(--surface-solid)] shadow-[var(--shadow-lift)] transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)]',
+            // Same material as the bar so the menu reads as part of it rather
+            // than an opaque card dropped underneath a translucent strip.
+            'glass-panel overflow-hidden rounded-card transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)]',
             open ? 'translate-y-0 opacity-100' : '-translate-y-2 opacity-0',
           )}
         >
-          <div className="border-b border-[var(--border)] bg-[var(--surface-2)] px-5 py-4">
+          <div className="border-b border-[var(--glass-border)] bg-white/[0.04] px-5 py-4">
             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--accent-text)]">
               {SITE.season}
             </p>
@@ -297,16 +299,16 @@ export function Header() {
           the bar cross-fades a separate overlay instead. The header box itself
           carries no background, which is what leaves it bare at the top.
 
-          Long and eased both ways. The previous 450ms expo curve accelerated
-          hard out of the gate, which read as a flick rather than a fade; a
-          symmetric ease-in-out over a longer duration gives the bar time to
-          arrive without drawing attention to the transition itself. */}
+          Long enough to smooth the swap, short enough not to trail the scroll.
+          700ms read as laggy; the previous 450ms expo curve read as a flick. This
+          sits between the two: a quick, heavily-eased curve that leaves quickly
+          but never snaps. */}
       <div
         aria-hidden
         data-frosted={frosted ? '' : undefined}
         className={cx(
-          'glass pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-[700ms]',
-          'ease-[cubic-bezier(0.45,0,0.55,1)] motion-reduce:transition-none',
+          'glass pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-[280ms]',
+          'ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none',
           'data-[frosted]:opacity-100',
         )}
       />

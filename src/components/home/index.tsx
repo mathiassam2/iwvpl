@@ -257,12 +257,32 @@ export function Hero() {
     }
   }
 
-  /** Fade a block in once the headline is done, without remounting it. */
-  const arrive = () =>
-    cx(
-      'transition-opacity duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none',
-      restReady ? 'opacity-100' : 'opacity-0',
-    )
+  /** Props for `arrive`. `order` staggers the blocks so the panel assembles piece
+   * by piece instead of appearing as one slab, and each block rises a few pixels
+   * into place - opacity alone at a shared instant looks like a switch.
+   *
+   * The delay is an inline style rather than a `transition-delay-[…]` utility
+   * because it is computed per block: Tailwind scans source text for whole class
+   * names, so a class interpolated from a variable is never generated and the
+   * stagger silently collapses to nothing. */
+  const arrive = (base: string, order: number) => ({
+    className: cx(
+      base,
+      'transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none',
+      restReady ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0',
+    ),
+    style: { transitionDelay: `${60 + order * 90}ms` },
+  })
+
+  /* Called with the block's own classes so a single spread carries both them and
+     the transition. Returning the props ready to spread matters: setting
+     `className` separately after the spread would overwrite the transition and
+     the block would snap into place instead of easing. */
+  const badgeA = arrive('', 0)
+  const ledeA = arrive('mt-7 max-w-xl text-base leading-relaxed text-[var(--text-muted)] sm:text-lg', 1)
+  const ctaA = arrive('mt-9 flex flex-wrap items-center gap-3', 2)
+  const statsA = arrive('hero-stats mt-11 grid max-w-lg grid-cols-3 gap-4 border-t border-[var(--border)] pt-8', 3)
+  const leadersA = arrive('hero-leaders', 4)
 
   return (
     <section
@@ -400,22 +420,17 @@ export function Hero() {
       >
         <div className="grid w-full items-center gap-12 lg:grid-cols-[1.05fr_0.95fr] lg:gap-16">
           <div>
-            <div className={arrive()}>
+            <div {...badgeA}>
               <Badge tone="neutral">EA SPORTS FC — Southeast Asia</Badge>
             </div>
 
             <TypedHeadline chars={chars} caret={typing && !reduced} />
 
-            <p
-              className={cx(
-                'mt-7 max-w-xl text-base leading-relaxed text-[var(--text-muted)] sm:text-lg',
-                arrive(),
-              )}
-            >
+            <p {...ledeA}>
               {SITE.description}
             </p>
 
-            <div className={cx('mt-9 flex flex-wrap items-center gap-3', arrive())}>
+            <div {...ctaA}>
               <ButtonLink to="/register" size="lg">
                 Register your team
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
@@ -433,12 +448,7 @@ export function Hero() {
               </ButtonLink>
             </div>
 
-            <dl
-              className={cx(
-                'hero-stats mt-11 grid max-w-lg grid-cols-3 gap-4 border-t border-[var(--border)] pt-8',
-                arrive(),
-              )}
-            >
+            <dl {...statsA}>
               {[
                 { k: `${siteData.clubs.length}`, v: 'Registered clubs' },
                 { k: `${siteData.results.length}`, v: 'Matches recorded' },
@@ -454,7 +464,7 @@ export function Hero() {
             </dl>
           </div>
 
-          <div className={cx('hero-leaders', arrive())}>
+          <div {...leadersA}>
             <Card className="overflow-hidden p-0">
               <div className="flex items-center justify-between gap-4 border-b border-[var(--border)] bg-gradient-to-r from-[var(--accent-tint)] to-transparent px-5 py-4">
                 <div>
