@@ -1,7 +1,9 @@
 /** Shared formatting + lookup helpers. */
 
-export const CLUB_PLACEHOLDER = '/assets/brand/club-placeholder.svg'
-export const AVATAR_PLACEHOLDER = '/assets/brand/avatar-placeholder.svg'
+import { asset } from './assets'
+
+export const CLUB_PLACEHOLDER = asset('/assets/brand/club-placeholder.svg')
+export const AVATAR_PLACEHOLDER = asset('/assets/brand/avatar-placeholder.svg')
 
 export function cx(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(' ')

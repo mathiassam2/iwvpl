@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite --port 3000 --host",
     "build": "tsc -b --noCheck && vite build",
-    "build:ghpages": "tsc -b --noCheck && GITHUB_PAGES=true vite build && node scripts/copy-404.js",
+    "build:ghpages": "tsc -b --noCheck && vite build",
     "preview": "vite preview --port 3000 --host",
     "typecheck": "tsc -b"
   },

@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui'
 import { SITE } from '@/data'
+import { asset } from '@/lib/assets'
 import { cx } from '@/lib/format'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
@@ -53,7 +54,7 @@ export default function LoginPage() {
           <div className="mx-auto w-full max-w-md lg:mx-0">
             <Link to="/" className="inline-block" aria-label="IWVPL — home">
               <img
-                src="/assets/brand/iwvpl-wordmark.png"
+                src={asset('/assets/brand/iwvpl-wordmark.png')}
                 alt="IWVPL"
                 className="h-8 w-auto select-none object-contain dark:invert"
               />
@@ -201,7 +202,7 @@ export default function LoginPage() {
         <div className="relative mt-12 hidden overflow-hidden rounded-card lg:mt-0 lg:block">
           <div data-parallax="0.1" className="parallax-layer absolute inset-0">
             <img
-              src="/assets/brand/hero-stadium.webp"
+              src={asset('/assets/brand/hero-stadium.webp')}
               alt=""
               className="h-full w-full object-cover"
               loading="lazy"

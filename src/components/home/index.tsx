@@ -13,6 +13,7 @@ import {
 } from '@/components/ui'
 import { FormGuide, LeaderboardTable, MatchRow, StatTile, StandingsTable } from '@/components/league'
 import { SITE, siteData } from '@/data'
+import { asset } from '@/lib/assets'
 import { CLUB_PLACEHOLDER, cx, stripFlag, totalGoals } from '@/lib/format'
 import { setInert } from '@/lib/inert'
 
@@ -28,25 +29,25 @@ import { setInert } from '@/lib/inert'
  */
 const HERO_SLIDES = [
   {
-    src: '/assets/hero/slide-1.webp',
+    src: asset('/assets/hero/slide-1.webp'),
     alt: 'IWVPL Season 1 campaign — Let the Games Begin, with the league trophy',
     poster: true,
     label: 'Season 1 is live',
   },
   {
-    src: '/assets/hero/slide-2.webp',
+    src: asset('/assets/hero/slide-2.webp'),
     alt: 'Community shoutout artwork for Osman',
     poster: false,
     label: 'Community shoutout · Osman',
   },
   {
-    src: '/assets/hero/slide-3.webp',
+    src: asset('/assets/hero/slide-3.webp'),
     alt: 'Community shoutout artwork for Prabowo',
     poster: false,
     label: 'Community shoutout · Prabowo',
   },
   {
-    src: '/assets/hero/slide-4.webp',
+    src: asset('/assets/hero/slide-4.webp'),
     alt: 'Community shoutout artwork for Ainnn',
     poster: false,
     label: 'Community shoutout · Ainnn',
@@ -867,12 +868,12 @@ export function Sponsors() {
   // dark mode.
   const items = [
     {
-      src: '/assets/sponsors/spintrillz-renovation.png',
+      src: asset('/assets/sponsors/spintrillz-renovation.png'),
       alt: 'Spintrillz Renovation',
       href: 'https://www.tiktok.com/@spintrillzreno',
     },
     {
-      src: '/assets/sponsors/we-made-supply.png',
+      src: asset('/assets/sponsors/we-made-supply.png'),
       alt: 'We Made Supply',
       href: null,
     },

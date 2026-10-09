@@ -1,7 +1,31 @@
 import raw from '@/data/site_data.json'
 import type { NewsPost, SiteData } from '@/types/site'
+import { asset } from '@/lib/assets'
 
-export const siteData = raw as unknown as SiteData
+/**
+ * `site_data.json` stores asset paths as `/assets/…`, which is correct at the
+ * site root but wrong under the GitHub Pages base (`/iwvpl/`). The JSON mirrors
+ * the crawl output, so the fix belongs here rather than in 500+ data rows:
+ * rebase every such string once, at import.
+ */
+function rebaseAssets<T>(value: T): T {
+  if (typeof value === 'string') {
+    return (value.startsWith('/assets/') ? asset(value) : value) as unknown as T
+  }
+  if (Array.isArray(value)) {
+    return value.map(rebaseAssets) as unknown as T
+  }
+  if (value && typeof value === 'object') {
+    for (const key of Object.keys(value)) {
+      (value as Record<string, unknown>)[key] = rebaseAssets(
+        (value as Record<string, unknown>)[key]
+      )
+    }
+  }
+  return value
+}
+
+export const siteData = rebaseAssets(raw) as unknown as SiteData
 
 export const SITE = siteData.site
 

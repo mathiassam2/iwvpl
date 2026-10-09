@@ -5,19 +5,35 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Island-Wide Virtual Premier League</title>
     <script>
-      // GitHub Pages has no SPA fallback. If someone lands on a path that is
-      // not a real file, route them back into the app.
+      // GitHub Pages has no SPA fallback: it serves this file for any path that
+      // is not a real file on disk. Rewrite those paths into the hash route the
+      // app's HashRouter can actually resolve, e.g.
+      //
+      //   /iwvpl/standings  ->  /iwvpl/#/standings
+      //
+      // The previous version of this file tested `if (!repo)`, which is only
+      // true on the domain root — so on a project page (where the repo name is
+      // always present) the condition never fired and every deep link rendered
+      // a blank page.
       ;(function () {
-        var segment = 1 // /<repo>/ is the first path segment
+        var BASE = '/iwvpl/'
         var location = window.location
-        var repo = location.pathname.split('/')[segment]
+        var pathname = location.pathname
 
-        // Only redirect when the URL is not already pointing at a real asset.
-        if (!repo) {
-          location.replace(
-            location.pathname.replace(/\/?$/, '/') + '#/'
-          )
-        }
+        // Nothing to do if the app already served this page from the root.
+        if (pathname.indexOf(BASE) !== 0) return
+
+        var rest = pathname.slice(BASE.length)
+
+        // A missing file under /assets/ is a genuinely missing asset, not a
+        // route. Leave it as a real 404 rather than masking it as a page.
+        if (/^(assets|_crawl|_source)\//.test(rest)) return
+
+        // Empty rest is the app index itself; already correct, and replacing
+        // would wipe the hash.
+        if (!rest) return
+
+        location.replace(BASE + '#/' + rest)
       })()
     </script>
   </head>

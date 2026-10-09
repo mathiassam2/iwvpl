@@ -11,6 +11,7 @@ import {
   SmartImage,
 } from '@/components/ui'
 import { SITE, siteData } from '@/data'
+import { asset } from '@/lib/assets'
 import { communityFlag } from '@/lib/format'
 
 export default function AboutPage() {
@@ -128,8 +129,8 @@ export default function AboutPage() {
               <div className="relative overflow-hidden rounded-card">
                 <div data-parallax="0.16" className="parallax-layer">
                   <SmartImage
-                    src="/assets/brand/player-hero.webp"
-                    fallback="/assets/brand/banner-wide.webp"
+                    src={asset('/assets/brand/player-hero.webp')}
+                    fallback={asset('/assets/brand/banner-wide.webp')}
                     alt="IWVPL player celebrating"
                     wrapperClassName="aspect-[4/5] w-full bg-[var(--bg-deep)]"
                     className="object-cover"

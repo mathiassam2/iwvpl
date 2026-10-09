@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
 import { ButtonLink } from '@/components/ui'
 import { SITE } from '@/data'
+import { asset } from '@/lib/assets'
 import { useCart } from '@/lib/cart'
 import { cx } from '@/lib/format'
 import { setInert } from '@/lib/inert'
@@ -24,7 +25,7 @@ const PRIMARY = [
 
 /* Black artwork on transparent: correct on paper, `dark:invert` flips it to
    white on ink. One rule covers both themes. */
-const LOGO_WORDMARK = '/assets/brand/iwvpl-wordmark.png'
+const LOGO_WORDMARK = asset('/assets/brand/iwvpl-wordmark.png')
 
 /** Logo: bare artwork on the page — no plate, no ring, no background. */
 export function Logo({ className }: { className?: string }) {

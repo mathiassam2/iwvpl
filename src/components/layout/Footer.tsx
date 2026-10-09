@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { Container, Eyebrow, Reveal } from '@/components/ui'
 import { SITE, siteData } from '@/data'
+import { asset } from '@/lib/assets'
 import { communityFlag, cx } from '@/lib/format'
 
 const ESSENTIAL = [
@@ -69,7 +70,7 @@ export function Footer() {
           <div>
             <Link to="/" className="inline-block" aria-label="IWVPL — home">
               <img
-                src="/assets/brand/iwvpl-wordmark.png"
+                src={asset('/assets/brand/iwvpl-wordmark.png')}
                 alt="IWVPL"
                 className="h-9 w-auto select-none object-contain transition-opacity hover:opacity-80 dark:invert"
               />
