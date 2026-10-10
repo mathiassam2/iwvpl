@@ -3,6 +3,7 @@ import {
   Formats,
   Hero,
   JoinCta,
+  Nations,
   NewsSection,
   ResultsPreview,
   Sponsors,
@@ -12,6 +13,7 @@ export default function HomePage() {
   return (
     <div className="page-enter">
       <Hero />
+      <Nations />
       <Formats />
       <ResultsPreview />
       <AboutStrip />

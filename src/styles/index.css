@@ -224,6 +224,13 @@
     scroll-behavior: smooth;
     -webkit-text-size-adjust: 100%;
     background-color: var(--bg);
+    /* `clip`, not `hidden`. The closed cart drawer is `position: fixed` and
+       sits fully off-canvas to the right; a fixed element resolves against
+       the viewport, so body's `overflow-x: hidden` never contained it and a
+       320px phone could be swiped sideways into blank page. Clipping at the
+       root catches fixed descendants, and unlike `hidden` it does not turn
+       the root into a scroll container. */
+    overflow-x: clip;
   }
 
   body {
@@ -425,6 +432,16 @@
       grid-template-columns:
         3.5rem minmax(0, 1fr) 3.5rem 3.5rem 3.5rem 3.5rem 3.5rem 3.5rem 4rem 10rem;
     }
+  }
+
+  /* --------------------------------------------------------------- Match row
+     One template for the results rows. `minmax(0, 1fr)` rather than a bare
+     1fr on both sides: a plain 1fr track floors at min-width auto, so the
+     nowrap team names refused to shrink and the row pushed past a 320px
+     viewport. The names can only ellipsis once their track may go below
+     min-content. */
+  .match-tpl {
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   }
 
   /* --------------------------------------------------------- Transfer log

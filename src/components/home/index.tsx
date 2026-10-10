@@ -448,9 +448,10 @@ export function Hero() {
 
             <TypedHeadline chars={chars} caret={typing && !reduced} />
 
-            <p {...ledeA}>
-              {SITE.description}
-            </p>
+            {/* Two sentences, not the full site description. The hero already names
+                the league and the headline states the promise; a third
+                sentence here just repeated the headline back. */}
+            <p {...ledeA}>Top-tier EA FC competition across Southeast Asia.</p>
 
             <div {...ctaA}>
               <ButtonLink to="/register" size="lg">
@@ -623,26 +624,29 @@ export function Hero() {
 /* ============================================================== FORMATS */
 export function Formats() {
   return (
-    <Section tone="raised">
+    /* Tighter exit than the standard Section rhythm: with the copy gone this
+       section is only four short lines, and the default 96px bottom plus
+       96px from the next section left ~225px of dead space above the fold. */
+    <Section tone="raised" className="!pb-14 lg:!pb-16">
       <Container size="wide">
-        <SectionHead
-          eyebrow="Competition formats"
-          title="Four ways to compete"
-          lede="From full 11-a-side Pro Clubs to pure 1v1 skill battles — pick the format that suits your playstyle."
-        />
+        {/* No section lede and no per-card paragraphs. Four sentences of
+            explanation sat under a heading that already said it; the format
+            names carry the meaning and the index carries the rhythm. */}
+        <div className="mb-8 flex flex-wrap items-end justify-between gap-4 border-b border-[var(--border)] pb-5">
+          <h2 className="text-2xl font-bold text-[var(--text-strong)] sm:text-3xl">
+            Four ways to compete
+          </h2>
+          <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-[var(--text-faint)]">
+            Competition formats
+          </span>
+        </div>
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-px sm:grid-cols-2 lg:grid-cols-4">
           {siteData.formats.map((f, i) => {
             const soon = f.tag.toLowerCase().includes('soon')
             return (
               <Reveal key={f.name} delay={i * 70}>
-                <Card as="article" className="group relative flex h-full flex-col overflow-hidden p-6">
-                  <span
-                    aria-hidden
-                    className="absolute -right-8 -top-8 h-24 w-24 rounded-full bg-[var(--accent)]/10 blur-2xl transition-all duration-500 group-hover:bg-[var(--accent)]/20"
-                  />
-                  {/* Plain label, not a pill. The badge styling made the
-                      format cards read as a row of status chips. */}
+                <div className="group relative flex h-full flex-col justify-between gap-5 px-5 py-5 sm:px-6">
                   <div className="flex items-baseline justify-between gap-3">
                     <span
                       className={cx(
@@ -652,13 +656,21 @@ export function Formats() {
                     >
                       {f.tag}
                     </span>
-                    <span className="numeric text-xs text-[var(--text-faint)]">
+                    <span
+                      aria-hidden
+                      className="numeric text-4xl font-bold leading-none text-[var(--border-strong)] transition-colors duration-500 group-hover:text-[var(--accent-ring)]"
+                    >
                       {String(i + 1).padStart(2, '0')}
                     </span>
                   </div>
-                  <h3 className="mt-5 text-xl font-bold text-[var(--text-strong)]">{f.name}</h3>
-                  <p className="mt-3 text-sm leading-relaxed text-[var(--text-muted)]">{f.desc}</p>
-                </Card>
+
+                  {/* The full description is one click away in the format list
+                      itself; repeating it here doubled the section's word
+                      count for no gain. */}
+                  <h3 className="text-xl font-bold leading-tight text-[var(--text-strong)] sm:text-2xl">
+                    {f.name}
+                  </h3>
+                </div>
               </Reveal>
             )
           })}
@@ -668,7 +680,66 @@ export function Formats() {
   )
 }
 
-/* ========================================================= STANDINGS preview */
+/* ============================================================== NATIONS band */
+/**
+ * Full-bleed country panels using the league's own campaign artwork.
+ *
+ * This is the one place the home page leans on imagery instead of copy, and it
+ * deliberately reuses the three hero frames rather than adding stock photos.
+ * They are the league's actual regional artwork - Singapore, Malaysia and
+ * Indonesia - so the imagery says something true about who competes here. A
+ * generic esports photo would have been decoration.
+ */
+const NATIONS = [
+  { name: 'Singapore', iso: 'SG', src: asset('/assets/hero/sg-hero.webp') },
+  { name: 'Malaysia', iso: 'MY', src: asset('/assets/hero/my-hero.webp') },
+  { name: 'Indonesia', iso: 'ID', src: asset('/assets/hero/in-hero.webp') },
+] as const
+
+export function Nations() {
+  return (
+    <section aria-label="Regions competing" className="relative">
+      <div className="grid sm:grid-cols-3">
+        {NATIONS.map((n) => (
+          <Link
+            key={n.iso}
+            to="/clubs"
+            className="group relative block h-[42vh] min-h-[280px] overflow-hidden sm:h-[62vh]"
+          >
+            <img
+              src={n.src}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              className="absolute inset-0 h-full w-full scale-105 object-cover object-center transition-transform duration-[1200ms] ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-110"
+            />
+            {/* Same ramp the hero uses, so the panels match the carousel
+                rather than reading as a different visual system. */}
+            <div
+              aria-hidden
+              className="absolute inset-0"
+              style={{
+                background:
+                  'linear-gradient(to top, rgb(var(--hero-ink) / 0.92) 0%, rgb(var(--hero-ink) / 0.34) 46%, rgb(var(--hero-ink) / 0.1) 100%)',
+              }}
+            />
+
+            <div className="absolute inset-x-0 bottom-0 p-6 sm:p-8">
+              <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-white/60">
+                {n.iso}
+              </p>
+              <h3 className="mt-2 text-3xl font-extrabold uppercase leading-none tracking-tight text-white sm:text-4xl lg:text-5xl">
+                {n.name}
+              </h3>
+            </div>
+          </Link>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+/* ============================================================== NATIONS band end */
 /**
  * Removed from the home page on request - the full table now lives only at
  * /standings. Kept here (unreferenced) rather than deleted so the component and
@@ -787,21 +858,28 @@ export function AboutStrip() {
   return (
     <Section>
       <Container size="wide">
-        <div className="grid gap-10 lg:grid-cols-[0.95fr_1.05fr] lg:gap-16">
+        {/* This was two paragraphs of prose - the single heaviest block of copy
+            on the page. Replaced with a display statement set at scale, which
+            is the same information with the paragraphs removed. The full story
+            still lives at /about. */}
+        <div className="grid gap-12 lg:grid-cols-[1.25fr_1fr] lg:items-end lg:gap-16">
           <div>
-            <SectionHead eyebrow="About us" title={SITE.tagline} />
-            <div className="space-y-5 text-base leading-relaxed text-[var(--text-muted)]">
-              <p>{siteData.about.intro}</p>
-              <p className="border-l-2 border-[var(--accent-ring)] pl-5 font-display text-lg font-semibold leading-snug text-[var(--text-strong)]">
-                {siteData.about.vision}
-              </p>
-            </div>
-            <ButtonLink to="/about" variant="outline" className="mt-8">
+            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[var(--accent-text)]">
+              The league
+            </p>
+            <h2 className="mt-6 text-4xl font-extrabold leading-[1.02] text-[var(--text-strong)] sm:text-5xl lg:text-6xl">
+              Independent.
+              <br />
+              Player-run.
+              <br />
+              <span className="text-[var(--text-muted)]">Southeast Asian.</span>
+            </h2>
+            <ButtonLink to="/about" variant="outline" className="mt-9">
               More about IWVPL
             </ButtonLink>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-2 gap-px">
             <StatTile label="Clubs registered" value={siteData.clubs.length} hint="Across SEA" />
             <StatTile label="Goals scored" value={totalGoals(siteData.results)} hint="This season" />
             <StatTile label="Divisions" value="5" hint="Championship → Div 3" />
@@ -819,16 +897,19 @@ export function NewsSection() {
   return (
     <Section tone="raised">
       <Container size="wide">
-        <SectionHead
-          eyebrow="Insights"
-          title="Latest news"
-          lede="Discover the latest news, upcoming features, and official announcements from the IWVPL admin team."
-          action={
-            <ButtonLink to="/news" variant="outline">
-              All news
-            </ButtonLink>
-          }
-        />
+        {/* No lede, no excerpts, no "Read more" line. Three paragraphs of
+            preview text were the largest word block on the page and none of
+            it was needed to decide whether to click - the title and the
+            thumbnail do that job. */}
+        <div className="mb-8 flex flex-wrap items-end justify-between gap-4 border-b border-[var(--border)] pb-6">
+          <h2 className="text-2xl font-bold text-[var(--text-strong)] sm:text-3xl">Latest news</h2>
+          <Link
+            to="/news"
+            className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)] transition-colors hover:text-[var(--accent-text)]"
+          >
+            All news →
+          </Link>
+        </div>
 
         <div className="grid gap-6 md:grid-cols-3">
           {posts.map((p, i) => (
@@ -840,18 +921,9 @@ export function NewsSection() {
                     <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-faint)]">
                       {p.date}
                     </p>
-                    <h3 className="mt-2.5 text-base font-bold leading-snug text-[var(--text-strong)] transition-colors group-hover:text-[var(--text-strong)] group-hover:text-[var(--accent-text)]">
+                    <h3 className="mt-2.5 line-clamp-3 text-base font-bold leading-snug text-[var(--text-strong)] transition-colors group-hover:text-[var(--accent-text)]">
                       {p.title}
                     </h3>
-                    <p className="mt-3 line-clamp-3 flex-1 text-sm leading-relaxed text-[var(--text-muted)]">
-                      {p.excerpt}
-                    </p>
-                    <span className="mt-4 inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--accent-text)]">
-                      Read more
-                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
-                        <path d="M2 6h8M7 3l3 3-3 3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-                      </svg>
-                    </span>
                   </div>
                 </Card>
               </Link>
@@ -899,14 +971,16 @@ export function JoinCta() {
           <div className="relative flex flex-col items-start gap-8 lg:flex-row lg:items-center lg:justify-between">
             <div className="max-w-2xl">
               <Eyebrow className="mb-4">Registration open</Eyebrow>
-              <h2 className="text-3xl font-bold sm:text-4xl lg:text-[2.75rem]">
-                Kickstart your story and{' '}
-                <span className="text-gradient">elevate your career</span> alongside IWVPL.
+              {/* Display size carries the message; the capacity bar below already states
+                  the numbers, so the sentence repeating them was redundant. */}
+              <h2 className="text-3xl font-bold sm:text-4xl lg:text-[3.25rem] lg:leading-[1.05]">
+                Take the pitch.
+                <br />
+                <span className="text-gradient">Claim your slot.</span>
               </h2>
               <p className="mt-5 text-base leading-relaxed text-[var(--text-muted)]">
-                {SITE.teamsRegistered} clubs have already signed up. Only{' '}
-                <span className="font-semibold text-[var(--text-strong)]">{left} slots</span> remain
-                for {SITE.season} at {SITE.registrationFee} per team.
+                {SITE.teamsRegistered} of {SITE.teamCap} clubs registered. {SITE.season} ·{' '}
+                {SITE.registrationFee} per team.
               </p>
             </div>
             <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row lg:flex-col xl:flex-row">

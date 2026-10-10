@@ -306,7 +306,10 @@ export function MatchRow({
   return (
     <Link
       to={index === undefined ? '/results' : matchHref(index)}
-      className="row-hover group grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-3 py-3.5 sm:gap-5 sm:px-4"
+      /* `.match-tpl` rather than an arbitrary grid-cols: Tailwind v4 emits no
+         rule for `grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]` here, so the
+         class landed in the DOM and did nothing. */
+      className="row-hover match-tpl group grid items-center gap-3 px-3 py-3.5 sm:gap-5 sm:px-4"
     >
       {/* home */}
       <div className="flex min-w-0 items-center justify-end gap-3 text-right">
