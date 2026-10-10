@@ -809,7 +809,7 @@ export function ResultsPreview() {
   return (
     <Section tone="raised">
       <Container size="wide">
-        <div className="grid gap-10 lg:grid-cols-[1.15fr_0.85fr] lg:gap-14">
+        <div className="results-tpl grid gap-10 lg:gap-14">
           <div>
             <SectionHead
               eyebrow="Match results"

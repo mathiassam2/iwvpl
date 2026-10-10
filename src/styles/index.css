@@ -240,7 +240,18 @@
     font-feature-settings: 'cv11', 'ss01';
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
-    overflow-x: hidden;
+    /* No `overflow` here, deliberately.
+
+       This element used to carry `overflow-x: hidden`. Any `overflow` other
+       than `visible` makes an element a SCROLL CONTAINER, and a view timeline
+       resolves its scrollport against the nearest ancestor scroll container
+       rather than the root - so `hidden` re-pointed every
+       `animation-timeline: view()` on the site at `body`, whose scrollHeight
+       equals its clientHeight, and all of them froze at a constant progress.
+       `clip` has the same effect in Chrome. Both were only ever masking a
+       genuine 320px overflow, which was the results grid taking
+       min-content; that is fixed at `.results-tpl`. Horizontal clipping now
+       lives entirely on the root, which is where it belongs. */
     transition: background-color 0.35s var(--ease-out-expo), color 0.35s var(--ease-out-expo);
   }
 
@@ -442,6 +453,26 @@
      min-content. */
   .match-tpl {
     grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  }
+
+  /* ------------------------------------------------------- Results preview
+     The home page results/leaderboard split.
+
+     It used to carry `lg:grid-cols-[1.15fr_0.85fr]`, which Tailwind v4 drops
+     silently in this project - so the two-column layout never applied at any
+     width. Worse, with no explicit template the single implicit column floors
+     at min-content: the `.match-tpl` rows inside wanted 318px, the column gave
+     them 318px, and the page became 28px wider than a 320px viewport. The
+     body-level `overflow-x: hidden` that used to sit below was the only thing
+     hiding it. `minmax(0, 1fr)` lets the track shrink, and the rows ellipsis
+     inside it as designed. */
+  .results-tpl {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  @media (min-width: 1024px) {
+    .results-tpl {
+      grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+    }
   }
 
   /* --------------------------------------------------------- Transfer log
@@ -826,4 +857,750 @@
 
 @media (prefers-reduced-motion: reduce) {
   .parallax-layer { transform: none !important; }
+}
+
+/* ============================================================
+   SCROLL-DRIVEN MOTION — home page
+
+   Pure CSS: view() / scroll() timelines. No rAF loop, no inline
+   custom properties, no scroll listener. The transform work stays
+   on the compositor and costs nothing on the main thread.
+
+   Every group is written twice on purpose:
+     - the BASE rule is the finished, static look
+     - an @supports block adds the animation
+
+   A browser without scroll-driven animations therefore renders the
+   page exactly as it looks fully scrolled, instead of stranding
+   content at opacity 0 forever. Same reasoning drives the
+   reduced-motion block at the end.
+   ============================================================ */
+
+/* ------------------------------------------------------------
+   Preloader
+
+   Locking the scroller hides the scrollbar, which shifts every
+   centred block ~15px on release. Gutter-stable keeps it still.
+   ------------------------------------------------------------ */
+html {
+  scrollbar-gutter: stable;
+}
+html.is-loading {
+  overflow: hidden;
+}
+
+/* The cover is dark in BOTH themes on purpose — same call as
+   .banner-scrim. A light scrim over dark campaign artwork fails
+   outright, and this sits above the hero. `--banner-ink` is a
+   bare "r g b" triplet so it can take an alpha. */
+.boot {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 95% at 50% 42%, rgb(var(--banner-ink) / 0.7) 0%, rgb(var(--banner-ink) / 0.93) 68%);
+  opacity: 1;
+  transition: opacity 0.5s var(--ease-out-expo), visibility 0.5s;
+}
+.boot.is-done {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.boot__inner {
+  display: grid;
+  justify-items: center;
+  gap: 1.4rem;
+  padding-inline: 1.5rem;
+  text-align: center;
+  transform: translateY(6px);
+  animation: sd-boot-in 0.8s var(--ease-out-expo) both;
+}
+.boot__mark {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(2.75rem, 11vw, 6.5rem);
+  line-height: 0.9;
+  letter-spacing: -0.045em;
+  color: #fff;
+}
+.boot__sub {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  color: rgb(255 255 255 / 0.62);
+}
+.boot__count {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(2rem, 7vw, 3.5rem);
+  line-height: 1;
+  color: var(--accent);
+}
+.boot__track {
+  width: min(15rem, 62vw);
+  height: 2px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.14);
+  overflow: hidden;
+}
+/* Scale-driven, not width-driven, so the fill never triggers layout.
+   Driven entirely in CSS on its own clock rather than from the rAF that
+   updates the counter — compositor-only, and it keeps the markup free of
+   inline styles. 1150ms is RUN_MS in Preloader.tsx; easeOutCubic there
+   and this cubic-bezier are chosen to match so bar and number agree. */
+.boot__fill {
+  height: 100%;
+  transform: scaleX(0);
+  transform-origin: left center;
+  background: var(--accent);
+  animation: sd-boot-fill 1150ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+/* Skipping jumps the bar to full. It is invisible anyway — the whole
+   cover is mid-fade by then — but it stops the two disagreeing. */
+.boot.is-done .boot__fill {
+  animation: none;
+  transform: scaleX(1);
+}
+.boot__skip {
+  position: absolute;
+  inset-inline: 0;
+  bottom: max(2rem, env(safe-area-inset-bottom));
+  text-align: center;
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: rgb(255 255 255 / 0.34);
+}
+
+/* ------------------------------------------------------------
+   Section reveals
+
+   Base state is visible + in place; the animation only runs
+   inside @supports.
+   ------------------------------------------------------------ */
+.sd-reveal {
+  opacity: 1;
+  transform: none;
+}
+
+@supports (animation-timeline: view()) {
+  .sd-reveal {
+    animation: sd-rise linear both;
+    animation-timeline: view();
+    animation-range: entry 12% cover 34%;
+  }
+  /* Nudge the range per tier so a row of items arrives as a wave
+     rather than as one block. Five tiers is enough to read as
+     choreography without turning into a shuffle. */
+  .sd-reveal:nth-child(5n + 2) { animation-range: entry 16% cover 38%; }
+  .sd-reveal:nth-child(5n + 3) { animation-range: entry 20% cover 42%; }
+  .sd-reveal:nth-child(5n + 4) { animation-range: entry 24% cover 46%; }
+  .sd-reveal:nth-child(5n + 5) { animation-range: entry 28% cover 50%; }
+
+  /* A slower, smaller travel than .sd-reveal — for big blocks
+     where a 20px rise would be lost in the scale of it. */
+  .sd-reveal-soft {
+    animation: sd-rise-soft linear both;
+    animation-timeline: view();
+    animation-range: entry 10% cover 40%;
+  }
+}
+
+@keyframes sd-rise {
+  from { opacity: 0; transform: translateY(22px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes sd-rise-soft {
+  from { opacity: 0; transform: translateY(46px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes sd-boot-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes sd-boot-fill {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
+/* ------------------------------------------------------------
+   Masked display-type reveal
+
+   The outer span clips; the inner one slides up out of it. The
+   extra padding stops the descender of a line being shaved off
+   at the clip edge.
+   ------------------------------------------------------------ */
+.stmt__line {
+  display: block;
+  overflow: hidden;
+  padding-block: 0.06em 0.1em;
+}
+.stmt__in {
+  display: block;
+  transform: none;
+}
+
+@supports (animation-timeline: view()) {
+  .stmt__in {
+    animation: sd-line linear both;
+    animation-timeline: view();
+    animation-range: entry 18% cover 40%;
+  }
+  .stmt__line:nth-child(2) .stmt__in { animation-range: entry 24% cover 46%; }
+  .stmt__line:nth-child(3) .stmt__in { animation-range: entry 30% cover 52%; }
+}
+
+@keyframes sd-line {
+  from { transform: translateY(105%); }
+  to   { transform: translateY(0); }
+}
+
+/* ------------------------------------------------------------
+   The Island rail — the centrepiece
+
+   A tall subject, a sticky viewport, and a track that travels
+   sideways as the page scrolls down.
+
+   `contain` is the range to use on a subject TALLER than the
+   scrollport: contain 0% is when the subject's top edge meets
+   the top of the viewport, contain 100% is when its bottom edge
+   meets the bottom — which is exactly the window during which
+   the inner element is stuck. entry/exit are not monotonic for a
+   tall subject and pin at the wrong point.
+
+   The end transform is `-(track) + viewport`, derived rather
+   than measured, so the track always finishes flush to the right
+   edge no matter how wide its content turns out to be. `cqw` is
+   used rather than `vw` because `vw` includes the scrollbar.
+   ------------------------------------------------------------ */
+.rail {
+  position: relative;
+}
+.rail__vp {
+  container-type: inline-size;
+  display: flex;
+  align-items: center;
+  /* Top padding clears the sticky site header, which floats over the rail.
+     Without it the panel index gets sliced by the header as it travels. */
+  padding-block: 5.5rem 1.75rem;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+.rail__vp::-webkit-scrollbar {
+  display: none;
+}
+.rail__track {
+  display: flex;
+  align-items: stretch;
+  gap: 3cqw;
+  width: max-content;
+  padding-inline: 4cqw;
+}
+
+@supports (animation-timeline: view()) {
+  .rail {
+    height: 280vh;
+    view-timeline-name: --rail;
+    view-timeline-axis: block;
+  }
+  .rail__vp {
+    position: sticky;
+    top: 0;
+    height: 100svh;
+    overflow: hidden;
+  }
+  .rail__track {
+    animation: sd-rail linear both;
+    animation-timeline: --rail;
+    animation-range: contain 0% contain 100%;
+  }
+  /* Artwork drifts forward against the panel it sits in, so the
+     frame separates from its caption as the rail travels. The
+     +X is correct: the track is moving left, so anything that
+     also moves right falls behind and reads as further away. */
+  .rail__art-img {
+    animation: sd-rail-drift linear both;
+    animation-timeline: --rail;
+    animation-range: contain 0% contain 100%;
+  }
+  /* Caption runs slightly ahead instead — the panel text pushes
+     forward, the image lets go. */
+  .rail__copy {
+    animation: sd-rail-lead linear both;
+    animation-timeline: --rail;
+    animation-range: contain 0% contain 100%;
+  }
+  /* Index numerals scale up as their panel arrives, then settle. */
+  .rail__index {
+    animation: sd-rail-index linear both;
+    animation-timeline: --rail;
+    animation-range: contain 0% contain 100%;
+  }
+}
+
+@keyframes sd-rail {
+  to { transform: translate3d(calc(-100% + 100cqw), 0, 0); }
+}
+@keyframes sd-rail-drift {
+  from { transform: translate3d(-9cqw, 0, 0) scale(1.3); }
+  to   { transform: translate3d(9cqw, 0, 0) scale(1.3); }
+}
+@keyframes sd-rail-lead {
+  from { transform: translate3d(-3cqw, 0, 0); }
+  to   { transform: translate3d(3cqw, 0, 0); }
+}
+@keyframes sd-rail-index {
+  from { transform: scale(0.72); opacity: 0.25; }
+  to   { transform: scale(1); opacity: 1; }
+}
+
+/* Panel sizing. Deliberately not Tailwind arbitrary values — this
+   project drops several of those (see the note at the top of
+   .hero-focus-*), so anything structural lives here. */
+.rail__panel {
+  position: relative;
+  flex: 0 0 84cqw;
+  /* Tall enough to feel like a full-bleed campaign frame, short enough
+     that the header and the next section both stay visible around it.
+     min-height keeps the copy from colliding on a short viewport. */
+  height: min(66svh, 600px);
+  min-height: 360px;
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  isolation: isolate;
+  background: var(--bg-raised);
+}
+.rail__panel--full {
+  flex-basis: 92cqw;
+  height: min(74svh, 680px);
+}
+.rail__panel--closer {
+  flex-basis: 80cqw;
+}
+
+.rail__art {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  z-index: -1;
+}
+.rail__art-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* Matches the hero treatment so the rail reads as the same
+     campaign, not a different set of stock. */
+  opacity: 0.42;
+  filter: saturate(0.85);
+}
+.rail__panel--closer .rail__art-img {
+  opacity: 0.16;
+}
+/* Type over campaign artwork in BOTH themes, so this scrim is
+   theme-invariant dark for the same reason .banner-scrim is —
+   `--banner-ink` is declared on :root and a bare "r g b" triplet
+   so it can take an alpha. Left-heavy: the copy sits left, so the
+   right side is left open to the picture. */
+.rail__scrim {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(
+    100deg,
+    rgb(var(--banner-ink) / 0.94) 0%,
+    rgb(var(--banner-ink) / 0.76) 44%,
+    rgb(var(--banner-ink) / 0.28) 100%
+  );
+}
+
+/* ------------------------------------------------------------
+   Rail content
+
+   Everything here sits on the theme-invariant dark scrim, so the
+   type is white regardless of theme — the one place on the site
+   that is deliberately not themed, because the picture behind it
+   is not themed either.
+   ------------------------------------------------------------ */
+.rail__body {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 0.55rem;
+  height: 100%;
+  padding: clamp(1.5rem, 4cqw, 3rem);
+  color: #fff;
+}
+.rail__index {
+  position: absolute;
+  top: clamp(1.25rem, 3.5cqw, 2.5rem);
+  right: clamp(1.5rem, 4cqw, 3rem);
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(3.5rem, 13cqw, 9rem);
+  line-height: 0.8;
+  letter-spacing: -0.05em;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  -webkit-text-stroke: 1.5px rgb(255 255 255 / 0.3);
+  transform-origin: top right;
+}
+.rail__flag {
+  font-size: clamp(1.5rem, 4cqw, 2.25rem);
+  line-height: 1;
+}
+.rail__name {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(2.25rem, 8cqw, 5.25rem);
+  line-height: 0.95;
+  letter-spacing: -0.04em;
+  text-wrap: balance;
+  margin: 0;
+}
+.rail__meta {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: rgb(255 255 255 / 0.68);
+}
+
+/* Crest chips — no plate, no container, no background. That was a
+   deliberate call on the rest of the site: a frame around a crest
+   reads as a badge-of-honour sticker and makes small crests mush. */
+.rail__clubs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin-top: 1.15rem;
+  padding: 0;
+  list-style: none;
+}
+.rail__chip-link {
+  display: grid;
+  justify-items: center;
+  gap: 0.3rem;
+  width: 3.5rem;
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.35s var(--ease-out-expo);
+}
+.rail__chip-link:hover,
+.rail__chip-link:focus-visible {
+  transform: translateY(-4px);
+}
+.rail__chip-img {
+  width: 2.75rem;
+  height: 2.75rem;
+  object-fit: contain;
+}
+.rail__chip-code {
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgb(255 255 255 / 0.5);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rail__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-top: 1.35rem;
+  align-self: flex-start;
+  padding: 0.7rem 1.35rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--on-volt);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-decoration: none;
+  transition: transform 0.35s var(--ease-out-expo), background 0.25s;
+}
+.rail__cta:hover,
+.rail__cta:focus-visible {
+  background: var(--accent-hover);
+  transform: translateX(4px);
+}
+.rail__cta-arrow {
+  transition: transform 0.35s var(--ease-out-expo);
+}
+.rail__cta:hover .rail__cta-arrow {
+  transform: translateX(3px);
+}
+
+@supports not (animation-timeline: view()) {
+  .rail__panel {
+    flex-basis: min(84cqw, 92vw);
+  }
+  /* No sticky, no tall section — just a scrollable strip at a
+     readable height, with breathing room above and below. */
+  .rail__vp {
+    padding-block: 2.5rem;
+  }
+  .rail__panel {
+    height: min(62svh, 540px);
+  }
+}
+
+/* ------------------------------------------------------------
+   Live results ticker
+
+   Two identical groups side by side; the track travels exactly
+   half its own width so the seam never shows. The copy is
+   duplicated in the DOM, so the second half is aria-hidden.
+   ------------------------------------------------------------ */
+.marquee {
+  position: relative;
+  overflow: hidden;
+  padding-block: 1.15rem;
+  border-block: 1px solid var(--border);
+  /* --surface-2, not --bg-raised: against --bg the raised token is only a
+     couple of values lighter and the ticker disappeared into the page. */
+  background: var(--surface-2);
+}
+.marquee__track {
+  display: flex;
+  width: max-content;
+  will-change: transform;
+  animation: sd-marquee var(--marquee-dur, 64s) linear infinite;
+}
+.marquee__group {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+.marquee__item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-inline: 1.4rem;
+  white-space: nowrap;
+}
+.marquee__sep {
+  width: 3px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--accent);
+  opacity: 0.7;
+  flex: none;
+}
+@keyframes sd-marquee {
+  from { transform: translate3d(0, 0, 0); }
+  to   { transform: translate3d(-50%, 0, 0); }
+}
+
+/* Hold it still when someone is reading it or tabbing into it.
+   Hover-only on purpose: on touch there is no hover, and a ticker
+   you can never stop is just a thing moving past. */
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .marquee:hover .marquee__track,
+  .marquee:focus-within .marquee__track {
+    animation-play-state: paused;
+  }
+}
+
+/* Edge fades so items enter and leave rather than being sheared. */
+.marquee::before,
+.marquee::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: clamp(2rem, 8vw, 7rem);
+  z-index: 1;
+  pointer-events: none;
+}
+.marquee::before {
+  left: 0;
+  background: linear-gradient(90deg, var(--surface-2), transparent);
+}
+.marquee::after {
+  right: 0;
+  background: linear-gradient(270deg, var(--surface-2), transparent);
+}
+
+/* ------------------------------------------------------------
+   Marquee internals
+   ------------------------------------------------------------ */
+.marquee__crest {
+  width: 1.375rem;
+  height: 1.375rem;
+  object-fit: contain;
+  flex: none;
+}
+.marquee__code {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--text);
+}
+.marquee__score {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  color: var(--accent-text);
+  padding-inline: 0.15rem;
+}
+
+/* ------------------------------------------------------------
+   Statement band
+   ------------------------------------------------------------ */
+.stmt-band {
+  padding-block: clamp(4.5rem, 14vh, 9rem);
+}
+.stmt {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(2.25rem, 8.5vw, 7rem);
+  line-height: 0.94;
+  letter-spacing: -0.045em;
+  text-wrap: balance;
+}
+.stmt__accent {
+  font-style: normal;
+  color: var(--accent-text);
+}
+
+/* ------------------------------------------------------------
+   Crest wall
+   ------------------------------------------------------------ */
+.crest-wall {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(7.25rem, 1fr));
+  gap: 0.25rem 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.crest-wall__link {
+  display: grid;
+  justify-items: center;
+  gap: 0.6rem;
+  padding: 0.9rem 0.5rem;
+  border-radius: var(--radius-card);
+  text-decoration: none;
+  transition: background-color 0.3s var(--ease-out-expo);
+}
+.crest-wall__link:hover,
+.crest-wall__link:focus-visible {
+  background: var(--surface-hover);
+}
+.crest-wall__img {
+  width: 3.25rem;
+  height: 3.25rem;
+  object-fit: contain;
+  transition: transform 0.4s var(--ease-out-expo);
+}
+.crest-wall__link:hover .crest-wall__img,
+.crest-wall__link:focus-visible .crest-wall__img {
+  transform: scale(1.1) translateY(-2px);
+}
+.crest-wall__name {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.3;
+  text-align: center;
+  color: var(--text-muted);
+  text-wrap: balance;
+}
+
+/* ------------------------------------------------------------
+   Scroll cue under the hero
+   ------------------------------------------------------------ */
+.cue {
+  display: grid;
+  justify-items: center;
+  gap: 0.6rem;
+  padding-block: clamp(1.75rem, 5vh, 3.25rem);
+}
+.cue__label {
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.cue__rail {
+  width: 1px;
+  height: 3.75rem;
+  background: linear-gradient(var(--accent-ring), transparent);
+  overflow: hidden;
+  position: relative;
+}
+.cue__dot {
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  height: 38%;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 8px 1px var(--accent-ring);
+  animation: cue-fall 1.9s var(--ease-out-expo) infinite;
+}
+@keyframes cue-fall {
+  0%   { transform: translateY(-100%); opacity: 0; }
+  35%  { opacity: 1; }
+  100% { transform: translateY(250%); opacity: 0; }
+}
+
+/* ------------------------------------------------------------
+   Reduced motion
+
+   Everything above resolves to its finished state, so this only
+   has to stop things that run on their own clock — the ticker,
+   the cue, the preloader tick. Scroll-driven animations are
+   covered by the base rules above, but they are named here too so
+   an override elsewhere can never re-enable one by accident.
+   ------------------------------------------------------------ */
+@media (prefers-reduced-motion: reduce) {
+  html.is-loading { overflow: hidden; }
+
+  .marquee__track { animation: none; }
+  .cue__dot { animation: none; opacity: 1; top: 30%; }
+  .boot__inner { animation: none; }
+  .boot__fill { animation: none; transform: scaleX(1); }
+
+  .rail__art-img,
+  .rail__copy,
+  .rail__index,
+  .rail__track,
+  .stmt__in,
+  .sd-reveal,
+  .sd-reveal-soft {
+    animation: none !important;
+  }
+  .stmt__in,
+  .sd-reveal,
+  .sd-reveal-soft {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  /* Unpin the rail: a sticky rail with no scroll animation is a
+     280vh hole with a picture in the middle of it. */
+  .rail { height: auto !important; }
+  .rail__vp {
+    position: static !important;
+    height: auto !important;
+    overflow-x: auto !important;
+    padding-block: 1.5rem;
+  }
 }
