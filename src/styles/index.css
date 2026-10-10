@@ -533,19 +533,23 @@
      a real utility and works, but all three live here so the slide data reads
      as one consistent set.
 
-     A phone viewport is tall and narrow, so object-cover against these 16:9
-     frames shows only ~26% of the image width. Each value was picked from
-     rendered 390x844 crops, balancing two constraints that pull against each
-     other: nothing clipped at the frame edge, and the subject sitting right of
-     the hero copy, which is left-aligned and reaches roughly 60% across. */
+     The hero is not one viewport tall on a phone: the copy, stat strip and
+     leaders card stack to roughly 1190px, so object-cover scales by HEIGHT and
+     only a narrow vertical slice of a 16:9 frame is ever on screen - about 15%
+     of the image width at 320px, 18% at 390px. Two constraints follow: nothing
+     may be cut off at the frame edge, and the subject should sit right of the
+     hero copy, which is left-aligned and reaches roughly 60% across.
+
+     Each value was read off the built app at 390x844 and cross-checked so the
+     subject stays between 60% and 80% of the frame across 320-430px. */
   .hero-focus-sg {
     object-position: 6% center;
   }
   .hero-focus-my {
-    object-position: 6% center;
+    object-position: 14% center;
   }
   .hero-focus-in {
-    object-position: 10% center;
+    object-position: 19% center;
   }
 
   /* `lift` is opt-in. Cards that should stay flat on hover simply omit it. */

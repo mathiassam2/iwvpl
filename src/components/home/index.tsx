@@ -28,15 +28,16 @@ import { CLUB_PLACEHOLDER, cx, stripFlag, totalGoals } from '@/lib/format'
  * slide 1 behaved differently from the rest, which is not worth the extra state
  * now that there is no key art to hold on its own.
  */
-/* `focus` is the mobile-only horizontal anchor. A phone viewport is tall and
-   narrow, so object-cover against these 16:9 frames shows only ~26% of the
-   image width - centred, all three slides framed empty paint. The subject sits
-   at a different depth in each frame, so each gets the anchor that lands it in
-   frame AND right of the hero copy, which is left-aligned and reaches roughly
-   60% across: Singapore's crescent and stars reach the left edge, Malaysia's
-   crescent and starburst sit just in from it, and the National Monument is a
-   quarter of the way across. Values were picked from rendered 390x844 crops -
-   see styles/index.css for the measurements.
+/* `focus` is the mobile-only horizontal anchor. On a phone the hero is far
+   taller than the viewport - the copy, stats and leaders card stack to ~1190px
+   - so object-cover scales by height and only a narrow slice of each 16:9 frame
+   is ever visible. Centred, all three slides framed empty paint. The subject
+   sits at a different depth in each frame, so each gets the anchor that lands
+   it in frame AND right of the hero copy, which is left-aligned and reaches
+   roughly 60% across: Singapore's crescent and stars reach the left edge,
+   Malaysia's crescent and starburst sit just in from it, and the National
+   Monument is a quarter of the way across. Values were read off the built app
+   at 390x844 - see styles/index.css for the geometry.
 
    The value is the whole class, not a bare percentage: Tailwind scans source
    for literal class strings, so `object-[${pct}%_center]` would be invisible to
