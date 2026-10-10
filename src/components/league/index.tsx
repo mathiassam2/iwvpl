@@ -181,7 +181,7 @@ export function StandingsTable({
             <div
               key={r.team}
               role="row"
-              className="row-hover tbl-tpl grid items-center border-b border-[var(--border)] last:border-0"
+              className="row-hover tbl-tpl group relative grid items-center border-b border-[var(--border)] last:border-0"
             >
               <div
                 role="cell"
@@ -205,16 +205,17 @@ export function StandingsTable({
                   wrapperClassName="h-9 w-9 shrink-0"
                   className="object-contain"
                 />
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-[var(--text-strong)]">
-                    {stripFlag(r.team)}
-                  </p>
-                  {r.code && (
-                    <p className="numeric text-[10px] tracking-widest text-[var(--text-faint)]">
-                      {r.code}
-                    </p>
-                  )}
-                </div>
+                {/* The real link sits on the club name and is stretched across
+                    the whole row with a pseudo-element. Keeping the anchor on
+                    the name rather than wrapping the row preserves link
+                    semantics for screen readers, which `role="row"` on an
+                    `<a>` would strip. */}
+                <Link
+                  to={clubHref(r.team)}
+                  className="min-w-0 truncate rounded text-sm font-semibold text-[var(--text-strong)] transition-colors after:absolute after:inset-0 after:content-[''] hover:text-[var(--accent-text)] focus-visible:outline-none focus-visible:underline"
+                >
+                  {stripFlag(r.team)}
+                </Link>
               </div>
 
               <NumCell>{r.pl}</NumCell>
