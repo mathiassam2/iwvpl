@@ -257,8 +257,14 @@ export function TableSnippet({
             <li
               key={r.team}
               className={cx(
-                'flex items-center gap-2.5 border-l-2 py-1.5 pl-3',
-                on ? 'border-[var(--accent-solid)] bg-[var(--accent-tint)]' : 'border-transparent',
+                // pl-4 rather than pl-3: measured at 14px, the accent bar sat so
+                // close to the position number that the two read as one mark.
+                // Both the highlighted and plain rows carry the same padding, so
+                // the team names stay aligned down the column.
+                'flex items-center gap-2.5 border-l-2 py-1.5 pl-4 pr-2',
+                on
+                  ? 'border-[var(--accent-solid)] bg-[var(--accent-tint)]'
+                  : 'border-transparent',
               )}
             >
               <span className="numeric w-4 shrink-0 text-right text-[11px] text-[var(--text-faint)]">
