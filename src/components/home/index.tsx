@@ -506,7 +506,12 @@ export function Hero() {
               </div>
 
               {top && (
-                <div className="flex items-center gap-4 px-5 py-5">
+                /* Same target as the five rows below, so the leader is clickable
+                   like the rest instead of being the one dead spot in the card. */
+                <Link
+                  to="/standings"
+                  className="row-hover flex items-center gap-4 px-5 py-5"
+                >
                   <SmartImage
                     src={top.logo}
                     fallback={CLUB_PLACEHOLDER}
@@ -531,7 +536,7 @@ export function Hero() {
                       points
                     </p>
                   </div>
-                </div>
+                </Link>
               )}
 
               {/* No `row-hover` on these five: they sit directly under the hero artwork, and

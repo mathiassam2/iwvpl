@@ -1,5 +1,7 @@
+import { Link } from 'react-router-dom'
 import type { Leaderboard } from '@/types/site'
 import { AVATAR_PLACEHOLDER, cx, stripFlag } from '@/lib/format'
+import { playerHref } from '@/lib/players'
 
 /**
  * Top-three showcase. 1st is elevated centre, 2nd left, 3rd right.
@@ -28,11 +30,13 @@ export function LeaderboardPodium({ board }: { board: Leaderboard }) {
 
         const isFirst = place === 1
         return (
-          <div
+          <Link
             key={place}
+            to={playerHref(row.name)}
             className={cx(
               'surface relative overflow-hidden rounded-card px-2 pb-4 pt-5 text-center sm:px-4 sm:pb-5',
-              'transition-all duration-400 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-1',
+              'transition-all duration-400 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-1 focus-visible:-translate-y-1',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-solid)]',
               isFirst
                 ? 'order-2 sm:order-none border-[var(--accent-ring)] shadow-[0_18px_44px_-22px_rgb(200_255_61/0.55)]'
                 : 'order-1 sm:order-none',
@@ -112,7 +116,7 @@ export function LeaderboardPodium({ board }: { board: Leaderboard }) {
             <p className="relative mt-1 text-[9px] uppercase tracking-[0.16em] text-[var(--text-faint)] sm:text-[10px]">
               {unit}
             </p>
-          </div>
+          </Link>
         )
       })}
     </div>
