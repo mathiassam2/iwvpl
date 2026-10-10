@@ -13,6 +13,7 @@ import {
   weekday,
 } from '@/lib/format'
 import { matchHref } from '@/lib/match'
+import { playerHref } from '@/lib/players'
 
 /* ============================================================ Form guide dots */
 export function FormGuide({ form }: { form: string[] }) {
@@ -422,10 +423,11 @@ export function LeaderboardTable({
       {rows.map((r, i) => {
         const rank = start + i + 1
         return (
-        <li
-          key={`${r.name}-${i}`}
-          className="row-hover group flex items-center gap-4 px-4 py-3.5 sm:px-5"
-        >
+        <li key={`${r.name}-${i}`} className="border-b border-[var(--border)] last:border-b-0">
+          <Link
+            to={playerHref(r.name)}
+            className="row-hover group flex items-center gap-4 px-4 py-3.5 sm:px-5"
+          >
           <span
             className={cx(
               'numeric grid h-8 w-8 shrink-0 place-items-center rounded-lg text-sm font-bold transition-transform duration-300 group-hover:scale-110',
@@ -461,6 +463,7 @@ export function LeaderboardTable({
               {unit}
             </span>
           </div>
+          </Link>
         </li>
         )
       })}

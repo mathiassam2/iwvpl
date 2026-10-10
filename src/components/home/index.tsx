@@ -13,6 +13,7 @@ import {
 } from '@/components/ui'
 import { FormGuide, LeaderboardTable, MatchRow, StatTile, StandingsTable } from '@/components/league'
 import { SITE, siteData } from '@/data'
+import { matchIndexOf } from '@/lib/match'
 import { asset } from '@/lib/assets'
 import { CLUB_PLACEHOLDER, cx, stripFlag, totalGoals } from '@/lib/format'
 
@@ -742,7 +743,9 @@ export function ResultsPreview() {
                   <p className="px-4 pt-4 text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--text-faint)]">
                     {m.date}
                   </p>
-                  <MatchRow match={m} />
+                  {/* index so the row opens the match centre directly instead of
+                      dumping the visitor on the full results list to find it */}
+                  <MatchRow match={m} index={matchIndexOf(m)} />
                 </div>
               ))}
             </div>

@@ -19,6 +19,7 @@ const RegisterPage = lazy(() => import('@/pages/RegisterPage'))
 const LoginPage = lazy(() => import('@/pages/LoginPage'))
 const ClubDetailPage = lazy(() => import('@/pages/ClubDetailPage'))
 const MatchPage = lazy(() => import('@/pages/MatchPage'))
+const PlayerPage = lazy(() => import('@/pages/PlayerPage'))
 const CartPage = lazy(() => import('@/pages/CartPage'))
 const NotFoundPage = lazy(() => import('@/pages/NotFoundPage'))
 
@@ -59,6 +60,8 @@ export default function App() {
             <Route path="/clubs" element={<ClubsPage />} />
             <Route path="/matches/:id" element={<MatchPage />} />
             <Route path="/match/:id" element={<MatchPage />} />
+            <Route path="/players/:slug" element={<PlayerPage />} />
+            <Route path="/player/:slug" element={<PlayerPage />} />
             <Route path="/clubs/:slug" element={<ClubDetailPage />} />
             <Route path="/team/:slug" element={<ClubDetailPage />} />
             <Route path="/participants" element={<ClubsPage />} />
