@@ -21,12 +21,12 @@ export default function NewsDetailPage() {
   return (
     <div className="page-enter">
       {/* ---------- banner ----------
-          Full-bleed artwork under a heavy scrim. The old overlay only reached
-          40% opacity at the top, so the category badges and headline - which sit
-          over the middle of the image - landed on bright artwork and became
-          unreadable. The bottom half is now a near-solid wash, which is also
-          where the copy sits, and the top gets its own darkening so nothing at
-          any height in the frame lands on a light pixel. */}
+          Full-bleed artwork under a heavy scrim. The previous overlay used
+          Tailwind's `ink-950` palette, which no longer exists after the move to
+          semantic theme tokens - the class generated no CSS at all, so the
+          headline, badges and date sat on raw artwork and went unreadable
+          whenever the frame was bright. `.banner-scrim` is a real gradient with
+          a floor high enough that white type clears WCAG on any image. */}
       <div className="relative -mt-16 lg:-mt-[72px]">
         <div className="relative h-[380px] overflow-hidden sm:h-[440px] lg:h-[520px]">
           {/* Slightly scaled so the scrim's blur-free edges never show a seam. */}
@@ -36,9 +36,10 @@ export default function NewsDetailPage() {
             className="h-full w-full scale-105 object-cover object-center"
             decoding="async"
           />
-          <div className="absolute inset-0 bg-gradient-to-b from-ink-950/85 via-ink-950/55 to-ink-950" />
-          <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-ink-950 via-ink-950/80 to-transparent" />
-          <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-ink-950/60 to-transparent" />
+          <div className="banner-scrim absolute inset-0" />
+          {/* The bar overlaps the top of the frame, so the header needs its own
+              local darkening to stay legible against a pale top edge. */}
+          <div className="banner-scrim-top absolute inset-x-0 top-0 h-28" />
 
           {/* Copy sits inside the banner, anchored to its foot, so the image
               reads as a backdrop rather than as a tile the text straddles. */}
@@ -65,7 +66,7 @@ export default function NewsDetailPage() {
               {post.title}
             </h1>
 
-            <p className="mt-5 text-xs font-semibold uppercase tracking-wider text-white/55">
+            <p className="mt-5 text-xs font-semibold uppercase tracking-wider text-white/70">
               {formatDate(post.date)} · {SITE.name}
             </p>
           </Container>
@@ -122,7 +123,7 @@ export default function NewsDetailPage() {
                 {others.map((p) => (
                   <Link key={p.id} to={`/news/${p.slug}`} className="group block h-full">
                     <Card interactive className="flex h-full flex-col overflow-hidden">
-                      <div className="relative aspect-[16/9] overflow-hidden bg-ink-950">
+                      <div className="relative aspect-[16/9] overflow-hidden bg-[rgb(var(--banner-ink))]">
                         <img
                           src={p.featuredLocal}
                           alt=""
@@ -130,8 +131,8 @@ export default function NewsDetailPage() {
                           decoding="async"
                           className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                         />
-                        {/* Same scrim on the thumbnails, for the label below. */}
-                        <div className="absolute inset-0 bg-gradient-to-t from-ink-950/80 to-transparent" />
+                        {/* Same wash on the thumbnails, to seat them on the card. */}
+                        <div className="banner-scrim-thumb absolute inset-0" />
                       </div>
                       <div className="flex flex-1 flex-col p-4">
                         <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-faint)]">

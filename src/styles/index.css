@@ -122,6 +122,16 @@
   --hero-scrim-side: 0.86;
   --hero-scrim-poster: 0.5;
   --hero-img-opacity: 0.55;
+
+  /* Article banners sit under arbitrary editorial artwork - some frames are
+     near-white - so their scrim is tuned to guarantee contrast for white type
+     rather than to flatter the picture. These are deliberately theme-invariant
+     dark values: a light-mode scrim over bright artwork fails outright. */
+  --banner-ink: 6 7 9;
+  --banner-scrim-top: 0.66;
+  --banner-scrim-mid: 0.4;
+  --banner-scrim-copy: 0.9;
+  --banner-scrim-foot: 0.99;
 }
 
 /* ---------- LIGHT ----------
@@ -191,6 +201,15 @@
   --hero-scrim-b: 0.68;
   --hero-scrim-side: 0.72;
   --hero-scrim-poster: 0.62;
+
+  /* Article banners keep the same ink in light mode on purpose. The banner is a
+     dark photographic frame with white type on it in both themes, so switching
+     the wash to paper would drop the headline to roughly 2:1 on a light image. */
+  --banner-ink: 10 12 10;
+  --banner-scrim-top: 0.7;
+  --banner-scrim-mid: 0.44;
+  --banner-scrim-copy: 0.91;
+  --banner-scrim-foot: 0.99;
 }
 
 /* ============================================================
@@ -466,6 +485,44 @@
       rgb(var(--hero-ink) / calc(var(--hero-scrim-poster) * 0.5)) 0%,
       rgb(var(--hero-ink) / calc(var(--hero-scrim-poster) * 0.3)) 55%,
       rgb(var(--hero-ink) / 1) 100%
+    );
+  }
+
+  /* Article banner wash. Unlike `.hero-scrim` this is not tuned to let the
+     artwork through - editorial frames are unpredictable and some are almost
+     white, so the ramp reaches near-opaque before the copy zone and holds it
+     there. The single gradient replaces three stacked ones, which compounded
+     into mud across the middle of the image. */
+  .banner-scrim {
+    background: linear-gradient(
+      to bottom,
+      rgb(var(--banner-ink) / var(--banner-scrim-top)) 0%,
+      rgb(var(--banner-ink) / var(--banner-scrim-mid)) 26%,
+      rgb(var(--banner-ink) / calc(var(--banner-scrim-copy) * 0.94)) 48%,
+      rgb(var(--banner-ink) / var(--banner-scrim-copy)) 66%,
+      rgb(var(--banner-ink) / var(--banner-scrim-foot)) 88%,
+      rgb(var(--banner-ink) / 1) 100%
+    );
+  }
+
+  /* The sticky bar overlaps the top of the frame, so the header needs its own
+     local darkening to stay legible against a pale top edge. */
+  .banner-scrim-top {
+    background: linear-gradient(
+      to bottom,
+      rgb(var(--banner-ink) / var(--banner-scrim-top)) 0%,
+      rgb(var(--banner-ink) / 0) 100%
+    );
+  }
+
+  /* Thumbnails carry no overlaid text, so they only need enough wash to stop
+     the artwork fighting the card's own border. */
+  .banner-scrim-thumb {
+    background: linear-gradient(
+      to bottom,
+      rgb(var(--banner-ink) / 0.28) 0%,
+      rgb(var(--banner-ink) / 0.18) 50%,
+      rgb(var(--banner-ink) / 0.72) 100%
     );
   }
 
