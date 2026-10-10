@@ -12,6 +12,7 @@ import {
   stripFlag,
   weekday,
 } from '@/lib/format'
+import { matchHref } from '@/lib/match'
 
 /* ============================================================ Form guide dots */
 export function FormGuide({ form }: { form: string[] }) {
@@ -288,14 +289,21 @@ function NumCell({
 export function MatchRow({
   match,
   showDate = false,
+  index,
 }: {
   match: Match
   showDate?: boolean
+  /**
+   * Position in siteData.results. When given the row opens the in-app match
+   * centre; without it the row falls back to /results, which is what the
+   * standalone "other matches" list wants.
+   */
+  index?: number
 }) {
   const played = match.hs !== '' && match.as !== ''
   return (
     <Link
-      to={match.url || '/results'}
+      to={index === undefined ? '/results' : matchHref(index)}
       className="row-hover group grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-3 py-3.5 sm:gap-5 sm:px-4"
     >
       {/* home */}

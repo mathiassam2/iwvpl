@@ -4,6 +4,7 @@ import { MatchRow, StatTile } from '@/components/league'
 import { ButtonLink, Container, EmptyState, Section, SectionHead, Tabs } from '@/components/ui'
 import { SITE, siteData } from '@/data'
 import { groupByDate } from '@/lib/format'
+import { matchIndexOf } from '@/lib/match'
 
 export default function SchedulePage() {
   const [scope, setScope] = useState<'upcoming' | 'all'>('all')
@@ -65,7 +66,7 @@ export default function SchedulePage() {
                   </div>
                   <div className="surface divide-y divide-[var(--border)] overflow-hidden rounded-card">
                     {matches.map((m) => (
-                      <MatchRow key={`${m.url}-${m.home}-${m.away}`} match={m} />
+                      <MatchRow key={`${m.url}-${m.home}-${m.away}`} match={m} index={matchIndexOf(m)} />
                     ))}
                   </div>
                 </section>

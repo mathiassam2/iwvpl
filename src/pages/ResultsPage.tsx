@@ -4,6 +4,7 @@ import { MatchRow, StatTile } from '@/components/league'
 import { Container, EmptyState, Section, Select } from '@/components/ui'
 import { SITE, siteData } from '@/data'
 import { groupByDate, stripFlag, totalGoals } from '@/lib/format'
+import { matchIndexOf } from '@/lib/match'
 
 export default function ResultsPage() {
   const [team, setTeam] = useState('all')
@@ -105,7 +106,7 @@ export default function ResultsPage() {
                       fills each row edge to edge, not the card's rounded corners */}
                   <div className="surface divide-y divide-[var(--border)] overflow-hidden rounded-card">
                     {matches.map((m) => (
-                      <MatchRow key={m.url + m.home} match={m} />
+                      <MatchRow key={m.url + m.home} match={m} index={matchIndexOf(m)} />
                     ))}
                   </div>
                 </section>
