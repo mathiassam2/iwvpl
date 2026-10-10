@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui'
+import { HeaderWash } from '@/components/layout/HeaderWash'
 import { SITE } from '@/data'
 import { asset } from '@/lib/assets'
 import { cx } from '@/lib/format'
@@ -47,8 +48,11 @@ export default function LoginPage() {
 
   return (
     <div className="page-enter">
-      {/* Split layout: form panel + a quiet brand panel */}
-      <div className="mx-auto grid w-full max-w-6xl gap-0 px-5 py-10 sm:px-6 sm:py-16 lg:grid-cols-[1fr_0.92fr] lg:gap-14 lg:px-8">
+      {/* Split layout: form panel + a quiet brand panel. Pulled behind the
+          fixed header like PageHeader, with the space handed back as padding. */}
+      <div className="relative -mt-16 lg:-mt-[72px]">
+        <HeaderWash />
+        <div className="mx-auto grid w-full max-w-6xl gap-0 px-5 pb-10 pt-24 sm:px-6 sm:pb-16 sm:pt-28 lg:grid-cols-[1fr_0.92fr] lg:gap-14 lg:px-8 lg:pt-28">
         {/* ---------- form ---------- */}
         <div className="flex flex-col justify-center">
           <div className="mx-auto w-full max-w-md lg:mx-0">
@@ -253,6 +257,7 @@ export default function LoginPage() {
             </p>
           </div>
         </div>
+      </div>
       </div>
     </div>
   )

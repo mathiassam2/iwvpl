@@ -1,10 +1,15 @@
 import { ButtonLink, Section } from '@/components/ui'
+import { HeaderWash } from '@/components/layout/HeaderWash'
 
 export default function NotFoundPage() {
   return (
     <div className="page-enter">
-      <Section tone="deep" className="min-h-[70vh]">
-        <div className="mx-auto w-full max-w-3xl px-5 py-16 text-center sm:px-6">
+      <Section
+        tone="deep"
+        className="min-h-[70vh] -mt-16 overflow-hidden pt-16 lg:-mt-[72px] lg:pt-[72px]"
+      >
+        <HeaderWash />
+        <div className="mx-auto w-full max-w-3xl px-5 pb-16 pt-24 text-center sm:px-6">
           <p className="numeric text-gradient text-[7rem] font-extrabold leading-none sm:text-[10rem]">
             404
           </p>

@@ -306,15 +306,7 @@ export default function ClubDetailPage() {
           the negative margin the banner started below the bar, so the bar - which
           is deliberately bare at rest and only frosts on scroll or hover - had
           nothing to show through and read as a solid strip. */}
-      <section className="relative -mt-16 overflow-hidden border-b border-[var(--border)] pt-16 lg:-mt-[72px] lg:pt-[72px]">
-        <div
-          aria-hidden
-          className="absolute inset-0"
-          style={{
-            background:
-              'radial-gradient(120% 90% at 12% 0%, color-mix(in oklab, var(--accent) 26%, transparent) 0%, transparent 62%), var(--surface-2)',
-          }}
-        />
+      <section className="band-wash relative -mt-16 overflow-hidden border-b border-[var(--border)] pt-16 lg:-mt-[72px] lg:pt-[72px]">
         <Container size="wide" className="relative pb-8 pt-2 lg:pb-11">
           <nav aria-label="Breadcrumb" className="mb-6">
             <ol className="flex items-center gap-2 text-xs text-[var(--text-faint)]">

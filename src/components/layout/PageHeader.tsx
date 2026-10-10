@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { Container, Eyebrow } from '@/components/ui'
+import { HeaderWash } from '@/components/layout/HeaderWash'
 
 export function PageHeader({
   eyebrow,
@@ -19,17 +20,7 @@ export function PageHeader({
        the header on a flat page background, so a correctly-transparent bar
        looked like a solid strip instead of a pane over content. */
     <section className="relative -mt-16 overflow-hidden border-b border-[var(--border)] pt-16 lg:-mt-[72px] lg:pt-[72px]">
-      {/* parallax ambient wash — the layer drifts slower than the page */}
-      <div
-        aria-hidden
-        data-parallax="0.22"
-        className="parallax-layer pointer-events-none absolute inset-0 bg-grid opacity-60"
-      />
-      <div
-        aria-hidden
-        data-parallax="0.34"
-        className="parallax-layer pointer-events-none absolute inset-0 bg-radial-volt"
-      />
+      <HeaderWash />
       <Container size="wide" className="relative pb-14 sm:pb-16 lg:pb-20 pt-4">
         <div className="max-w-3xl">
           <Eyebrow className="mb-5">{eyebrow}</Eyebrow>

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { Button, ButtonLink, Container, EmptyState, Eyebrow, Section } from '@/components/ui'
+import { HeaderWash } from '@/components/layout/HeaderWash'
 import { useCart } from '@/lib/cart'
 import { SITE } from '@/data'
 import { cx } from '@/lib/format'
@@ -170,8 +171,11 @@ export function CartPanel() {
 export function CartView() {
   const { detailed, count, total, canTotal, setQty, remove, clear } = useCart()
   return (
-    <Section>
-      <Container size="narrow">
+    /* Header overlap, same treatment as PageHeader and the club/match bands.
+       Without it the bar sits on a flat `--bg` fill and reads as a solid strip. */
+    <Section className="-mt-16 overflow-hidden pt-16 lg:-mt-[72px] lg:pt-[72px]">
+      <HeaderWash />
+      <Container size="narrow" className="pt-4">
         <Eyebrow className="mb-4">Checkout</Eyebrow>
         <h1 className="text-4xl font-extrabold sm:text-5xl">Your cart</h1>
         <p className="mt-4 max-w-xl text-[var(--text-muted)]">

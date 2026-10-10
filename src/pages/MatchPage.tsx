@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Badge, ButtonLink, Card, Container, EmptyState, Section, Tabs } from '@/components/ui'
+import { HeaderWash } from '@/components/layout/HeaderWash'
 import { LineupList, Pitch } from '@/components/club'
 import { SITE, siteData } from '@/data'
 import { CLUB_PLACEHOLDER, cx, stripFlag, weekday, dayNum, monthShort } from '@/lib/format'
@@ -309,10 +310,13 @@ export default function MatchPage() {
 
   return (
     <div className="page-enter">
-      {/* ---------------- scoreboard ---------------- */}
-      <section className="relative overflow-hidden border-b border-[var(--border)] bg-[var(--surface-2)]">
-        <div aria-hidden className="absolute inset-0 bg-grid opacity-40" />
-        <Container size="wide" className="relative py-10 lg:py-12">
+      {/* ---------------- scoreboard ----------------
+          Pulled behind the fixed bar exactly like PageHeader, with the space
+          handed back as padding. The solid `--surface-2` fill is gone: over a
+          flat fill a correctly-transparent bar still reads as a solid strip. */}
+      <section className="relative -mt-16 overflow-hidden border-b border-[var(--border)] bg-[var(--surface-2)] pt-16 lg:-mt-[72px] lg:pt-[72px]">
+        <HeaderWash />
+        <Container size="wide" className="relative pb-10 pt-2 lg:pb-12">
           <nav aria-label="Breadcrumb" className="mb-6">
             <ol className="flex items-center gap-2 text-xs text-[var(--text-faint)]">
               <li>

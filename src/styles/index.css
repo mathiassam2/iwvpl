@@ -552,6 +552,19 @@
     object-position: 19% center;
   }
 
+  /* Page-top wash for entity pages (club, match). Warmer and more directional
+     than `.bg-radial-volt` so the two read as the same family as the plain
+     PageHeader band without being identical. */
+  .band-wash {
+    background:
+      radial-gradient(
+        120% 90% at 12% 0%,
+        color-mix(in oklab, var(--accent) 26%, transparent) 0%,
+        transparent 62%
+      ),
+      var(--surface-2);
+  }
+
   /* `lift` is opt-in. Cards that should stay flat on hover simply omit it. */
   .lift {
     transition:
