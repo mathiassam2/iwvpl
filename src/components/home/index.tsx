@@ -691,9 +691,9 @@ export function Formats() {
  * generic esports photo would have been decoration.
  */
 const NATIONS = [
-  { name: 'Singapore', iso: 'SG', src: asset('/assets/hero/sg-hero.webp') },
-  { name: 'Malaysia', iso: 'MY', src: asset('/assets/hero/my-hero.webp') },
-  { name: 'Indonesia', iso: 'ID', src: asset('/assets/hero/in-hero.webp') },
+  { name: 'Singapore', iso: 'SG', src: asset('/assets/hero/sg-hero.webp'), focus: 'hero-focus-sg' },
+  { name: 'Malaysia', iso: 'MY', src: asset('/assets/hero/my-hero.webp'), focus: 'hero-focus-my' },
+  { name: 'Indonesia', iso: 'ID', src: asset('/assets/hero/in-hero.webp'), focus: 'hero-focus-in' },
 ] as const
 
 export function Nations() {
@@ -706,12 +706,19 @@ export function Nations() {
             to="/clubs"
             className="group relative block h-[42vh] min-h-[280px] overflow-hidden sm:h-[62vh]"
           >
+            {/* Same focus classes the hero carousel uses, so each panel frames
+                its country's landmark - Singapore's crescent and stars,
+                Malaysia's starburst, Indonesia's National Monument - instead of
+                centring on empty paint. */}
             <img
               src={n.src}
               alt=""
               loading="lazy"
               decoding="async"
-              className="absolute inset-0 h-full w-full scale-105 object-cover object-center transition-transform duration-[1200ms] ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-110"
+              className={cx(
+                'absolute inset-0 h-full w-full scale-105 object-cover transition-transform duration-[1200ms] ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-110',
+                n.focus,
+              )}
             />
             {/* Same ramp the hero uses, so the panels match the carousel
                 rather than reading as a different visual system. */}
@@ -879,7 +886,7 @@ export function AboutStrip() {
             </ButtonLink>
           </div>
 
-          <div className="grid grid-cols-2 gap-px">
+          <div className="grid grid-cols-2 gap-4">
             <StatTile label="Clubs registered" value={siteData.clubs.length} hint="Across SEA" />
             <StatTile label="Goals scored" value={totalGoals(siteData.results)} hint="This season" />
             <StatTile label="Divisions" value="5" hint="Championship → Div 3" />
