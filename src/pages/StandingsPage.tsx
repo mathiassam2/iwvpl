@@ -39,10 +39,13 @@ export default function StandingsPage() {
         lede={`${SITE.season} — IWVPL Pro Club League. Select any column heading to re-sort the table.`}
       />
 
-      <Section>
+      {/* Tight top padding. The table is the reason anyone opens this page, and
+          behind a tall PageHeader, a tab strip and a row of stat cards it
+          started below the fold on a laptop. Summary moved underneath it. */}
+      <Section className="!py-10 sm:!py-12">
         <Container size="wide">
           {divisions.length > 1 && (
-            <div className="mb-8 border-b border-[var(--border)]">
+            <div className="mb-6 border-b border-[var(--border)]">
               <Tabs
                 tabs={divisions.map((d) => ({
                   id: d,
@@ -56,7 +59,9 @@ export default function StandingsPage() {
             </div>
           )}
 
-          <div className="mb-8 grid gap-4 sm:grid-cols-3">
+          <StandingsTable rows={sorted} sort={sort} onSort={onSort} />
+
+          <div className="mt-10 grid gap-4 sm:grid-cols-3">
             <StatTile label="Clubs" value={rows.length} hint={div} />
             <StatTile label="Fixtures" value={teamMatches} hint="Team-matches played" />
             <StatTile
@@ -65,8 +70,6 @@ export default function StandingsPage() {
               hint={`${(goals / Math.max(teamMatches, 1)).toFixed(2)} per match`}
             />
           </div>
-
-          <StandingsTable rows={sorted} sort={sort} onSort={onSort} />
 
           <p className="mt-5 max-w-3xl text-xs leading-relaxed text-[var(--text-faint)]">
             Form shows each club&rsquo;s last five results. Standings reflect completed fixtures
