@@ -512,12 +512,15 @@ export function Hero() {
                 </div>
               )}
 
+              {/* No `row-hover` on these five: they sit directly under the hero artwork, and
+                    the wash flickered as the pointer crossed the rows against the
+                    moving background. They stay links - only the fill is gone. */}
               <div className="divide-y divide-[var(--border)] border-t border-[var(--border)]">
                 {siteData.standings.slice(1, 6).map((r) => (
                   <Link
                     key={r.team}
                     to="/standings"
-                    className="row-hover flex items-center gap-3 px-5 py-2.5"
+                    className="flex items-center gap-3 px-5 py-2.5"
                   >
                     <span className="numeric w-5 shrink-0 text-right text-xs text-[var(--text-faint)]">
                       {r.pos}
