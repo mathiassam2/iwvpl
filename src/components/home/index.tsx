@@ -28,21 +28,36 @@ import { CLUB_PLACEHOLDER, cx, stripFlag, totalGoals } from '@/lib/format'
  * slide 1 behaved differently from the rest, which is not worth the extra state
  * now that there is no key art to hold on its own.
  */
+/* `focus` is the mobile-only horizontal anchor. A phone viewport is tall and
+   narrow, so object-cover against these 16:9 frames shows roughly the leftmost
+   29% of the image - centred, all three slides framed empty paint. The subject
+   sits at a different depth in each, so each gets the anchor that lands it in
+   frame: Singapore's crescent and stars reach the left edge, Malaysia's
+   starburst starts just in from it, and the National Monument sits a quarter of
+   the way across.
+
+   The value is the whole class, not a bare percentage: Tailwind scans source
+   for literal class strings, so `object-[${pct}%_center]` would be invisible to
+   the generator and silently drop the rule. The three classes themselves are
+   defined in styles/index.css - see the note there. */
 const HERO_SLIDES = [
   {
     src: asset('/assets/hero/sg-hero.webp'),
     alt: 'IWVPL hero artwork — Singapore',
     label: 'Singapore',
+    focus: 'hero-focus-sg',
   },
   {
     src: asset('/assets/hero/in-hero.webp'),
     alt: 'IWVPL hero artwork — Indonesia',
     label: 'Indonesia',
+    focus: 'hero-focus-in',
   },
   {
     src: asset('/assets/hero/my-hero.webp'),
     alt: 'IWVPL hero artwork — Malaysia',
     label: 'Malaysia',
+    focus: 'hero-focus-my',
   },
 ] as const
 
@@ -334,14 +349,17 @@ export function Hero() {
                   </div>
 
                   {/* Mobile uses the SAME artwork and the SAME fit as desktop, so nothing
-                      resizes between the two. Touch devices have no cursor to
-                      follow, so the drift simply never receives a target and
-                      stays put. */}
+                      resizes between the two. Only the horizontal anchor differs,
+                      via `focus` above. Touch devices have no cursor to follow,
+                      so the drift simply never receives a target and stays put. */}
                   <div className="absolute inset-0 lg:hidden">
                     <img
                       src={s.src}
                       alt=""
-                      className="hero-drift absolute inset-0 h-full w-full object-cover object-center"
+                      className={cx(
+                        'hero-drift absolute inset-0 h-full w-full object-cover',
+                        s.focus,
+                      )}
                       loading={i === 0 ? 'eager' : 'lazy'}
                       decoding="async"
                     />

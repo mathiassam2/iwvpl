@@ -526,6 +526,26 @@
     );
   }
 
+  /* Mobile-only horizontal anchor for the hero slides.
+     Tailwind v4 emits nothing for `object-[20%_center]` in this project - the
+     class reaches the DOM and silently does nothing, which would leave those
+     slides centred, the exact bug these offsets exist to fix. `object-left` is
+     a real utility and works, but all three live here so the slide data reads
+     as one consistent set.
+
+     A phone viewport is tall and narrow, so object-cover against these 16:9
+     frames shows only the leftmost ~29% of the image. The subject sits at a
+     different depth in each frame, hence three anchors rather than one. */
+  .hero-focus-sg {
+    object-position: left center;
+  }
+  .hero-focus-my {
+    object-position: 10% center;
+  }
+  .hero-focus-in {
+    object-position: 20% center;
+  }
+
   /* `lift` is opt-in. Cards that should stay flat on hover simply omit it. */
   .lift {
     transition:
