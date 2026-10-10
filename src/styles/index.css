@@ -534,16 +534,18 @@
      as one consistent set.
 
      A phone viewport is tall and narrow, so object-cover against these 16:9
-     frames shows only the leftmost ~29% of the image. The subject sits at a
-     different depth in each frame, hence three anchors rather than one. */
+     frames shows only ~26% of the image width. Each value was picked from
+     rendered 390x844 crops, balancing two constraints that pull against each
+     other: nothing clipped at the frame edge, and the subject sitting right of
+     the hero copy, which is left-aligned and reaches roughly 60% across. */
   .hero-focus-sg {
-    object-position: left center;
+    object-position: 6% center;
   }
   .hero-focus-my {
-    object-position: 10% center;
+    object-position: 6% center;
   }
   .hero-focus-in {
-    object-position: 20% center;
+    object-position: 10% center;
   }
 
   /* `lift` is opt-in. Cards that should stay flat on hover simply omit it. */

@@ -29,12 +29,14 @@ import { CLUB_PLACEHOLDER, cx, stripFlag, totalGoals } from '@/lib/format'
  * now that there is no key art to hold on its own.
  */
 /* `focus` is the mobile-only horizontal anchor. A phone viewport is tall and
-   narrow, so object-cover against these 16:9 frames shows roughly the leftmost
-   29% of the image - centred, all three slides framed empty paint. The subject
-   sits at a different depth in each, so each gets the anchor that lands it in
-   frame: Singapore's crescent and stars reach the left edge, Malaysia's
-   starburst starts just in from it, and the National Monument sits a quarter of
-   the way across.
+   narrow, so object-cover against these 16:9 frames shows only ~26% of the
+   image width - centred, all three slides framed empty paint. The subject sits
+   at a different depth in each frame, so each gets the anchor that lands it in
+   frame AND right of the hero copy, which is left-aligned and reaches roughly
+   60% across: Singapore's crescent and stars reach the left edge, Malaysia's
+   crescent and starburst sit just in from it, and the National Monument is a
+   quarter of the way across. Values were picked from rendered 390x844 crops -
+   see styles/index.css for the measurements.
 
    The value is the whole class, not a bare percentage: Tailwind scans source
    for literal class strings, so `object-[${pct}%_center]` would be invisible to
