@@ -657,13 +657,52 @@ quietly breaks a scroll-driven timeline.
 Also deleted: `.rail__copy` and `.rail__cta*`, which had no matching elements
 at all.
 
-### Nation artwork is legible
+### Nation artwork is legible, and the three match each other
 
-Art opacity `0.42 → 0.66`, and the scrim rebalanced from `0.94/0.82/0.62`
-plus a 0.95 vignette to `0.90/0.72/0.36` plus 0.62. Combined right-edge
-coverage drops from ~87% to ~62%, so you can tell Singapore from Malaysia
-from Indonesia without reading the label, while the left side stays dark
-enough for white type. Lighthouse accessibility still 1.0.
+The artwork was dim **and** hazy. Hazy is the worse half: compositing it over
+a near-black panel at partial alpha lifts the blacks, so the campaign art
+turned milky grey and the reds went muddy. Opacity is now **1** — the scrim
+does the shaping, not the alpha — with `saturate(1.08) contrast(1.05)` to put
+the depth back. The scrim ramp went `0.90/0.72/0.36` + a 0.95 vignette to
+`0.76/0.46/0.10` + 0.44, which had crushed the left third to near black and
+made the middle of each panel the brightest thing in it.
+
+The three panels still did not match, and equal treatment does not produce
+equal results, because each is a different artwork. Measured on the rendered
+composite (`scripts/verify-rail-art.html`, which reads the live computed
+styles so it cannot drift from the stylesheet): Singapore 56, Malaysia 65,
+Indonesia 64 — Singapore reading 9% dim. `--art-gain` corrects each, against
+the **brightest** panel rather than the mean, so levelling never costs anyone
+brightness. Right-edge luminance is now 69 / 70 / 70, spread **1.5%**.
+
+### The rail's artwork is left-anchored, and its copy is no longer sliced
+
+The rail reused the hero's `hero-focus-*` offsets (6/14/19%). Those are
+measured for a completely different composition: on a phone the hero frame is
+far taller than the viewport, so `object-cover` scales by height and only
+~15–18% of the image width is ever on screen, and the offsets exist to push
+each nation's subject clear of the *overlaid* hero copy. On a rail panel — a
+plain stacked card with its copy left-aligned — they only produced three
+arbitrary crops. All three are now `left center`. (A no-op on desktop: at
+`84cqw × 66svh` the panel's aspect ≈ 1.82 against the artwork's 1.79, so cover
+does almost no horizontal cropping and the horizontal position cannot show.)
+
+As the track travels it sheared each panel's copy in half at the viewport
+edge — the nation code and club count sliced mid-word. `.rail__vp` now carries
+a `mask-image` that fades the frame's left and right edges, so panels emerge
+from and return to darkness instead of being cut. Desktop only: below 900px
+nothing travels, and fading the top and bottom of a stack would just dim the
+first and last panels.
+
+### A CSS trap worth recording
+
+The minor dark veil over the artwork was first written as a flat colour layer
+at the **top** of the `background` shorthand. A `<color>` is only valid in the
+**final** layer of a `background`, so putting it first made the entire
+declaration invalid and Chrome dropped the scrim silently — no error, no
+warning, just `background-image: none`. It is now a two-stop
+`linear-gradient` with identical colour stops, which is a real `<image>` layer
+and can sit on top where it belongs.
 
 ### Login page
 

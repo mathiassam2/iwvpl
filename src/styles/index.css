@@ -1125,6 +1125,19 @@
     overflow-x: auto;
     overscroll-behavior-x: contain;
     scrollbar-width: none;
+    /* Panels emerge from and return to darkness at the frame edges instead of
+       being cut off by them. Without this the travelling track shears a
+       panel's copy in half at the viewport edge - the nation code and the
+       club count get sliced mid-word as the panel leaves.
+
+       Percentages rather than container units on purpose: `cqw` inside
+       `.rail__vp` would resolve against an ANCESTOR container, not this one,
+       which is itself the container.
+
+       Desktop only. Below 900px the rail is a plain stack and nothing
+       travels, so fading its top and bottom edges would just dim the first
+       and last panels. */
+    mask-image: linear-gradient(to right, transparent 0, #000 8%, #000 92%, transparent 100%);
   }
   .rail__vp::-webkit-scrollbar {
     display: none;
@@ -1264,42 +1277,81 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
-  /* Matches the hero treatment so the rail reads as the same campaign, not a
-     different set of stock. Opacity was 0.42, which with the scrim below left
-     the artwork barely legible - you could not tell Singapore from Malaysia
-     from Indonesia without reading the label. */
-  opacity: 0.66;
-  filter: saturate(0.95);
+  /* Anchored left, and the SAME for all three.
+
+     This used to reuse the hero's `hero-focus-*` offsets (6/14/19%). Those
+     are measured for a completely different composition: on a phone the hero
+     frame is far taller than the viewport, so object-cover scales by height
+     and only ~15-18% of the image width is ever on screen, and the offsets
+     exist to push each nation's subject clear of the overlaid hero copy. A
+     rail panel is a plain stacked card with its copy left-aligned, so they
+     only produced three different arbitrary crops of three artworks that
+     otherwise share the same framing. Left-aligning all three puts the same
+     part of each picture against the panel's left edge.
+
+     This is a no-op on desktop: at 84cqw x 66svh the panel's aspect (~1.82)
+     is very close to the artwork's (1.79), so cover does almost no horizontal
+     cropping and the horizontal position cannot show at all. */
+  object-position: left center;
+  /* 0.66 read as dim and, worse, hazy: compositing artwork over a near-black
+     panel at partial alpha lifts the blacks, so the campaign art turned to
+     milky grey and the reds went muddy. Opacity is now 1 - the scrim below is
+     what shapes the frame, not the alpha - with a little contrast and
+     saturation so the darks stay dark and the reds stay red. */
+  opacity: 1;
+  filter: saturate(1.08) contrast(1.05) brightness(var(--art-gain, 1));
 }
-/* Two layers, both needed.
 
-   The ramp alone only ever covered the LEFT of the panel: it fell to 0.28
-   alpha at the right edge, which left the campaign artwork's flag stripes
-   running bright and hard into the frame's right-hand edge, so the panel
-   read as cropped rather than composed. The flat floor underneath means no
-   part of the frame is ever left uncovered, and the vignette pulls the
-   border itself down so the artwork never touches the rounded edge.
+/* Level the three against each other.
 
-   Type over campaign artwork in BOTH themes, so this scrim is
-   theme-invariant dark for the same reason .banner-scrim is. --banner-ink
-   is a bare "r g b" triplet so it can take an alpha. Left-heavy: the copy
-   sits left, so the right side stays open to the picture. */
-/* Type over campaign artwork in BOTH themes, so this scrim is
-   theme-invariant dark for the same reason .banner-scrim is —
-   `--banner-ink` is declared on :root and a bare "r g b" triplet
-   so it can take an alpha. Left-heavy: the copy sits left, so the
-   right side is left open to the picture. */
+   One treatment does not produce one level, because each panel shows a
+   different artwork. Measured on the rendered composite, right 55% of each
+   panel: Singapore 56, Malaysia 65, Indonesia 64. Left alone Singapore reads
+   as the dim one in the set by 9%.
+
+   These gains are corrected against the BRIGHTEST panel, not the mean, so
+   levelling never costs anyone brightness - the whole set moves up to meet
+   the brightest rather than down to meet the middle.
+
+   `--art-gain` is inherited into the image above, so this only ever moves
+   artwork and never the type on top of it. Measured, not taste - re-check
+   with scripts/verify-rail-art.html after touching the treatment above. */
+.rail__panel--sg { --art-gain: 1.38; }
+.rail__panel--my { --art-gain: 1.08; }
+.rail__panel--id { --art-gain: 1.1; }
+
+/* Three layers, all needed.
+
+   The top flat one is a minor overall veil. Once the artwork was lifted out of
+   the haze and the ramp below was flattened, the brightest parts of the
+   campaign art - Singapore's white band, the Malaysian starburst - started to
+   compete with the type. 10% takes the edge off without going back to dim.
+
+   The ramp holds the left third back for the white type and leaves the right
+   open to the picture, and the vignette pulls the border itself down so the
+   artwork never touches the rounded edge.
+
+   Type over campaign artwork in BOTH themes, so this scrim is theme-invariant
+   dark for the same reason .banner-scrim is. `--banner-ink` is a bare
+   "r g b" triplet so it can take an alpha. */
 .rail__scrim {
   position: absolute;
   inset: 0;
   z-index: -1;
   background:
-    radial-gradient(125% 105% at 50% 50%, transparent 38%, rgb(var(--banner-ink) / 0.62) 100%),
+    /* The minor veil is a two-stop gradient rather than a flat colour on
+       purpose. In the `background` shorthand a `<color>` is only valid in the
+       FINAL layer, so putting the veil first - which is where it belongs
+       visually, on top of everything - made the whole declaration invalid and
+       Chrome silently dropped the scrim entirely. A gradient is a real
+       `<image>` layer, so it can sit on top and mean what it says. */
+    linear-gradient(rgb(var(--banner-ink) / 0.12), rgb(var(--banner-ink) / 0.12)),
+    radial-gradient(125% 105% at 50% 50%, transparent 42%, rgb(var(--banner-ink) / 0.44) 100%),
     linear-gradient(
       100deg,
-      rgb(var(--banner-ink) / 0.9) 0%,
-      rgb(var(--banner-ink) / 0.72) 40%,
-      rgb(var(--banner-ink) / 0.36) 100%
+      rgb(var(--banner-ink) / 0.76) 0%,
+      rgb(var(--banner-ink) / 0.46) 42%,
+      rgb(var(--banner-ink) / 0.1) 100%
     );
 }
 
@@ -1353,7 +1405,10 @@
   font-size: 0.8125rem;
   font-weight: 500;
   letter-spacing: 0.02em;
-  color: rgb(255 255 255 / 0.68);
+  /* Lifted from 0.68/0.5 when the artwork behind it roughly doubled in
+     luminance. These are the two dimmest things in the panel and the artwork
+     is now a much lighter backdrop for them. */
+  color: rgb(255 255 255 / 0.78);
 }
 
 /* Crest chips — no plate, no container, no background. That was a
@@ -1390,7 +1445,7 @@
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: rgb(255 255 255 / 0.5);
+  color: rgb(255 255 255 / 0.62);
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;

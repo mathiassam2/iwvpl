@@ -1,0 +1,128 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>rail art levels</title>
+<style>body{margin:0;background:#111;color:#ddd;font:12px ui-monospace,monospace;padding:16px}</style></head>
+<body><pre id="out">working...</pre>
+<iframe id="probe" src="/" style="width:1400px;height:600px;border:0;position:absolute;left:-9999px"></iframe>
+<script>
+/*
+ * Measures the three nation panels in IslandRail and reports how close they
+ * are to each other.
+ *
+ * It reads the LIVE computed styles off the running page - opacity, the
+ * filter chain, the scrim's alphas, and each panel's --art-gain - and then
+ * composites the artwork exactly as CSS would, so the numbers cannot drift
+ * away from the stylesheet. It measures the right 55% of each panel, which
+ * is the part the copy does not sit on.
+ *
+ * The point is that the three panels are the same set. Equal treatment does
+ * not produce equal results, because each panel shows a different CROP of a
+ * different artwork (object-position 6/14/19%), and Malaysia's crop lands on
+ * a darker region than the other two. `--art-gain` in index.css is the
+ * measured correction for that; this is the check on it.
+ *
+ *   cp scripts/verify-rail-art.html dist/_eq.html   (after `npm run build`,
+ *   which empties dist) and open /iwvpl/_eq.html
+ */
+var PW = 1080, PH = 593;
+var POS = { SG: 0.06, MY: 0.14, ID: 0.19 };
+
+(async function () {
+  await new Promise(function (r) {
+    var f = document.getElementById('probe');
+    if (f.contentDocument && f.contentDocument.querySelector('.rail__panel')) return r();
+    f.onload = function () { setTimeout(r, 1400); };
+  });
+  var w = document.getElementById('probe').contentWindow, d = w.document;
+  var panels = [...d.querySelectorAll('.rail__panel')];
+  if (!panels.length) { document.getElementById('out').textContent = 'no .rail__panel found'; return; }
+
+  var firstImg = d.querySelector('.rail__art-img');
+  var OPACITY = parseFloat(w.getComputedStyle(firstImg).opacity);
+  var FILTER = w.getComputedStyle(firstImg).filter;
+  var scrim = w.getComputedStyle(d.querySelector('.rail__scrim')).backgroundImage;
+  var alphas = [...scrim.matchAll(/rgba?\([^)]*?,\s*([\d.]+)\)/g)].map(function (m) { return parseFloat(m[1]); });
+  var linear = alphas.slice(-3);   // the linear gradient is last in the stack
+  var vigA = alphas.length > 3 ? alphas[alphas.length - 4] : 0;
+  var ink = (scrim.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/) || [0, 6, 7, 9]).slice(1).map(Number);
+  var bg = (w.getComputedStyle(d.querySelector('.rail__panel')).backgroundColor.match(/\d+/g) || [14, 16, 19]).map(Number);
+  var num = function (re, dflt) { var m = FILTER.match(re); return m ? parseFloat(m[1]) : dflt; };
+  var filt = {
+    s: num(/saturate\(([\d.]+)\)/, 1),
+    c: num(/contrast\(([\d.]+)\)/, 1),
+  };
+
+  function linAt(u) {
+    return u < 0.42
+      ? linear[0] + (linear[1] - linear[0]) * (u / 0.42)
+      : linear[1] + (linear[2] - linear[1]) * ((u - 0.42) / 0.58);
+  }
+  function vigAt(x, y) {
+    var dx = (x - PW / 2) / (PW * 0.625), dy = (y - PH / 2) / (PH * 0.525);
+    var t = Math.max(0, Math.min(1, (Math.sqrt(dx * dx + dy * dy) - 0.42) / 0.58));
+    return vigA * t;
+  }
+
+  var rows = [];
+  for (var p of panels) {
+    // p.querySelector, NOT d.querySelector(sel, p): the two-argument form
+    // ignores a plain object scope and returns the first match in the whole
+    // document, which silently measures the Singapore artwork three times.
+    var img = p.querySelector('.rail__art-img');
+    var cls = [...p.classList].find(function (c) { return /^rail__panel--(sg|my|id)$/.test(c); });
+    if (!cls) continue;
+    var iso = cls.slice(-2).toUpperCase();
+    var gain = parseFloat(w.getComputedStyle(p).getPropertyValue('--art-gain')) || 1;
+    var bmp = await new Promise(function (r, j) {
+      var i = new Image(); i.onload = function () { r(i); }; i.onerror = j; i.src = img.currentSrc || img.src;
+    });
+    var c = document.createElement('canvas'); c.width = PW; c.height = PH;
+    var ctx = c.getContext('2d');
+    ctx.fillStyle = 'rgb(' + bg.join(',') + ')';
+    ctx.fillRect(0, 0, PW, PH);
+    ctx.globalAlpha = OPACITY;
+    ctx.filter = 'saturate(' + filt.s + ') contrast(' + filt.c + ') brightness(' + gain + ')';
+    var sc = Math.max(PW / bmp.naturalWidth, PH / bmp.naturalHeight);
+    var sw = bmp.naturalWidth * sc, sh = bmp.naturalHeight * sc;
+    ctx.drawImage(bmp, -(sw - PW) * POS[iso], -(sh - PH) * 0.5, sw, sh);
+    ctx.filter = 'none';
+    ctx.globalAlpha = 1;
+
+    var px = ctx.getImageData(0, 0, PW, PH).data;
+    var right = 0, kr = 0, all = 0;
+    for (var y = 0; y < PH; y++) {
+      for (var x = 0; x < PW; x++) {
+        var i2 = (y * PW + x) * 4;
+        var a = 1 - (1 - linAt(x / PW)) * (1 - vigAt(x, y));
+        var L = 0.2126 * (px[i2] * (1 - a) + ink[0] * a)
+              + 0.7152 * (px[i2 + 1] * (1 - a) + ink[1] * a)
+              + 0.0722 * (px[i2 + 2] * (1 - a) + ink[2] * a);
+        all += L;
+        if (x >= PW * 0.55) { right += L; kr++; }
+      }
+    }
+    rows.push({ iso: iso, gain: gain, right: right / kr, all: all / (PW * PH) });
+  }
+
+  var mean = rows.reduce(function (a, r) { return a + r.right; }, 0) / rows.length;
+  var vals = rows.map(function (r) { return r.right; });
+  var out = [
+    'opacity ' + OPACITY + '   filter ' + FILTER,
+    'scrim linear ' + linear.join(' / ') + '   vignette ' + vigA,
+    '',
+  ];
+  rows.forEach(function (r) {
+    out.push(
+      r.iso + '  gain=' + r.gain.toFixed(2) +
+      '  right45=' + r.right.toFixed(2) +
+      '  panel=' + r.all.toFixed(2) +
+      '  vsMean=' + ((r.right / mean - 1) * 100).toFixed(1) + '%',
+    );
+  });
+  var spread = (Math.max.apply(null, vals) / Math.min.apply(null, vals) - 1) * 100;
+  out.push('', 'spread ' + spread.toFixed(1) + '%' + (spread < 5 ? '  OK' : '  TOO WIDE'));
+  document.getElementById('out').textContent = out.join('\n');
+})();
+</script>
+</body>
+</html>

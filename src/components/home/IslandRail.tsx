@@ -26,8 +26,6 @@ type Nation = {
   flag: string
   name: string
   art: string
-  /** Mobile-only horizontal anchor, same convention as the hero. */
-  focus: string
 }
 
 const NATIONS: Nation[] = [
@@ -36,21 +34,18 @@ const NATIONS: Nation[] = [
     flag: '🇸🇬',
     name: 'Singapore',
     art: '/assets/hero/sg-hero.webp',
-    focus: 'hero-focus-sg',
   },
   {
     iso: 'MY',
     flag: '🇲🇾',
     name: 'Malaysia',
     art: '/assets/hero/my-hero.webp',
-    focus: 'hero-focus-my',
   },
   {
     iso: 'ID',
     flag: '🇮🇩',
     name: 'Indonesia',
     art: '/assets/hero/in-hero.webp',
-    focus: 'hero-focus-in',
   },
 ]
 
@@ -102,14 +97,14 @@ export function IslandRail() {
           {byNation.map((n, i) => (
             <article
               key={n.iso}
-              className="rail__panel"
+              className={cx('rail__panel', `rail__panel--${n.iso.toLowerCase()}`)}
               aria-label={`${n.name} — ${n.clubs.length} clubs in the ${DIVISION} table`}
             >
               <div className="rail__art">
                 <img
                   src={asset(n.art)}
                   alt={`IWVPL campaign artwork — ${n.name}`}
-                  className={cx('rail__art-img', n.focus)}
+                  className="rail__art-img"
                   /* First panel is adjacent to the fold, so it is not
                      deferred; the rest have time to arrive as you scroll. */
                   loading={i === 0 ? 'eager' : 'lazy'}
