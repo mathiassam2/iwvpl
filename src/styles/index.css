@@ -699,18 +699,16 @@
    sweeps. Entirely transform/opacity, so it stays on the
    compositor and never triggers layout.
    ============================================================ */
-/* Cursor-following drift for the shoutout slides.
-   `--drift-x` / `--drift-y` are written to the stage element every frame by a
-   rAF loop that eases toward the pointer's position, so the motion ramps up as
-   the cursor moves and eases back as it leaves. The transform lives here rather
-   than in JS because CSS reads the variable once per frame instead of forcing a
-   style recalculation per slide.
+/* Hero imagery.
+   Deliberately static. This used to translate by `--drift-x` / `--drift-y`,
+   written every frame by a rAF loop easing toward the pointer's position - a
+   hero that slides under the cursor, over the very buttons the cursor is there
+   to press.
 
-   Scaled slightly past 1 so the offset never exposes an edge, and deliberately
-   no zoom animation - the movement is positional only. */
+   Scaled slightly past 1 so the cover crop never exposes an edge, and
+   deliberately no zoom animation either. */
 .hero-drift {
-  transform: translate3d(var(--drift-x, 0px), var(--drift-y, 0px), 0) scale(1.06);
-  will-change: transform;
+  transform: scale(1.06);
 }
 
 @keyframes sweep {
@@ -800,11 +798,8 @@
   .hero-conic {
     animation: none !important;
   }
-  /* Park the drift at centre, still scaled so no edge is exposed. The rAF loop
-     is not started at all under reduced motion, so the variable never moves. */
-  .hero-drift {
-    transform: translate3d(0, 0, 0) scale(1.06) !important;
-  }
+  /* `.hero-drift` no longer needs a reduced-motion override: it is static
+     everywhere now, so the base rule is already the parked state. */
   /* Fill the progress track outright rather than animating it. */
   .hero-dot-fill {
     animation: none !important;
@@ -1135,6 +1130,15 @@
        panel's copy in half at the viewport edge - the nation code and the
        club count get sliced mid-word as the panel leaves.
 
+       The fade is kept NARROWER than the track's inline padding, and that is
+       the part that is load-bearing. At rest the first panel sits one
+       `padding-inline` in from the left and its copy starts a further ~3rem
+       past that. When the fade was 8% and the padding 4cqw, the copy landed
+       *inside* the fade and was eaten even with the rail stopped - which is
+       worse than no fade at all, because it looked like a layout bug. 5%
+       against 6cqw puts the rest-position copy clear of it at every width,
+       while still softening the panels on their way past.
+
        Percentages rather than container units on purpose: `cqw` inside
        `.rail__vp` would resolve against an ANCESTOR container, not this one,
        which is itself the container.
@@ -1142,7 +1146,7 @@
        Desktop only. Below 900px the rail is a plain stack and nothing
        travels, so fading its top and bottom edges would just dim the first
        and last panels. */
-    mask-image: linear-gradient(to right, transparent 0, #000 8%, #000 92%, transparent 100%);
+    mask-image: linear-gradient(to right, transparent 0, #000 5%, #000 95%, transparent 100%);
   }
   .rail__vp::-webkit-scrollbar {
     display: none;
@@ -1151,8 +1155,10 @@
     display: flex;
     align-items: stretch;
     gap: 3cqw;
+    /* Matches the mask fade above. See the note there: this is the inset that
+       keeps a stopped rail's copy out of the faded edge. */
     width: max-content;
-    padding-inline: 4cqw;
+    padding-inline: 6cqw;
   }
 }
 
@@ -1180,13 +1186,18 @@
     animation-timeline: --rail;
     animation-range: contain 0% contain 100%;
   }
-  /* Caption runs slightly ahead instead — the panel text pushes
-     forward, the image lets go. */
-  .rail__body {
-    animation: sd-rail-lead linear both;
-    animation-timeline: --rail;
-    animation-range: contain 0% contain 100%;
-  }
+  /* NO LEAD ON THE CAPTION. This used to translate `.rail__body` -3cqw -> +3cqw
+     so the text ran ahead of the picture. `.rail__panel` is `overflow: hidden`
+     (it has to be, for the rounded corners over the cover-cropped art), so
+     that offset pushed the copy clean OUTSIDE its own panel at both ends of
+     the range and the panel clipped it: the nation code lost an "S" and the
+     club count lost its digit, with the rail stopped and apparently at rest.
+     It only showed on wide viewports, where 3cqw (55px) exceeds the body's
+     48px of padding; below that it happened to fit.
+
+     The artwork still drifts (above) and the type no longer does. The caption
+     belongs to the panel, and a caption that slides inside its own frame just
+     reads as a mis-alignment. */
   /* Index numerals scale up as the section arrives, then settle. */
   .rail__index {
     animation: sd-rail-index linear both;
@@ -1221,10 +1232,6 @@
 @keyframes sd-rail-drift {
   from { transform: translate3d(-9cqw, 0, 0) scale(1.3); }
   to   { transform: translate3d(9cqw, 0, 0) scale(1.3); }
-}
-@keyframes sd-rail-lead {
-  from { transform: translate3d(-3cqw, 0, 0); }
-  to   { transform: translate3d(3cqw, 0, 0); }
 }
 @keyframes sd-rail-index {
   from { transform: scale(0.72); opacity: 0.25; }
@@ -1708,7 +1715,6 @@
     animation: none !important;
   }
   .rail__art-img,
-  .rail__body,
   .rail__index,
   .rail__track,
   .stmt__in,

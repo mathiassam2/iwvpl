@@ -648,17 +648,6 @@ y 241..501 — clear of the fold and clear of the sticky header. Push it later
 and the dot is behind the header before the wave has finished. Anything more
 generous needs the section to be taller than the viewport, which it is not.
 
-### No parallax in the hero
-
-The hero art carried `data-parallax="0.1"`, which slid it against the scroll
-via the global `useParallax` hook. Removed, along with the `parallax-layer`
-class on that element and the `.hero-stage` class it sat in — which turned out
-to have no CSS rule and no query anywhere, so it was dead weight.
-
-The cursor drift on `.hero-drift` is a different effect and is untouched: it
-follows the pointer, not the scroll. The parallax layers on the Join CTA and
-on other pages are untouched too.
-
 ### The rail no longer scrolls sideways on a phone
 
 Below 900px the three nation panels are stacked, full-bleed and edge to edge:
@@ -721,6 +710,48 @@ declaration invalid and Chrome dropped the scrim silently — no error, no
 warning, just `background-image: none`. It is now a two-stop
 `linear-gradient` with identical colour stops, which is a real `<image>` layer
 and can sit on top where it belongs.
+
+### No parallax, and no drift, in the hero
+
+Both of the hero's motion effects are gone.
+
+The **scroll parallax** — `data-parallax="0.1"`, which slid the art against the
+page via the global `useParallax` hook — is removed, along with the
+`parallax-layer` class on that element and the `.hero-stage` class it sat in,
+which turned out to have no CSS rule and no query anywhere.
+
+The **cursor drift** — a rAF loop easing `--drift-x` / `--drift-y` toward the
+pointer so the art leaned sideways as you moved — is removed too: the two
+handlers, the loop, the three constants and the `will-change` all go, and
+`.hero-drift` is now a plain `scale(1.06)`, which is static and is there to
+hide the cover-crop edges rather than to move. A hero that slides under the
+cursor reads as a toy and fights the one thing the pointer is there for, which
+is the buttons sitting on top of it.
+
+The parallax layers on the Join CTA and on other pages are untouched.
+
+### The rail's caption was clipping itself
+
+`SG` was losing an `S` and the club count was losing its digit, with the rail
+stopped. Two separate causes, and the mask I had added for the travelling
+panels was making the first one *look* like a spacing bug.
+
+`.rail__body` carried a `sd-rail-lead` animation translating it `-3cqw →
++3cqw`, so the caption ran ahead of the picture. But `.rail__panel` is
+`overflow: hidden` — it has to be, for the rounded corners over the
+cover-cropped art — so at both ends of the range that offset pushed the copy
+clean **outside its own panel**, and the panel clipped it. It only showed on
+wide viewports: at 1853px, 3cqw is 55px against the body's 48px of padding;
+narrower, it happened to fit.
+
+The lead is gone. The artwork still drifts and the type no longer does — the
+caption belongs to the panel, and a caption sliding inside its own frame just
+reads as a mis-alignment.
+
+The edge fade was also retuned: 8% → 5% against a track inset of 4cqw → 6cqw.
+At rest the first panel sits one inset in and its copy a further 48px past
+that, so with the old numbers the copy landed *inside* the fade and was eaten
+even on a stationary rail. 5% against 6cqw clears it at every width.
 
 ### Login page
 

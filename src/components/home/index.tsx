@@ -80,15 +80,6 @@ const TYPE_DELAY = 0
 /** How long each slide holds. Every slide gets the same dwell time. */
 const SLIDE_MS = 3000
 
-/**
- * Cursor-driven drift for the shoutout slides, in px at the extreme edges of the
- * pointer's travel. Enough to notice, not enough to read as a pan.
- */
-const DRIFT_X = 16
-const DRIFT_Y = 12
-/** Per-frame easing toward the pointer target - the ramp up and down. */
-const DRIFT_EASE = 0.055
-
 /* ------------------------------------------------------------------ typing */
 
 /**
@@ -173,39 +164,14 @@ export function Hero() {
   const [index, setIndex] = useState(0)
   const regionRef = useRef<HTMLElement>(null)
   const copyRef = useRef<HTMLDivElement>(null)
-  const stageRef = useRef<HTMLDivElement>(null)
 
-  /* Pointer-following drift for the shoutout slides.
-   *
-   * The target is written straight to a CSS variable on the stage element, and a
-   * rAF loop eases the live value toward it. Doing the easing in a loop rather
-   * than a CSS transition matters: the target updates continuously as the cursor
-   * moves, and a transition on every change would restart and lag behind. The
-   * easing factor is what produces the ramp up and the ramp back down.
-   *
-   * Live values are kept in refs, not state, so pointer movement never triggers a
-   * React render - the transform is applied by writing to the DOM node directly.
-   */
-  const driftTarget = useRef({ x: 0, y: 0 })
-  const driftCurrent = useRef({ x: 0, y: 0 })
-
-  /** Pointer position as -1..1 from the centre of the hero. */
-  const onPointerMove = (e: React.PointerEvent<HTMLElement>) => {
-    if (reduced) return
-    const el = regionRef.current
-    if (!el) return
-    const rect = el.getBoundingClientRect()
-    if (!rect.width || !rect.height) return
-    driftTarget.current = {
-      x: ((e.clientX - rect.left) / rect.width - 0.5) * 2,
-      y: ((e.clientY - rect.top) / rect.height - 0.5) * 2,
-    }
-  }
-
-  /** Leaving the hero eases back to centre rather than snapping. */
-  const onPointerLeave = () => {
-    driftTarget.current = { x: 0, y: 0 }
-  }
+  /* NO POINTER DRIFT.
+   * The hero art used to lean toward the cursor: a rAF loop eased a
+   * --drift-x/y target from the pointer position and `.hero-drift` translated
+   * by it. Removed. A hero that slides under the cursor reads as a toy rather
+   * than a pitch, and it fights the one thing the pointer is actually for -
+   * the buttons sitting over it. `.hero-drift` keeps its `scale(1.06)`, which
+   * is static and is there to hide the cover-crop edges, not to move. */
 
   const count = HERO_SLIDES.length
   const go = useCallback(
@@ -230,28 +196,6 @@ export function Hero() {
     const id = window.setInterval(() => go(index + 1), SLIDE_MS)
     return () => window.clearInterval(id)
   }, [reduced, index, count, go])
-
-  // Pointer drift. Declared after `reduced` so it can read it. Live values stay
-  // in refs and the transform is written to a CSS variable each frame, so cursor
-  // movement never triggers a React render.
-  useEffect(() => {
-    if (reduced) return
-    const stage = stageRef.current
-    if (!stage) return
-
-    let frame = 0
-    const tick = () => {
-      const cur = driftCurrent.current
-      const tgt = driftTarget.current
-      cur.x += (tgt.x - cur.x) * DRIFT_EASE
-      cur.y += (tgt.y - cur.y) * DRIFT_EASE
-      stage.style.setProperty('--drift-x', `${(cur.x * DRIFT_X).toFixed(2)}px`)
-      stage.style.setProperty('--drift-y', `${(cur.y * DRIFT_Y).toFixed(2)}px`)
-      frame = window.requestAnimationFrame(tick)
-    }
-    frame = window.requestAnimationFrame(tick)
-    return () => window.cancelAnimationFrame(frame)
-  }, [reduced])
 
   const slide = HERO_SLIDES[index]
   /** Slide 1 holds on its own art until this flips. */
@@ -310,8 +254,6 @@ export function Hero() {
       aria-label="IWVPL featured"
       tabIndex={-1}
       onKeyDown={onKeyDown}
-      onPointerMove={onPointerMove}
-      onPointerLeave={onPointerLeave}
       // Pulled up under the fixed header with a negative margin that cancels
       // AppShell's `<main>` top padding, then given that same space back as its
       // own padding. The hero therefore starts at y=0 and spans a full viewport,
@@ -328,7 +270,7 @@ export function Hero() {
             The cursor drift on `.hero-drift` below is untouched - that is a
             different effect and it is not parallax. `.hero-stage` had no rule
             and no query anywhere, so it went with them. */}
-          <div ref={stageRef} className="absolute inset-0">
+          <div className="absolute inset-0">
           <div className="absolute inset-0">
             {HERO_SLIDES.map((s, i) => {
               const active = i === index
