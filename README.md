@@ -973,10 +973,46 @@ so the resting wall is still a grid. A `38%` keyframe stop brings opacity to
 apart in the scroll, and a crest still at `opacity: 0` beside one that has
 landed reads as a **missing image**, not as a scatter.
 
-### The crest wall is one plain fade now
+### The crest wall: one slide-up, and it is never blank
 
-The per-crest scatter is gone. What shipped instead is a single eased fade of
-the whole wall, `contain 0% → contain 55%` on one shared timeline.
+The per-crest scatter is gone. What ships instead is a single slide-up for
+the whole wall — it rises 54px and fades in, in the spirit of the statement
+band — on one shared timeline.
+
+**The first version of that fade was broken, and it was broken in exactly the
+way you reported.** It used `contain 0% → contain 55%`, and `contain` does not
+begin when an element starts to appear; it begins when the element has
+**fully entered** the scrollport. The wall is 582px tall in a 900px viewport,
+so `contain 0%` fired when the wall's *bottom* edge reached the viewport
+bottom — by which point the wall was already sitting in the middle of the
+screen at `opacity: 0`. The result was a tall blank rectangle directly under
+the section heading.
+
+Measured at 1304×900, sweeping from the moment the wall first appeared:
+
+| scrollY | wall top in viewport | opacity |
+|---|---|---|
+| 3996 | 821 | **0.73** |
+| 4036 | 775 | 0.85 |
+| 4076 | 731 | 0.91 |
+| 4116 | 689 | 0.95 |
+| 4276 | 527 | 1.00 |
+
+It now starts at 0.73 the instant it enters and is fully opaque about 120px
+later. Before the fix it sat at **0** for that entire stretch and well beyond.
+
+The range is **`entry 0% → entry 85%`**. `entry` starts when the element's
+*top* edge crosses the viewport bottom — the moment it becomes visible — so
+there is no window at any width or aspect in which the wall is on screen and
+empty. 85% means it has settled just before the wall finishes entering.
+
+Verified on mobile too, where the wall is 2075px tall in an 844px viewport —
+the hard case, because a tall element has a long entry range. Lowest opacity
+while on screen: **0.50**, and it is visible the whole time.
+
+The rise is a **fixed 54px, not a percentage**. A percentage would resolve
+against the wall's own 582px and slide it half a screen before it had even
+appeared.
 
 That is a reduction, not a leftover, and it took a few passes to get here.
 It started as five `nth-child` tiers 4% apart, which cancelled into one slab.
@@ -999,8 +1035,7 @@ The bundle is 0.83 kB smaller and nothing was left behind in it (verified by
 grepping the built JS and CSS for every retired custom property and keyframe
 name: zero hits in all 20 chunks).
 
-Verified: wall opacity 0 → 1 across progress 0 → 1, cell transforms all
-`none`, fully settled at 220px below the viewport top.
+Cell transforms are all `none` — the motion is the wall's, not per-crest.
 
 ### Indonesia's Monument was being cropped out of the panel
 

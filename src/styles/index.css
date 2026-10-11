@@ -922,7 +922,7 @@
     animation-range: entry 10% cover 40%;
   }
 
-  /* The crest wall: one plain fade, nothing else.
+  /* The crest wall: one slide-up, nothing else.
 
      This carried a per-crest scatter for several passes - a bottom-up row
      cascade with per-crest rise, sideways drift, tilt and a start scale, all
@@ -931,15 +931,30 @@
      much: thirty-seven crests arriving on their own schedules reads as
      churn rather than as a roster. Gone, along with the JS that computed it.
 
-     What is left is a single eased fade of the whole wall on one shared
-     timeline. Scoped here rather than to a shared `.sd-reveal` so the generic
-     tiers above cannot also land on it and quietly re-override the range. */
+     Scoped here rather than to a shared `.sd-reveal` so the generic tiers
+     above cannot also land on it and quietly re-override the range. */
   .crest-wall {
     view-timeline-name: --crestwall;
     view-timeline-axis: block;
-    animation: sd-crest-fade var(--ease-out-expo) both;
+    animation: sd-crest-rise var(--ease-out-expo) both;
     animation-timeline: --crestwall;
-    animation-range: contain 0% contain 55%;
+    /* `entry`, NOT `contain`, and this is the whole fix.
+
+        `contain 0%` fires when the element has fully entered the scrollport.
+        The wall is 582px tall in a 900px viewport, so `contain 0%` lands when
+        the wall's BOTTOM edge reaches the viewport bottom - by which point the
+        wall is already sitting in the middle of the screen at `opacity: 0`.
+        The result was a tall blank rectangle directly under the section
+        heading, with the clubs invisible until the wall had almost finished
+        scrolling in. Measured: `opacity: 0` from the moment the wall first
+        appeared through to contain 0%, hundreds of pixels of it.
+
+        `entry 0%` fires when the element's TOP edge crosses the viewport
+        bottom - the instant the wall first becomes visible. So there is no
+        window in which the wall is on screen and empty, at any width or
+        aspect. Ends at 85% of entry, i.e. just before the wall has finished
+        entering, so the clubs are settled by the time it is fully readable. */
+    animation-range: entry 0% entry 85%;
   }
 }
 
@@ -1896,18 +1911,31 @@
    is churn, not a roster: the wall spends most of its on-screen life
    half-arrived, and the per-crest ghosts and blanks were only ever
    working around the fact that the thing had no business moving
-   that much. A single fade says the same thing once.
+   that much.
+
+   What replaced it is a single slide-up for the whole wall, in the
+   spirit of the statement band: the block rises a little and fades in
+   as it arrives, and it arrives the instant it enters rather than after
+   it has already been sitting there. See the `entry` note at the
+   animation itself - getting that range wrong is what made the wall
+   render as a blank rectangle.
    ------------------------------------------------------------ */
 .crest-wall {
   opacity: 1;
+  transform: none;
 }
 
-@keyframes sd-crest-fade {
+@keyframes sd-crest-rise {
   from {
     opacity: 0;
+    /* A fixed length, NOT a percentage. A percentage here would resolve
+       against the wall's own 582px, which slides it half a screen before
+       it has even appeared. */
+    transform: translate3d(0, 54px, 0);
   }
   to {
     opacity: 1;
+    transform: translate3d(0, 0, 0);
   }
 }
 
@@ -1977,7 +2005,7 @@
   .rail__track,
   .stmt__in,
   .iw-mark__pen,
-  .crest-wall__cell,
+  .crest-wall,
   .sd-reveal,
   .sd-reveal-soft {
     animation: none !important;
