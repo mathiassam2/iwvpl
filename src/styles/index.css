@@ -922,36 +922,24 @@
     animation-range: entry 10% cover 40%;
   }
 
-  /* The crest wall.
+  /* The crest wall: one plain fade, nothing else.
 
-     ONE shared timeline, declared on the wall, not a per-crest `view()`.
-     Per-crest view() timelines run the OTHER way - measured across the three
-     rows at a fixed scroll, mean progress was row 1 0.62, row 2 0.38, row 3
-     0.21, so the wall came in from the top and scattered from there. A single
-     named timeline plus a stagger derived from each crest's ROW makes the
-     wave travel upward deterministically, and it cannot invert itself when
-     the viewport changes.
+     This carried a per-crest scatter for several passes - a bottom-up row
+     cascade with per-crest rise, sideways drift, tilt and a start scale, all
+     driven off a `--crest-start` that CrestWall.tsx derived from the resolved
+     column count. It was correct and it was measured, and it was still too
+     much: thirty-seven crests arriving on their own schedules reads as
+     churn rather than as a roster. Gone, along with the JS that computed it.
 
-     `--crest-start` is that row-derived stagger and is set per crest in
-     CrestWall.tsx, which has to measure the resolved column count first
-     because `.crest-wall` is `auto-fill`. The cascade spans 32% and each
-     crest's window is 20%, so the LAST crest on the top row finishes by
-     ~56% of the timeline - the wall is fully settled well before the section
-     has scrolled past.
-
-     Scoped to the section rather than to a shared `.sd-reveal`, so the generic
-     tiers above cannot also land on these cells and quietly re-override the
-     range - same specificity, so it would come down to source order and
-     nothing would say so. */
+     What is left is a single eased fade of the whole wall on one shared
+     timeline. Scoped here rather than to a shared `.sd-reveal` so the generic
+     tiers above cannot also land on it and quietly re-override the range. */
   .crest-wall {
     view-timeline-name: --crestwall;
     view-timeline-axis: block;
-  }
-  .crest-wall__cell {
-    animation: sd-crest-in linear both;
+    animation: sd-crest-fade var(--ease-out-expo) both;
     animation-timeline: --crestwall;
-    animation-range: contain var(--crest-start, 0%)
-      contain calc(var(--crest-start, 0%) + 20%);
+    animation-range: contain 0% contain 55%;
   }
 }
 
@@ -1477,14 +1465,35 @@
    matters because the panel's aspect moves with the viewport - the ratio is
    what is fixed, and the percentages are derived from it. */
 .rail__panel--id {
-  --art-shift: 21.8%;
-  --art-zoom: 1.5;
-  /* TOP-ALIGN DOES NOT APPLY HERE, AND IT CANNOT BE MADE TO.
+  /* Zoom 1.5 -> 1.25, shift 21.8% -> 6.5%, and the vertical window lifted to
+     22%. THE MONUMENT WAS BEING CROPPED OUT OF THE PANEL ON WIDE SCREENS.
 
-     The other two are anchored `left top`, which is what puts their flag
-     motifs in frame. Indonesia has no motif at the top, and its artwork is
-     almost entirely black up there. Mean luminance per horizontal band of
-     `in-hero`, measured:
+     Measured on the source: the obelisk's brightest column is x 27.5-32.5%
+     and its shaft begins at about y 20%. Cover already crops the height by
+     1 - 1.79 / panelAspect, and the 1.5 zoom then took a THIRD off what was
+     left - so the visible vertical span was 46% of the artwork at 1853px and
+     33% at 2560px. At 2560 the window sat at y 33-67%, the Monument at 20%
+     fell out of it entirely, and the panel showed a skyline with no obelisk.
+
+     There is no zoom value that fixes it. On a wide screen the panel aspect
+     reaches 3.6 (2560x900) or 4.8 (3440x1440); cover leaves 50% / 37% of the
+     height, and a tip at 20% and a skyline starting at 50% cannot both fit in
+     what is left at any single value. What changes is how much of each you
+     get - so the zoom comes DOWN to widen the window, and the vertical
+     position is lifted to put the tip back inside it. The skyline band
+     narrows on very wide screens. That is the trade, and the obelisk is the
+     subject.
+
+     At 1.25 the window is 80% of the width rather than 67%, so it no longer
+     has to be shoved sideways to clear the artwork's left margin - which is
+     why the shift falls from 21.8% to 6.5%. Left slack is then
+     12.5% - 6.5% = 6% of the panel, comfortably more than the 2.4cqw drift
+     (2.857% of an 84cqw panel).
+
+     Top-align still does not apply, and still cannot. The other two are
+     anchored `left top`, which is what puts their flag motifs in frame.
+     Indonesia has no motif at the top and its artwork is almost entirely
+     black up there. Mean luminance per horizontal band of `in-hero`:
 
          y  0-10%   15.5        y 50-60%  190.8
          y 10-20%   15.9        y 60-70%  161.3
@@ -1492,23 +1501,22 @@
          y 30-40%   20.4        y 80-90%  218.3
          y 40-50%   29.5        y 90-100% 207.9
 
-     Top-aligned, the window is y 0-68%, so the panel's upper ~44% would be
-     near-black - the exact hole the reframe above exists to close. Bottom
-     aligned it would be y 32-100% and the National Monument plus the whole
-     Jakarta skyline would sit in the bright half. Centred (y 16-84%) splits
-     the two and is what this panel has always shipped.
+     Top-aligned the upper ~44% would be near-black. This window starts at
+     y 16-20% depending on aspect, so it takes a sliver of that dark band at
+     the very top and the rest is the red field the Monument stands against.
 
-     Measured per 1% column across the band centred alignment actually shows
-     (y 16-84%), the mean runs 88-128 and never falls - so the centred crop
-     is clean. Nothing here is a preference; the other two panels are in the
-     artwork's bright half at the top and this one is not. */
-  object-position: left center;
+     Both numbers fall out of that geometry rather than out of taste, which
+     matters because the panel's aspect moves with the viewport - the ratio is
+     what is fixed, and the percentages are derived from it. */
+  --art-shift: 6.5%;
+  --art-zoom: 1.25;
 }
 /* `object-position` is NOT an inherited property - it applies to replaced
-   elements only - so the override has to target the image itself. Declaring
-   it on the panel, as if custom properties were, silently does nothing. */
+   elements only - so this has to target the image itself. Declaring it on
+   the panel, as if it were a custom property, silently does nothing. It did,
+   until the computed style was read back and still said `0% 0%`. */
 .rail__panel--id .rail__art-img {
-  object-position: left center;
+  object-position: left 22%;
 }
 
 /* INDONESIA IS REFRAMED AGAIN ON MOBILE.
@@ -1530,7 +1538,18 @@
    only ever moves it further clear of the right edge. */
 @media (max-width: 899px) {
   .rail__panel--id {
-    --art-shift: -20%;
+    /* -20% was tuned against the old 1.5 zoom. At 1.25 the window is 80% of
+       the width instead of 67%, so the same shift pushes the window start out
+       to x 26% and pushes the Monument (x 27.5-32.5%) hard against the left
+       edge. -10% puts the start at 18% and the Monument at 31-48% of the
+       frame - left of centre, which is where it wants to be against the
+       bottom-left copy.
+
+       Chosen against the RIGHT edge as much as the composition. Shifting this
+       far left eats the zoom's overhang on that side: at -12% the image
+       clears the panel's right edge by only ~7px before the drift even moves,
+       which is thin enough to risk a hairline. -10% gives ~10px. */
+    --art-shift: -10%;
   }
 }
 
@@ -1858,48 +1877,37 @@
 /* ------------------------------------------------------------
    Crest wall arrival
 
-   Per crest, not per tier. `.sd-reveal`'s five nth-child tiers sit
-   only 4% apart on a ~20% window, so every crest in a row was still
-   moving at the same moment and the offsets cancelled into one slab.
-   Here the WINDOW is 18% and each crest's start is scattered across
-   the 24% before it, so crests genuinely land one after another; the
-   rise distance and drift direction are hashed per crest so any two
-   that do overlap still travel differently.
+   One eased fade of the whole wall. That is the entire behaviour,
+   and it is a deliberate reduction rather than a leftover.
 
-   Start and end are both `cover` percentages on purpose. Mixing
-   `entry` for the start and `cover` for the end sounds tidier, but
-   `entry` on a 90px crest spans under 10% of its own `cover`, which
-   leaves the start clustered in the first few pixels of scroll and
-   the scatter ends up all in the duration instead.
+   This was per crest, not per tier. `.sd-reveal`'s five nth-child
+   tiers sit only 4% apart on a ~20% window, so every crest in a row
+   was still moving at the same moment and the offsets cancelled into
+   one slab - which is what prompted the scatter in the first place.
+   That went through several shapes: 24% of start spread, then 46%, a
+   bottom-up cascade keyed to each crest's grid row (the per-crest
+   `view()` timelines ran the wrong way - top row at 0.62 mean
+   progress against the bottom row's 0.21), and four axes of travel -
+   rise, sideways drift, tilt and a start scale - all hashed from the
+   club name.
+
+   Every one of those was measured and correct. None of them was what
+   was wanted. Thirty-seven crests arriving on thirty-seven schedules
+   is churn, not a roster: the wall spends most of its on-screen life
+   half-arrived, and the per-crest ghosts and blanks were only ever
+   working around the fact that the thing had no business moving
+   that much. A single fade says the same thing once.
    ------------------------------------------------------------ */
-.crest-wall__cell {
+.crest-wall {
   opacity: 1;
-  transform: none;
 }
 
-@keyframes sd-crest-in {
+@keyframes sd-crest-fade {
   from {
     opacity: 0;
-    /* Four axes at once: rise, sideways drift, a touch of tilt, and a start
-       scale. All four return to exactly zero, so the wall settles square. */
-    transform: translate3d(var(--crest-drift, 0px), var(--crest-rise, 26px), 0)
-      rotate(var(--crest-tilt, 0deg))
-      scale(var(--crest-pop, 0.88));
-  }
-  /* Opacity gets there well before the geometry does.
-     With a 46% spread of start times, neighbouring slots can be 40% of the
-     wall apart in the scroll, and a crest that is still at opacity 0 next to
-     one that has landed reads as a MISSING IMAGE rather than as a scatter.
-     Bringing the ghost in by 38% of its own window means an arriving crest
-     is visible as a faint, small, tilted mark while it is still travelling -
-     which is the thing that reads as intentional. The transform is left
-     unspecified here so it keeps interpolating from and to. */
-  38% {
-    opacity: 0.55;
   }
   to {
     opacity: 1;
-    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
   }
 }
 
@@ -1979,7 +1987,7 @@
     stroke-dashoffset: 0;
   }
   .stmt__in,
-  .crest-wall__cell,
+  .crest-wall,
   .sd-reveal,
   .sd-reveal-soft {
     opacity: 1 !important;

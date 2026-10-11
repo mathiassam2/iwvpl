@@ -973,6 +973,71 @@ so the resting wall is still a grid. A `38%` keyframe stop brings opacity to
 apart in the scroll, and a crest still at `opacity: 0` beside one that has
 landed reads as a **missing image**, not as a scatter.
 
+### The crest wall is one plain fade now
+
+The per-crest scatter is gone. What shipped instead is a single eased fade of
+the whole wall, `contain 0% → contain 55%` on one shared timeline.
+
+That is a reduction, not a leftover, and it took a few passes to get here.
+It started as five `nth-child` tiers 4% apart, which cancelled into one slab.
+That became a per-crest scatter — 24% of start spread, then 46%, with rise,
+sideways drift, tilt and a start scale all hashed from the club name. It was
+correct, measured, and carefully repaired more than once (the per-crest
+`view()` timelines ran top-first rather than bottom-first; a crest sitting at
+`opacity: 0` beside one that had landed read as a missing image). The bottom-up
+row cascade, the `ResizeObserver`, the column-count measurement — all of it
+worked.
+
+None of it was what was wanted. Thirty-seven crests arriving on thirty-seven
+schedules is churn, not a roster: the wall spends most of its on-screen life
+half-arrived, and the ghosts and blanks were only ever compensating for a thing
+that had no business moving that much.
+
+All the per-crest machinery is deleted. `CrestWall.tsx` is a list again — no
+`useLayoutEffect`, no `useState`, no `ResizeObserver`, no custom properties.
+The bundle is 0.83 kB smaller and nothing was left behind in it (verified by
+grepping the built JS and CSS for every retired custom property and keyframe
+name: zero hits in all 20 chunks).
+
+Verified: wall opacity 0 → 1 across progress 0 → 1, cell transforms all
+`none`, fully settled at 220px below the viewport top.
+
+### Indonesia's Monument was being cropped out of the panel
+
+Reported on a wide screen, and true at 1853px too — the obelisk ran straight
+into the top edge with its flame missing.
+
+Measured on the source: the Monument's brightest column is **x 27.5–32.5%**
+and its shaft begins at about **y 20%**. Cover already crops the height by
+`1 − 1.79 / panelAspect`, and the 1.5 zoom then took a *third* off what was
+left. The visible vertical span was 46% of the artwork at 1853px and 33% at
+2560px — and at 2560 the window sat at y 33–67%, with the Monument at 20%
+entirely outside it. The panel showed a skyline with no obelisk.
+
+**There is no zoom value that fixes this.** The panel aspect reaches 3.6 at
+2560×900 and 4.8 at 3440×1440; cover leaves 50% / 37% of the height, and a
+tip at 20% and a skyline starting at 50% cannot both fit in what remains at
+any single value. What changes is how much of each you get.
+
+So the zoom comes **down** — 1.5 → **1.25** — to widen the window, and the
+vertical position is lifted from centre to **`left 22%`** to put the tip back
+inside it. The skyline band narrows on very wide screens; that is the trade,
+and the obelisk is the subject.
+
+The shift falls 21.8% → **6.5%** as a consequence, not a separate decision: at
+1.25 the window is 80% of the width rather than 67%, so it no longer has to be
+shoved sideways to clear the artwork's left margin. Left slack becomes
+`12.5% − 6.5%` = 6% of the panel, comfortably more than the 2.4cqw drift.
+
+Mobile goes with it: −20% → **−10%**, because −20% was tuned against the old
+1.5 zoom and at 1.25 it would push the Monument against the left edge. −10%
+also keeps the right edge safe — shifting that far left eats the zoom's
+overhang on that side, and −12% left only ~7px of clearance before the drift
+even moved.
+
+Verified at 1853×880 (Monument fully in frame, leftGap −51 / rightGap −336)
+and 390×844 (leftGap −76 / rightGap −19).
+
 ### Login page
 
 The IWVPL wordmark above the form is gone. The fixed header already carries
