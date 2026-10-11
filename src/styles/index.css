@@ -922,20 +922,35 @@ html.is-loading {
 .boot__inner {
   display: grid;
   justify-items: center;
-  gap: 1.4rem;
+  gap: 1.15rem;
   padding-inline: 1.5rem;
   text-align: center;
-  transform: translateY(6px);
-  animation: sd-boot-in 0.8s var(--ease-out-expo) both;
+  animation: sd-boot-in 0.7s var(--ease-out-expo) both;
 }
+
+/* The mark draws itself. `pathLength="1"` in the markup normalises the path,
+   so a dasharray of 1 is the whole stroke and the offset animates 1 -> 0.
+   `boot-draw-path` and `boot-draw-dot` live at the bottom of this file next
+   to the other keyframes. */
 .boot__mark {
-  font-family: var(--font-display);
-  font-weight: 800;
-  font-size: clamp(2.75rem, 11vw, 6.5rem);
-  line-height: 0.9;
-  letter-spacing: -0.045em;
-  color: #fff;
+  width: clamp(9.5rem, 30vw, 16rem);
+  height: auto;
+  overflow: visible;
 }
+.boot__mark-path,
+.boot__mark-dot {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 56;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* The dot is solid in the original artwork, not an outline. */
+.boot__mark-dot {
+  fill: #fff;
+  stroke: none;
+}
+
 .boot__sub {
   font-size: 0.6875rem;
   font-weight: 600;
@@ -943,16 +958,27 @@ html.is-loading {
   text-transform: uppercase;
   color: rgb(255 255 255 / 0.62);
 }
+
+/* Bar and counter share a baseline row so the number reads as a readout
+   against the rule rather than as a separate headline. */
+.boot__row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  width: min(19rem, 74vw);
+}
 .boot__count {
   font-family: var(--font-display);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  font-size: clamp(2rem, 7vw, 3.5rem);
+  font-size: 1.125rem;
   line-height: 1;
   color: var(--accent);
+  min-width: 2.6ch;
+  text-align: right;
 }
 .boot__track {
-  width: min(15rem, 62vw);
+  flex: 1;
   height: 2px;
   border-radius: 999px;
   background: rgb(255 255 255 / 0.14);
@@ -1048,6 +1074,47 @@ html.is-loading {
   from { transform: scaleX(0); }
   to   { transform: scaleX(1); }
 }
+
+/* The mark draws itself: dot pops, then the stroke is drawn left to right
+   over the same window the counter runs, so the two read as one event.
+   Timings are fractions of RUN_MS (1150ms) in Preloader.tsx. */
+@keyframes boot-draw-dot {
+  0%   { transform: scale(0); opacity: 0; }
+  60%  { opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes boot-draw-path {
+  from { stroke-dashoffset: 1; }
+  to   { stroke-dashoffset: 0; }
+}
+
+/* Beats, all sized to land inside RUN_MS (1150ms in Preloader.tsx) so the mark
+   is always complete before the cover starts fading - otherwise the wave is
+   still drawing behind a fade-out. 0.06 + 0.42 = 0.48 dot, 0.14 + 0.62 = 0.76
+   stem, 0.46 + 0.62 = 1.08 wave. */
+.boot__mark-dot {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: boot-draw-dot 0.42s var(--ease-spring) 0.06s both;
+}
+.boot__mark-path {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: boot-draw-path 0.62s var(--ease-out-expo) 0.14s forwards;
+}
+/* The wave starts once the stem is most of the way down, so the mark draws as
+   two beats - "i" then "w" - rather than two strokes finishing together. */
+.boot__mark-wave {
+  animation-delay: 0.46s;
+}
+/* Skipping jumps the mark to its finished state. It is invisible by then —
+   the whole cover is mid-fade — but it stops the draw finishing behind it. */
+.boot.is-done .boot__mark-path,
+.boot.is-done .boot__mark-dot {
+  animation: none;
+}
+.boot.is-done .boot__mark-path { stroke-dashoffset: 0; }
+.boot.is-done .boot__mark-dot { transform: none; opacity: 1; }
 
 /* ------------------------------------------------------------
    Masked word-by-word reveal
@@ -1278,6 +1345,19 @@ html.is-loading {
   opacity: 0.42;
   filter: saturate(0.85);
 }
+/* Two layers, both needed.
+
+   The ramp alone only ever covered the LEFT of the panel: it fell to 0.28
+   alpha at the right edge, which left the campaign artwork's flag stripes
+   running bright and hard into the frame's right-hand edge, so the panel
+   read as cropped rather than composed. The flat floor underneath means no
+   part of the frame is ever left uncovered, and the vignette pulls the
+   border itself down so the artwork never touches the rounded edge.
+
+   Type over campaign artwork in BOTH themes, so this scrim is
+   theme-invariant dark for the same reason .banner-scrim is. --banner-ink
+   is a bare "r g b" triplet so it can take an alpha. Left-heavy: the copy
+   sits left, so the right side stays open to the picture. */
 /* Type over campaign artwork in BOTH themes, so this scrim is
    theme-invariant dark for the same reason .banner-scrim is —
    `--banner-ink` is declared on :root and a bare "r g b" triplet
@@ -1287,12 +1367,14 @@ html.is-loading {
   position: absolute;
   inset: 0;
   z-index: -1;
-  background: linear-gradient(
-    100deg,
-    rgb(var(--banner-ink) / 0.94) 0%,
-    rgb(var(--banner-ink) / 0.76) 44%,
-    rgb(var(--banner-ink) / 0.28) 100%
-  );
+  background:
+    radial-gradient(125% 105% at 50% 50%, transparent 25%, rgb(var(--banner-ink) / 0.95) 100%),
+    linear-gradient(
+      100deg,
+      rgb(var(--banner-ink) / 0.94) 0%,
+      rgb(var(--banner-ink) / 0.82) 44%,
+      rgb(var(--banner-ink) / 0.62) 100%
+    );
 }
 
 /* ------------------------------------------------------------
@@ -1465,14 +1547,6 @@ html.is-loading {
   padding-inline: 1.4rem;
   white-space: nowrap;
 }
-.marquee__sep {
-  width: 3px;
-  height: 3px;
-  border-radius: 999px;
-  background: var(--accent);
-  opacity: 0.7;
-  flex: none;
-}
 @keyframes sd-marquee {
   from { transform: translate3d(0, 0, 0); }
   to   { transform: translate3d(-50%, 0, 0); }
@@ -1606,6 +1680,14 @@ html.is-loading {
   .marquee__track { animation: none; }
   .boot__inner { animation: none; }
   .boot__fill { animation: none; transform: scaleX(1); }
+  /* The mark is already its final shape here - no draw, no pop. */
+  .boot__mark-path,
+  .boot__mark-dot {
+    animation: none !important;
+    stroke-dashoffset: 0;
+    transform: none;
+    opacity: 1;
+  }
 
   .rail__art-img,
   .rail__copy,

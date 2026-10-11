@@ -1,4 +1,3 @@
-import { Preloader } from '@/components/home/Preloader'
 import { CrestWall } from '@/components/home/CrestWall'
 import { IslandRail } from '@/components/home/IslandRail'
 import { Scroller } from '@/components/home/Scroller'
@@ -21,6 +20,11 @@ import {
  * takes over the frame completely while it runs. `Statement` is the release
  * valve - a lot of movement needs somewhere to stop.
  *
+ * There is no preloader. One was here and it covered the whole page in near
+ * opaque ink for its whole run, so every fresh visit began behind a dark
+ * sheet rather than at the artwork. The hero is the first thing painted and
+ * is the LCP element; nothing needs to stand in front of it.
+ *
  * `Nations` used to sit between the hero and `Formats`. It showed the same
  * three campaign frames as the hero in a static three-up, which the rail
  * now does far better and with real club data attached, so it has been
@@ -30,7 +34,6 @@ import {
 export default function HomePage() {
   return (
     <div className="page-enter">
-      <Preloader />
       <Hero />
       <Scroller />
       <IslandRail />

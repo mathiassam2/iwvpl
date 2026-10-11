@@ -82,7 +82,6 @@ export function Scroller() {
           </span>
           <span className="marquee__code">{codeOf(m.away)}</span>
           <Crest logo={m.awayLogo} alt={m.away} />
-          <span className="marquee__sep" />
         </span>
       ))}
     </div>

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { cx } from '@/lib/format'
+import { BootMark } from '@/components/home/BootMark'
 
 /**
  * Entrance cover, in the spirit of a broadcast open: wordmark, counter,
@@ -119,11 +120,13 @@ export function Preloader() {
        inside an aria-live region would be unusable. */
     <div className={cx('boot', phase === 'out' && 'is-done')} aria-hidden="true">
       <div className="boot__inner">
-        <p className="boot__mark">IWVPL</p>
+        <BootMark className="boot__mark" />
         <p className="boot__sub">Island-Wide Virtual Premier League</p>
-        <p className="boot__count">{pct}</p>
-        <div className="boot__track">
-          <div className="boot__fill" />
+        <div className="boot__row">
+          <span className="boot__track">
+            <span className="boot__fill" />
+          </span>
+          <span className="boot__count">{pct}</span>
         </div>
       </div>
       <p className="boot__skip">Tap to enter</p>
