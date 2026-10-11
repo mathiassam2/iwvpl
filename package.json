@@ -5,10 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port 3000 --host",
-    "build": "tsc -b --noCheck && vite build",
-    "build:ghpages": "tsc -b --noCheck && vite build",
+    "build": "tsc -b --noCheck && node scripts/audit-iw-mark.mjs && vite build",
+    "build:ghpages": "tsc -b --noCheck && node scripts/audit-iw-mark.mjs && vite build",
     "preview": "vite preview --port 3000 --host",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b && node scripts/audit-iw-mark.mjs && node scripts/audit-arbitrary.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",

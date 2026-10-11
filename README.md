@@ -581,11 +581,99 @@ the contact hierarchy (single h1, labelled fields, subject hint, validation
 count, focus management, working dropdown), slide 1 carrying no animation class
 before *and* after the layout while slide 2 still does, and the header/hero
 offset pairing. Suites total 123 assertions across four files, 0 failures.
-#   i w v p l 
- 
- #   i w v p l 
- 
- 
+
+---
+
+## Pass 13 — the iw mark drawn, and a rail that works on a phone
+
+### The mark was a wipe, now it is drawn
+
+The statement's iw mark used to reveal as a `clip-path` inset from the left.
+It now draws, in the order a hand would make the letter: **the dot, then the
+stem straight down, then the diagonal wave.**
+
+The export is filled geometry, so there is nothing to dash. Instead a fat
+round-capped stroke is swept along the mark's skeleton inside an SVG `<mask>`,
+and the real fill is revealed wherever that marker has been. A mask can only
+reveal ink that is already there, so it cannot distort the mark.
+
+Three things were measured rather than guessed, and all three had to be:
+
+- **The skeleton.** Rasterising the mark and taking the midpoint of the white
+  run on each scanline gives the stem's right lean and the wave's foot /
+  crest / valley / hook sequence directly. A hand-fitted skeleton clipped
+  3.4% of the ink at the crest.
+- **The pen width.** The mark's own strokes are ~45 units across, so a 45-wide
+  marker is the literal answer — and it clips, because a hand-drawn wave's
+  skeleton never hugs a 45-wide stroke exactly. Swept against a rasterised
+  diff: 54 loses 3.4% of the ink, 66 still eats the counter edges, 78 loses
+  four pixels out of 386,997. **80 ships.**
+- **The counter fills.** See below.
+
+### The two teardrop counters are filled — and traced, not guessed
+
+The wave encloses two holes, the counter of an "a". They are closed so the
+wave reads as one solid zigzag. The first attempt guessed at them with two
+oversized rounded rects; they ate several units into the surrounding strokes
+and turned the mark into something that looked hand-drawn and wrong. The
+shapes now in `IwMark.tsx` are traced from the real geometry — flood fill from
+the border to find the enclosed regions, then a 720-ray radial scan from each
+hole's centroid (they are teardrops, so star-shaped, so the scan closes by
+construction), smoothed, simplified, and offset 1.6 units outward so no
+anti-aliased seam survives where two fills meet.
+
+They sit **outside** the export's `translate(0,246) scale(0.1,-0.1)` group
+because they are already in viewBox units; inside it they scale to a tenth of
+their size and silently vanish.
+
+### The text finishes before the mark starts
+
+Words land by `cover 51%`; the mark runs `52% → 68.5%`. That window is narrow
+on purpose — the section is 661px tall in an 898px viewport, so `cover` is
+1559px of scroll and the mark is already climbing out of frame by the end of
+it. The three beats also **overlap** rather than hand off; butt-joined ranges
+left the dot finished and the stem not started, so the mark sat there as a lone
+blob that read as a stray dot.
+
+### The rail no longer scrolls sideways on a phone
+
+Below 900px the three nation panels are stacked, full-bleed and edge to edge:
+no sideways travel, no cards floating in a gutter, nothing to pan. A pinned
+280vh rail on a 390px screen spends most of the scroll on scroll driving
+sideways motion instead of on content. Desktop is unchanged.
+
+The rail's `--rail` timeline is now declared at every width so the artwork
+drift still rides it on mobile. Reduced-motion's unpin override is scoped to
+`min-width: 900px`, because forcing `overflow-x: auto` onto the mobile stack
+would make it a scroll container — and any overflow other than `visible`
+quietly breaks a scroll-driven timeline.
+
+Also deleted: `.rail__copy` and `.rail__cta*`, which had no matching elements
+at all.
+
+### Nation artwork is legible
+
+Art opacity `0.42 → 0.66`, and the scrim rebalanced from `0.94/0.82/0.62`
+plus a 0.95 vignette to `0.90/0.72/0.36` plus 0.62. Combined right-edge
+coverage drops from ~87% to ~62%, so you can tell Singapore from Malaysia
+from Indonesia without reading the label, while the left side stays dark
+enough for white type. Lighthouse accessibility still 1.0.
+
+### Login page
+
+The IWVPL wordmark above the form is gone. The fixed header already carries
+the brand two inches above it, and on the one page the eye should be on the
+form, the lockup was duplicated.
+
+### A guard, because this has broken three times
+
+`npm run build` and `npm run typecheck` now run `scripts/audit-iw-mark.mjs`.
+It fails when either export `d` string stops matching the source SVG, when any
+cubic group is not a multiple of six numbers (the signature of a dropped digit
+— the browser discards the tail of such a segment silently), when the counter
+fills stop being paths, or when they are moved inside the transform group.
+
+Verified by deliberately breaking each case; all four are caught.
 
 ---
 

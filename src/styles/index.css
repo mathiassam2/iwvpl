@@ -994,41 +994,64 @@
   .stmt__in {
     animation: sd-line linear both;
     animation-timeline: --stmt;
-    animation-range: cover 19% cover 33%;
+    animation-range: cover 15% cover 25%;
   }
   /* Word 2 of any line. */
   .stmt__line > :nth-child(2) .stmt__in {
-    animation-range: cover 23% cover 37%;
+    animation-range: cover 19% cover 29%;
   }
   /* Word 3 of any line. */
   .stmt__line > :nth-child(3) .stmt__in {
-    animation-range: cover 27% cover 41%;
+    animation-range: cover 23% cover 33%;
   }
   /* Each later line starts where the previous one had got to, so the
      stagger reads as one continuous sweep rather than three restarts. */
   .stmt__line:nth-child(2) .stmt__in {
-    animation-range: cover 31% cover 45%;
+    animation-range: cover 27% cover 37%;
   }
   .stmt__line:nth-child(2) > :nth-child(2) .stmt__in {
-    animation-range: cover 35% cover 49%;
+    animation-range: cover 31% cover 41%;
   }
   .stmt__line:nth-child(3) .stmt__in {
-    animation-range: cover 39% cover 53%;
+    animation-range: cover 35% cover 45%;
   }
   .stmt__line:nth-child(3) > :nth-child(2) .stmt__in {
-    animation-range: cover 42% cover 56%;
+    animation-range: cover 38% cover 48%;
   }
   .stmt__line:nth-child(3) > :nth-child(3) .stmt__in {
-    animation-range: cover 45% cover 59%;
+    animation-range: cover 41% cover 51%;
   }
 
-  /* The mark wipes in on the SAME timeline, so it lands with the words
-     rather than as a separate event. It runs slightly ahead of them and
-     finishes a touch after, which keeps the two from ticking in lockstep. */
-  .iw-mark {
-    animation: sd-mark-wipe linear both;
+  /* The mark writes itself on the SAME timeline as the words, but only
+     after the last one has landed. Three beats in the order a hand would
+     make them: the dot, then the stem straight DOWN, then the diagonal
+     wave. Each starts as the last finishes rather than all three running
+     at once.
+
+     The words end at 51% and the mark runs 52% -> 68.5%. That window is
+     narrow on purpose. The section is 661px tall in an 898px viewport, so
+     `cover` is 1559px of scroll, and the mark is already climbing out of
+     frame by the end of it: at 68.5% its top edge is ~35px down, which is
+     inside the sticky header. Push the mark any later and it gets drawn
+     where nobody can see it. Anything wider needs the section to be taller
+     than the viewport, which it is not. */
+  .iw-mark__pen {
+    animation: sd-mark-draw linear both;
     animation-timeline: --stmt;
-    animation-range: cover 12% cover 48%;
+  }
+  /* The three beats OVERLAP rather than hand off. Butt-joined ranges left a
+     stretch where the dot was finished and the stem had not started, so the
+     mark sat there as a lone blob that read as a stray dot rather than as
+     the beginning of a letter. With the overlap the pen is always moving
+     and the three strokes read as one gesture. */
+  .iw-mark__pen--dot {
+    animation-range: cover 52% cover 56.5%;
+  }
+  .iw-mark__pen--stem {
+    animation-range: cover 55% cover 63%;
+  }
+  .iw-mark__pen--wave {
+    animation-range: cover 61.5% cover 68.5%;
   }
 }
 
@@ -1042,15 +1065,29 @@
 /* ------------------------------------------------------------
    The Island rail — the centrepiece
 
-   A tall subject, a sticky viewport, and a track that travels
-   sideways as the page scrolls down.
+   MOBILE FIRST, and deliberately the opposite of what it is on
+   desktop.
+
+   On a phone the three nation panels are stacked, full-bleed and
+   edge to edge: no sideways travel, no cards floating in a gutter,
+   nothing to scroll horizontally. A pinned 280vh rail on a 390px
+   screen spends most of the scroll on scroll driving sideways
+   motion instead of on content, and a 84cqw card inside a padded
+   viewport reads as a card rather than as a campaign frame.
+
+   From 900px up it becomes the desktop thing: a tall subject, a
+   sticky viewport, and a track that travels sideways as the page
+   scrolls down.
 
    `contain` is the range to use on a subject TALLER than the
    scrollport: contain 0% is when the subject's top edge meets
    the top of the viewport, contain 100% is when its bottom edge
    meets the bottom — which is exactly the window during which
    the inner element is stuck. entry/exit are not monotonic for a
-   tall subject and pin at the wrong point.
+   tall subject and pin at the wrong point. The mobile stack is
+   three panels of ~70svh, so it is also taller than the scrollport
+   and `contain` is valid there too — which is what lets the art
+   drift ride the same named timeline on both.
 
    The end transform is `-(track) + viewport`, derived rather
    than measured, so the track always finishes flush to the right
@@ -1061,48 +1098,61 @@
   position: relative;
 }
 .rail__vp {
+  /* The container is declared at EVERY width, not just desktop. The
+     caption, the index numeral and the crest chips all size
+     themselves in cqw and have to keep tracking the panel rather
+     than the screen. Inline-size containment does not create a
+     scroll container, so the named timeline below still resolves. */
   container-type: inline-size;
-  display: flex;
-  align-items: center;
-  /* Top padding clears the sticky site header, which floats over the rail.
-     Without it the panel index gets sliced by the header as it travels. */
-  padding-block: 5.5rem 1.75rem;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  scrollbar-width: none;
 }
-.rail__vp::-webkit-scrollbar {
-  display: none;
-}
+/* Stacked rows, edge to edge. Grid rather than flex so there is no
+   track width to compute and nothing can overflow sideways. */
 .rail__track {
-  display: flex;
-  align-items: stretch;
-  gap: 3cqw;
-  width: max-content;
-  padding-inline: 4cqw;
+  display: grid;
+}
+
+@media (min-width: 900px) {
+  .rail__vp {
+    display: flex;
+    align-items: center;
+    /* Top padding clears the sticky site header, which floats over the rail.
+       Without it the panel index gets sliced by the header as it travels. */
+    padding-block: 5.5rem 1.75rem;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+  .rail__vp::-webkit-scrollbar {
+    display: none;
+  }
+  .rail__track {
+    display: flex;
+    align-items: stretch;
+    gap: 3cqw;
+    width: max-content;
+    padding-inline: 4cqw;
+  }
 }
 
 @supports (animation-timeline: view()) {
+  /* The timeline is declared on the SECTION at every width. It has to be
+     a named one declared on `.rail` rather than a bare `view()` on the
+     art: a bare view() resolves its scrollport to the nearest scroll
+     container above the subject, and `.rail__panel` has `overflow:
+     hidden`, so it would pin to the panel's own (never-moving)
+     scrollport and freeze at progress 0. A named timeline carries the
+     section's scrollport with it. */
   .rail {
-    height: 280vh;
     view-timeline-name: --rail;
     view-timeline-axis: block;
-  }
-  .rail__vp {
-    position: sticky;
-    top: 0;
-    height: 100svh;
-    overflow: hidden;
-  }
-  .rail__track {
-    animation: sd-rail linear both;
-    animation-timeline: --rail;
-    animation-range: contain 0% contain 100%;
   }
   /* Artwork drifts forward against the panel it sits in, so the
      frame separates from its caption as the rail travels. The
      +X is correct: the track is moving left, so anything that
-     also moves right falls behind and reads as further away. */
+     also moves right falls behind and reads as further away.
+     On the mobile stack there is no track to outrun, but the
+     drift still does its job — the picture lets go of the
+     caption as you scroll past the frame. */
   .rail__art-img {
     animation: sd-rail-drift linear both;
     animation-timeline: --rail;
@@ -1110,16 +1160,36 @@
   }
   /* Caption runs slightly ahead instead — the panel text pushes
      forward, the image lets go. */
-  .rail__copy {
+  .rail__body {
     animation: sd-rail-lead linear both;
     animation-timeline: --rail;
     animation-range: contain 0% contain 100%;
   }
-  /* Index numerals scale up as their panel arrives, then settle. */
+  /* Index numerals scale up as the section arrives, then settle. */
   .rail__index {
     animation: sd-rail-index linear both;
     animation-timeline: --rail;
     animation-range: contain 0% contain 100%;
+  }
+
+  /* Desktop only: the pin and the sideways travel. Below 900px this is
+     a plain stack, and making it 280vh tall with nothing but three
+     static panels inside would just be a hole in the page. */
+  @media (min-width: 900px) {
+    .rail {
+      height: 280vh;
+    }
+    .rail__vp {
+      position: sticky;
+      top: 0;
+      height: 100svh;
+      overflow: hidden;
+    }
+    .rail__track {
+      animation: sd-rail linear both;
+      animation-timeline: --rail;
+      animation-range: contain 0% contain 100%;
+    }
   }
 }
 
@@ -1144,19 +1214,40 @@
    .hero-focus-*), so anything structural lives here. */
 .rail__panel {
   position: relative;
-  flex: 0 0 84cqw;
-  /* Tall enough to feel like a full-bleed campaign frame, short enough
-     that the header and the next section both stay visible around it.
-     min-height keeps the copy from colliding on a short viewport. */
-  height: min(66svh, 600px);
-  min-height: 360px;
-  border-radius: var(--radius-xl);
+  /* Full-bleed row on mobile: the campaign frame runs off both edges
+     of the screen with nothing beside it. */
+  width: 100%;
+  height: min(70svh, 560px);
+  min-height: 400px;
   overflow: hidden;
   isolation: isolate;
   background: var(--bg-raised);
 }
-.rail__panel--closer {
-  flex-basis: 80cqw;
+/* A cut between the stacked frames. It has to live on the scrim rather
+   than as a border on the panel: `.rail__panel` has `isolation: isolate`,
+   so its `z-index: -1` children (art and scrim) paint OVER the panel's
+   own border box, and a border would simply never be seen. */
+.rail__panel + .rail__panel .rail__scrim {
+  box-shadow: inset 0 1px 0 rgb(var(--banner-ink) / 0.9);
+}
+
+@media (min-width: 900px) {
+  .rail__panel {
+    /* Tall enough to feel like a full-bleed campaign frame, short enough
+       that the header and the next section both stay visible around it.
+       min-height keeps the copy from colliding on a short viewport. */
+    flex: 0 0 84cqw;
+    width: auto;
+    height: min(66svh, 600px);
+    min-height: 360px;
+    border-radius: var(--radius-xl);
+  }
+  .rail__panel + .rail__panel .rail__scrim {
+    box-shadow: none;
+  }
+  .rail__panel--closer {
+    flex-basis: 80cqw;
+  }
 }
 
 .rail__art {
@@ -1169,10 +1260,12 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
-  /* Matches the hero treatment so the rail reads as the same
-     campaign, not a different set of stock. */
-  opacity: 0.42;
-  filter: saturate(0.85);
+  /* Matches the hero treatment so the rail reads as the same campaign, not a
+     different set of stock. Opacity was 0.42, which with the scrim below left
+     the artwork barely legible - you could not tell Singapore from Malaysia
+     from Indonesia without reading the label. */
+  opacity: 0.66;
+  filter: saturate(0.95);
 }
 /* Two layers, both needed.
 
@@ -1197,12 +1290,12 @@
   inset: 0;
   z-index: -1;
   background:
-    radial-gradient(125% 105% at 50% 50%, transparent 25%, rgb(var(--banner-ink) / 0.95) 100%),
+    radial-gradient(125% 105% at 50% 50%, transparent 38%, rgb(var(--banner-ink) / 0.62) 100%),
     linear-gradient(
       100deg,
-      rgb(var(--banner-ink) / 0.94) 0%,
-      rgb(var(--banner-ink) / 0.82) 44%,
-      rgb(var(--banner-ink) / 0.62) 100%
+      rgb(var(--banner-ink) / 0.9) 0%,
+      rgb(var(--banner-ink) / 0.72) 40%,
+      rgb(var(--banner-ink) / 0.36) 100%
     );
 }
 
@@ -1298,34 +1391,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.rail__cta {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.55rem;
-  margin-top: 1.35rem;
-  align-self: flex-start;
-  padding: 0.7rem 1.35rem;
-  border-radius: 999px;
-  background: var(--accent);
-  color: var(--on-volt);
-  font-size: 0.8125rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-decoration: none;
-  transition: transform 0.35s var(--ease-out-expo), background 0.25s;
-}
-.rail__cta:hover,
-.rail__cta:focus-visible {
-  background: var(--accent-hover);
-  transform: translateX(4px);
-}
-.rail__cta-arrow {
-  transition: transform 0.35s var(--ease-out-expo);
-}
-.rail__cta:hover .rail__cta-arrow {
-  transform: translateX(3px);
 }
 
 @supports not (animation-timeline: view()) {
@@ -1458,23 +1523,26 @@
   height: auto;
   overflow: visible;
   justify-self: start;
-  /* The mark is FILLED geometry (it came out of an Illustrator export), so
-     there is no stroke to dash - `currentColor` in the component fills it,
-     and the reveal is a clip wipe rather than a dash. */
   color: var(--text);
-  /* Base state is the FINISHED mark, so a browser without scroll-driven
-     animation - or one with reduced motion on - sees it whole. */
-  clip-path: inset(0 0 0 0);
 }
+
+/* The pen. `pathLength="1"` on every stroke in the mask normalises them, so a
+   dasharray of 1 is the whole stroke and the offset runs 1 -> 0. Base state is
+   a fully drawn mark, so no scroll support or reduced motion shows a blank. */
+.iw-mark__pen {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+}
+
+@keyframes sd-mark-draw {
+  from { stroke-dashoffset: 1; }
+  to   { stroke-dashoffset: 0; }
+}
+
 @media (min-width: 900px) {
   .iw-mark {
     justify-self: end;
   }
-}
-
-@keyframes sd-mark-wipe {
-  from { clip-path: inset(0 100% 0 0); }
-  to   { clip-path: inset(0 0 0 0); }
 }
 .stmt {
   margin: 0;
@@ -1544,18 +1612,18 @@
    ------------------------------------------------------------ */
 @media (prefers-reduced-motion: reduce) {
   .rail__art-img,
-  .rail__copy,
+  .rail__body,
   .rail__index,
   .rail__track,
   .stmt__in,
-  .iw-mark,
+  .iw-mark__pen,
   .sd-reveal,
   .sd-reveal-soft {
     animation: none !important;
   }
-  /* The mark is finished, not blanked. */
-  .iw-mark {
-    clip-path: none;
+  /* The pen is parked at the end of its stroke, so the mark reads as drawn. */
+  .iw-mark__pen {
+    stroke-dashoffset: 0;
   }
   .stmt__in,
   .sd-reveal,
@@ -1564,12 +1632,20 @@
     transform: none !important;
   }
   /* Unpin the rail: a sticky rail with no scroll animation is a
-     280vh hole with a picture in the middle of it. */
-  .rail { height: auto !important; }
-  .rail__vp {
-    position: static !important;
-    height: auto !important;
-    overflow-x: auto !important;
-    padding-block: 1.5rem;
+     280vh hole with a picture in the middle of it. Desktop only -
+     below 900px the rail is already a plain stack, and putting
+     `overflow-x: auto` on it there would make it a scroll
+     container for content that has no reason to pan sideways.
+     (Which would also quietly break the named `--rail` timeline,
+     since any overflow other than visible makes an element a
+     scroll container.) */
+  @media (min-width: 900px) {
+    .rail { height: auto !important; }
+    .rail__vp {
+      position: static !important;
+      height: auto !important;
+      overflow-x: auto !important;
+      padding-block: 1.5rem;
+    }
   }
 }

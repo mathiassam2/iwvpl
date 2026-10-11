@@ -56,15 +56,10 @@ export default function LoginPage() {
         {/* ---------- form ---------- */}
         <div className="flex flex-col justify-center">
           <div className="mx-auto w-full max-w-md lg:mx-0">
-            <Link to="/" className="inline-block" aria-label="IWVPL — home">
-              <img
-                src={asset('/assets/brand/iwvpl-wordmark.png')}
-                alt="IWVPL"
-                className="h-8 w-auto select-none object-contain dark:invert"
-              />
-            </Link>
-
-            <h1 className="mt-9 text-3xl font-extrabold sm:text-4xl">Welcome back</h1>
+            {/* No logo above this form. The fixed header already carries the
+                brand, and a second lockup two inches under it duplicated the
+                wordmark on the one page the eye is meant to be on the form. */}
+            <h1 className="text-3xl font-extrabold sm:text-4xl">Welcome back</h1>
             <p className="mt-2.5 text-[15px] text-[var(--text-muted)]">
               Sign in to your Manager Portal.
             </p>
