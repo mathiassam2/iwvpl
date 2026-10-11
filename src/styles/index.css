@@ -1067,11 +1067,24 @@ html.is-loading {
   display: inline-block;
   overflow: hidden;
   vertical-align: bottom;
-  padding-block: 0.08em 0.14em;
   margin-right: 0.22em;
 }
+/* `block`, not `inline-block`, and the padding lives HERE rather than on the
+   clip. That combination is what makes the mask exact:
+
+   - As an inline-block, `.stmt__w` sized itself to an anonymous line box, which
+     carries the strut's leading BELOW the baseline. The mask was therefore
+     taller than the word by more than the word travels (105% of its own
+     height), so the top few pixels of every word stayed visible above the clip
+     while it was still supposed to be hidden.
+   - As a block-level box in an overflow context, `.stmt__w`'s height is just
+     its child's box, and moving the padding onto the child makes that box
+     include the descender room. Mask height == word height exactly, so
+     translateY(100%) hides the whole word with nothing showing above the
+     clip, and translateY(0) shows all of it including descenders. */
 .stmt__in {
-  display: inline-block;
+  display: block;
+  padding-block: 0.1em 0.2em;
   transform: none;
 }
 
@@ -1124,7 +1137,9 @@ html.is-loading {
 }
 
 @keyframes sd-line {
-  from { transform: translateY(105%); }
+  /* 100% is now exact (see .stmt__w), plus a hair for subpixel rounding at
+     the clip edge so no sliver of the word can survive at progress 0. */
+  from { transform: translateY(calc(100% + 1px)); }
   to   { transform: translateY(0); }
 }
 
