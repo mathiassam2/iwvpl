@@ -1,5 +1,5 @@
-import { Suspense, lazy } from 'react'
-import { HashRouter, Route, Routes } from 'react-router-dom'
+import { Suspense, lazy, useEffect } from 'react'
+import { HashRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { AppShell } from '@/components/layout/AppShell'
 import HomePage from '@/pages/HomePage'
 import { useParallax } from '@/hooks/useParallax'
@@ -39,6 +39,26 @@ function ParallaxDriver() {
   return null
 }
 
+/**
+ * Start each route at the top.
+ *
+ * React Router does not manage scroll, so without this a refresh kept the
+ * old offset (see the scrollRestoration note in main.tsx) and navigating
+ * between pages left you halfway down the one you just left.
+ *
+ * Keyed on `pathname`, which HashRouter does populate from the hash - the
+ * hash is what routes here, so keying on `location.hash` would be redundant.
+ * `behavior: 'instant'` deliberately overrides the site's smooth scrolling;
+ * an animated 4000px slide back to the top on every navigation is nauseating.
+ */
+function ScrollToTop() {
+  const { pathname } = useLocation()
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
+  }, [pathname])
+  return null
+}
+
 export default function App() {
   /*
    * HashRouter, not BrowserRouter. GitHub Pages is a static host with no
@@ -50,6 +70,7 @@ export default function App() {
       <CartProvider>
         <AppShell>
           <ParallaxDriver />
+          <ScrollToTop />
         <Suspense fallback={<RouteFallback />}>
           <Routes>
             <Route path="/" element={<HomePage />} />

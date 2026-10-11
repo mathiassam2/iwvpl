@@ -885,136 +885,6 @@
    ============================================================ */
 
 /* ------------------------------------------------------------
-   Preloader
-
-   Locking the scroller hides the scrollbar, which shifts every
-   centred block ~15px on release. Gutter-stable keeps it still.
-   ------------------------------------------------------------ */
-html {
-  scrollbar-gutter: stable;
-}
-html.is-loading {
-  overflow: hidden;
-}
-
-/* The cover is dark in BOTH themes on purpose — same call as
-   .banner-scrim. A light scrim over dark campaign artwork fails
-   outright, and this sits above the hero. `--banner-ink` is a
-   bare "r g b" triplet so it can take an alpha. */
-.boot {
-  position: fixed;
-  inset: 0;
-  z-index: 300;
-  display: grid;
-  place-items: center;
-  overflow: hidden;
-  background:
-    radial-gradient(120% 95% at 50% 42%, rgb(var(--banner-ink) / 0.7) 0%, rgb(var(--banner-ink) / 0.93) 68%);
-  opacity: 1;
-  transition: opacity 0.5s var(--ease-out-expo), visibility 0.5s;
-}
-.boot.is-done {
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-}
-
-.boot__inner {
-  display: grid;
-  justify-items: center;
-  gap: 1.15rem;
-  padding-inline: 1.5rem;
-  text-align: center;
-  animation: sd-boot-in 0.7s var(--ease-out-expo) both;
-}
-
-/* The mark draws itself. `pathLength="1"` in the markup normalises the path,
-   so a dasharray of 1 is the whole stroke and the offset animates 1 -> 0.
-   `boot-draw-path` and `boot-draw-dot` live at the bottom of this file next
-   to the other keyframes. */
-.boot__mark {
-  width: clamp(9.5rem, 30vw, 16rem);
-  height: auto;
-  overflow: visible;
-}
-.boot__mark-path,
-.boot__mark-dot {
-  fill: none;
-  stroke: #fff;
-  stroke-width: 56;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-/* The dot is solid in the original artwork, not an outline. */
-.boot__mark-dot {
-  fill: #fff;
-  stroke: none;
-}
-
-.boot__sub {
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.34em;
-  text-transform: uppercase;
-  color: rgb(255 255 255 / 0.62);
-}
-
-/* Bar and counter share a baseline row so the number reads as a readout
-   against the rule rather than as a separate headline. */
-.boot__row {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  width: min(19rem, 74vw);
-}
-.boot__count {
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  font-size: 1.125rem;
-  line-height: 1;
-  color: var(--accent);
-  min-width: 2.6ch;
-  text-align: right;
-}
-.boot__track {
-  flex: 1;
-  height: 2px;
-  border-radius: 999px;
-  background: rgb(255 255 255 / 0.14);
-  overflow: hidden;
-}
-/* Scale-driven, not width-driven, so the fill never triggers layout.
-   Driven entirely in CSS on its own clock rather than from the rAF that
-   updates the counter — compositor-only, and it keeps the markup free of
-   inline styles. 1150ms is RUN_MS in Preloader.tsx; easeOutCubic there
-   and this cubic-bezier are chosen to match so bar and number agree. */
-.boot__fill {
-  height: 100%;
-  transform: scaleX(0);
-  transform-origin: left center;
-  background: var(--accent);
-  animation: sd-boot-fill 1150ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-/* Skipping jumps the bar to full. It is invisible anyway — the whole
-   cover is mid-fade by then — but it stops the two disagreeing. */
-.boot.is-done .boot__fill {
-  animation: none;
-  transform: scaleX(1);
-}
-.boot__skip {
-  position: absolute;
-  inset-inline: 0;
-  bottom: max(2rem, env(safe-area-inset-bottom));
-  text-align: center;
-  font-size: 0.625rem;
-  font-weight: 600;
-  letter-spacing: 0.26em;
-  text-transform: uppercase;
-  color: rgb(255 255 255 / 0.34);
-}
-
-/* ------------------------------------------------------------
    Section reveals
 
    Base state is visible + in place; the animation only runs
@@ -1066,56 +936,6 @@ html.is-loading {
   from { opacity: 0; transform: translateY(46px) scale(0.985); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
-@keyframes sd-boot-in {
-  from { opacity: 0; transform: translateY(14px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-@keyframes sd-boot-fill {
-  from { transform: scaleX(0); }
-  to   { transform: scaleX(1); }
-}
-
-/* The mark draws itself: dot pops, then the stroke is drawn left to right
-   over the same window the counter runs, so the two read as one event.
-   Timings are fractions of RUN_MS (1150ms) in Preloader.tsx. */
-@keyframes boot-draw-dot {
-  0%   { transform: scale(0); opacity: 0; }
-  60%  { opacity: 1; }
-  100% { transform: scale(1); opacity: 1; }
-}
-@keyframes boot-draw-path {
-  from { stroke-dashoffset: 1; }
-  to   { stroke-dashoffset: 0; }
-}
-
-/* Beats, all sized to land inside RUN_MS (1150ms in Preloader.tsx) so the mark
-   is always complete before the cover starts fading - otherwise the wave is
-   still drawing behind a fade-out. 0.06 + 0.42 = 0.48 dot, 0.14 + 0.62 = 0.76
-   stem, 0.46 + 0.62 = 1.08 wave. */
-.boot__mark-dot {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: boot-draw-dot 0.42s var(--ease-spring) 0.06s both;
-}
-.boot__mark-path {
-  stroke-dasharray: 1;
-  stroke-dashoffset: 1;
-  animation: boot-draw-path 0.62s var(--ease-out-expo) 0.14s forwards;
-}
-/* The wave starts once the stem is most of the way down, so the mark draws as
-   two beats - "i" then "w" - rather than two strokes finishing together. */
-.boot__mark-wave {
-  animation-delay: 0.46s;
-}
-/* Skipping jumps the mark to its finished state. It is invisible by then —
-   the whole cover is mid-fade — but it stops the draw finishing behind it. */
-.boot.is-done .boot__mark-path,
-.boot.is-done .boot__mark-dot {
-  animation: none;
-}
-.boot.is-done .boot__mark-path { stroke-dashoffset: 0; }
-.boot.is-done .boot__mark-dot { transform: none; opacity: 1; }
-
 /* ------------------------------------------------------------
    Masked word-by-word reveal
 
@@ -1174,32 +994,41 @@ html.is-loading {
   .stmt__in {
     animation: sd-line linear both;
     animation-timeline: --stmt;
-    animation-range: cover 30% cover 44%;
+    animation-range: cover 19% cover 33%;
   }
   /* Word 2 of any line. */
   .stmt__line > :nth-child(2) .stmt__in {
-    animation-range: cover 34% cover 48%;
+    animation-range: cover 23% cover 37%;
   }
   /* Word 3 of any line. */
   .stmt__line > :nth-child(3) .stmt__in {
-    animation-range: cover 38% cover 52%;
+    animation-range: cover 27% cover 41%;
   }
   /* Each later line starts where the previous one had got to, so the
      stagger reads as one continuous sweep rather than three restarts. */
   .stmt__line:nth-child(2) .stmt__in {
-    animation-range: cover 42% cover 56%;
+    animation-range: cover 31% cover 45%;
   }
   .stmt__line:nth-child(2) > :nth-child(2) .stmt__in {
-    animation-range: cover 46% cover 60%;
+    animation-range: cover 35% cover 49%;
   }
   .stmt__line:nth-child(3) .stmt__in {
-    animation-range: cover 50% cover 64%;
+    animation-range: cover 39% cover 53%;
   }
   .stmt__line:nth-child(3) > :nth-child(2) .stmt__in {
-    animation-range: cover 53% cover 67%;
+    animation-range: cover 42% cover 56%;
   }
   .stmt__line:nth-child(3) > :nth-child(3) .stmt__in {
-    animation-range: cover 56% cover 70%;
+    animation-range: cover 45% cover 59%;
+  }
+
+  /* The mark wipes in on the SAME timeline, so it lands with the words
+     rather than as a separate event. It runs slightly ahead of them and
+     finishes a touch after, which keeps the two from ticking in lockstep. */
+  .iw-mark {
+    animation: sd-mark-wipe linear both;
+    animation-timeline: --stmt;
+    animation-range: cover 12% cover 48%;
   }
 }
 
@@ -1608,6 +1437,45 @@ html.is-loading {
 .stmt-band {
   padding-block: clamp(4.5rem, 14vh, 9rem);
 }
+
+/* Statement + mark. Single column on a phone - the statement reads first and
+   the mark lands under it like a signature - then side by side from 900px,
+   mark hard right. `minmax(0, 1fr)` on the text column is required: a bare
+   1fr floors at min-width auto, and the words are nowrap-ish display type. */
+.stmt-layout {
+  display: grid;
+  gap: clamp(2rem, 6vw, 4.5rem);
+  align-items: center;
+}
+@media (min-width: 900px) {
+  .stmt-layout {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+}
+
+.iw-mark {
+  width: clamp(8rem, 26vw, 17rem);
+  height: auto;
+  overflow: visible;
+  justify-self: start;
+  /* The mark is FILLED geometry (it came out of an Illustrator export), so
+     there is no stroke to dash - `currentColor` in the component fills it,
+     and the reveal is a clip wipe rather than a dash. */
+  color: var(--text);
+  /* Base state is the FINISHED mark, so a browser without scroll-driven
+     animation - or one with reduced motion on - sees it whole. */
+  clip-path: inset(0 0 0 0);
+}
+@media (min-width: 900px) {
+  .iw-mark {
+    justify-self: end;
+  }
+}
+
+@keyframes sd-mark-wipe {
+  from { clip-path: inset(0 100% 0 0); }
+  to   { clip-path: inset(0 0 0 0); }
+}
 .stmt {
   margin: 0;
   font-family: var(--font-display);
@@ -1669,34 +1537,25 @@ html.is-loading {
    Reduced motion
 
    Everything above resolves to its finished state, so this only
-   has to stop things that run on their own clock — the ticker,
-   the cue, the preloader tick. Scroll-driven animations are
-   covered by the base rules above, but they are named here too so
-   an override elsewhere can never re-enable one by accident.
+   has to stop things that run on their own clock - the ticker and
+   the marquee edge fades. Scroll-driven animations are covered by
+   the base rules above, but they are named here too so an override
+   elsewhere can never re-enable one by accident.
    ------------------------------------------------------------ */
 @media (prefers-reduced-motion: reduce) {
-  html.is-loading { overflow: hidden; }
-
-  .marquee__track { animation: none; }
-  .boot__inner { animation: none; }
-  .boot__fill { animation: none; transform: scaleX(1); }
-  /* The mark is already its final shape here - no draw, no pop. */
-  .boot__mark-path,
-  .boot__mark-dot {
-    animation: none !important;
-    stroke-dashoffset: 0;
-    transform: none;
-    opacity: 1;
-  }
-
   .rail__art-img,
   .rail__copy,
   .rail__index,
   .rail__track,
   .stmt__in,
+  .iw-mark,
   .sd-reveal,
   .sd-reveal-soft {
     animation: none !important;
+  }
+  /* The mark is finished, not blanked. */
+  .iw-mark {
+    clip-path: none;
   }
   .stmt__in,
   .sd-reveal,
