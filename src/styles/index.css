@@ -1539,8 +1539,25 @@
 }
 
 @keyframes sd-mark-draw {
-  from { stroke-dashoffset: 1; }
-  to   { stroke-dashoffset: 0; }
+  /* The `opacity: 0` on the `from` frame is load-bearing, not decoration.
+     Progress 0 means a zero-length dash sitting on the path start, and
+     `stroke-linecap: round` renders a zero-length dash as a dot - which is
+     what the spec says it should do. So the pen painted an 80-unit blob on
+     the mark long before it began drawing, and because that cap rounds away
+     to nothing at some rendered sizes, the blob passed a check at one
+     viewport width and came back at the next.
+
+     Butt caps would draw nothing for a zero-length dash, but they are flat:
+     the dot, being a closed path, swept as a hollow ring instead of filling
+     in, and the dot's 80-unit band bled into the top of the stem. Round caps
+     are what make the pen read as a marker, so they stay and the pen fades in
+     over its first half percent instead - about 3px of scroll, invisible as a
+     fade but enough to hide the cap at rest.
+
+     `scripts/audit-iw-mark.mjs` fails the build if this opacity goes. */
+  from { stroke-dashoffset: 1; opacity: 0; }
+  0.5% { opacity: 1; }
+  to   { stroke-dashoffset: 0; opacity: 1; }
 }
 
 @media (min-width: 900px) {

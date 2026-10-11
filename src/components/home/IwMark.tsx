@@ -57,6 +57,21 @@ import { useId } from 'react'
  * and 80 is what ships. Widening past that buys nothing and makes the fill
  * appear visibly ahead of the tip.
  *
+ * "NOTHING DRAWN YET" IS DONE WITH OPACITY, NOT WITH THE DASH.
+ * At progress 0 the dash is zero-length and sitting on the path start, and
+ * `stroke-linecap: round` renders a zero-length dash as a dot - which is what
+ * the spec says it should do. So an 80-unit blob sat on the mark long before
+ * it began drawing.
+ *
+ * The obvious fix, switching to butt caps, was tried and is worse. A butt cap
+ * draws nothing for a zero-length dash, but it is also flat, and here it
+ * broke two other things: the dot, being a closed path, swept as a hollow
+ * ring rather than filling in, and the dot's 80-unit band bled into the top of
+ * the stem. Round caps are what makes the pen read as a marker, so they stay
+ * and `sd-mark-draw` fades the pen in over its first half percent instead.
+ * `scripts/audit-iw-mark.mjs` fails the build if that `opacity: 0` goes missing
+ * from the `from` keyframe.
+ *
  * The three pen strokes are the three beats of the drawing, in the order a
  * hand would make them: the dot, then the stem straight DOWN, then the
  * diagonal wave. They share the statement section's `--stmt` scroll timeline

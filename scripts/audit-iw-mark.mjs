@@ -108,6 +108,49 @@ if (/<rect/.test(component)) {
   )
 }
 
+// "Nothing drawn yet" must be expressed with opacity, not with the dash.
+//
+// At progress 0 the dash is zero-length and sitting on the path start, and
+// `stroke-linecap: round` renders a zero-length dash as a dot - the spec says
+// it should. So the pen painted an 80-unit blob on the mark long before it
+// began drawing. Worse, that is scale-dependent: the cap can round away to
+// nothing at one rendered size and reappear at another, so it passes a check
+// at one viewport width and fails at the next.
+//
+// Butt caps draw nothing for a zero-length dash but are flat, and here that
+// made the dot sweep as a hollow ring and let its 80-unit band bleed into the
+// top of the stem. Round caps are what make the pen read as a marker, so the
+// `from` keyframe fades it in over its first half percent instead.
+const keyframes = readFileSync('src/styles/index.css', 'utf8').match(
+  /@keyframes sd-mark-draw\s*\{([\s\S]*?)\n\}/,
+)
+if (!keyframes) {
+  problems.push('src/styles/index.css has no @keyframes sd-mark-draw - the pen would never animate')
+} else {
+  const fromBlock = keyframes[1].match(/from\s*\{([^}]*)\}/)
+  if (!fromBlock || !/opacity:\s*0/.test(fromBlock[1])) {
+    problems.push(
+      'The `from` frame of @keyframes sd-mark-draw has no `opacity: 0`. Without it the pen is ' +
+        'visible at rest, and a round cap turns the zero-length dash at progress 0 into an ' +
+        '80-unit blob on the mark before it draws anything.',
+    )
+  }
+  if (!/0\.5%\s*\{[^}]*opacity:\s*1/.test(keyframes[1])) {
+    problems.push(
+      'The `from` frame of @keyframes sd-mark-draw has no `0.5% { opacity: 1 }` step, so the ' +
+        'pen never becomes visible.',
+    )
+  }
+}
+
+const cap = component.match(/strokeLinecap="([a-z]+)"/)
+if (cap && cap[1] !== 'round') {
+  problems.push(
+    `${COMPONENT} sets strokeLinecap="${cap[1]}" on the pen. It must be "round": a butt cap is ` +
+      `flat, which sweeps the dot as a hollow ring and lets its band bleed into the stem.`,
+  )
+}
+
 if (problems.length) {
   console.error('iw mark audit failed:')
   for (const p of problems) console.error('  - ' + p)

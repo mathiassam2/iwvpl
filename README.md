@@ -671,6 +671,31 @@ The IWVPL wordmark above the form is gone. The fixed header already carries
 the brand two inches above it, and on the one page the eye should be on the
 form, the lockup was duplicated.
 
+### The blob before the mark draws
+
+The mark showed an 80-unit lump on it, long before it drew anything.
+
+At progress 0 the dash is *zero-length* and sitting on the path start, and
+`stroke-linecap: round` renders a zero-length dash as a dot — which is what
+the spec says it should do. So the round-capped pen painted a blob there. It
+was also scale-dependent: the cap rounds away to nothing at some rendered
+sizes, so the artefact passed a check at one viewport width and came back at
+the next (it was invisible at 1296px and obvious at 1853px, which is exactly
+why it survived two rounds of testing).
+
+The obvious fix — butt caps, which draw nothing for a zero-length dash — was
+tried and is **worse**. A butt cap is flat, and here it broke two other things:
+the dot, being a closed path, swept as a hollow ring instead of filling in,
+and the dot's 80-unit band bled into the top of the stem.
+
+Round caps are what make the pen read as a marker, so they stay and
+`sd-mark-draw` fades the pen in over its first half percent instead — about
+3px of scroll, invisible as a fade, enough to hide the cap at rest.
+
+`scripts/audit-iw-mark.mjs` now fails the build if that `opacity: 0` goes
+missing from the `from` keyframe, if the `0.5%` step goes, or if the cap is
+switched back to butt. All four cases verified by deliberately breaking them.
+
 ### A guard, because this has broken three times
 
 `npm run build` and `npm run typecheck` now run `scripts/audit-iw-mark.mjs`.
