@@ -994,32 +994,32 @@
   .stmt__in {
     animation: sd-line linear both;
     animation-timeline: --stmt;
-    animation-range: cover 15% cover 25%;
+    animation-range: cover 7% cover 17%;
   }
   /* Word 2 of any line. */
   .stmt__line > :nth-child(2) .stmt__in {
-    animation-range: cover 19% cover 29%;
+    animation-range: cover 10% cover 20%;
   }
   /* Word 3 of any line. */
   .stmt__line > :nth-child(3) .stmt__in {
-    animation-range: cover 23% cover 33%;
+    animation-range: cover 14% cover 24%;
   }
   /* Each later line starts where the previous one had got to, so the
      stagger reads as one continuous sweep rather than three restarts. */
   .stmt__line:nth-child(2) .stmt__in {
-    animation-range: cover 27% cover 37%;
+    animation-range: cover 17% cover 27%;
   }
   .stmt__line:nth-child(2) > :nth-child(2) .stmt__in {
-    animation-range: cover 31% cover 41%;
+    animation-range: cover 20% cover 30%;
   }
   .stmt__line:nth-child(3) .stmt__in {
-    animation-range: cover 35% cover 45%;
+    animation-range: cover 23% cover 33%;
   }
   .stmt__line:nth-child(3) > :nth-child(2) .stmt__in {
-    animation-range: cover 38% cover 48%;
+    animation-range: cover 26% cover 36%;
   }
   .stmt__line:nth-child(3) > :nth-child(3) .stmt__in {
-    animation-range: cover 41% cover 51%;
+    animation-range: cover 29% cover 39%;
   }
 
   /* The mark writes itself on the SAME timeline as the words, but only
@@ -1028,13 +1028,18 @@
      wave. Each starts as the last finishes rather than all three running
      at once.
 
-     The words end at 51% and the mark runs 52% -> 68.5%. That window is
-     narrow on purpose. The section is 661px tall in an 898px viewport, so
-     `cover` is 1559px of scroll, and the mark is already climbing out of
-     frame by the end of it: at 68.5% its top edge is ~35px down, which is
-     inside the sticky header. Push the mark any later and it gets drawn
-     where nobody can see it. Anything wider needs the section to be taller
-     than the viewport, which it is not. */
+     The whole sequence now runs 7% -> 57% of `cover`. It used to end at
+     68.5%, which meant scrolling most of the way through the section before
+     the mark even started, and `cover` is 1559px of scroll here — the
+     section is 661px tall in an 898px viewport, so more than half of that
+     range is spent with the section already leaving frame.
+
+     57% is where the mark finishes while still sitting properly on screen:
+     at that point the section's top is ~41px below the viewport top and the
+     mark's box (section-relative y 200..460) lands at y 241..501, clear of
+     both the fold and the sticky header. Later than that and the dot is
+     behind the header before the wave has finished. Anything more generous
+     needs the section to be taller than the viewport, which it is not. */
   .iw-mark__pen {
     animation: sd-mark-draw linear both;
     animation-timeline: --stmt;
@@ -1045,17 +1050,17 @@
      stem's 80-unit round cap open while the dot was still filling, so the
      two merged into one amorphous blob at the top of the mark and the dot
      never read as a deliberate first stroke. The gap between dot and stem
-     is deliberately tiny - about 3px of scroll - so it reads as the pen
+     is deliberately tiny — about 3px of scroll — so it reads as the pen
      lifting rather than as the animation stalling. The stem and wave DO
      overlap, because from there on it is one continuous gesture. */
   .iw-mark__pen--dot {
-    animation-range: cover 52% cover 57%;
+    animation-range: cover 40% cover 46%;
   }
   .iw-mark__pen--stem {
-    animation-range: cover 57.2% cover 64%;
+    animation-range: cover 46.2% cover 52%;
   }
   .iw-mark__pen--wave {
-    animation-range: cover 62% cover 68.5%;
+    animation-range: cover 50% cover 57%;
   }
 }
 

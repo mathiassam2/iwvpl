@@ -626,20 +626,38 @@ They sit **outside** the export's `translate(0,246) scale(0.1,-0.1)` group
 because they are already in viewBox units; inside it they scale to a tenth of
 their size and silently vanish.
 
-### The text finishes before the mark starts
+### The text finishes before the mark starts — and the whole thing lands early
 
-Words land by `cover 51%`; the mark runs `52% → 68.5%`. That window is narrow
-on purpose — the section is 661px tall in an 898px viewport, so `cover` is
-1559px of scroll and the mark is already climbing out of frame by the end of
-it.
+Words land by `cover 39%`; the mark runs `40% → 57%`. The **dot is its own
+beat**: the strokes neither butt-join nor overlap — the dot finishes, the pen
+lifts, and only then does the letter start, with a gap of roughly 3px of
+scroll between them. Overlapping them let the stem's 80-unit round cap open
+while the dot was still filling, so the two merged into one amorphous blob and
+the dot never read as a deliberate first stroke. The stem and wave *do*
+overlap, because from there on it is one continuous gesture.
 
-The **dot is its own beat**. The strokes neither butt-join nor overlap: the
-dot finishes, the pen lifts, and only then does the letter start, with a gap
-of roughly 3px of scroll between them. Overlapping them let the stem's
-80-unit round cap open while the dot was still filling, so the two merged
-into one amorphous blob and the dot never read as a deliberate first stroke.
-The stem and wave *do* overlap, because from there on it is one continuous
-gesture.
+This sequence used to run `15% → 68.5%`, which meant scrolling most of the way
+through the section before the mark even started. It is pulled forward by
+about 11 points at both ends.
+
+**Why 57% and not later.** The section is 661px tall in an 898px viewport, so
+`cover` is 1559px of scroll and more than half of that range is spent with the
+section already leaving frame. At 57% the section's top is ~41px below the
+viewport top, putting the mark's box (section-relative y 200..460) at viewport
+y 241..501 — clear of the fold and clear of the sticky header. Push it later
+and the dot is behind the header before the wave has finished. Anything more
+generous needs the section to be taller than the viewport, which it is not.
+
+### No parallax in the hero
+
+The hero art carried `data-parallax="0.1"`, which slid it against the scroll
+via the global `useParallax` hook. Removed, along with the `parallax-layer`
+class on that element and the `.hero-stage` class it sat in — which turned out
+to have no CSS rule and no query anywhere, so it was dead weight.
+
+The cursor drift on `.hero-drift` is a different effect and is untouched: it
+follows the pointer, not the scroll. The parallax layers on the Join CTA and
+on other pages are untouched too.
 
 ### The rail no longer scrolls sideways on a phone
 

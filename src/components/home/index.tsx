@@ -322,11 +322,13 @@ export function Hero() {
     >
       {/* ---------- imagery ---------- */}
       <div aria-hidden className="absolute inset-0 -z-10">
-        <div
-          ref={stageRef}
-          data-parallax="0.1"
-          className="parallax-layer hero-stage absolute inset-0"
-        >
+        {/* No `data-parallax` here. The hero art used to slide against the
+            scroll via the global parallax hook, which read as the page
+            drifting under a fixed frame rather than as one still image.
+            The cursor drift on `.hero-drift` below is untouched - that is a
+            different effect and it is not parallax. `.hero-stage` had no rule
+            and no query anywhere, so it went with them. */}
+          <div ref={stageRef} className="absolute inset-0">
           <div className="absolute inset-0">
             {HERO_SLIDES.map((s, i) => {
               const active = i === index
