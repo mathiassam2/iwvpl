@@ -1175,12 +1175,13 @@
     view-timeline-axis: block;
   }
   /* Artwork drifts forward against the panel it sits in, so the
-     frame separates from its caption as the rail travels. The
-     +X is correct: the track is moving left, so anything that
-     also moves right falls behind and reads as further away.
+     frame separates as the rail travels. The +X is correct: the
+     track is moving left, so anything that also moves right falls
+     behind and reads as further away.
      On the mobile stack there is no track to outrun, but the
-     drift still does its job — the picture lets go of the
-     caption as you scroll past the frame. */
+     drift still does its job — the picture lets go of the caption
+     as you scroll past the frame. It must stay one-directional
+     and small: see `sd-rail-drift` for why. */
   .rail__art-img {
     animation: sd-rail-drift linear both;
     animation-timeline: --rail;
@@ -1229,9 +1230,29 @@
 @keyframes sd-rail {
   to { transform: translate3d(calc(-100% + 100cqw), 0, 0); }
 }
+/* ONE-DIRECTIONAL, AND MUCH SMALLER.
+
+   This ran -9cqw -> +9cqw at scale(1.3). Two problems with that, and the
+   second one is what hid the crescent.
+
+   1. Scale 1.3 crops ~30% off each side of a cover-cropped image. The panel
+      aspect (~1.68) is narrower than the artwork's (1.79), so cover already
+      takes 6.4% off the right; 1.3 then took another ~12% off each side.
+
+   2. Starting at -9cqw moved the image LEFT, which shows more of the
+      artwork's RIGHT and less of its left. The Singapore crescent sits at
+      5.9% of the image width, and the visible window was starting at 22%
+      - so it was never in frame at all, at any point in the travel. The
+      `object-position: left` underneath was doing nothing because the drift
+      overrode it.
+
+   Now the image only ever moves right, which is the direction that reveals
+   more of the left, and the zoom is small enough that at rest the window
+   starts at ~3.5% - inside the crescent. The parallax still reads, because
+   the track is travelling left underneath a picture that is not. */
 @keyframes sd-rail-drift {
-  from { transform: translate3d(-9cqw, 0, 0) scale(1.3); }
-  to   { transform: translate3d(9cqw, 0, 0) scale(1.3); }
+  from { transform: translate3d(0, 0, 0) scale(1.06); }
+  to   { transform: translate3d(5cqw, 0, 0) scale(1.06); }
 }
 @keyframes sd-rail-index {
   from { transform: scale(0.72); opacity: 0.25; }

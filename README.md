@@ -753,6 +753,33 @@ At rest the first panel sits one inset in and its copy a further 48px past
 that, so with the old numbers the copy landed *inside* the fade and was eaten
 even on a stationary rail. 5% against 6cqw clears it at every width.
 
+### The drift was eating Singapore's crescent
+
+The Singapore panel showed stars but no crescent. The obvious suspect was
+`object-position`, which is already `left center` — and that turned out to be
+exactly why it was misleading: the drift on `.rail__art-img` was overriding it
+entirely.
+
+`sd-rail-drift` ran `-9cqw → +9cqw` at `scale(1.3)`. Both halves of that were
+wrong for the artwork:
+
+- `scale(1.3)` on an already cover-cropped image throws away ~12% off each
+  side. The panel's aspect (~1.68 at 1853px) is *narrower* than the artwork's
+  1.79, so cover already takes 6.4% off the right; 1.3 then took a sixth more
+  off both edges.
+- Starting at `-9cqw` moves the image **left**, which reveals more of its
+  right and less of its left. Measured on the source, Singapore's crescent and
+  stars occupy x 5.9%–39.1% of the artwork, and the visible window was opening
+  at 22%. The crescent was never in frame at any point in the travel.
+
+It is now `translate3d(0) scale(1.06) → translate3d(5cqw) scale(1.06)`. One
+direction only — the direction that reveals the left — and a zoom small enough
+that at rest the window opens at ~3.5%, inside the crescent. The parallax still
+reads, because the track travels left underneath a picture that is not.
+
+Checked at rest, at 22% travel (where Singapore has correctly left frame and
+Malaysia's crescent and starburst come in intact) and at the end of the range.
+
 ### Login page
 
 The IWVPL wordmark above the form is gone. The fixed header already carries
