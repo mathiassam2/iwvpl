@@ -921,6 +921,24 @@
     animation-timeline: view();
     animation-range: entry 10% cover 40%;
   }
+
+  /* The crest wall. Scoped to the section rather than to a shared
+     `.sd-reveal`, so the generic tiers above cannot also land on these
+     cells and quietly re-override the range - same specificity, so it
+     would come down to source order and nothing would say so.
+
+     The `cover` range is anchored on the CELL, not the wall, so each crest
+     gets its own view() timeline rather than sharing the wall's. The
+     window is 22% of that crest's own cover, and --crest-start carries
+     where in the scroll that window opens. Variance between crests has to
+     live in the gap between the starts; lengthening the windows alone just
+     smears the slab into one long wave. */
+  .crest-wall__cell {
+    animation: sd-crest-in linear both;
+    animation-timeline: view();
+    animation-range: cover var(--crest-start, 2%)
+      cover calc(var(--crest-start, 2%) + 22%);
+  }
 }
 
 @keyframes sd-rise {
@@ -1249,10 +1267,39 @@
    Now the image only ever moves right, which is the direction that reveals
    more of the left, and the zoom is small enough that at rest the window
    starts at ~3.5% - inside the crescent. The parallax still reads, because
-   the track is travelling left underneath a picture that is not. */
+   the track is travelling left underneath a picture that is not.
+
+   `--art-shift` / `--art-zoom` are the panel's own framing and are read here
+   rather than hardcoded, so Indonesia's reframe rides the drift instead of
+   being overridden by it. They default to no shift and this zoom, which is
+   what Singapore and Malaysia want.
+
+   THE DRIFT IS BOUNDED BY THE SLACK, AND THE SLACK IS ZERO IF YOU DO NOT
+   BOUND IT. `scale()` about the centre leaves `(zoom - 1) / 2` of the panel
+   uncovered on each side, and that is the ONLY thing standing between a
+   rightward translate and an uncovered strip of panel background - a black
+   bar down the left of the picture. Measured, the old 5cqw drift against a
+   1.06 zoom left 2.9% of the panel bare on Singapore and Malaysia (46px), and
+   a full 5.9% (91px) on Indonesia, whose shift consumed its slack exactly.
+   Indonesia is only on screen from ~50% of the rail's travel onward, by which
+   point the bar was 45px - it was never absent, only briefly small.
+
+   So both sides were moved until every panel has room to spare:
+     - the shared zoom goes 1.06 -> 1.08 (4% of the panel per side, 4.76cqw)
+     - Indonesia's zoom goes 1.43 -> 1.50 and its shift 21.45% -> 22.5%,
+       which is 2.5% of the panel, 2.98cqw
+     - the drift drops to 2.4cqw, inside the tighter of the two
+
+   Singapore's crescent still clears: at 1.08 with the drift applied the window
+   opens at ~1.1% of the artwork, and the crescent starts at 5.9%. */
 @keyframes sd-rail-drift {
-  from { transform: translate3d(0, 0, 0) scale(1.06); }
-  to   { transform: translate3d(5cqw, 0, 0) scale(1.06); }
+  from {
+    transform: translate3d(var(--art-shift, 0%), 0, 0) scale(var(--art-zoom, 1.08));
+  }
+  to {
+    transform: translate3d(calc(var(--art-shift, 0%) + 2.4cqw), 0, 0)
+      scale(var(--art-zoom, 1.08));
+  }
 }
 @keyframes sd-rail-index {
   from { transform: scale(0.72); opacity: 0.25; }
@@ -1333,6 +1380,12 @@
      saturation so the darks stay dark and the reds stay red. */
   opacity: 1;
   filter: saturate(1.08) contrast(1.05) brightness(var(--art-gain, 1));
+  /* The panel's framing, held as a static transform so it survives
+     `prefers-reduced-motion`, where `.rail__art-img`'s animation is switched
+     off entirely and the image would otherwise fall back to `scale(1)` and
+     show Indonesia's full uncropped margin again. The drift below overrides
+     this while it runs. */
+  transform: translate3d(var(--art-shift, 0%), 0, 0) scale(var(--art-zoom, 1.08));
 }
 
 /* Level the three against each other.
@@ -1352,6 +1405,60 @@
 .rail__panel--sg { --art-gain: 1.38; }
 .rail__panel--my { --art-gain: 1.08; }
 .rail__panel--id { --art-gain: 1.1; }
+
+/* INDONESIA IS REFRAMED, THE OTHER TWO ARE NOT.
+
+   The panel is `84cqw` wide by `min(66svh, 600px)` tall - about 2.6:1
+   against the artwork's 1.79:1. Cover therefore fits the WIDTH exactly and
+   crops the height, showing the middle ~68% of it. There is no horizontal
+   overflow to position within, which is why `object-position` above is a
+   no-op on desktop and why framing a panel at all needs a scale.
+
+   Singapore and Malaysia both carry a flag motif at their left edge - the
+   white crescent and stars, the gold crescent and starburst - sitting in the
+   artwork's black brushwork. Indonesia has no emblem there at all. There is a
+   black mass in the artwork's top left, but it sits in y 0-47%, and the
+   panel's 2.6:1 frame against a 1.79:1 artwork crops the height to the middle
+   ~68% - so the band the panel actually shows, y 16-84%, is never black:
+   measured per 1% column across that band, the mean runs 88-128 and never
+   falls. (The single-pixel darks scattered through every band are the
+   artwork's brushwork, present everywhere, not a margin.) Left unframed it
+   reads as a hole in the picture rather than as a shadow, which is why it is
+   reframed at all.
+
+   So Indonesia is zoomed and shifted to put the National Monument and the
+   Jakarta skyline in the frame. Measured against the rendered panel, not
+   eyeballed. With the window placed on the artwork's x 30-100%:
+
+     scale 1.5 shows 1/1.5 = 67% of the artwork's width;
+     centring that window exactly needs
+       shift = 0.15 * zoom = 22.5% of the panel,
+     which leaves the panel's left slack - all the drift gets to spend -
+       (zoom - 1) / 2 - shift = 25% - 22.5% = 2.5%.
+
+   2.5% of the panel is 2.98cqw, and the drift wants 2.4cqw of panel width in
+   container units - which is 2.857% of an 84cqw panel. So the exact centring
+   is 0.16% short and Indonesia ends the travel with a 6px bare strip. Hence
+   the shift is relaxed to 21.8%, buying 3.2% of slack (3.81cqw) and moving
+   the window 0.7% of the panel - half a percent of the artwork - to the
+   right. Re-measured after the change: worst uncovered strip across all
+   three panels and the whole travel is 0, down from 91px.
+
+   1.5 rather than the 1.43 this used to carry. 1.43 is the SMALLEST zoom
+   that clears the margin: slack goes negative below 1/0.7 = 1.4286, which is
+   exactly where the old values sat, and a panel with negative slack shows a
+   bare strip down its left edge the instant the drift moves at all. Lifting
+   the zoom to 1.5 buys slack for the drift to spend, and costs the frame a
+   few percent of width - the window moves from x 0-70% to ~2-69%, and the
+   band it gives up at either end measures the brightest in the whole picture.
+
+   Both numbers fall out of that geometry rather than out of taste, which
+   matters because the panel's aspect moves with the viewport - the ratio is
+   what is fixed, and the percentages are derived from it. */
+.rail__panel--id {
+  --art-shift: 21.8%;
+  --art-zoom: 1.5;
+}
 
 /* Three layers, all needed.
 
@@ -1674,6 +1781,54 @@
 /* ------------------------------------------------------------
    Crest wall
    ------------------------------------------------------------ */
+/* ------------------------------------------------------------
+   Crest wall arrival
+
+   Per crest, not per tier. `.sd-reveal`'s five nth-child tiers sit
+   only 4% apart on a ~20% window, so every crest in a row was still
+   moving at the same moment and the offsets cancelled into one slab.
+   Here the WINDOW is 18% and each crest's start is scattered across
+   the 24% before it, so crests genuinely land one after another; the
+   rise distance and drift direction are hashed per crest so any two
+   that do overlap still travel differently.
+
+   Start and end are both `cover` percentages on purpose. Mixing
+   `entry` for the start and `cover` for the end sounds tidier, but
+   `entry` on a 90px crest spans under 10% of its own `cover`, which
+   leaves the start clustered in the first few pixels of scroll and
+   the scatter ends up all in the duration instead.
+   ------------------------------------------------------------ */
+.crest-wall__cell {
+  opacity: 1;
+  transform: none;
+}
+
+@keyframes sd-crest-in {
+  from {
+    opacity: 0;
+    /* Four axes at once: rise, sideways drift, a touch of tilt, and a start
+       scale. All four return to exactly zero, so the wall settles square. */
+    transform: translate3d(var(--crest-drift, 0px), var(--crest-rise, 26px), 0)
+      rotate(var(--crest-tilt, 0deg))
+      scale(var(--crest-pop, 0.88));
+  }
+  /* Opacity gets there well before the geometry does.
+     With a 46% spread of start times, neighbouring slots can be 40% of the
+     wall apart in the scroll, and a crest that is still at opacity 0 next to
+     one that has landed reads as a MISSING IMAGE rather than as a scatter.
+     Bringing the ghost in by 38% of its own window means an arriving crest
+     is visible as a faint, small, tilted mark while it is still travelling -
+     which is the thing that reads as intentional. The transform is left
+     unspecified here so it keeps interpolating from and to. */
+  38% {
+    opacity: 0.55;
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+  }
+}
+
 .crest-wall {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(7.25rem, 1fr));
@@ -1740,6 +1895,7 @@
   .rail__track,
   .stmt__in,
   .iw-mark__pen,
+  .crest-wall__cell,
   .sd-reveal,
   .sd-reveal-soft {
     animation: none !important;
@@ -1749,6 +1905,7 @@
     stroke-dashoffset: 0;
   }
   .stmt__in,
+  .crest-wall__cell,
   .sd-reveal,
   .sd-reveal-soft {
     opacity: 1 !important;

@@ -10,22 +10,48 @@
  * are to each other.
  *
  * It reads the LIVE computed styles off the running page - opacity, the
- * filter chain, the scrim's alphas, and each panel's --art-gain - and then
- * composites the artwork exactly as CSS would, so the numbers cannot drift
- * away from the stylesheet. It measures the right 55% of each panel, which
- * is the part the copy does not sit on.
+ * filter chain, the scrim's alphas, each panel's --art-gain, the image's
+ * object-position and its transform matrix, and the panel's real aspect - and
+ * then composites the artwork exactly as CSS would, so the numbers cannot
+ * drift away from the stylesheet. It measures the right 45% of each panel,
+ * which is the part the copy does not sit on.
  *
- * The point is that the three panels are the same set. Equal treatment does
- * not produce equal results, because each panel shows a different CROP of a
- * different artwork (object-position 6/14/19%), and Malaysia's crop lands on
- * a darker region than the other two. `--art-gain` in index.css is the
- * measured correction for that; this is the check on it.
+ * Everything geometric is READ, never assumed. It used to hardcode a
+ * 1080x593 canvas and object-position 6/14/19%, which was already wrong twice
+ * over: the panel is `84cqw` by `min(66svh, 600px)`, about 2.6:1 rather than
+ * 1.82:1, and the rail moved off the hero's 6/14/19% long ago. On top of that
+ * Indonesia now carries its own `--art-shift` / `--art-zoom`, so a composite
+ * that ignored the transform was measuring a crop that no longer exists. A
+ * check that measures the wrong thing is worse than no check.
+ *
+ * Measured at the rail's rest position (the probe frame is never scrolled,
+ * so the drift sits at its `from`). That is one defined state; the drift only
+ * slides the picture 2.4cqw across the travel on top of it, which is bounded
+ * so that it can never uncover the panel's edge - see `sd-rail-drift`.
+ *
+ * KNOWN FAILURE, NOT A REGRESSION. As of the last run this reports
+ *
+ *     SG  gain 1.38  69.36   -5.2%
+ *     MY  gain 1.08  88.57  +21.1%
+ *     ID  gain 1.10  61.49  -15.9%
+ *     spread 44%   TOO WIDE
+ *
+ * The stored `--art-gain` values were derived against a harness that
+ * hardcoded a 1080x593 canvas and the hero's long-gone 6/14/19% object
+ * positions, so they were never calibrated against the real geometry this
+ * file now reads. The check has become accurate; the numbers it is checking
+ * have not been re-derived to match.
+ *
+ * Re-deriving them is a deliberate act, not a cleanup: naive correction would
+ * want roughly 1.76 / 1.08 / 1.60, and brightness() is not linear, so those
+ * have to be re-measured at each step rather than solved for. Indonesia's
+ * reframe is NOT the cause - an A/B across two real builds puts it at 61.49
+ * before the change and 61.07 after, 0.4% apart.
  *
  *   cp scripts/verify-rail-art.html dist/_eq.html   (after `npm run build`,
  *   which empties dist) and open /iwvpl/_eq.html
  */
-var PW = 1080, PH = 593;
-var POS = { SG: 0.06, MY: 0.14, ID: 0.19 };
+var PW = 1080;
 
 (async function () {
   await new Promise(function (r) {
@@ -52,6 +78,11 @@ var POS = { SG: 0.06, MY: 0.14, ID: 0.19 };
     c: num(/contrast\(([\d.]+)\)/, 1),
   };
 
+  // Canvas keeps the panel's real aspect, only scaled down to a workable size.
+  var probePanel = panels[0].getBoundingClientRect();
+  var PH = Math.max(80, Math.round(PW * (probePanel.height / probePanel.width)));
+  document.getElementById('out').textContent = 'canvas ' + PW + 'x' + PH + '\nworking...';
+
   function linAt(u) {
     return u < 0.42
       ? linear[0] + (linear[1] - linear[0]) * (u / 0.42)
@@ -63,6 +94,20 @@ var POS = { SG: 0.06, MY: 0.14, ID: 0.19 };
     return vigA * t;
   }
 
+  /** Parses a computed `matrix(...)`, falling back to the identity. */
+  function readMatrix(cs) {
+    var m = cs.transform.match(/^matrix(3d)?\(([^)]+)\)/);
+    if (!m) return [1, 0, 0, 1, 0, 0];
+    var v = m[2].split(',').map(parseFloat);
+    return m[1] ? [v[0], v[1], v[2], v[3], v[12], v[13]] : v;
+  }
+  /** Parses `object-position`, which is two offsets against the overflow. */
+  function readObjPos(cs) {
+    var p = cs.objectPosition.split(' ').map(parseFloat);
+    if (p.length === 1) return [p[0] / 100, 0.5];
+    return [p[0] / 100, p[1] / 100];
+  }
+
   var rows = [];
   for (var p of panels) {
     // p.querySelector, NOT d.querySelector(sel, p): the two-argument form
@@ -72,7 +117,9 @@ var POS = { SG: 0.06, MY: 0.14, ID: 0.19 };
     var cls = [...p.classList].find(function (c) { return /^rail__panel--(sg|my|id)$/.test(c); });
     if (!cls) continue;
     var iso = cls.slice(-2).toUpperCase();
-    var gain = parseFloat(w.getComputedStyle(p).getPropertyValue('--art-gain')) || 1;
+    var pcs = w.getComputedStyle(p);
+    var ics = w.getComputedStyle(img);
+    var gain = parseFloat(pcs.getPropertyValue('--art-gain')) || 1;
     var bmp = await new Promise(function (r, j) {
       var i = new Image(); i.onload = function () { r(i); }; i.onerror = j; i.src = img.currentSrc || img.src;
     });
@@ -82,9 +129,22 @@ var POS = { SG: 0.06, MY: 0.14, ID: 0.19 };
     ctx.fillRect(0, 0, PW, PH);
     ctx.globalAlpha = OPACITY;
     ctx.filter = 'saturate(' + filt.s + ') contrast(' + filt.c + ') brightness(' + gain + ')';
+
+    // cover-fit into the element box, then the element's own transform.
     var sc = Math.max(PW / bmp.naturalWidth, PH / bmp.naturalHeight);
     var sw = bmp.naturalWidth * sc, sh = bmp.naturalHeight * sc;
-    ctx.drawImage(bmp, -(sw - PW) * POS[iso], -(sh - PH) * 0.5, sw, sh);
+    var op = readObjPos(ics);
+    var dx0 = (sw - PW) * op[0], dy0 = (sh - PH) * op[1];
+
+    var m = readMatrix(ics);
+    var ox = PW / 2, oy = PH / 2;                 // default transform-origin
+    ctx.setTransform(
+      m[0], m[1], m[2], m[3],
+      m[4] + ox - m[0] * ox - m[2] * oy,          // re-centre about the origin
+      m[5] + oy - m[1] * ox - m[3] * oy,
+    );
+    ctx.drawImage(bmp, -dx0, -dy0, sw, sh);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.filter = 'none';
     ctx.globalAlpha = 1;
 
@@ -107,6 +167,7 @@ var POS = { SG: 0.06, MY: 0.14, ID: 0.19 };
   var mean = rows.reduce(function (a, r) { return a + r.right; }, 0) / rows.length;
   var vals = rows.map(function (r) { return r.right; });
   var out = [
+    'canvas ' + PW + 'x' + PH,
     'opacity ' + OPACITY + '   filter ' + FILTER,
     'scrim linear ' + linear.join(' / ') + '   vignette ' + vigA,
     '',

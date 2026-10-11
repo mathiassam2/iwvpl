@@ -780,6 +780,101 @@ reads, because the track travels left underneath a picture that is not.
 Checked at rest, at 22% travel (where Singapore has correctly left frame and
 Malaysia's crescent and starburst come in intact) and at the end of the range.
 
+### …and then the drift opened a hole in Indonesia
+
+Shipping that made Indonesia worse, and the screenshot proved it: a black bar
+down the left of the panel.
+
+**The drift has to be bounded by the slack, and the slack is zero if you don't
+bound it.** `scale()` about the centre leaves `(zoom - 1) / 2` of the panel
+uncovered on each side, and that is the *only* thing between a rightward
+translate and a bare strip of panel background. Measured across the travel:
+
+| panel | zoom | shift | left slack | drift wanted | uncovered |
+|---|---|---|---|---|---|
+| SG / MY | 1.06 | 0 | 3% (2.52cqw) | 5cqw | 46px |
+| ID | 1.43 | 21.45% | **0.05%** | 5cqw | **91px** |
+
+Indonesia's shift consumed its slack *exactly* — 21.45% against a slack of
+21.5% — because both numbers fall out of the same geometry: placing the window
+on the artwork's x 30–100% needs `shift = 0.15 × zoom`, and slack is
+`(zoom − 1)/2`, so slack goes negative below `zoom = 1/0.7 = 1.4286`. The old
+values sat on 1.43, within a rounding error of the floor. Any drift at all, and
+the panel shows its own background.
+
+Worse, Indonesia is only on screen from ~50% of the travel onward, by which
+point the bar was already 45px — it was never absent, only briefly small.
+
+Three changes, all derived rather than dialled:
+
+- shared zoom **1.06 → 1.08**, giving 4% of the panel (4.76cqw) per side
+- Indonesia **1.43 → 1.5** and **21.45% → 21.8%**, giving 3.2% (3.81cqw)
+- drift **5cqw → 2.4cqw**, inside the tighter of the two
+
+The exact centring for Indonesia is 22.5%, but that leaves 2.5% of slack
+(2.98cqw) against a drift that wants 2.857% *of the panel* in container units
+— 0.16% short, which measured as a 6px bare strip at the very end. The shift
+is relaxed by 0.7% to cover it.
+
+Re-measured after: **worst uncovered strip across all three panels and the
+whole travel is 0**, down from 91px.
+
+Singapore's crescent still clears — at 1.08 with the drift applied the window
+opens at ~1.1% of the artwork against the crescent's 5.9%.
+
+**One correction to the file.** The old comment claimed `x 0-30% by y 0-47% of
+in-hero is a dead black mass`. Sampled per 1% column across the band the panel
+*actually shows* (y 16–84%, the middle 68% that a 2.6:1 panel crops to), the
+mean runs **88–128 and never falls**. The black is real but it lives in the top
+band the panel crops out; the single-pixel darks scattered through every band
+are the artwork's brushwork, present everywhere. The reframe is still right —
+it puts the Monument and the skyline in shot — but it was justified by a
+measurement that doesn't hold where it was cited.
+
+### The crest wall scatters harder
+
+`--crest-start` spread 24% → 46%, window 18% → 22%, and two more axes of
+variance added: **tilt** (±2.4°) and a **start scale** (0.84–0.96). Rise is now
+20–72px and drift ±26px.
+
+Variance has to live in the gap between the starts and in the direction each
+one moves, not in the length of the windows — stretching the windows just
+smears the slab into one long wave. All four axes return to exactly zero, so
+the resting wall is still a grid; a permanently crooked grid of crests looks
+like a bug, one that settles square looks intentional. Tilt is deliberately
+not applied at rest for that reason.
+
+One concession to legibility: a `38%` stop brings opacity to 0.55 partway
+through each window. With a 46% spread, neighbours can be far apart in the
+scroll, and a crest still at `opacity: 0` beside one that has landed reads as
+a **missing image**, not as a scatter. An arriving crest should be a visible
+faint, small, tilted mark — that is the thing that reads as intentional.
+Measured at a mid-scroll position: 13 ghosts visible where the previous pass
+left blanks.
+
+### Open: the rail art gains are calibrated against a harness that was wrong
+
+`verify-rail-art.html` has been corrected to read the live geometry — the
+panel's real aspect, `object-position`, and the image's actual transform
+matrix — instead of a hardcoded 1080×593 canvas and the hero's long-gone
+6/14/19% object positions. It used to measure a crop that no longer exists.
+
+Now that it measures the real thing, it reports **spread 44%, TOO WIDE**:
+Singapore 69.4, Malaysia 88.6, Indonesia 61.5 against the stored gains of
+1.38 / 1.08 / 1.10. Those gains were derived against the broken harness, so
+they were never calibrated against the geometry that actually ships.
+
+Indonesia's reframe is **not** the cause. An A/B across two real builds puts
+it at 61.49 before the reframe and 61.07 after — 0.4% apart.
+
+This is left failing on purpose. Re-deriving the gains is a deliberate pass,
+not a cleanup: naive correction wants roughly 1.76 / 1.08 / 1.60, and
+`brightness()` is not linear, so each step has to be re-measured rather than
+solved for. Guessing at three exposure values on the strength of an
+unvalidated model is exactly the kind of change that looks fine in a diff and
+blows out the artwork. The measured numbers and the reasoning are recorded in
+the harness header so the next pass starts from evidence.
+
 ### Login page
 
 The IWVPL wordmark above the form is gone. The fixed header already carries
