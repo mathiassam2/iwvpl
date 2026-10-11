@@ -1,6 +1,7 @@
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
 import { siteData } from '@/data'
 import { CLUB_PLACEHOLDER, stripFlag } from '@/lib/format'
+import { useMarqueeSpeed } from '@/lib/useMarqueeSpeed'
 
 /**
  * Live results ticker.
@@ -11,7 +12,10 @@ import { CLUB_PLACEHOLDER, stripFlag } from '@/lib/format'
  *
  * The list is rendered twice — the second copy is aria-hidden — because a
  * seamless loop has to wrap at exactly half the track width. See
- * `.marquee*` in styles/index.css; the motion is pure CSS.
+ * `.marquee*` in styles/index.css; the motion itself is pure CSS.
+ *
+ * The one piece of script here is the hover crawl, and it is only a speed
+ * change — see `useMarqueeSpeed` for why that cannot be done in CSS.
  */
 
 /** Club suffixes that carry no information in an abbreviation. */
@@ -49,6 +53,9 @@ function Crest({ logo, alt }: { logo?: string; alt: string }) {
 }
 
 export function Scroller() {
+  const sectionRef = useRef<HTMLElement>(null)
+  useMarqueeSpeed(sectionRef)
+
   const { items, codeOf } = useMemo(() => {
     const map = new Map<string, string>()
     for (const row of siteData.standings) {
@@ -88,7 +95,7 @@ export function Scroller() {
   )
 
   return (
-    <section className="marquee" aria-label="Latest match results">
+    <section className="marquee" aria-label="Latest match results" ref={sectionRef}>
       <div className="marquee__track">
         {group()}
         {group(true)}

@@ -735,6 +735,40 @@ Round caps are what make the pen read as a marker, so they stay and
 missing from the `from` keyframe, if the `0.5%` step goes, or if the cap is
 switched back to butt. All four cases verified by deliberately breaking them.
 
+### The results ticker crawls on hover
+
+Hovering the results strip eases it to 40% speed over ~520ms and eases it back
+when the pointer leaves. It never stops — a scoreboard that freezes reads as
+broken, and there is nothing in the strip to click, so there is nothing to
+interrupt either.
+
+**Why this is not `animation-duration` in CSS.** The obvious version is a
+transition on the duration, but a CSS animation keeps its `currentTime` when
+the duration changes and simply re-derives progress against the new one, so
+the track *jumps* to a different point in its loop the instant the duration
+moves — it does not ease. The discontinuity is worst at the moment the new
+duration crosses the elapsed time, where progress flips between
+`(s mod D) / D` and `s / D`.
+
+`playbackRate` is the correct control: it is defined to preserve the current
+position and change only how fast time advances. Measured while easing, the
+track's per-sample travel rises monotonically 3.6 → 5.1 → 6.1 → 6.7 → 7.0 →
+7.1px and the ratio 7.1 / 2.8 = 2.54 matches the rate ratio 1 / 0.4 = 2.5 —
+no step anywhere, which a duration change could not have produced.
+
+`playbackRate` is not transitionable either, so `useMarqueeSpeed` tweens it
+over a short rAF with easeOutCubic. It restores the rate on unmount, so
+leaving mid-tween cannot strand the ticker at a crawl.
+
+### Reduced motion never actually covered the marquee
+
+That block's comment has long claimed it stopped the ticker. It didn't —
+`.marquee__track` was never listed, so the crawl ran at full speed for anyone
+who asked for reduced motion. Now listed. The track then sits at its start
+transform, which is the first group's full set of scorelines: every result
+readable, just not moving. It also makes the hook a no-op by itself, since it
+bails when there is no animation to slow.
+
 ### A guard, because this has broken three times
 
 `npm run build` and `npm run typecheck` now run `scripts/audit-iw-mark.mjs`.

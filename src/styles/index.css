@@ -1505,10 +1505,14 @@
   to   { transform: translate3d(-50%, 0, 0); }
 }
 
-/* Deliberately NOT paused on hover. It is a scoreboard crawl, not a
-   carousel: it reads as live league data rather than as content you
-   are being invited to stop and read, and nothing in it is a link or
-   a control, so there is nothing to interrupt. */
+/* On hover it CRAWLS, it does not stop. A scoreboard that freezes reads as
+   broken, and there is nothing in here to click or open, so there is nothing
+   to interrupt either — you want to read a scoreline, not fight the motion.
+   The speed change lives in `useMarqueeSpeed` rather than here: easing
+   `animation-duration` would not ease anything, because a CSS animation keeps
+   its `currentTime` and re-derives progress from the new duration, so the
+   track would jump to a new point in its loop instead of slowing into it.
+   `playbackRate` preserves the position and changes only the rate. */
 
 /* Edge fades so items enter and leave rather than being sheared. */
 .marquee::before,
@@ -1687,6 +1691,17 @@
    elsewhere can never re-enable one by accident.
    ------------------------------------------------------------ */
 @media (prefers-reduced-motion: reduce) {
+  /* The ticker. This block's comment has always claimed it stopped the
+     marquee, and it never did - `.marquee__track` was simply never listed,
+     so the crawl ran at full speed for anyone who asked for reduced motion.
+     The track then sits at its start transform, which is the first group's
+     full set of scorelines: every result still readable, just not moving.
+
+     It also makes `useMarqueeSpeed` a no-op by itself, since the hook bails
+     when there is no animation to slow down. */
+  .marquee__track {
+    animation: none !important;
+  }
   .rail__art-img,
   .rail__body,
   .rail__index,
