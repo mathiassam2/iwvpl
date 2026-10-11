@@ -631,9 +631,15 @@ their size and silently vanish.
 Words land by `cover 51%`; the mark runs `52% → 68.5%`. That window is narrow
 on purpose — the section is 661px tall in an 898px viewport, so `cover` is
 1559px of scroll and the mark is already climbing out of frame by the end of
-it. The three beats also **overlap** rather than hand off; butt-joined ranges
-left the dot finished and the stem not started, so the mark sat there as a lone
-blob that read as a stray dot.
+it.
+
+The **dot is its own beat**. The strokes neither butt-join nor overlap: the
+dot finishes, the pen lifts, and only then does the letter start, with a gap
+of roughly 3px of scroll between them. Overlapping them let the stem's
+80-unit round cap open while the dot was still filling, so the two merged
+into one amorphous blob and the dot never read as a deliberate first stroke.
+The stem and wave *do* overlap, because from there on it is one continuous
+gesture.
 
 ### The rail no longer scrolls sideways on a phone
 

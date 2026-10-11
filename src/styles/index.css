@@ -1039,19 +1039,23 @@
     animation: sd-mark-draw linear both;
     animation-timeline: --stmt;
   }
-  /* The three beats OVERLAP rather than hand off. Butt-joined ranges left a
-     stretch where the dot was finished and the stem had not started, so the
-     mark sat there as a lone blob that read as a stray dot rather than as
-     the beginning of a letter. With the overlap the pen is always moving
-     and the three strokes read as one gesture. */
+  /* THE DOT IS ITS OWN BEAT. The three strokes do not butt-join and they do
+     not overlap either: the dot finishes, the pen lifts, and only then does
+     the letter start. Overlapping them (which this did until now) let the
+     stem's 80-unit round cap open while the dot was still filling, so the
+     two merged into one amorphous blob at the top of the mark and the dot
+     never read as a deliberate first stroke. The gap between dot and stem
+     is deliberately tiny - about 3px of scroll - so it reads as the pen
+     lifting rather than as the animation stalling. The stem and wave DO
+     overlap, because from there on it is one continuous gesture. */
   .iw-mark__pen--dot {
-    animation-range: cover 52% cover 56.5%;
+    animation-range: cover 52% cover 57%;
   }
   .iw-mark__pen--stem {
-    animation-range: cover 55% cover 63%;
+    animation-range: cover 57.2% cover 64%;
   }
   .iw-mark__pen--wave {
-    animation-range: cover 61.5% cover 68.5%;
+    animation-range: cover 62% cover 68.5%;
   }
 }
 
