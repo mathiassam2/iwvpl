@@ -875,6 +875,104 @@ unvalidated model is exactly the kind of change that looks fine in a diff and
 blows out the artwork. The measured numbers and the reasoning are recorded in
 the harness header so the next pass starts from evidence.
 
+### The rail art is anchored top-left
+
+`.rail__art-img` moves from `object-position: left center` to **`left top`**.
+
+Cover fits the panel's ~2.6:1 against the artwork's 1.79:1 by cropping height,
+so the Y position picks which 68% of the picture is in shot. Centred showed
+y 16–84%, which sliced the top off both Singapore's crescent and Malaysia's
+starburst — their own motifs, and the reason those two panels read as "full"
+where Indonesia does not. Top-anchored the window is y 0–68% and both motifs
+come in whole. On mobile this is the difference between a flag and a red
+smear.
+
+**Indonesia is deliberately excluded, and cannot be included.** Mean luminance
+per horizontal band of `in-hero`:
+
+| band | mean | band | mean |
+|---|---|---|---|
+| y 0–10% | 15.5 | y 50–60% | 190.8 |
+| y 10–20% | 15.9 | y 60–70% | 161.3 |
+| y 20–30% | 15.5 | y 70–80% | 219.9 |
+| y 30–40% | 20.4 | y 80–90% | 218.3 |
+| y 40–50% | 29.5 | y 90–100% | 207.9 |
+
+Top-aligned, the panel's upper ~44% would be near-black — the exact hole the
+reframe exists to close. Centred (y 16–84%) splits the two and is what that
+panel ships. The other two are in the artwork's bright half at the top; this
+one is not.
+
+Note the override targets `.rail__panel--id .rail__art-img`, not
+`.rail__panel--id`: `object-position` is **not** inherited, so declaring it on
+the panel — as if it were a custom property — silently does nothing. It did,
+until the computed style was read back and still said `0% 0%`.
+
+### Indonesia's monument was framed for a landscape panel, on a portrait one
+
+The reframe above is derived for the desktop panel: `84cqw` × `min(66svh, 600px)`,
+about 2.6:1. Below 900px the rail is a stacked full-bleed stack and
+`.rail__panel` is `100%` × `min(70svh, 560px)` — **portrait**, about 0.68:1 at
+390×844. Cover then fits the *height* instead of the width and discards ~62%
+of the artwork's width, so only 38% of it is ever on screen against desktop's
+~94%. The same `21.8%` shift in a window that narrow lands on the wrong side
+of the subject: the National Monument ended up clipped against the panel's
+right edge with empty brushwork filling the left.
+
+Mobile shifts to **`-20%`**. The Monument comes fully into frame, left of
+centre, with the skyline carrying the copy side. Verified at 390×844 across
+the rail's whole travel: the image overhangs the panel by 171px on the left
+and 19–28px on the right at every position, so nothing is uncovered — the
+drift only ever moves it further clear of the right edge.
+
+Desktop keeps `21.8%`; worst uncovered strip across all three panels and the
+whole travel is still **0**.
+
+### The crest wall rises from the bottom, and finishes early
+
+Two things were wrong, and the first was not a styling problem.
+
+**The direction was wrong.** Each crest carried its own
+`animation-timeline: view()`, which reads as "animate while I am crossing the
+viewport" and sounds bottom-up. It is not. Measured across the three rows at a
+fixed scroll position, mean progress was row 1 **0.62**, row 2 0.38, row 3
+**0.21** — the top row ran furthest ahead, because a cell's `cover` range has
+been running longest by the time the cells below it finish entering. It came in
+from the top and scattered from there.
+
+So the crests now share **one** timeline declared on the wall, and the stagger
+is derived from each crest's **row**: the bottom row opens its window at 0%
+and the top row at the far end. Deterministic, and it cannot invert itself when
+the viewport changes.
+
+**Which row a crest is in cannot be asked in CSS.** `.crest-wall` is
+`auto-fill`, so the column count is whatever the width allows and an
+`nth-child` wave silently re-breaks on every resize. `CrestWall.tsx` reads the
+resolved `grid-template-columns` back and keeps it honest with a
+`ResizeObserver`.
+
+Measured sweep, one representative crest per row:
+
+| scroll vs wall top | bottom row | middle row | top row | settled |
+|---|---|---|---|---|
+| −500 | 0.15 | 0.00 | 0.00 | 0/37 |
+| −420 | 0.92 | 0.17 | 0.00 | 0/37 |
+| −380 | 1.00 | 0.56 | 0.00 | 11/37 |
+| −300 | 1.00 | 1.00 | 0.58 | 24/37 |
+| **−220** | 1.00 | 1.00 | 1.00 | **37/37** |
+
+Strictly bottom-up, and **fully assembled 220px below the viewport top** — the
+cascade spans 32% of the timeline and each crest's window is 20%, so the last
+crest on the top row is done by ~56% and the whole wall is settled while the
+section is still arriving.
+
+Variance is unchanged on the other three axes — ±4% start jitter, 20–72px rise,
+±26px drift, ±2.4° tilt, 0.84–0.96 start scale — all returning to exactly zero
+so the resting wall is still a grid. A `38%` keyframe stop brings opacity to
+0.55 partway through each window: with a wide spread, neighbours can be far
+apart in the scroll, and a crest still at `opacity: 0` beside one that has
+landed reads as a **missing image**, not as a scatter.
+
 ### Login page
 
 The IWVPL wordmark above the form is gone. The fixed header already carries

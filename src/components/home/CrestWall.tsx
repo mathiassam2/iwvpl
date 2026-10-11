@@ -1,47 +1,60 @@
+import { useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
 import { ButtonLink, Container, Section, SectionHead } from '@/components/ui'
 import { siteData } from '@/data'
 import { clubSlug, stripFlag } from '@/lib/format'
 
+/** How much of the shared timeline the bottom-to-top cascade spans. */
+const CASCADE_SPAN = 32
+/** Each crest's own window, as a share of the timeline. */
+const CREST_WINDOW = 20
+
 /**
- * Per-crest timing and travel, so the wall arrives as a scatter rather than
- * as a slab.
+ * Per-crest timing and travel, so the wall rises from the bottom as a scatter
+ * rather than arriving as a slab.
  *
- * The wall used to carry `.sd-reveal`, which staggers five tiers only 4% of
- * the timeline apart while each crest animates for ~20% of it. Every crest in
- * a row therefore started at nearly the same scroll position and was still
- * mid-animation at the same moment, so the offsets cancelled out and the wall
- * moved as one block. Widening the tiers alone does not fix that - it just
- * smears the slab.
+ * THE DIRECTION HAD TO BE BUILT. Each crest originally carried its own
+ * `animation-timeline: view()`, which reads as "animate while I am crossing
+ * the viewport". That sounds bottom-up and is not: measured across the three
+ * rows at a fixed scroll position, mean progress was row 1 **0.62**, row 2
+ * 0.38, row 3 **0.21** - the top row ran furthest ahead, because a cell's
+ * `cover` range has effectively been running longest by the time the cells
+ * below it have finished entering. It arrived from the top and scattered from
+ * there, which is the opposite of the wave that was asked for.
  *
- * Four independent axes of variance, because variance has to come from the
- * gaps and the directions, not from stretching the durations:
+ * So the crests share ONE timeline, declared on the wall, and the stagger is
+ * derived from each crest's ROW instead of from its position in the viewport.
+ * Bottom row opens its window at 0%, top row at the far end. Deterministic,
+ * and it cannot invert itself when the viewport changes.
  *
- *  - WHEN it starts. Each crest's window is 22% wide and its START is
- *    scattered across the preceding 46%, so one crest is largely finished
- *    before the next begins. Widened from 24% to 46% on the request for
- *    variance: at 24% the wall still read as a band arriving, because a row
- *    of seven crest slots spans less travel than that once the column count
- *    and the gap are accounted for.
- *  - HOW FAR it rises. 20-72px, so no two neighbours share a horizon line.
- *  - WHICH WAY it drifts sideways. +/-26px.
- *  - HOW IT IS TURNED AND SCALED on arrival. +/-2.4deg of tilt and a start
- *    scale of 0.88. These are what break the grid while it is in motion
- *    without leaving the grid mis-aligned once it settles - every one of
- *    these returns to exactly zero, so the resting wall is still a wall.
+ * WHICH ROW A CREST IS IN CANNOT BE ASKED IN CSS. `.crest-wall` is
+ * `auto-fill`, so the column count is whatever the width allows and an
+ * `nth-child` wave silently re-breaks on every resize. Hence the measurement
+ * below: the resolved `grid-template-columns` gives the real track count, and
+ * a ResizeObserver keeps it honest.
  *
- * Hashed from the club NAME, not its position, so the pattern is stable
- * across renders and does not reshuffle when the roster changes. It is also
- * independent of the column count, which `.crest-wall` cannot know: it is
- * `auto-fill`, so an nth-child wave would silently re-break every time the
- * columns changed.
+ * Four axes of variance on top of the cascade, because variance has to come
+ * from the gap between neighbours and the direction each one moves, not from
+ * stretching the windows:
+ *
+ *  - A per-crest jitter of +/-4% on the start, so a row does not land as a
+ *    single step.
+ *  - HOW FAR it rises: 20-72px, so no two neighbours share a horizon line.
+ *  - WHICH WAY it drifts sideways: +/-26px.
+ *  - HOW IT IS TURNED AND SCALED on arrival: +/-2.4deg of tilt and a start
+ *    scale of 0.84-0.96. These break the grid while it is in motion without
+ *    leaving it mis-aligned once it settles - every one returns to exactly
+ *    zero, so the resting wall is still a wall.
+ *
+ * Hashed from the club NAME, not its index, so the pattern is stable across
+ * renders and does not reshuffle when the roster changes.
  *
  * Tilt is deliberately not applied to the resting state. A permanently
- * off-square grid of crests looks like a bug; a grid that settles crooked
- * and then squares up looks intentional.
+ * off-square grid of crests looks like a bug; one that settles square looks
+ * intentional.
  */
-function crestVars(name: string): CSSProperties {
+function crestVars(name: string, row: number, rows: number): CSSProperties {
   // FNV-1a. Cheap, no allocation, and stable for a given string.
   let h = 2166136261
   for (let i = 0; i < name.length; i++) {
@@ -52,16 +65,19 @@ function crestVars(name: string): CSSProperties {
   const draw = (shift: number, span: number) =>
     ((h >>> shift) >>> 0) / 0x100000000 * span
 
-  const start = 2 + draw(0, 46)
-  const drift = draw(7, 52) - 26
-  const rise = 20 + draw(14, 52)
-  const tilt = draw(21, 4.8) - 2.4
+  // `depth` is 0 on the BOTTOM row and rows-1 on the top one, so the wave
+  // travels upward. The step divides the cascade span across however many
+  // rows there happen to be, which is what keeps the whole thing inside the
+  // timeline on a phone where the wall is ten rows deep instead of three.
+  const depth = rows - 1 - row
+  const step = rows > 1 ? CASCADE_SPAN / (rows - 1) : 0
+  const start = depth * step + (draw(0, 8) - 4)
 
   return {
-    '--crest-start': `${start.toFixed(1)}%`,
-    '--crest-drift': `${drift.toFixed(1)}px`,
-    '--crest-rise': `${rise.toFixed(1)}px`,
-    '--crest-tilt': `${tilt.toFixed(2)}deg`,
+    '--crest-start': `${Math.max(0, start).toFixed(1)}%`,
+    '--crest-drift': `${(draw(7, 52) - 26).toFixed(1)}px`,
+    '--crest-rise': `${(20 + draw(14, 52)).toFixed(1)}px`,
+    '--crest-tilt': `${(draw(21, 4.8) - 2.4).toFixed(2)}deg`,
     '--crest-pop': (0.84 + draw(28, 0.12)).toFixed(3),
   } as CSSProperties
 }
@@ -76,8 +92,32 @@ function crestVars(name: string): CSSProperties {
  */
 export function CrestWall() {
   const clubs = siteData.clubs
+  const wallRef = useRef<HTMLUListElement>(null)
+  const [cols, setCols] = useState(1)
+
+  // The wall is `auto-fill`, so how many columns it resolves to is only knowable
+  // from the used value. Reading it back is the difference between a cascade
+  // that survives a resize and one that quietly turns into a random scatter
+  // again at every width.
+  useLayoutEffect(() => {
+    const el = wallRef.current
+    if (!el) return
+
+    const measure = () => {
+      const tracks = getComputedStyle(el).gridTemplateColumns
+      const n = tracks ? tracks.split(' ').filter(Boolean).length : 1
+      setCols((prev) => (prev === n ? prev : n || 1))
+    }
+
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
   if (!clubs.length) return null
+
+  const rows = Math.max(1, Math.ceil(clubs.length / cols))
 
   return (
     <Section tone="raised">
@@ -97,11 +137,11 @@ export function CrestWall() {
           }
         />
 
-        <ul className="crest-wall">
-          {clubs.map((club) => (
+        <ul className="crest-wall" ref={wallRef}>
+          {clubs.map((club, i) => (
             <li
               className="crest-wall__cell"
-              style={crestVars(club.name)}
+              style={crestVars(club.name, Math.floor(i / cols), rows)}
               key={club.name}
             >
               <Link to={`/clubs/${clubSlug(club.name)}`} className="crest-wall__link">

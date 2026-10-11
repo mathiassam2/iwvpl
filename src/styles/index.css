@@ -922,22 +922,36 @@
     animation-range: entry 10% cover 40%;
   }
 
-  /* The crest wall. Scoped to the section rather than to a shared
-     `.sd-reveal`, so the generic tiers above cannot also land on these
-     cells and quietly re-override the range - same specificity, so it
-     would come down to source order and nothing would say so.
+  /* The crest wall.
 
-     The `cover` range is anchored on the CELL, not the wall, so each crest
-     gets its own view() timeline rather than sharing the wall's. The
-     window is 22% of that crest's own cover, and --crest-start carries
-     where in the scroll that window opens. Variance between crests has to
-     live in the gap between the starts; lengthening the windows alone just
-     smears the slab into one long wave. */
+     ONE shared timeline, declared on the wall, not a per-crest `view()`.
+     Per-crest view() timelines run the OTHER way - measured across the three
+     rows at a fixed scroll, mean progress was row 1 0.62, row 2 0.38, row 3
+     0.21, so the wall came in from the top and scattered from there. A single
+     named timeline plus a stagger derived from each crest's ROW makes the
+     wave travel upward deterministically, and it cannot invert itself when
+     the viewport changes.
+
+     `--crest-start` is that row-derived stagger and is set per crest in
+     CrestWall.tsx, which has to measure the resolved column count first
+     because `.crest-wall` is `auto-fill`. The cascade spans 32% and each
+     crest's window is 20%, so the LAST crest on the top row finishes by
+     ~56% of the timeline - the wall is fully settled well before the section
+     has scrolled past.
+
+     Scoped to the section rather than to a shared `.sd-reveal`, so the generic
+     tiers above cannot also land on these cells and quietly re-override the
+     range - same specificity, so it would come down to source order and
+     nothing would say so. */
+  .crest-wall {
+    view-timeline-name: --crestwall;
+    view-timeline-axis: block;
+  }
   .crest-wall__cell {
     animation: sd-crest-in linear both;
-    animation-timeline: view();
-    animation-range: cover var(--crest-start, 2%)
-      cover calc(var(--crest-start, 2%) + 22%);
+    animation-timeline: --crestwall;
+    animation-range: contain var(--crest-start, 0%)
+      contain calc(var(--crest-start, 0%) + 20%);
   }
 }
 
@@ -1357,22 +1371,29 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
-  /* Anchored left, and the SAME for all three.
+  /* ANCHORED TOP LEFT.
+     Horizontally left, so the same part of each picture meets the panel's left
+     edge. This used to reuse the hero's `hero-focus-*` offsets (6/14/19%).
+     Those are measured for a completely different composition: on a phone the
+     hero frame is far taller than the viewport, so object-cover scales by
+     height and only ~15-18% of the image width is ever on screen, and the
+     offsets exist to push each nation's subject clear of the OVERLAID hero
+     copy. A rail panel is a plain stacked card with its copy left-aligned, so
+     they only produced three arbitrary crops of three artworks that otherwise
+     share the same framing.
 
-     This used to reuse the hero's `hero-focus-*` offsets (6/14/19%). Those
-     are measured for a completely different composition: on a phone the hero
-     frame is far taller than the viewport, so object-cover scales by height
-     and only ~15-18% of the image width is ever on screen, and the offsets
-     exist to push each nation's subject clear of the overlaid hero copy. A
-     rail panel is a plain stacked card with its copy left-aligned, so they
-     only produced three different arbitrary crops of three artworks that
-     otherwise share the same framing. Left-aligning all three puts the same
-     part of each picture against the panel's left edge.
+     Vertically TOP, which is what actually shows the subject. Cover fits the
+     panel's ~2.6:1 against the artwork's 1.79:1 by cropping height, so the
+     Y position picks which 68% of the picture is in shot. Centred it showed
+     y 16-84%, which sliced the top off both Singapore's crescent and
+     Malaysia's starburst - their own motifs, the reason those two panels read
+     as "full" where Indonesia does not. Anchored top the window is y 0-68%
+     and both motifs come in whole.
 
-     This is a no-op on desktop: at 84cqw x 66svh the panel's aspect (~1.82)
-     is very close to the artwork's (1.79), so cover does almost no horizontal
-     cropping and the horizontal position cannot show at all. */
-  object-position: left center;
+     `object-position` is still a no-op horizontally on desktop: at 84cqw x
+     66svh the panel's aspect is very close to the artwork's, so cover does
+     almost no horizontal cropping and the X cannot show. */
+  object-position: left top;
   /* 0.66 read as dim and, worse, hazy: compositing artwork over a near-black
      panel at partial alpha lifts the blacks, so the campaign art turned to
      milky grey and the reds went muddy. Opacity is now 1 - the scrim below is
@@ -1458,6 +1479,59 @@
 .rail__panel--id {
   --art-shift: 21.8%;
   --art-zoom: 1.5;
+  /* TOP-ALIGN DOES NOT APPLY HERE, AND IT CANNOT BE MADE TO.
+
+     The other two are anchored `left top`, which is what puts their flag
+     motifs in frame. Indonesia has no motif at the top, and its artwork is
+     almost entirely black up there. Mean luminance per horizontal band of
+     `in-hero`, measured:
+
+         y  0-10%   15.5        y 50-60%  190.8
+         y 10-20%   15.9        y 60-70%  161.3
+         y 20-30%   15.5        y 70-80%  219.9
+         y 30-40%   20.4        y 80-90%  218.3
+         y 40-50%   29.5        y 90-100% 207.9
+
+     Top-aligned, the window is y 0-68%, so the panel's upper ~44% would be
+     near-black - the exact hole the reframe above exists to close. Bottom
+     aligned it would be y 32-100% and the National Monument plus the whole
+     Jakarta skyline would sit in the bright half. Centred (y 16-84%) splits
+     the two and is what this panel has always shipped.
+
+     Measured per 1% column across the band centred alignment actually shows
+     (y 16-84%), the mean runs 88-128 and never falls - so the centred crop
+     is clean. Nothing here is a preference; the other two panels are in the
+     artwork's bright half at the top and this one is not. */
+  object-position: left center;
+}
+/* `object-position` is NOT an inherited property - it applies to replaced
+   elements only - so the override has to target the image itself. Declaring
+   it on the panel, as if custom properties were, silently does nothing. */
+.rail__panel--id .rail__art-img {
+  object-position: left center;
+}
+
+/* INDONESIA IS REFRAMED AGAIN ON MOBILE.
+
+   The reframe above is derived for the desktop panel: `84cqw` by
+   `min(66svh, 600px)`, about 2.6:1. Below 900px the rail is a stacked
+   full-bleed stack and `.rail__panel` is `100%` by `min(70svh, 560px)` -
+   **portrait**, about 0.68:1 at 390x844. Cover then fits the HEIGHT instead
+   of the width and throws away ~62% of the artwork's width, so only 38% of it
+   is ever on screen against desktop's ~94%. The same `21.8%` shift in a
+   window that narrow lands almost entirely on the wrong side of the subject:
+   the National Monument ends up clipped against the panel's right edge with
+   empty brushwork filling the left, which is what it looked like.
+
+   Shifted left to -20% the Monument comes fully into frame, left of centre,
+   with the skyline carrying the copy side. Verified at 390x844 across the
+   rail's whole travel: the image overhangs the panel by 171px on the left and
+   19-28px on the right at every position, so nothing is uncovered - the drift
+   only ever moves it further clear of the right edge. */
+@media (max-width: 899px) {
+  .rail__panel--id {
+    --art-shift: -20%;
+  }
 }
 
 /* Three layers, all needed.
