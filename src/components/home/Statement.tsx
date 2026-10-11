@@ -1,49 +1,44 @@
-import { useMemo } from 'react'
 import { Container, Section } from '@/components/ui'
-import { siteData } from '@/data'
 
 /**
  * A pause in the middle of the page.
  *
- * Three lines of display type, each masked by an overflow clip and slid
- * up out of it as it scrolls into view — the standard editorial reveal,
- * done with a CSS scroll timeline instead of an observer.
+ * The line here was previously league statistics read straight out of
+ * the data ("3 nations. 5 divisions. 37 clubs."). It read like a
+ * dashboard rather than a statement, and it duplicated numbers the hero
+ * already shows two sections earlier. This is brand copy instead.
  *
- * The numbers are read from the data rather than typed in, so the copy
- * cannot drift away from the league. Nation count is the number of
- * distinct flags that actually appear in the table, not an assumption.
+ * Animation is per WORD rather than per line: each word sits in its own
+ * overflow clip and slides up out of it, offset a little further along
+ * the scroll than the last, so the sentence assembles left to right as
+ * it arrives. Still a pure CSS scroll timeline - see `.stmt*` in
+ * styles/index.css. Nothing here is a link or a control, so it is
+ * marked aria-hidden and the readable text is exposed once, in full.
  */
 
+/** Trailing word is pulled out so it can carry the accent. */
+const LINES: Array<Array<{ text: string; accent?: boolean }>> = [
+  [{ text: 'No' }, { text: 'stadium.' }],
+  [{ text: 'No' }, { text: 'excuses.' }],
+  [{ text: 'Just' }, { text: 'the' }, { text: 'game.', accent: true }],
+]
+
 export function Statement() {
-  const { nations, divisions, clubs } = useMemo(
-    () => ({
-      nations: new Set(siteData.standings.map((r) => r.flag).filter(Boolean)).size,
-      divisions: siteData.divisions?.length ?? 0,
-      clubs: siteData.clubs.length,
-    }),
-    [],
-  )
-
-  const lines = [`${nations} nations.`, `${divisions} divisions.`, `${clubs} clubs, one table.`]
-
   return (
     <Section tone="deep" className="stmt-band">
       <Container size="wide">
-        <p className="stmt">
-          {lines.map((line, i) => (
-            /* Index is stable across renders, and the lines never
-               reorder, so this key is safe. */
-            <span className="stmt__line" key={i}>
-              <span className="stmt__in">
-                {i === lines.length - 1 ? (
-                  <>
-                    {clubs} clubs,{' '}
-                    <em className="stmt__accent">one table.</em>
-                  </>
-                ) : (
-                  line
-                )}
-              </span>
+        <p className="sr-only">No stadium. No excuses. Just the game.</p>
+
+        <p className="stmt" aria-hidden="true">
+          {LINES.map((line, li) => (
+            <span className="stmt__line" key={li}>
+              {line.map((word, wi) => (
+                <span className="stmt__w" key={wi}>
+                  <span className={word.accent ? 'stmt__in stmt__accent' : 'stmt__in'}>
+                    {word.text}
+                  </span>
+                </span>
+              ))}
             </span>
           ))}
         </p>

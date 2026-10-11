@@ -658,7 +658,7 @@ export function Formats() {
                     </span>
                     <span
                       aria-hidden
-                      className="numeric text-4xl font-bold leading-none text-[var(--border-strong)] transition-colors duration-500 group-hover:text-[var(--accent-ring)]"
+                      className="numeric text-4xl font-bold leading-none text-[var(--ghost-numeral)] transition-colors duration-500 group-hover:text-[var(--accent-text)]"
                     >
                       {String(i + 1).padStart(2, '0')}
                     </span>

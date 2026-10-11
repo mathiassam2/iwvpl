@@ -91,9 +91,6 @@ export function IslandRail() {
     }))
   }, [])
 
-  const rosterSize = siteData.clubs.length
-  const divisions = siteData.divisions?.length ?? 0
-
   return (
     <section className="rail" aria-labelledby="island-heading">
       <h2 id="island-heading" className="sr-only">
@@ -105,7 +102,7 @@ export function IslandRail() {
           {byNation.map((n, i) => (
             <article
               key={n.iso}
-              className={cx('rail__panel', i === 0 && 'rail__panel--full')}
+              className="rail__panel"
               aria-label={`${n.name} — ${n.clubs.length} clubs in the ${DIVISION} table`}
             >
               <div className="rail__art">
@@ -142,37 +139,6 @@ export function IslandRail() {
               </div>
             </article>
           ))}
-
-          {/* Closer. Ends the run and hands off to the full roster. */}
-          <article className="rail__panel rail__panel--closer" aria-labelledby="rail-closer">
-            <div className="rail__art">
-              <img
-                src={asset('/assets/brand/banner-wide.webp')}
-                alt=""
-                className="rail__art-img rail-focus-sg"
-                loading="lazy"
-                decoding="async"
-              />
-            </div>
-            <div className="rail__scrim" />
-            <div className="rail__body">
-              <span className="rail__index" aria-hidden="true">
-                →
-              </span>
-              <h3 id="rail-closer" className="rail__name">
-                One island. One table.
-              </h3>
-              <p className="rail__meta">
-                {rosterSize} clubs entered across {divisions} divisions.
-              </p>
-              <Link to="/clubs" className="rail__cta">
-                Meet the clubs
-                <span aria-hidden="true" className="rail__cta-arrow">
-                  →
-                </span>
-              </Link>
-            </div>
-          </article>
         </div>
       </div>
     </section>

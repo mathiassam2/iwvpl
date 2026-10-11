@@ -72,6 +72,13 @@
   --border: #232830;
   --border-strong: #313742;
 
+  /* Big decorative numerals (the Formats cards). They are aria-hidden, but
+     that does not exempt them from axe - it still measures anything painted,
+     and `--border-strong` measured 1.65:1 here. Sized to clear 3:1 for large
+     text on both the base and raised surfaces while still reading as a ghost
+     numeral rather than as content. */
+  --ghost-numeral: #5b6472;
+
   /* The header sits directly over the hero artwork, which is the brightest
      thing on the page. At 0.75 the standings card and hero copy stayed legible
      through the bar, which read as a bug rather than as glass - the effect has
@@ -155,6 +162,7 @@
 
   --border: #d5d9cb;
   --border-strong: #b8bfac;
+  --ghost-numeral: #7f8574;
 
   --glass-bg: rgb(250 251 247 / 0.94);
   --glass-border: rgb(20 24 18 / 0.1);
@@ -992,6 +1000,16 @@ html.is-loading {
 }
 
 @supports (animation-timeline: view()) {
+  /* CAVEAT when reusing these: a bare `view()` resolves its scrollport to the
+     nearest ancestor SCROLL CONTAINER, and any `overflow` other than `visible`
+     makes an element one. So `.sd-reveal` works here only because nothing
+     between it and the root clips. Drop it inside a card that sets
+     `overflow: hidden` and it will freeze silently at opacity 0 forever -
+     which is exactly what `body { overflow-x: hidden }` did to every
+     scroll animation on the site, and what the word mask in `.stmt__w` did
+     before it was moved onto a named timeline. If you need it inside a
+     clipping container, give the container a `view-timeline-name` and
+     reference that instead. */
   .sd-reveal {
     animation: sd-rise linear both;
     animation-timeline: view();
@@ -1032,30 +1050,77 @@ html.is-loading {
 }
 
 /* ------------------------------------------------------------
-   Masked display-type reveal
+   Masked word-by-word reveal
 
-   The outer span clips; the inner one slides up out of it. The
-   extra padding stops the descender of a line being shaved off
-   at the clip edge.
+   Each word gets its own overflow clip and slides up out of it, offset
+   further along the scroll than the one before, so the sentence
+   assembles left to right as it arrives.
+
+   The extra padding stops descenders and the accent word's descender in
+   particular being shaved off at the clip edge, and `inline-block` on the
+   clip is what lets it shrink-wrap each word instead of the line.
    ------------------------------------------------------------ */
 .stmt__line {
   display: block;
+}
+.stmt__w {
+  display: inline-block;
   overflow: hidden;
-  padding-block: 0.06em 0.1em;
+  vertical-align: bottom;
+  padding-block: 0.08em 0.14em;
+  margin-right: 0.22em;
 }
 .stmt__in {
-  display: block;
+  display: inline-block;
   transform: none;
 }
 
 @supports (animation-timeline: view()) {
+  /* The timeline is declared on the SECTION, not with a bare `view()` on the
+     word. `.stmt__w` clips its child with `overflow: hidden`, and any
+     `overflow` other than `visible` makes an element a scroll container — so a
+     bare `view()` on the word would resolve its scrollport to `.stmt__w`,
+     which never scrolls, and every word would freeze mid-reveal. Same trap
+     that `body { overflow-x: hidden }` set for the whole site. A named
+     timeline carries its scrollport with it, so the clip is free to be a
+     clip again.
+
+     The section is SHORTER than the viewport, so `contain` would be an
+     inverted (start-after-end) range here; `cover` is the well-defined one. */
+  .stmt-band {
+    view-timeline-name: --stmt;
+    view-timeline-axis: block;
+  }
   .stmt__in {
     animation: sd-line linear both;
-    animation-timeline: view();
-    animation-range: entry 18% cover 40%;
+    animation-timeline: --stmt;
+    animation-range: cover 30% cover 44%;
   }
-  .stmt__line:nth-child(2) .stmt__in { animation-range: entry 24% cover 46%; }
-  .stmt__line:nth-child(3) .stmt__in { animation-range: entry 30% cover 52%; }
+  /* Word 2 of any line. */
+  .stmt__line > :nth-child(2) .stmt__in {
+    animation-range: cover 34% cover 48%;
+  }
+  /* Word 3 of any line. */
+  .stmt__line > :nth-child(3) .stmt__in {
+    animation-range: cover 38% cover 52%;
+  }
+  /* Each later line starts where the previous one had got to, so the
+     stagger reads as one continuous sweep rather than three restarts. */
+  .stmt__line:nth-child(2) .stmt__in {
+    animation-range: cover 42% cover 56%;
+  }
+  .stmt__line:nth-child(2) > :nth-child(2) .stmt__in {
+    animation-range: cover 46% cover 60%;
+  }
+  .stmt__line:nth-child(3) .stmt__in {
+    animation-range: cover 50% cover 64%;
+  }
+  .stmt__line:nth-child(3) > :nth-child(2) .stmt__in {
+    animation-range: cover 53% cover 67%;
+  }
+  .stmt__line:nth-child(3) > :nth-child(3) .stmt__in {
+    animation-range: cover 56% cover 70%;
+  }
 }
 
 @keyframes sd-line {
@@ -1179,10 +1244,6 @@ html.is-loading {
   isolation: isolate;
   background: var(--bg-raised);
 }
-.rail__panel--full {
-  flex-basis: 92cqw;
-  height: min(74svh, 680px);
-}
 .rail__panel--closer {
   flex-basis: 80cqw;
 }
@@ -1201,9 +1262,6 @@ html.is-loading {
      campaign, not a different set of stock. */
   opacity: 0.42;
   filter: saturate(0.85);
-}
-.rail__panel--closer .rail__art-img {
-  opacity: 0.16;
 }
 /* Type over campaign artwork in BOTH themes, so this scrim is
    theme-invariant dark for the same reason .banner-scrim is —
@@ -1405,15 +1463,10 @@ html.is-loading {
   to   { transform: translate3d(-50%, 0, 0); }
 }
 
-/* Hold it still when someone is reading it or tabbing into it.
-   Hover-only on purpose: on touch there is no hover, and a ticker
-   you can never stop is just a thing moving past. */
-@media (hover: hover) and (prefers-reduced-motion: no-preference) {
-  .marquee:hover .marquee__track,
-  .marquee:focus-within .marquee__track {
-    animation-play-state: paused;
-  }
-}
+/* Deliberately NOT paused on hover. It is a scoreboard crawl, not a
+   carousel: it reads as live league data rather than as content you
+   are being invited to stop and read, and nothing in it is a link or
+   a control, so there is nothing to interrupt. */
 
 /* Edge fades so items enter and leave rather than being sheared. */
 .marquee::before,
@@ -1524,45 +1577,6 @@ html.is-loading {
 }
 
 /* ------------------------------------------------------------
-   Scroll cue under the hero
-   ------------------------------------------------------------ */
-.cue {
-  display: grid;
-  justify-items: center;
-  gap: 0.6rem;
-  padding-block: clamp(1.75rem, 5vh, 3.25rem);
-}
-.cue__label {
-  font-size: 0.625rem;
-  font-weight: 700;
-  letter-spacing: 0.26em;
-  text-transform: uppercase;
-  color: var(--text-faint);
-}
-.cue__rail {
-  width: 1px;
-  height: 3.75rem;
-  background: linear-gradient(var(--accent-ring), transparent);
-  overflow: hidden;
-  position: relative;
-}
-.cue__dot {
-  position: absolute;
-  inset-inline: 0;
-  top: 0;
-  height: 38%;
-  border-radius: 999px;
-  background: var(--accent);
-  box-shadow: 0 0 8px 1px var(--accent-ring);
-  animation: cue-fall 1.9s var(--ease-out-expo) infinite;
-}
-@keyframes cue-fall {
-  0%   { transform: translateY(-100%); opacity: 0; }
-  35%  { opacity: 1; }
-  100% { transform: translateY(250%); opacity: 0; }
-}
-
-/* ------------------------------------------------------------
    Reduced motion
 
    Everything above resolves to its finished state, so this only
@@ -1575,7 +1589,6 @@ html.is-loading {
   html.is-loading { overflow: hidden; }
 
   .marquee__track { animation: none; }
-  .cue__dot { animation: none; opacity: 1; top: 30%; }
   .boot__inner { animation: none; }
   .boot__fill { animation: none; transform: scaleX(1); }
 
