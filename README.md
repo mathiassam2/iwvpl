@@ -973,6 +973,58 @@ so the resting wall is still a grid. A `38%` keyframe stop brings opacity to
 apart in the scroll, and a crest still at `opacity: 0` beside one that has
 landed reads as a **missing image**, not as a scatter.
 
+### The site is dark-only now — and the OS can no longer override that
+
+With the theme toggle gone, a visitor whose OS was set to light still got a
+**light site**, with no way to correct it. Two copies of the theme resolution
+were reading the system:
+
+```js
+window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
+```
+
+— one in `src/lib/theme.ts`, one in an inline pre-paint script in
+`index.html`. Fixing it in one place and not the other is exactly how it
+survived the toggle removal.
+
+Fixed by making light unreachable rather than merely unlikely:
+
+- **`src/lib/theme.ts` no longer reads the system preference or
+  localStorage.** Both were a way for the page to end up light.
+- **It actively deletes `iwvpl-theme`** rather than ignoring it. Anyone who
+  picked light while the toggle existed still carries `'light'` in their
+  storage from that visit; ignoring it would leave the key there forever as a
+  trap for whatever reads it next.
+- **The `.light` token block is deleted from `index.css`** (79 lines, 50
+  tokens). Verified first that it is a strict subset of the `:root, .dark`
+  ramp — every token it defined is also defined by dark — so removing it
+  cannot leave a component reading an undefined custom property.
+- **The inline pre-paint script in `index.html` is deleted.** With
+  `class="dark"` on `<html>` and `color-scheme: dark` on `:root`, the first
+  paint is already dark before any JavaScript runs, so the script had nothing
+  left to do. It was also the second copy of the logic.
+- **`color-scheme: dark` is declared in the stylesheet**, not set by JS. This
+  is the part that stops the OS leaking in through the side door: it tells the
+  browser to render *its own* furniture dark — scrollbars, form controls,
+  autofill dropdowns, the canvas behind the document. Without it a visitor on
+  a light OS got light scrollbars down the side of a dark page — the same bug
+  wearing a different hat.
+
+Verified by seeding `localStorage['iwvpl-theme'] = 'light'` before boot, the
+returning-light-user case:
+
+```
+html class attribute  : "dark"
+computed color-scheme : dark
+--bg token            : #0a0b0d
+body background       : rgb(10, 11, 13)
+meta theme-color      : #0a0b0d
+localStorage after boot: null   (stale light value cleared)
+```
+
+The light ramp is recoverable from git history if it is ever wanted back — it
+is one `git revert` away, since nothing in `src/` referenced it.
+
 ### The crest wall: one slide-up, and it is never blank
 
 The per-crest scatter is gone. What ships instead is a single slide-up for

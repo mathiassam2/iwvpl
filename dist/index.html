@@ -25,26 +25,13 @@
     <link rel="icon" type="image/svg+xml" href="/iwvpl/assets/brand/favicon.svg" />
     <link rel="apple-touch-icon" href="/iwvpl/assets/brand/iwvpl-wordmark.png" />
 
-    <script>
-      // Resolve dark/light before first paint to avoid a flash of the wrong theme.
-      ;(function () {
-        try {
-          var saved = localStorage.getItem('iwvpl-theme')
-          var theme =
-            saved === 'dark' || saved === 'light'
-              ? saved
-              : window.matchMedia('(prefers-color-scheme: light)').matches
-                ? 'light'
-                : 'dark'
-          var el = document.documentElement
-          el.classList.remove('dark', 'light')
-          el.classList.add(theme)
-          el.style.colorScheme = theme
-          var m = document.querySelector('meta[name="theme-color"]')
-          if (m) m.setAttribute('content', theme === 'dark' ? '#0a0b0d' : '#f6f7f4')
-        } catch (e) {}
-      })()
-    </script>
+    <!-- Theme is dark, full stop. Nothing runs here on purpose: the markup
+         above already carries class="dark", the stylesheet sets
+         `color-scheme: dark` on :root, and the light token block no longer
+         exists - so the first paint is dark without any JavaScript, and there
+         is no second copy of the theme logic that can disagree with
+         src/lib/theme.ts. That duplication is what let the site follow the OS
+         to light after the toggle was removed. -->
 
     <link rel="preload" as="font" type="font/woff2" href="/iwvpl/assets/fonts/inter-latin-400.woff2" crossorigin />
     <link rel="preload" as="font" type="font/woff2" href="/iwvpl/assets/fonts/sora-latin-600.woff2" crossorigin />
@@ -54,9 +41,9 @@
     <link rel="preload" as="image" href="/iwvpl/assets/hero/sg-hero.webp" fetchpriority="high" />
 
     <link rel="stylesheet" href="/iwvpl/assets/fonts/fonts.css" />
-    <script type="module" crossorigin src="/iwvpl/assets/index-CtKvTcdi.js"></script>
+    <script type="module" crossorigin src="/iwvpl/assets/index-WnAUrSsT.js"></script>
     <link rel="modulepreload" crossorigin href="/iwvpl/assets/react-DbmNyFHU.js">
-    <link rel="stylesheet" crossorigin href="/iwvpl/assets/index-Bx_M40ae.css">
+    <link rel="stylesheet" crossorigin href="/iwvpl/assets/index-iVAi9b_v.css">
   </head>
   <body>
     <div id="root"></div>

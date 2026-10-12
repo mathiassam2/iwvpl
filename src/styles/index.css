@@ -1,16 +1,18 @@
 @import 'tailwindcss';
 
-/* `dark:` must follow the in-app toggle, not the OS preference — otherwise
-   a user on a light OS who picks dark mode would get a half-themed page. */
+/* `dark:` keys off the `.dark` class on <html>, which is now permanent rather
+   than a toggle - the markup ships it and the theme module re-asserts it. It is
+   deliberately NOT keyed off `prefers-color-scheme`: that is exactly how the
+   site ended up following the OS to light. */
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* ============================================================
-   IWVPL v2 — Design System (dual-theme)
+   IWVPL v2 — Design System (dark only)
 
-   Dark  : ink surface ramp + electric lime accent
-   Light : warm paper neutrals, same lime accent, deeper text
-   Both themes share one token name so every component works
-   in either mode without `dark:` duplication.
+   Ink surface ramp + electric lime accent. The site was built
+   dual-theme and the light ramp is now deleted; components were
+   always written against shared token names, so none of them
+   needed touching.
    ============================================================ */
 
 @theme {
@@ -53,9 +55,24 @@
    Theme surfaces — one set of semantic names per mode
    ============================================================ */
 
-/* ---------- DARK (default) ---------- */
+/* ---------- DARK (the only theme) ----------
+   The site is dark-only since the in-app toggle was removed. The light ramp
+   that used to sit below this block is deleted: every token it defined is
+   also defined here, so removing it leaves nothing undefined, and it removes
+   the only thing that could have painted a light page.
+
+   `color-scheme` is what stops the OS leaking in through the side door. It
+   tells the browser to render ITS OWN furniture - scrollbars, form controls,
+   autofill dropdowns, the canvas behind the document - dark as well. Without
+   it a visitor on a light OS got light scrollbars down the side of a dark
+   page, and with the old `prefers-color-scheme` lookup they got a light page.
+
+   Declared here rather than set by JS so it applies before first paint, and
+   so it holds even if a script fails. */
 :root,
 .dark {
+  color-scheme: dark;
+
   --bg: #0a0b0d;
   --bg-deep: #07080a;
   --bg-raised: #0e1013;
@@ -138,85 +155,6 @@
   --banner-scrim-top: 0.66;
   --banner-scrim-mid: 0.4;
   --banner-scrim-copy: 0.9;
-  --banner-scrim-foot: 0.99;
-}
-
-/* ---------- LIGHT ----------
-   Raw lime (#c8ff3d) on paper fails WCAG badly, so the accent switches to a
-   deep olive-lime for TEXT and keeps the vivid lime only for large fills.
-   The paper is a warm stone rather than pure white: a pure-white canvas made
-   the hero imagery look like a grey smear on a void. */
-.light {
-  --bg: #eeefe8;
-  --bg-deep: #e2e4d9;
-  --bg-raised: #fbfcf8;
-  --surface: linear-gradient(160deg, #fbfcf8 0%, #f3f4ec 100%);
-  --surface-solid: #fbfcf8;
-  --surface-2: #e6e8dd;
-  --surface-hover: rgb(20 24 18 / 0.055);
-
-  --text: #262a30;
-  --text-strong: #08090c;
-  --text-muted: #4e555f;
-  --text-faint: #5c636e;
-
-  --border: #d5d9cb;
-  --border-strong: #b8bfac;
-  --ghost-numeral: #7f8574;
-
-  --glass-bg: rgb(250 251 247 / 0.94);
-  --glass-border: rgb(20 24 18 / 0.1);
-
-  /* The vivid lime stays as the button fill, so the label switches to near-black
-     for a ~17:1 contrast ratio instead of the 3.5:1 white-on-mid-green it had. */
-  --on-volt: #0d1206;
-  --on-gold: #ffffff;
-  --on-flame: #ffffff;
-
-  --accent: #5c7f06;
-  --accent-hover: #6f970a;
-  --accent-text: #4a6a04;
-  --accent-tint: rgb(92 127 6 / 0.11);
-  --accent-ring: rgb(92 127 6 / 0.32);
-  --accent-solid: #c8ff3d;
-  --accent-on-fill: #a8d419;
-
-  --gold-text: #8a5f08;
-  --flame-text: #c0142b;
-  --danger-text: #c0142b;
-
-  --badge-up-bg: #dfe9c6;
-  --badge-up-fg: #375200;
-  --badge-down-bg: #f6dbdf;
-  --badge-down-fg: #96101f;
-  --badge-gold-bg: #f9ecc9;
-  --badge-gold-fg: #6f4a05;
-
-  --shadow-card: 0 1px 2px rgb(20 26 6 / 0.06), 0 8px 24px -14px rgb(20 26 6 / 0.18);
-  --shadow-lift: 0 2px 4px rgb(20 26 6 / 0.07), 0 18px 40px -18px rgb(20 26 6 / 0.28);
-
-  --grid-line: rgb(20 24 18 / 0.05);
-  --plate: radial-gradient(70% 70% at 50% 40%, rgb(20 24 18 / 0.05) 0%, transparent 72%),
-    linear-gradient(160deg, rgb(251 252 248 / 0.94), rgb(243 244 236 / 0.6));
-
-  --scrim: rgb(20 24 18 / 0.4);
-
-  /* Hero scrims are ink, not paper. Fading a colourful campaign image toward
-     white just produced a grey haze; a warm ink wash keeps the colour and makes
-     the overlaid copy legible in both themes. */
-  --hero-ink: 22 26 20;
-  --hero-scrim-a: 0.42;
-  --hero-scrim-b: 0.68;
-  --hero-scrim-side: 0.72;
-  --hero-scrim-poster: 0.62;
-
-  /* Article banners keep the same ink in light mode on purpose. The banner is a
-     dark photographic frame with white type on it in both themes, so switching
-     the wash to paper would drop the headline to roughly 2:1 on a light image. */
-  --banner-ink: 10 12 10;
-  --banner-scrim-top: 0.7;
-  --banner-scrim-mid: 0.44;
-  --banner-scrim-copy: 0.91;
   --banner-scrim-foot: 0.99;
 }
 
