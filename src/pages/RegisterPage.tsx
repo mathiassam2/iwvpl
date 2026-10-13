@@ -1,6 +1,5 @@
 import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { PageHeader } from '@/components/layout/PageHeader'
 import { Button, Container, Section, SectionHead, Select } from '@/components/ui'
 import { TermsDialog } from '@/components/ui/TermsDialog'
 import { SITE, siteData } from '@/data'
@@ -277,19 +276,6 @@ export default function RegisterPage() {
 
   return (
     <div className="page-enter">
-      <PageHeader
-        eyebrow="Registration"
-        /* Both roles land on this page, so the header follows the choice
-           rather than describing a club entry to someone joining as a player
-           and quoting them a fee they do not owe. */
-        title={values.role === 'club_manager' ? 'Register your club' : 'Join the league'}
-        lede={
-          values.role === 'club_manager'
-            ? `${SITE.season} registration is open — ${SITE.teamsRegistered} of ${SITE.teamCap} team slots filled at ${SITE.registrationFee} per team.`
-            : `Create your ${SITE.season} player account. Clubs will find you by gamertag and send you offers — you are a free agent until you accept one.`
-        }
-      />
-
       <Section>
         {/* The form is centred and capped at a comfortable measure rather than
             left-aligned under the page header: it is one short column of
@@ -299,6 +285,10 @@ export default function RegisterPage() {
           {/* One column. The entry-pass sidebar moved to /entries — a price
               list beside a signup form reads as part of submitting it. */}
           <div className="mx-auto max-w-2xl">
+            {/* No page heading at all. The only decision here is which of the
+                two roles you are, the toggle below states both options in their
+                own words, and a title above it only pushed that choice further
+                down the page. */}
             {/* ================= form ================= */}
             <div>
               {sent && (
