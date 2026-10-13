@@ -20,6 +20,9 @@ interface Fields {
   gamertag: string
   email: string
   password: string
+  /* Never sent to the API. Compared against `password` on the client only, so
+     the server never holds a second value that could be got wrong. */
+  confirmPassword: string
   discord: string
   agree: boolean
 }
@@ -43,6 +46,7 @@ const EMPTY: Fields = {
   gamertag: '',
   email: '',
   password: '',
+  confirmPassword: '',
   discord: '',
   agree: false,
 }
@@ -74,6 +78,13 @@ function validate(v: Fields): Errors {
   // input that can actually succeed.
   if (!v.password) e.password = 'Please choose a password.'
   else if (v.password.length < 8) e.password = 'Use at least 8 characters.'
+
+  // A typo in a password field is otherwise invisible until the account
+  // exists and the first sign-in fails, by which point the password is hashed
+  // and cannot be recovered.
+  if (v.confirmPassword !== v.password) {
+    e.confirmPassword = v.confirmPassword ? 'Passwords do not match.' : 'Re-enter your password.'
+  }
 
   if (!v.agree) e.agree = 'Please accept the entry terms before submitting.'
   return e
@@ -261,14 +272,14 @@ export default function RegisterPage() {
       />
 
       <Section>
-        {/* `wide`, not `narrow`, so the form shares the page header's left
-            edge — the header uses `wide` and a centred form beside a
-            left-aligned heading reads as a mistake. The inner max-width keeps
-            the fields a comfortable measure on an ultrawide screen. */}
+        {/* The form is centred and capped at a comfortable measure rather than
+            left-aligned under the page header: it is one short column of
+            fields, and the page has nothing beside it now that the entry-pass
+            sidebar moved to /entries. */}
         <Container size="wide">
           {/* One column. The entry-pass sidebar moved to /entries — a price
               list beside a signup form reads as part of submitting it. */}
-          <div className="max-w-2xl">
+          <div className="mx-auto max-w-2xl">
             {/* ================= form ================= */}
             <div>
               {sent && (
@@ -513,7 +524,6 @@ export default function RegisterPage() {
                         label="Gamertag"
                         error={errorFor('gamertag')}
                         htmlFor="gamertag"
-                        className="sm:col-span-2"
                       >
                         <input
                           id="gamertag"
@@ -528,8 +538,7 @@ export default function RegisterPage() {
                           className={cx(inputCls, errorFor('gamertag') ? 'border-[var(--danger-text)]' : 'border-[var(--border-strong)]')}
                         />
                         <p className="mt-2 text-xs text-[var(--text-faint)]">
-                          Your exact in-game name, including underscores and capitals. This is how
-                          clubs find you to offer a contract.
+                          Exactly as it appears in game, capitals and underscores included.
                         </p>
                       </Field>
                     )}
@@ -552,6 +561,25 @@ export default function RegisterPage() {
                         placeholder="At least 8 characters"
                         aria-invalid={Boolean(errorFor('password'))}
                         className={cx(inputCls, errorFor('password') ? 'border-[var(--danger-text)]' : 'border-[var(--border-strong)]')}
+                      />
+                    </Field>
+
+                    <Field
+                      label="Confirm password"
+                      error={errorFor('confirmPassword')}
+                      htmlFor="confirmPassword"
+                      className="sm:col-span-2"
+                    >
+                      <input
+                        id="confirmPassword"
+                        name="confirmPassword"
+                        type="password"
+                        autoComplete="new-password"
+                        value={values.confirmPassword}
+                        onChange={set('confirmPassword')}
+                        placeholder="Type it again"
+                        aria-invalid={Boolean(errorFor('confirmPassword'))}
+                        className={cx(inputCls, errorFor('confirmPassword') ? 'border-[var(--danger-text)]' : 'border-[var(--border-strong)]')}
                       />
                     </Field>
                   </div>
