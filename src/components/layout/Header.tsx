@@ -372,8 +372,14 @@ export function Header() {
           )}
         </nav>
 
-        {/* ---------- actions ---------- */}
-        <div className="flex items-center justify-end gap-2">
+        {/* col-start-3 is load-bearing. Below `lg` the nav is display:none, and a
+             display:none element generates no grid box, so it occupies no track:
+             only the logo and these actions are items, and auto-placement would
+             drop the actions into the middle `auto` column right beside the
+             logo. Pinning them to the last track keeps them flush right at
+             every width, and matches where auto-placement puts them once the
+             nav is back. */}
+        <div className="col-start-3 flex items-center justify-end gap-2">
           <CartButton />
           {user ? (
             <AccountMenu />
