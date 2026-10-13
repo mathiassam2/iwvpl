@@ -105,6 +105,13 @@ export default function RegisterPage() {
   const [errors, setErrors] = useState<Errors>({})
   const [touched, setTouched] = useState(false)
   const [sent, setSent] = useState(false)
+  /* What the account that was just created actually was.
+     The confirmation reads from here rather than from `values`, because the
+     form is cleared the moment submission succeeds — leaving a filled-in form
+     under the "you're done" panel invites a double submit. */
+  const [created, setCreated] = useState<{ role: Fields['role']; club: string; gamertag: string } | null>(
+    null,
+  )
   const [termsOpen, setTermsOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -157,6 +164,18 @@ export default function RegisterPage() {
         clubName: values.role === 'club_manager' ? values.club.trim() : undefined,
       })
       setUser(user)
+      // Snapshot what was created, then clear the form. The confirmation
+      // reads from the snapshot, and the cleared fields make a second submit
+      // impossible by accident — the submit button now fails validation.
+      setCreated({
+        role: values.role,
+        club: values.club.trim(),
+        gamertag: values.gamertag.trim(),
+      })
+      setValues(EMPTY)
+      setErrors({})
+      setTouched(false)
+      setSubmitError(null)
       setSent(true)
       window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch (err) {
@@ -297,24 +316,23 @@ export default function RegisterPage() {
                     </svg>
                     <div>
                       <h2 className="font-display text-lg font-bold text-[var(--text-strong)]">
-                        {values.role === 'club_manager'
+                        {created?.role === 'club_manager'
                           ? 'Account created'
                           : 'Welcome to IWVPL'}
                       </h2>
                       <p className="mt-2 text-sm leading-relaxed text-[var(--text-muted)]">
-                        {values.role === 'club_manager' ? (
+                        {created?.role === 'club_manager' ? (
                           <>
                             You are signed in as the manager of{' '}
-                            <strong className="text-[var(--text)]">
-                              {stripFlag(values.club)}
-                            </strong>
-                            . The club exists now, but it sits outside every division until a league
-                            admin assigns it — it will not appear in the standings until then.
+                            <strong className="text-[var(--text)]">{stripFlag(created.club)}</strong>
+                            . It is waiting for league admin approval — until then it is not on the
+                            public site and cannot play fixtures. You can sign players in the
+                            meantime.
                           </>
                         ) : (
                           <>
                             You are signed in as{' '}
-                            <strong className="text-[var(--text)]">{values.gamertag}</strong> and
+                            <strong className="text-[var(--text)]">{created?.gamertag}</strong> and
                             you are a free agent. Clubs can find you and send you an offer from your
                             dashboard.
                           </>
@@ -324,7 +342,7 @@ export default function RegisterPage() {
                         <Button size="sm" onClick={() => navigate('/dashboard')}>
                           Go to dashboard
                         </Button>
-                        {values.role === 'club_manager' && (
+                        {created?.role === 'club_manager' && (
                           <Button size="sm" variant="outline" onClick={() => openPanel()}>
                             Review cart
                           </Button>
@@ -334,13 +352,10 @@ export default function RegisterPage() {
                           size="sm"
                           onClick={() => {
                             setSent(false)
-                            setValues(EMPTY)
-                            setTouched(false)
-                            setErrors({})
-                            setSubmitError(null)
+                            setCreated(null)
                           }}
                         >
-                          {values.role === 'club_manager'
+                          {created?.role === 'club_manager'
                             ? 'Register another club'
                             : 'Register another account'}
                         </Button>

@@ -279,6 +279,98 @@ manager.delete(
 
 /* ----------------------------------------------------------------- squad */
 
+/**
+ * Everyone who can be put on this club's squad, account or not.
+ *
+ * Deliberately wider than the recruitment search above. An offer asks for a
+ * decision, so it needs someone on the other end who can log in and give it.
+ * Putting someone on a squad does not — it is the manager registering a player
+ * they intend to field, the same thing the admin app has always allowed.
+ *
+ * `has_account` is returned so the UI can say so, rather than the manager
+ * offering a contract to someone who will never see it.
+ */
+manager.get(
+  '/squad/search',
+  handler(async (req, res) => {
+    const club = await ownClub(req.user!.id)
+    const q = String(req.query.q ?? '').trim().slice(0, 80)
+
+    const rows = await queryAll(
+      `SELECT p.id, p.gamertag, p.slug, p.avatar_local, p.club_id, p.is_free_agent,
+              c.name AS club_name,
+              (p.user_id IS NOT NULL) AS has_account
+         FROM players p
+         LEFT JOIN clubs c ON c.id = p.club_id
+        WHERE (p.club_id IS NULL OR p.club_id <> ?)
+          AND (? = '' OR p.gamertag LIKE ?)
+        ORDER BY p.gamertag
+        LIMIT 25`,
+      [club.id, q, `%${q}%`],
+    )
+    res.json({ players: rows })
+  }),
+)
+
+/**
+ * Put a player on this club's squad.
+ *
+ * Immediate and without the player's agreement, unlike an offer. That is the
+ * manager's prerogative: they field who they field. A `transfers` row is
+ * written either way so the public transfer page shows the move rather than
+ * the player quietly appearing on a different roster.
+ *
+ * Taking a player who is currently at another club is allowed — it is a
+ * release and a signing in one step — but the UI warns first, because from the
+ * other club's point of view their player has just vanished.
+ */
+manager.post(
+  '/squad/add',
+  handler(async (req, res) => {
+    const user = req.user!
+    const club = await ownClub(user.id)
+    const playerId = id(req.body?.playerId, 'Player')
+
+    const player = await queryOne<{
+      id: number
+      gamertag: string
+      club_id: number | null
+      user_id: number | null
+    }>('SELECT id, gamertag, club_id, user_id FROM players WHERE id = ?', [playerId])
+
+    if (!player) throw Object.assign(new Error('That player does not exist.'), { status: 404 })
+    if (player.club_id === club.id) {
+      throw Object.assign(new Error(`${player.gamertag} is already on your squad.`), {
+        status: 409,
+      })
+    }
+
+    await withTransaction(async (conn) => {
+      await conn.execute(
+        'UPDATE players SET club_id = ?, is_free_agent = FALSE, updated_at = NOW() WHERE id = ?',
+        [club.id, player.id],
+      )
+      await conn.execute(
+        `INSERT INTO transfers (player_id, from_club_id, to_club_id, occurred_at, kind, created_at)
+         VALUES (?, ?, ?, CURDATE(), 'free', NOW())`,
+        [player.id, player.club_id, club.id],
+      )
+    })
+
+    if (player.user_id) {
+      await notify(
+        player.user_id,
+        'signed',
+        `Signed by ${club.name}`,
+        `${club.name} have added you to their squad.`,
+        '/dashboard',
+      )
+    }
+
+    res.json({ ok: true })
+  }),
+)
+
 /** Current squad, for the dashboard. */
 manager.get(
   '/squad',

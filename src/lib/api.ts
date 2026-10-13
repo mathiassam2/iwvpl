@@ -146,6 +146,25 @@ export const sendOffer = (playerId: number, kind: string | null, message: string
 export const cancelOffer = (id: number) =>
   request<{ ok: true }>(`/api/manager/offers/${id}`, { method: 'DELETE' })
 
+/** Everyone who can be put on a squad, account or not. `has_account` says
+ *  whether an offer is possible as well. */
+export const searchSquad = (q: string, signal?: AbortSignal) =>
+  request<{
+    players: Array<{
+      id: number
+      gamertag: string
+      slug: string
+      avatar_local: string | null
+      club_id: number | null
+      club_name: string | null
+      has_account: number
+    }>
+  }>(`/api/manager/squad/search?q=${encodeURIComponent(q)}`, { signal })
+
+/** Immediate, no player agreement — unlike an offer. */
+export const addToSquad = (playerId: number) =>
+  post<{ ok: true }>('/api/manager/squad/add', { playerId })
+
 export const managerOffers = () => request<{ offers: Offer[] }>('/api/manager/offers')
 
 export const squad = () =>

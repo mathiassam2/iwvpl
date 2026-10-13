@@ -294,6 +294,9 @@ admin.delete(
  *
  * The manager's details come along because the decision is about the pair —
  * approving a club whose owner cannot be contacted is not much use.
+ *
+ * Newest first. A queue people are waiting on is read top-down and acted on
+ * from the top; oldest-first buries today's applications under yesterday's.
  */
 admin.get(
   '/clubs/pending',
@@ -305,7 +308,7 @@ admin.get(
          FROM clubs c
          LEFT JOIN users u ON u.club_id = c.id AND u.is_active = TRUE
         WHERE c.status = 'pending'
-        ORDER BY c.created_at`,
+        ORDER BY c.created_at DESC, c.id DESC`,
     )
     res.json({ clubs: rows })
   }),
