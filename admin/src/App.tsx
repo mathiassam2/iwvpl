@@ -22,8 +22,13 @@ interface Notice {
 }
 
 export default function App() {
-  const [tab, setTab] = useState<Tab>('standings')
+  const [tab, setTab] = useState<Tab>('results')
   const [notice, setNotice] = useState<Notice | null>(null)
+  const pageTitle: Record<Tab, string> = {
+    results: 'Match centre',
+    standings: 'League table',
+    clubs: 'Club management',
+  }
 
   const report = useCallback((kind: Notice['kind'], text: string) => setNotice({ kind, text }), [])
 
@@ -46,30 +51,58 @@ export default function App() {
   return (
     <div className="shell">
       <header className="masthead">
-        <h1>IWVPL Admin</h1>
-        <span className="tag">Manager Portal</span>
+        <a className="brand" href="/admin/" aria-label="IWVPL Admin home">
+          <span className="brand-mark">I</span>
+          <span><strong>IWVPL</strong><small>LEAGUE OPERATIONS</small></span>
+        </a>
+        <div className="masthead-meta"><span className="secure-dot" />Admin workspace</div>
       </header>
 
-      <nav className="tabs" role="tablist">
-        {(['standings', 'results', 'clubs'] as Tab[]).map((t) => (
-          <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>
-            {t[0].toUpperCase() + t.slice(1)}
-          </button>
-        ))}
-      </nav>
+      <div className="workspace">
+        <aside className="sidebar">
+          <p className="nav-label">WORKSPACE</p>
+          <nav className="tabs" role="tablist" aria-label="Admin sections">
+            {(['results', 'standings', 'clubs'] as Tab[]).map((t) => (
+              <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>
+                <span className="nav-icon" aria-hidden="true">
+                  {t === 'results' ? '◉' : t === 'standings' ? '▤' : '♙'}
+                </span>
+                <span>{t === 'results' ? 'Matches' : t === 'standings' ? 'Standings' : 'Clubs'}</span>
+                {t === tab && <span className="nav-arrow">›</span>}
+              </button>
+            ))}
+          </nav>
+          <div className="sidebar-note"><span className="secure-dot" />Changes save directly to the league database.</div>
+        </aside>
 
-      {notice && (
-        <div className={`notice ${notice.kind}`} role="status">
-          <span>{notice.text}</span>
-          <button className="btn sm" style={{ marginLeft: 'auto' }} onClick={() => setNotice(null)}>
-            Dismiss
-          </button>
-        </div>
-      )}
+        <main className="main-content">
+          <div className="page-heading">
+            <div>
+              <p className="eyebrow">LEAGUE OPERATIONS <span>/</span> {pageTitle[tab].toUpperCase()}</p>
+              <h1>{pageTitle[tab]}</h1>
+              <p className="page-subtitle">
+                {tab === 'results'
+                  ? 'Record match scores and keep the table up to date.'
+                  : tab === 'standings'
+                    ? 'Review the current league table and recent form.'
+                    : 'Update club details and manage player rosters.'}
+              </p>
+            </div>
+            <span className="live-indicator"><i /> LIVE DATA</span>
+          </div>
 
-      {tab === 'standings' && <Standings guard={guard} report={report} />}
-      {tab === 'results' && <Results guard={guard} report={report} />}
-      {tab === 'clubs' && <Clubs guard={guard} report={report} />}
+          {notice && (
+            <div className={`notice ${notice.kind}`} role="status">
+              <span>{notice.text}</span>
+              <button className="btn sm" onClick={() => setNotice(null)}>Dismiss</button>
+            </div>
+          )}
+
+          {tab === 'standings' && <Standings guard={guard} report={report} />}
+          {tab === 'results' && <Results guard={guard} report={report} />}
+          {tab === 'clubs' && <Clubs guard={guard} report={report} />}
+        </main>
+      </div>
     </div>
   )
 }
@@ -181,6 +214,8 @@ function Results({
   const [matches, setMatches] = useState<Match[] | null>(null)
   const [draft, setDraft] = useState<Record<number, { home: string; away: string }>>({})
   const [busy, setBusy] = useState<number | null>(null)
+  const [filter, setFilter] = useState<'all' | 'pending' | 'completed'>('all')
+  const [query, setQuery] = useState('')
 
   const load = useCallback(async () => {
     const data = await guard(() => getMatches(50), 'Could not load matches')
@@ -206,10 +241,12 @@ function Results({
 
   const save = async (m: Match) => {
     const d = draft[m.id]
-    const home = Number.parseInt(d?.home ?? '', 10)
-    const away = Number.parseInt(d?.away ?? '', 10)
-    if (!Number.isInteger(home) || !Number.isInteger(away)) {
-      report('error', 'Enter both scores as whole numbers.')
+    const homeText = d?.home ?? ''
+    const awayText = d?.away ?? ''
+    const home = Number(homeText)
+    const away = Number(awayText)
+    if (!/^\d{1,2}$/.test(homeText) || !/^\d{1,2}$/.test(awayText) || home > 99 || away > 99) {
+      report('error', 'Enter both scores as whole numbers between 0 and 99.')
       return
     }
     setBusy(m.id)
@@ -225,6 +262,9 @@ function Results({
   }
 
   const withdraw = async (m: Match) => {
+    if (!window.confirm(`Withdraw the saved result for ${m.home_name} vs ${m.away_name}? This will update the standings.`)) {
+      return
+    }
     setBusy(m.id)
     try {
       await withdrawResult(m.id)
@@ -237,104 +277,116 @@ function Results({
     }
   }
 
+  const completedCount = matches.filter((m) => m.home_score !== null && m.away_score !== null).length
+  const pendingCount = matches.length - completedCount
+  const visibleMatches = matches.filter((m) => {
+    const played = m.home_score !== null && m.away_score !== null
+    const matchesFilter = filter === 'all' || (filter === 'completed' ? played : !played)
+    const matchesQuery = `${m.home_name} ${m.away_name}`.toLowerCase().includes(query.toLowerCase())
+    return matchesFilter && matchesQuery
+  })
+
   return (
     <>
-      <div className="card">
-        <header>
-          <h2>Results</h2>
-          <button className="btn" onClick={() => load().catch(() => {})}>
-            Reload
-          </button>
-        </header>
-        {matches.length === 0 ? (
-          <div className="empty">No matches.</div>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Kickoff</th>
-                <th>Home</th>
-                <th className="num">Score</th>
-                <th>Away</th>
-                <th style={{ textAlign: 'right' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {matches.map((m) => {
-                const played = m.home_score !== null && m.away_score !== null
-                const d = draft[m.id] ?? { home: '', away: '' }
-                return (
-                  <tr key={m.id}>
-                    <td style={{ whiteSpace: 'nowrap', color: 'var(--text-faint)' }}>
-                      {m.kickoff.slice(0, 16)}
-                    </td>
-                    <td>
-                      <div className="club">
-                        {m.home_logo && <img src={m.home_logo} alt="" />}
-                        <span className="name">{m.home_name}</span>
-                      </div>
-                    </td>
-                    <td className="num">
-                      <span className={`score${played ? '' : ' pending'}`}>
-                        {played ? `${m.home_score} – ${m.away_score}` : 'not played'}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="club">
-                        {m.away_logo && <img src={m.away_logo} alt="" />}
-                        <span className="name">{m.away_name}</span>
-                      </div>
-                    </td>
-                    <td>
-                      <div className="row-actions">
-                        <div className="form">
-                          <input
-                            className="text"
-                            inputMode="numeric"
-                            aria-label={`${m.home_name} goals`}
-                            value={d.home}
-                            disabled={busy === m.id}
-                            onChange={(e) =>
-                              setDraft((s) => ({ ...s, [m.id]: { ...d, home: e.target.value } }))
-                            }
-                          />
-                          <input
-                            className="text"
-                            inputMode="numeric"
-                            aria-label={`${m.away_name} goals`}
-                            value={d.away}
-                            disabled={busy === m.id}
-                            onChange={(e) =>
-                              setDraft((s) => ({ ...s, [m.id]: { ...d, away: e.target.value } }))
-                            }
-                          />
-                        </div>
-                        <button
-                          className="btn primary sm"
-                          disabled={busy === m.id}
-                          onClick={() => save(m)}
-                        >
-                          Save
-                        </button>
-                        {played && (
-                          <button
-                            className="btn danger sm"
-                            disabled={busy === m.id}
-                            title="Remove this result from the standings table"
-                            onClick={() => withdraw(m)}
-                          >
-                            Withdraw
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        )}
+      <div className="stats-grid">
+        <div className="stat-card">
+          <span className="stat-icon">▦</span><span className="stat-label">MATCHES LOADED</span>
+          <strong>{matches.length}</strong><small>Recent league fixtures</small>
+        </div>
+        <div className="stat-card">
+          <span className="stat-icon pending-icon">◷</span><span className="stat-label">NEEDS A RESULT</span>
+          <strong>{pendingCount}</strong><small>Ready for score entry</small>
+        </div>
+        <div className="stat-card">
+          <span className="stat-icon done-icon">✓</span><span className="stat-label">COMPLETED</span>
+          <strong>{completedCount}</strong><small>Results recorded</small>
+        </div>
       </div>
+
+      <section className="match-section" aria-label="Match results">
+        <div className="match-toolbar">
+          <div>
+            <h2>Fixtures</h2>
+            <p>Choose a fixture, enter the final score, and save.</p>
+          </div>
+          <button className="btn reload-btn" onClick={() => load().catch(() => {})} aria-label="Reload matches">
+            ↻ <span>Refresh</span>
+          </button>
+        </div>
+        <div className="match-controls">
+          <div className="filter-pills" role="group" aria-label="Filter fixtures">
+            {(['all', 'pending', 'completed'] as const).map((f) => (
+              <button key={f} className={filter === f ? 'selected' : ''} onClick={() => setFilter(f)}>
+                {f === 'pending' ? `To enter (${pendingCount})` : f === 'completed' ? `Completed (${completedCount})` : 'All fixtures'}
+              </button>
+            ))}
+          </div>
+          <label className="search-box">
+            <span aria-hidden="true">⌕</span>
+            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Find a club…" aria-label="Find a club" />
+          </label>
+        </div>
+
+        {visibleMatches.length === 0 ? (
+          <div className="empty match-empty">
+            <strong>{matches.length === 0 ? 'No matches found' : 'No fixtures match this view'}</strong>
+            <span>{query ? 'Try another club name or clear your search.' : 'Switch filters to see other fixtures.'}</span>
+          </div>
+        ) : (
+          <div className="match-list">
+            {visibleMatches.map((m) => {
+              const played = m.home_score !== null && m.away_score !== null
+              const d = draft[m.id] ?? { home: '', away: '' }
+              return (
+                <article className="match-card" key={m.id}>
+                  <div className="match-card-top">
+                    <span className="kickoff">
+                      {new Date(m.kickoff).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+                    </span>
+                    <span className={`match-status ${played ? 'is-complete' : 'is-pending'}`}>
+                      <i />{played ? 'RESULT SAVED' : 'AWAITING RESULT'}
+                    </span>
+                  </div>
+                  <div className="match-entry">
+                    <div className="match-team home-team">
+                      {m.home_logo && <img src={m.home_logo} alt="" />}
+                      <span>{m.home_name}</span><small>HOME</small>
+                    </div>
+                    <div className="score-entry" role="group" aria-label={`Score for ${m.home_name} versus ${m.away_name}`}>
+                      <input
+                        type="number" min="0" max="99" step="1" inputMode="numeric"
+                        aria-label={`${m.home_name} goals`} placeholder="–" value={d.home}
+                        disabled={busy === m.id}
+                        onChange={(e) => setDraft((s) => ({ ...s, [m.id]: { ...d, home: e.target.value } }))}
+                      />
+                      <span>:</span>
+                      <input
+                        type="number" min="0" max="99" step="1" inputMode="numeric"
+                        aria-label={`${m.away_name} goals`} placeholder="–" value={d.away}
+                        disabled={busy === m.id}
+                        onChange={(e) => setDraft((s) => ({ ...s, [m.id]: { ...d, away: e.target.value } }))}
+                      />
+                    </div>
+                    <div className="match-team away-team">
+                      {m.away_logo && <img src={m.away_logo} alt="" />}
+                      <span>{m.away_name}</span><small>AWAY</small>
+                    </div>
+                  </div>
+                  <div className="match-actions">
+                    {played && <span className="saved-score">Current: {m.home_score} – {m.away_score}</span>}
+                    <div>
+                      {played && <button className="btn danger" disabled={busy === m.id} onClick={() => withdraw(m)}>Withdraw</button>}
+                      <button className="btn primary save-btn" disabled={busy === m.id} onClick={() => save(m)}>
+                        {busy === m.id ? 'Saving…' : played ? 'Update result' : 'Save result'}
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              )
+            })}
+          </div>
+        )}
+      </section>
 
       <p className="footnote">
         Saving a result reverses any previous contribution to both clubs before applying the new
