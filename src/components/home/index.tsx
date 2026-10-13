@@ -16,6 +16,8 @@ import { SITE, siteData } from '@/data'
 import { matchIndexOf } from '@/lib/match'
 import { asset } from '@/lib/assets'
 import { CLUB_PLACEHOLDER, cx, stripFlag, totalGoals } from '@/lib/format'
+import { getLiveResults, getLiveStandings, liveLeagueEnabled } from '@/lib/liveLeague'
+import type { Standing } from '@/types/site'
 
 
 /* ==================================================================== HERO */
@@ -699,34 +701,70 @@ export function Nations() {
 const HOME_TABLE_ROWS = 10
 
 export function StandingsPreview() {
+  const [liveRows, setLiveRows] = useState<Standing[] | null>(null)
+  const [error, setError] = useState('')
+  const [reload, setReload] = useState(0)
+
+  useEffect(() => {
+    if (!liveLeagueEnabled) return
+    const controller = new AbortController()
+    setError('')
+
+    getLiveStandings(controller.signal)
+      .then((divisions) => setLiveRows(divisions['Premier League'] ?? []))
+      .catch((cause: unknown) => {
+        if (!controller.signal.aborted) {
+          setError(cause instanceof Error ? cause.message : 'Could not load live standings.')
+        }
+      })
+
+    return () => controller.abort()
+  }, [reload])
+
   // The home page shows the top 10 only; the rest lives behind "View full table".
-  const shown = siteData.standings.slice(0, HOME_TABLE_ROWS)
-  const hidden = siteData.standings.length - shown.length
+  const rows = liveLeagueEnabled ? liveRows ?? [] : siteData.standings
+  const shown = rows.slice(0, HOME_TABLE_ROWS)
+  const hidden = rows.length - shown.length
 
   return (
     <Section id="standings">
       <Container size="wide">
+        {liveLeagueEnabled && liveRows === null && !error && (
+          <p role="status" className="mb-4 text-sm text-[var(--text-muted)]">
+            Loading live standings…
+          </p>
+        )}
+        {error && (
+          <div role="alert" className="mb-4 flex items-center justify-between gap-4 text-sm text-[var(--danger-text)]">
+            <span>{error}</span>
+            <button className="font-semibold underline" onClick={() => setReload((value) => value + 1)}>
+              Retry
+            </button>
+          </div>
+        )}
         <SectionHead
           eyebrow="League table"
           title="IWVPL Pro Club League standings"
-          lede={`${SITE.season} — the top ${shown.length} of ${siteData.standings.length} clubs, updated after each match.`}
+          lede={`${SITE.season} — the top ${shown.length} of ${rows.length} clubs, updated after each match.`}
           action={
             <ButtonLink to="/standings" variant="outline">
               View full table
             </ButtonLink>
           }
         />
-        <Reveal>
-          <StandingsTable rows={shown} leagueSize={siteData.standings.length} />
-        </Reveal>
-        {hidden > 0 && (
+        {!error && (!liveLeagueEnabled || liveRows !== null) && (
+          <Reveal>
+            <StandingsTable rows={shown} leagueSize={rows.length} />
+          </Reveal>
+        )}
+        {!error && hidden > 0 && (
           <p className="mt-4 text-center text-sm text-[var(--text-muted)]">
             Showing the top {shown.length}.{' '}
             <Link
               to="/standings"
               className="font-semibold text-[var(--accent-text)] transition-opacity hover:opacity-70"
             >
-              View all {siteData.standings.length} clubs
+              View all {rows.length} clubs
             </Link>
           </p>
         )}
@@ -737,16 +775,37 @@ export function StandingsPreview() {
 
 /* =============================================================== RESULTS preview */
 export function ResultsPreview() {
+  const [liveResults, setLiveResults] = useState<typeof siteData.results | null>(null)
+  const [error, setError] = useState('')
+  const [reload, setReload] = useState(0)
+
+  useEffect(() => {
+    if (!liveLeagueEnabled) return
+    const controller = new AbortController()
+    setError('')
+
+    getLiveResults(controller.signal)
+      .then(setLiveResults)
+      .catch((cause: unknown) => {
+        if (!controller.signal.aborted) {
+          setError(cause instanceof Error ? cause.message : 'Could not load live results.')
+        }
+      })
+
+    return () => controller.abort()
+  }, [reload])
+
+  const results = liveLeagueEnabled ? liveResults ?? [] : siteData.results
   const grouped = useMemo(() => {
     const seen = new Set<string>()
-    return siteData.results
+    return results
       .filter((m) => {
         if (seen.has(m.date)) return false
         seen.add(m.date)
         return true
       })
       .slice(0, 3)
-  }, [])
+  }, [results])
 
   const board = siteData.leaderboards[0]
 
@@ -764,15 +823,29 @@ export function ResultsPreview() {
                 </ButtonLink>
               }
             />
+            {liveLeagueEnabled && liveResults === null && !error && (
+              <p role="status" className="mb-3 text-sm text-[var(--text-muted)]">
+                Loading live results…
+              </p>
+            )}
+            {error && (
+              <div role="alert" className="mb-3 flex items-center justify-between gap-4 text-sm text-[var(--danger-text)]">
+                <span>{error}</span>
+                <button className="font-semibold underline" onClick={() => setReload((value) => value + 1)}>
+                  Retry
+                </button>
+              </div>
+            )}
             <div className="surface divide-y divide-[var(--border)] overflow-hidden rounded-card">
               {grouped.map((m) => (
                 <div key={m.url}>
                   <p className="px-4 pt-4 text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--text-faint)]">
                     {m.date}
                   </p>
-                  {/* index so the row opens the match centre directly instead of
-                      dumping the visitor on the full results list to find it */}
-                  <MatchRow match={m} index={matchIndexOf(m)} />
+                  <MatchRow
+                    match={m}
+                    index={liveLeagueEnabled ? undefined : matchIndexOf(m)}
+                  />
                 </div>
               ))}
             </div>
