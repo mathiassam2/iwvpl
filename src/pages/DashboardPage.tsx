@@ -13,8 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { PageHeader } from '@/components/layout/PageHeader'
-import { Button, ButtonLink, Container, EmptyState, SectionHead, SmartImage } from '@/components/ui'
+import { Button, ButtonLink, Container, EmptyState, SmartImage } from '@/components/ui'
 import { useAuth } from '@/lib/auth'
 import { ApiError } from '@/lib/api'
 import {
@@ -34,7 +33,40 @@ import {
 } from '@/lib/api'
 import { cx } from '@/lib/format'
 
-const card = 'rounded-card border border-[var(--border-strong)] bg-[var(--surface)] p-6'
+/**
+ * Panel.
+ *
+ * Dense on purpose. This is a workspace, not a marketing page: the admin app
+ * sets the scale for anything an operator uses daily, and at the public
+ * site's display sizes a squad list becomes one name per screen. Tighter
+ * padding and the `default` container keep a whole club on one screen.
+ */
+const card = 'rounded-card border border-[var(--border-strong)] bg-[var(--surface)] p-4 sm:p-5'
+
+/* Section headings inside a panel. Smaller than the public site's SectionHead,
+   which is sized for a full-width section between hero bands. */
+function PanelHead({ label, title, action }: { label: string; title: string; action?: React.ReactNode }) {
+  return (
+    <div className="mb-4 flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--accent-text)]">
+          {label}
+        </p>
+        <h2 className="mt-1 font-display text-lg font-bold leading-tight text-[var(--text-strong)]">
+          {title}
+        </h2>
+      </div>
+      {action}
+    </div>
+  )
+}
+
+/** Body copy inside a panel. The public site's `text-[15px]`/relaxed sizing is
+ *  paragraph scale; this is UI copy. */
+const prose = 'text-[13px] leading-relaxed text-[var(--text-muted)]'
+const field =
+  'h-10 w-full rounded-lg border border-[var(--border-strong)] bg-[var(--bg)] px-3 text-[13px] ' +
+  'text-[var(--text-strong)] outline-none focus:border-[var(--accent-ring)]'
 
 /** Shared error/notice line, so every panel reports failure the same way. */
 function Notice({ kind, text }: { kind: 'ok' | 'error'; text: string | null }) {
@@ -218,8 +250,8 @@ function ManagerPanel() {
   if (!user?.clubId) {
     return (
       <section className={card}>
-        <SectionHead eyebrow="Your club" title="Create your club" />
-        <p className="mb-5 text-sm leading-relaxed text-[var(--text-muted)]">
+        <PanelHead label="Your club" title="Create your club" />
+        <p className="mb-4 ">
           A club is created active but sits outside every division until a league admin assigns
           it. It will not appear in the standings until then.
         </p>
@@ -230,7 +262,7 @@ function ManagerPanel() {
             placeholder="e.g. KITA KITA VFC"
             required
             maxLength={120}
-            className="h-11 flex-1 rounded-lg border border-[var(--border-strong)] bg-[var(--bg)] px-4 text-sm text-[var(--text-strong)] outline-none focus:border-[var(--accent-ring)]"
+            className={field}
           />
           <Button type="submit" disabled={busy || !clubName.trim()}>
             {busy ? 'Creating…' : 'Create club'}
@@ -250,8 +282,8 @@ function ManagerPanel() {
       {/* ---- approval status ---- */}
       {user.clubStatus === 'pending' && (
         <section className={card}>
-          <SectionHead eyebrow="Approval" title="Waiting for league admin" />
-          <p className="text-sm leading-relaxed text-[var(--text-muted)]">
+          <PanelHead label="Approval" title="Waiting for league admin" />
+          <p className={prose}>
             <strong className="text-[var(--text)]">{user.clubName}</strong> has been submitted and
             is waiting to be approved. It is not on the public site yet and cannot play fixtures
             until it is. You can carry on signing players below in the meantime — a squad can be
@@ -262,8 +294,8 @@ function ManagerPanel() {
 
       {user.clubStatus === 'withdrawn' && (
         <section className={card}>
-          <SectionHead eyebrow="Approval" title="Club not approved" />
-          <p className="text-sm leading-relaxed text-[var(--text-muted)]">
+          <PanelHead label="Approval" title="Club not approved" />
+          <p className={prose}>
             <strong className="text-[var(--text)]">{user.clubName}</strong> was not approved. Create
             another club from this dashboard if you want to apply again.
           </p>
@@ -272,7 +304,7 @@ function ManagerPanel() {
 
       {/* ---- squad ---- */}
       <section className={card}>
-        <SectionHead eyebrow="Squad" title={myClub?.name ?? 'Your squad'} />
+        <PanelHead label="Squad" title={myClub?.name ?? 'Your squad'} />
         {squadList.length === 0 ? (
           <EmptyState title="No players signed yet" hint="Search below to offer a contract." />
         ) : (
@@ -304,8 +336,8 @@ function ManagerPanel() {
 
       {/* ---- sign ---- */}
       <section className={card}>
-        <SectionHead eyebrow="Recruitment" title="Sign a player" />
-        <p className="mb-5 text-sm leading-relaxed text-[var(--text-muted)]">
+        <PanelHead label="Recruitment" title="Sign a player" />
+        <p className="mb-4 ">
           Only players with an account can be offered to — an offer is a request for an answer, so
           it needs someone on the other end who can log in and give it.
         </p>
@@ -316,7 +348,7 @@ function ManagerPanel() {
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search by gamertag"
             maxLength={80}
-            className="h-11 flex-1 rounded-lg border border-[var(--border-strong)] bg-[var(--bg)] px-4 text-sm text-[var(--text-strong)] outline-none focus:border-[var(--accent-ring)]"
+            className={field}
           />
           <Button type="submit" variant="outline" disabled={busy}>
             Search
@@ -324,7 +356,7 @@ function ManagerPanel() {
         </form>
 
         {searched && results.length > 0 && (
-          <ul className="mt-5 divide-y divide-[var(--border)]">
+          <ul className="mt-4 divide-y divide-[var(--border)]">
             {results.map((p) => (
               <li key={p.id} className="flex items-center gap-3 py-3">
                 <div className="min-w-0 flex-1">
@@ -360,8 +392,8 @@ function ManagerPanel() {
 
       {/* ---- roster ---- */}
       <section className={card}>
-        <SectionHead eyebrow="Squad" title="Add a player to your squad" />
-        <p className="mb-5 text-sm leading-relaxed text-[var(--text-muted)]">
+        <PanelHead label="Squad" title="Add a player to your squad" />
+        <p className="mb-4 ">
           Any player in the league, whether or not they have an account. This adds them to your
           squad immediately and records a transfer — it does not ask them. Use{' '}
           <strong className="text-[var(--text)]">Sign a player</strong> above when you would
@@ -374,7 +406,7 @@ function ManagerPanel() {
             onChange={(e) => setRosterQuery(e.target.value)}
             placeholder="Search any player by gamertag"
             maxLength={80}
-            className="h-11 flex-1 rounded-lg border border-[var(--border-strong)] bg-[var(--bg)] px-4 text-sm text-[var(--text-strong)] outline-none focus:border-[var(--accent-ring)]"
+            className={field}
           />
           <Button type="submit" variant="outline" disabled={busy}>
             Search
@@ -382,7 +414,7 @@ function ManagerPanel() {
         </form>
 
         {rosterSearched && roster.length > 0 && (
-          <ul className="mt-5 divide-y divide-[var(--border)]">
+          <ul className="mt-4 divide-y divide-[var(--border)]">
             {roster.map((p) => (
               <li key={p.id} className="flex items-center gap-3 py-3">
                 <div className="min-w-0 flex-1">
@@ -414,7 +446,7 @@ function ManagerPanel() {
 
       {/* ---- outbox ---- */}
       <section className={card}>
-        <SectionHead eyebrow="Outbox" title="Your offers" />
+        <PanelHead label="Outbox" title="Your offers" />
         {offers.length === 0 ? (
           <EmptyState title="No offers yet" hint="Offers you send to players appear here." />
         ) : (
@@ -519,8 +551,8 @@ function PlayerPanel() {
       <Notice {...(notice ?? { kind: 'ok', text: null })} />
 
       <section className={card}>
-        <SectionHead eyebrow="Your status" title={club ? club.name : 'Free agent'} />
-        <p className="text-sm leading-relaxed text-[var(--text-muted)]">
+        <PanelHead label="Your status" title={club ? club.name : 'Free agent'} />
+        <p className={prose}>
           {club ? (
             <>
               You are signed for {club.name}. Membership is not binding — you can leave whenever
@@ -534,7 +566,7 @@ function PlayerPanel() {
           )}
         </p>
         {club && (
-          <div className="mt-5 flex flex-wrap gap-3">
+          <div className="mt-4 flex flex-wrap gap-2.5">
             <ButtonLink to={`/clubs/${club.slug}`} variant="outline" size="sm">
               View club
             </ButtonLink>
@@ -546,13 +578,13 @@ function PlayerPanel() {
       </section>
 
       <section className={card}>
-        <SectionHead eyebrow="Inbox" title="Offers" />
+        <PanelHead label="Inbox" title="Offers" />
         {offers.length === 0 ? (
           <EmptyState title="No offers waiting" hint="Offers from clubs land here." />
         ) : (
-          <ul className="space-y-4">
+          <ul className="space-y-3">
             {offers.map((o) => (
-              <li key={o.id} className="rounded-lg border border-[var(--border)] p-4">
+              <li key={o.id} className="rounded-lg border border-[var(--border)] p-3.5">
                 <div className="flex items-center gap-3">
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-bold text-[var(--text-strong)]">
@@ -564,7 +596,7 @@ function PlayerPanel() {
                   </div>
                 </div>
                 {o.message && (
-                  <p className="mt-3 text-sm leading-relaxed text-[var(--text-muted)]">{o.message}</p>
+                  <p className={`mt-2 ${prose}`}>{o.message}</p>
                 )}
                 <div className="mt-4 flex flex-wrap gap-2.5">
                   <Button size="sm" disabled={busy} onClick={() => void onDecide(o.id, 'accept')}>
@@ -617,17 +649,26 @@ export default function DashboardPage() {
   const isPlayer = user.role === 'player'
 
   return (
-    <div className="page-enter pb-20">
-      <PageHeader
-        eyebrow={isPlayer ? 'Player hub' : 'Club management'}
-        title={`Welcome back, ${user.name}`}
-        lede={
-          isPlayer
-            ? 'Offers from clubs, and the freedom to leave whenever you choose.'
-            : 'Create your club, build a squad and offer contracts to players.'
-        }
-      />
-      <Container size="wide">
+    <div className="page-enter">
+      {/* Compact header, not PageHeader. That component is sized for a
+          marketing page — a 3.5rem display heading and a lede paragraph — which
+          on a screen you use daily is just furniture. A workspace opens with a
+          line of text and gets out of the way. */}
+      <div className="mx-auto flex w-full max-w-7xl flex-wrap items-end justify-between gap-4 px-5 pb-6 pt-24 sm:px-6 lg:px-8 lg:pt-28">
+        <div className="min-w-0">
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--accent-text)]">
+            {isPlayer ? 'Player hub' : 'Club management'}
+          </p>
+          <h1 className="mt-1.5 font-display text-2xl font-bold leading-tight text-[var(--text-strong)] sm:text-3xl">
+            {user.name}
+          </h1>
+        </div>
+        <ButtonLink to="/" variant="outline" size="sm">
+          Back to site
+        </ButtonLink>
+      </div>
+
+      <Container size="default" className="pb-20">
         {isPlayer ? <PlayerPanel /> : <ManagerPanel />}
       </Container>
     </div>

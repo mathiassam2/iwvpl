@@ -52,10 +52,20 @@ function useDropdown(onNavigate?: () => void) {
   return { open, setOpen, ref }
 }
 
+/* `glass-panel`, not `bg-[var(--surface)]`.
+   The stylesheet already defines the material for menus and popovers: a
+   tinted, blurred panel matching the header bar. Hand-rolling a background
+   here left the dropdown body reading as see-through against the page, with
+   the text inside sitting on nothing.
+
+   Anchored to the *viewport* below `sm`, not to its trigger. The bar puts the
+   hamburger after the account button, so a right-aligned panel hangs off the
+   left edge of a phone and clips its own text. From `sm` up the trigger is
+   within a few pixels of the right edge and the simple anchor is correct. */
 const panel =
-  'absolute right-0 top-[calc(100%+10px)] z-50 w-[min(20rem,calc(100vw-2rem))] overflow-hidden ' +
-  'rounded-card border border-[var(--border-strong)] bg-[var(--surface)] shadow-2xl ' +
-  'shadow-black/40 animate-[pageEnter_.16s_ease-out]'
+  'glass-panel fixed inset-x-4 top-[4.5rem] z-50 overflow-hidden rounded-card ' +
+  'sm:absolute sm:left-auto sm:right-0 sm:top-[calc(100%+10px)] sm:w-80 ' +
+  'animate-[pageEnter_.16s_ease-out]'
 
 const row =
   'flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm transition-colors ' +
@@ -124,7 +134,9 @@ function NotificationBell() {
           <p className="border-b border-[var(--border-strong)] px-4 py-3 text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--text-faint)]">
             Notifications
           </p>
-          <div className="max-h-[60vh] overflow-y-auto">
+          {/* Scrolls independently so a long list of notifications cannot run
+              off the bottom of the screen. */}
+          <div className="max-h-[min(26rem,60dvh)] overflow-y-auto overscroll-contain">
             {items === null ? (
               <p className={cx(row, 'text-[var(--text-muted)]')}>Loading…</p>
             ) : items.length === 0 ? (

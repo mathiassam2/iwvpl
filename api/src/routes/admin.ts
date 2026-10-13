@@ -297,6 +297,13 @@ admin.delete(
  *
  * Newest first. A queue people are waiting on is read top-down and acted on
  * from the top; oldest-first buries today's applications under yesterday's.
+ *
+ * Restricted to clubs that actually have a manager account. The seed carries
+ * over the source site's own status, and around two thirds of the crawled
+ * clubs were marked pending *there* — so 'pending' alone is full of historical
+ * registrations that nobody is waiting on. They are decided by whoever runs
+ * the league, not by this queue, and offering an Approve/Reject button on a
+ * real club from 2023 is how one gets withdrawn by accident.
  */
 admin.get(
   '/clubs/pending',
@@ -308,6 +315,7 @@ admin.get(
          FROM clubs c
          LEFT JOIN users u ON u.club_id = c.id AND u.is_active = TRUE
         WHERE c.status = 'pending'
+          AND EXISTS (SELECT 1 FROM users m WHERE m.club_id = c.id)
         ORDER BY c.created_at DESC, c.id DESC`,
     )
     res.json({ clubs: rows })
