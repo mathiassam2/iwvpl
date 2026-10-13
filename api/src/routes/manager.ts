@@ -10,13 +10,16 @@
 
 import { Router } from 'express'
 import { queryAll, queryOne, withTransaction } from '../db.js'
-import { requireManager } from '../middleware/auth.js'
+import { requireAuth, requireManager } from '../middleware/auth.js'
 import { clubSlug } from '../domain/slug.js'
 import { notify } from '../domain/auth.js'
 
 export const manager = Router()
 
-manager.use(requireManager)
+/* Both are factories, so both are called. requireAuth must come first:
+ * requireRole only inspects req.user, which nothing has populated yet, so
+ * mounting the role check alone would 401 a perfectly valid session. */
+manager.use(requireAuth(), requireManager())
 
 function handler(fn: (req: any, res: any) => Promise<void>) {
   return (req: any, res: any, next: any) => fn(req, res).catch(next)

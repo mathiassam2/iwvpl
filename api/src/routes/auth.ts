@@ -13,7 +13,7 @@
 
 import { Router } from 'express'
 import { queryOne, withTransaction } from '../db.js'
-import { attachUser, requireAuth } from '../middleware/auth.js'
+import { attachUser } from '../middleware/auth.js'
 import {
   clearSessionCookie,
   createSession,
@@ -253,5 +253,3 @@ auth.get(
     res.json({ user: await toPublicUser(req.user) })
   }),
 )
-
-export { requireAuth }

@@ -12,7 +12,7 @@ import { requireAuth } from '../middleware/auth.js'
 
 export const notifications = Router()
 
-notifications.use(requireAuth)
+notifications.use(requireAuth())
 
 function handler(fn: (req: any, res: any) => Promise<void>) {
   return (req: any, res: any, next: any) => fn(req, res).catch(next)

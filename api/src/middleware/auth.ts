@@ -9,6 +9,19 @@
  * on that, which means the check cannot disagree with itself: the role tested
  * is the role that was actually read from the database, not a client-supplied
  * header.
+ *
+ * All three exports are FACTORIES: they take no request and return a
+ * RequestHandler. Every use site must therefore call them —
+ *
+ *   router.use(requireAuth())      // correct
+ *   router.use(requireAuth)        // hangs forever, silently
+ *
+ * The broken form registers a function that Express invokes once, which
+ * returns the real handler and discards it: nothing responds and nothing calls
+ * next(), so the request hangs with no error logged anywhere. They are
+ * factories rather than plain middleware so that per-request arguments (the
+ * role list) stay expressible, while every call site is forced to spell the
+ * parentheses out.
  */
 
 import type { Request, RequestHandler } from 'express'
@@ -70,4 +83,4 @@ export function requireRole(...allowed: Role[]): RequestHandler {
 
 /** Owner, admin and club_manager. The club itself is checked in the handler,
  *  because a manager may only touch their own club's squad. */
-export const requireManager = requireRole(...MANAGER_ROLES)
+export const requireManager = (): RequestHandler => requireRole(...MANAGER_ROLES)

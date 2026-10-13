@@ -18,7 +18,7 @@ import { notify } from '../domain/auth.js'
 
 export const player = Router()
 
-player.use(requireAuth)
+player.use(requireAuth())
 
 function handler(fn: (req: any, res: any) => Promise<void>) {
   return (req: any, res: any, next: any) => fn(req, res).catch(next)
