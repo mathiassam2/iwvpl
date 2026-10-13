@@ -1,18 +1,51 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { StandingsTable, StatTile, type StandingSortKey } from '@/components/league'
 import { Container, Section, Tabs } from '@/components/ui'
 import { SITE, siteData } from '@/data'
+import { getLiveStandings, liveLeagueEnabled } from '@/lib/liveLeague'
+import type { Standing } from '@/types/site'
 
 export default function StandingsPage() {
-  const divisions = useMemo(() => Object.keys(siteData.standingsByDivision), [])
-  const [div, setDiv] = useState(divisions[0] ?? '')
+  const [liveStandings, setLiveStandings] = useState<Record<string, Standing[]> | null>(null)
+  const [loading, setLoading] = useState(liveLeagueEnabled)
+  const [error, setError] = useState('')
+  const [reload, setReload] = useState(0)
+  const initialDivisions = Object.keys(siteData.standingsByDivision)
+  const [div, setDiv] = useState(initialDivisions[0] ?? '')
   const [sort, setSort] = useState<{ key: StandingSortKey; desc: boolean }>({
-    key: 'pts',
-    desc: true,
+    key: 'pos',
+    desc: false,
   })
 
-  const rows = siteData.standingsByDivision[div]?.rows ?? []
+  useEffect(() => {
+    if (!liveLeagueEnabled) return
+    const controller = new AbortController()
+    setLoading(true)
+    setError('')
+
+    getLiveStandings(controller.signal)
+      .then((standings) => {
+        setLiveStandings(standings)
+        const divisions = Object.keys(standings)
+        setDiv((current) => divisions.includes(current) ? current : divisions[0] ?? '')
+      })
+      .catch((cause: unknown) => {
+        if (!controller.signal.aborted) {
+          setError(cause instanceof Error ? cause.message : 'Could not load live standings.')
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false)
+      })
+
+    return () => controller.abort()
+  }, [reload])
+
+  const divisions = liveStandings ? Object.keys(liveStandings) : initialDivisions
+  const rows = liveStandings
+    ? liveStandings[div] ?? []
+    : siteData.standingsByDivision[div]?.rows ?? []
 
   const sorted = useMemo(() => {
     const copy = [...rows]
@@ -44,13 +77,29 @@ export default function StandingsPage() {
           started below the fold on a laptop. Summary moved underneath it. */}
       <Section className="!py-10 sm:!py-12">
         <Container size="wide">
-          {divisions.length > 1 && (
+          {loading && (
+            <p role="status" className="mb-4 text-sm text-[var(--text-muted)]">
+              Loading live standings…
+            </p>
+          )}
+          {error && (
+            <div
+              role="alert"
+              className="mb-4 flex items-center justify-between gap-4 text-sm text-[var(--danger-text)]"
+            >
+              <span>{error}</span>
+              <button className="font-semibold underline" onClick={() => setReload((value) => value + 1)}>
+                Retry
+              </button>
+            </div>
+          )}
+          {!loading && !error && divisions.length > 1 && (
             <div className="mb-6 border-b border-[var(--border)]">
               <Tabs
                 tabs={divisions.map((d) => ({
                   id: d,
                   label: d,
-                  count: siteData.standingsByDivision[d]?.rows.length,
+                  count: liveStandings?.[d]?.length ?? siteData.standingsByDivision[d]?.rows.length,
                 }))}
                 active={div}
                 onChange={setDiv}
@@ -59,23 +108,27 @@ export default function StandingsPage() {
             </div>
           )}
 
-          <StandingsTable rows={sorted} sort={sort} onSort={onSort} />
+          {!loading && !error && <StandingsTable rows={sorted} sort={sort} onSort={onSort} />}
 
-          <div className="mt-10 grid gap-4 sm:grid-cols-3">
-            <StatTile label="Clubs" value={rows.length} hint={div} />
-            <StatTile label="Fixtures" value={teamMatches} hint="Team-matches played" />
-            <StatTile
-              label="Goals"
-              value={goals}
-              hint={`${(goals / Math.max(teamMatches, 1)).toFixed(2)} per match`}
-            />
-          </div>
+          {!loading && !error && (
+            <div className="mt-10 grid gap-4 sm:grid-cols-3">
+              <StatTile label="Clubs" value={rows.length} hint={div} />
+              <StatTile label="Fixtures" value={teamMatches} hint="Team-matches played" />
+              <StatTile
+                label="Goals"
+                value={goals}
+                hint={`${(goals / Math.max(teamMatches, 1)).toFixed(2)} per match`}
+              />
+            </div>
+          )}
 
-          <p className="mt-5 max-w-3xl text-xs leading-relaxed text-[var(--text-faint)]">
+          {!loading && !error && (
+            <p className="mt-5 max-w-3xl text-xs leading-relaxed text-[var(--text-faint)]">
             Form shows each club&rsquo;s last five results. Standings reflect completed fixtures
             reported by team managers through the Manager Portal and may update shortly after a
             match ends.
-          </p>
+            </p>
+          )}
         </Container>
       </Section>
     </div>

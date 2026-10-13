@@ -35,6 +35,9 @@ services:
       # before scaling past a single replica, or they race on the same file.
       - key: MIGRATE_ON_BOOT
         value: "true"
+      # Allow the static GitHub Pages frontend to read public league data.
+      - key: PUBLIC_SITE_ORIGIN
+        value: https://mathiassam2.github.io
 
       # --- TiDB Cloud ------------------------------------------------------
       # From the cluster's Connect dialog. Use the copy buttons: the rendered

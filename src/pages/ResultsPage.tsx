@@ -1,29 +1,54 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { MatchRow, StatTile } from '@/components/league'
 import { Container, EmptyState, Section, Select } from '@/components/ui'
 import { SITE, siteData } from '@/data'
 import { groupByDate, stripFlag, totalGoals } from '@/lib/format'
+import { getLiveResults, liveLeagueEnabled } from '@/lib/liveLeague'
 import { matchIndexOf } from '@/lib/match'
 
 export default function ResultsPage() {
   const [team, setTeam] = useState('all')
+  const [liveResults, setLiveResults] = useState<typeof siteData.results>([])
+  const [loading, setLoading] = useState(liveLeagueEnabled)
+  const [error, setError] = useState('')
+  const [reload, setReload] = useState(0)
+
+  useEffect(() => {
+    if (!liveLeagueEnabled) return
+    const controller = new AbortController()
+    setLoading(true)
+    setError('')
+
+    getLiveResults(controller.signal)
+      .then(setLiveResults)
+      .catch((cause: unknown) => {
+        if (!controller.signal.aborted) {
+          setError(cause instanceof Error ? cause.message : 'Could not load live results.')
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false)
+      })
+
+    return () => controller.abort()
+  }, [reload])
+
+  const results = liveLeagueEnabled ? liveResults : siteData.results
 
   const teams = useMemo(() => {
     const names = new Set<string>()
-    siteData.results.forEach((m) => {
+    results.forEach((m) => {
       names.add(stripFlag(m.home))
       names.add(stripFlag(m.away))
     })
     return [...names].sort((a, b) => a.localeCompare(b))
-  }, [])
+  }, [results])
 
   const filtered = useMemo(
     () =>
-      team === 'all'
-        ? siteData.results
-        : siteData.results.filter((m) => stripFlag(m.home) === team || stripFlag(m.away) === team),
-    [team],
+      team === 'all' ? results : results.filter((m) => stripFlag(m.home) === team || stripFlag(m.away) === team),
+    [results, team],
   )
 
   const grouped = useMemo(() => groupByDate(filtered), [filtered])
@@ -41,6 +66,24 @@ export default function ResultsPage() {
 
       <Section>
         <Container size="wide">
+          {loading && (
+            <p role="status" className="mb-4 text-sm text-[var(--text-muted)]">
+              Loading live results…
+            </p>
+          )}
+          {error && (
+            <div
+              role="alert"
+              className="mb-4 flex items-center justify-between gap-4 text-sm text-[var(--danger-text)]"
+            >
+              <span>{error}</span>
+              <button className="font-semibold underline" onClick={() => setReload((value) => value + 1)}>
+                Retry
+              </button>
+            </div>
+          )}
+          {!loading && !error && (
+            <>
           <div className="mb-8 grid gap-4 sm:grid-cols-4">
             <StatTile label="Fixtures" value={filtered.length} hint="Reported" />
             <StatTile
@@ -106,7 +149,11 @@ export default function ResultsPage() {
                       fills each row edge to edge, not the card's rounded corners */}
                   <div className="surface divide-y divide-[var(--border)] overflow-hidden rounded-card">
                     {matches.map((m) => (
-                      <MatchRow key={m.url + m.home} match={m} index={matchIndexOf(m)} />
+                      <MatchRow
+                        key={m.url + m.home}
+                        match={m}
+                        index={liveLeagueEnabled ? undefined : matchIndexOf(m)}
+                      />
                     ))}
                   </div>
                 </section>
@@ -118,6 +165,8 @@ export default function ResultsPage() {
             Results are submitted by registered team managers. If a scoreline looks incorrect,
             report it to {SITE.email} and our admin team will review the submission.
           </p>
+            </>
+          )}
         </Container>
       </Section>
     </div>

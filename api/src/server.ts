@@ -46,6 +46,15 @@ app.use((req, res, next) => {
 
 /* ------------------------------------------------------------------- api */
 
+const publicSiteOrigin = process.env.PUBLIC_SITE_ORIGIN
+app.use('/api', (req, res, next) => {
+  if (publicSiteOrigin && req.method === 'GET' && req.get('origin') === publicSiteOrigin) {
+    res.setHeader('Access-Control-Allow-Origin', publicSiteOrigin)
+    res.vary('Origin')
+  }
+  next()
+})
+
 app.use('/api', league)
 
 // Write endpoints sit behind the same basic-auth gate as the admin bundle, not

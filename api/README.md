@@ -150,9 +150,11 @@ working HTML and 404ing images.
 
 ### Two deployments, if you keep Pages
 
-`.github/workflows/deploy.yml` still builds and pushes `gh-pages` on every push
-to `main`. That is independent of Render and can keep running — but it means two
-copies of the site at different freshness levels. Delete the workflow to retire it.
+`.github/workflows/deploy.yml` builds and pushes `gh-pages` on every push to
+`main`. It builds with `VITE_API_BASE_URL` pointing at this Render service, so
+the Pages copy reads current results and standings from the same API. Render
+allows those read-only requests from the configured `PUBLIC_SITE_ORIGIN`;
+same-origin requests from the Render-hosted SPA need no CORS.
 
 ### Free tier behaviour
 

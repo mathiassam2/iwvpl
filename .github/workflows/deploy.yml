@@ -25,6 +25,8 @@ jobs:
 
       - run: npm ci
       - run: npm run build
+        env:
+          VITE_API_BASE_URL: https://iwvpl.onrender.com
 
       # This repo's Pages source is the gh-pages branch, so the built site is
       # pushed there rather than deployed through the Pages API.
