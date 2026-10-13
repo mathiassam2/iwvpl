@@ -249,8 +249,15 @@ export default function RegisterPage() {
     <div className="page-enter">
       <PageHeader
         eyebrow="Registration"
-        title="Register your club"
-        lede={`${SITE.season} registration is open — ${SITE.teamsRegistered} of ${SITE.teamCap} team slots filled at ${SITE.registrationFee} per team.`}
+        /* Both roles land on this page, so the header follows the choice
+           rather than describing a club entry to someone joining as a player
+           and quoting them a fee they do not owe. */
+        title={values.role === 'club_manager' ? 'Register your club' : 'Join the league'}
+        lede={
+          values.role === 'club_manager'
+            ? `${SITE.season} registration is open — ${SITE.teamsRegistered} of ${SITE.teamCap} team slots filled at ${SITE.registrationFee} per team.`
+            : `Create your ${SITE.season} player account. Clubs will find you by gamertag and send you offers — you are a free agent until you accept one.`
+        }
       />
 
       <Section>
@@ -426,11 +433,14 @@ export default function RegisterPage() {
                 </fieldset>
                 )}
 
-                {/* --- manager --- */}
+                {/* --- contact --- */}
                 <fieldset className="surface rounded-card p-6 sm:p-7">
-                  <legend className="sr-only">Manager details</legend>
+                  <legend className="sr-only">Contact details</legend>
+                  {/* The step numbers track the fieldsets actually shown. A
+                      player never sees step 1, so counting from 2 would leave
+                      the form opening on "2" with nothing above it. */}
                   <p className="mb-5 text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--accent-text)]">
-                    2 &middot; Your contact
+                    {values.role === 'club_manager' ? '2' : '1'} &middot; Your details
                   </p>
 
                   <div className="grid gap-5 sm:grid-cols-2">
@@ -545,7 +555,7 @@ export default function RegisterPage() {
                 <fieldset className="surface rounded-card p-6 sm:p-7">
                   <legend className="sr-only">Terms</legend>
                   <p className="mb-5 text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--accent-text)]">
-                    3 &middot; Entry terms
+                    {values.role === 'club_manager' ? '3' : '2'} &middot; Entry terms
                   </p>
 
                   {/* The terms are one click away, right next to the checkbox
