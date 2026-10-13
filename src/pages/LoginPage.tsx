@@ -1,9 +1,11 @@
-import { useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useState, type FormEvent } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui'
 import { HeaderWash } from '@/components/layout/HeaderWash'
 import { SITE } from '@/data'
 import { asset } from '@/lib/assets'
+import { ApiError, login as loginRequest } from '@/lib/api'
+import { useAuth } from '@/lib/auth'
 import { cx } from '@/lib/format'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
@@ -30,8 +32,19 @@ export default function LoginPage() {
   const [remember, setRemember] = useState(true)
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({})
   const [notice, setNotice] = useState<string | null>(null)
+  const [formError, setFormError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
 
-  const onSubmit = (e: FormEvent) => {
+  const { user, loading, setUser } = useAuth()
+  const navigate = useNavigate()
+
+  // Arriving here while already signed in is a dead end; the account menu is
+  // one click away from anywhere else.
+  useEffect(() => {
+    if (!loading && user) navigate('/dashboard', { replace: true })
+  }, [loading, user, navigate])
+
+  const onSubmit = async (e: FormEvent) => {
     e.preventDefault()
     const next: typeof errors = {}
     if (!email.trim()) next.email = 'Enter your email address.'
@@ -39,7 +52,23 @@ export default function LoginPage() {
     if (!password) next.password = 'Enter your password.'
     else if (password.length < 6) next.password = 'Use at least 6 characters.'
     setErrors(next)
-    if (Object.keys(next).length === 0) setNotice(`Signed in as ${email.trim()}.`)
+    if (Object.keys(next).length > 0) return
+
+    setBusy(true)
+    setNotice(null)
+    setFormError(null)
+    try {
+      const { user: signedIn } = await loginRequest(email.trim(), password)
+      // Put the account in context before navigating so the header renders the
+      // account menu on the first frame of the dashboard rather than flashing
+      // the Login button first.
+      setUser(signedIn)
+      navigate('/dashboard', { replace: true })
+    } catch (err) {
+      setFormError(err instanceof ApiError ? err.message : 'Could not sign in. Try again.')
+    } finally {
+      setBusy(false)
+    }
   }
 
   const input =
@@ -80,6 +109,7 @@ export default function LoginPage() {
                   onChange={(e) => {
                     setEmail(e.target.value)
                     setNotice(null)
+                    setFormError(null)
                   }}
                   placeholder="manager@club.com"
                   aria-invalid={Boolean(errors.email)}
@@ -111,6 +141,7 @@ export default function LoginPage() {
                     onChange={(e) => {
                       setPassword(e.target.value)
                       setNotice(null)
+                      setFormError(null)
                     }}
                     placeholder="••••••••"
                     aria-invalid={Boolean(errors.password)}
@@ -167,9 +198,18 @@ export default function LoginPage() {
                 </button>
               </div>
 
-              <Button type="submit" size="lg" className="w-full">
-                Sign in
+              <Button type="submit" size="lg" className="w-full" disabled={busy}>
+                {busy ? 'Signing in…' : 'Sign in'}
               </Button>
+
+              {formError && (
+                <div
+                  role="alert"
+                  className="rounded-xl border border-[var(--danger-text)] bg-[var(--danger-text)]/10 px-4 py-3"
+                >
+                  <p className="text-sm text-[var(--danger-text)]">{formError}</p>
+                </div>
+              )}
 
               {notice && (
                 <div

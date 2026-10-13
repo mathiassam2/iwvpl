@@ -35,9 +35,31 @@ services:
       # before scaling past a single replica, or they race on the same file.
       - key: MIGRATE_ON_BOOT
         value: "true"
-      # Allow the static GitHub Pages frontend to read public league data.
+      # Allow the static GitHub Pages frontend to read league data, and to sign
+      # in. This single origin is what the session cookie is scoped to, so it
+      # must match the Pages URL exactly — a trailing slash or a different
+      # hostname means the browser refuses the cookie and nobody can log in.
       - key: PUBLIC_SITE_ORIGIN
         value: https://mathiassam2.github.io
+
+      # --- player & manager accounts -----------------------------------------
+      # Player and manager logins on the public site. Self-service signup;
+      # owner/admin accounts are inserted by hand, never by the form.
+      #
+      # The session cookie is SameSite=None here because the Pages site and this
+      # API are different sites. That is only accepted over HTTPS alongside
+      # Access-Control-Allow-Credentials, which is why the CORS block in
+      # server.ts is explicit rather than a wildcard.
+      - key: AUTH_SESSION_DAYS
+        value: "30"
+      # Raise only if sign-in is measurably too fast to brute-force. It is the
+      # one value here where "slower" is the point.
+      - key: AUTH_BCRYPT_ROUNDS
+        value: "10"
+      # Any further frontend that needs to sign in, comma separated. Leave empty
+      # unless there is one.
+      - key: AUTH_EXTRA_ORIGINS
+        value: ""
 
       # --- TiDB Cloud ------------------------------------------------------
       # From the cluster's Connect dialog. Use the copy buttons: the rendered

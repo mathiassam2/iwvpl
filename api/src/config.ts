@@ -132,6 +132,43 @@ export const config = {
   },
 
   /**
+   * Player and manager accounts.
+   *
+   * Separate from the `admin` block above on purpose: admin is one shared
+   * basic-auth credential guarding a staff tool, while these are individual
+   * logins on the public site. They do not share a gate, a store or a cookie.
+   */
+  auth: {
+    cookieName: optional('AUTH_COOKIE', 'iwvpl_session'),
+
+    // Long, because the league is not a daily product: an admin entering
+    // scorelines from a phone should not be signed out mid-round. Sessions are
+    // revocable server-side (DELETE the row), so a long lifetime is not a
+    // revocation problem.
+    sessionDays: int('AUTH_SESSION_DAYS', 30),
+
+    // 10 is bcrypt's own default and costs ~100ms here. Raising it mainly
+    // slows login, since the hash is only computed on register and login.
+    bcryptRounds: int('AUTH_BCRYPT_ROUNDS', 10),
+
+    /**
+     * Origins allowed to send credentialed requests.
+     *
+     * The public SPA is served from GitHub Pages but the API runs on Render, so
+     * a session cookie is cross-site and needs SameSite=None. That in turn needs
+     * an explicit Access-Control-Allow-Origin plus Allow-Credentials, which a
+     * wildcard cannot express. So the list is explicit.
+     *
+     * Loopback is always permitted: it is the dev server, and a browser
+     * treats http://localhost and http://127.0.0.1 as distinct origins.
+     */
+    extraOrigins: optional('AUTH_EXTRA_ORIGINS', '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+  },
+
+  /**
    * Apply pending migrations at boot.
    *
    * Convenient and correct for a single instance. It stops being correct the

@@ -1,17 +1,25 @@
 import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Badge, Button, ButtonLink, Card, Container, Section, SectionHead, Select } from '@/components/ui'
 import { TermsDialog } from '@/components/ui/TermsDialog'
 import { SITE, siteData } from '@/data'
+import { ApiError, register } from '@/lib/api'
+import { useAuth } from '@/lib/auth'
 import { useCart } from '@/lib/cart'
 import { cx, stripFlag } from '@/lib/format'
 
 interface Fields {
+  /* Which kind of account this form creates. A manager entry creates a club;
+     a player entry creates a free-agent player row. */
+  role: 'club_manager' | 'player'
   club: string
   region: string
   format: string
   manager: string
+  gamertag: string
   email: string
+  password: string
   discord: string
   agree: boolean
 }
@@ -27,24 +35,46 @@ const FORMATS = [
 ]
 
 const EMPTY: Fields = {
+  role: 'club_manager',
   club: '',
   region: '',
   format: '',
   manager: '',
+  gamertag: '',
   email: '',
+  password: '',
   discord: '',
   agree: false,
 }
 
+/**
+ * Role-aware.
+ *
+ * The club fields are not merely optional for a player, they are meaningless —
+ * a player does not pick a region and a competition format to join a club.
+ * Validating them anyway would block sign-up on questions that do not apply.
+ */
 function validate(v: Fields): Errors {
   const e: Errors = {}
-  if (!v.club.trim()) e.club = 'Please enter your club name.'
-  if (!v.region) e.region = 'Please select your region.'
-  if (!v.format) e.format = 'Please choose a competition format.'
-  if (!v.manager.trim()) e.manager = 'Please enter the manager name.'
+
+  if (v.role === 'club_manager') {
+    if (!v.club.trim()) e.club = 'Please enter your club name.'
+    if (!v.region) e.region = 'Please select your region.'
+    if (!v.format) e.format = 'Please choose a competition format.'
+    if (!v.manager.trim()) e.manager = 'Please enter the manager name.'
+    if (!v.discord.trim()) e.discord = 'Please provide a Discord username so we can reach you.'
+  } else {
+    if (!v.gamertag.trim()) e.gamertag = 'Please enter your in-game gamertag.'
+  }
+
   if (!v.email.trim()) e.email = 'Please enter an email address.'
   else if (!EMAIL_RE.test(v.email.trim())) e.email = 'Please enter a valid email address.'
-  if (!v.discord.trim()) e.discord = 'Please provide a Discord username so we can reach you.'
+
+  // Matches the API minimum. Caught here so the round trip is only spent on
+  // input that can actually succeed.
+  if (!v.password) e.password = 'Please choose a password.'
+  else if (v.password.length < 8) e.password = 'Use at least 8 characters.'
+
   if (!v.agree) e.agree = 'Please accept the entry terms before submitting.'
   return e
 }
@@ -65,7 +95,11 @@ export default function RegisterPage() {
   const [touched, setTouched] = useState(false)
   const [sent, setSent] = useState(false)
   const [termsOpen, setTermsOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
   const { add, has, openPanel } = useCart()
+  const { setUser } = useAuth()
+  const navigate = useNavigate()
 
   const activeClubs = siteData.clubs.filter((c) => c.status === 'Active').length
   const slotsLeft = SITE.teamCap - SITE.teamsRegistered
@@ -88,9 +122,10 @@ export default function RegisterPage() {
     if (touched) setErrors(validate(next))
   }
 
-  const onSubmit = (e: FormEvent) => {
+  const onSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setTouched(true)
+    setSubmitError(null)
     const errs = validate(values)
     setErrors(errs)
     if (Object.keys(errs).length) {
@@ -99,8 +134,25 @@ export default function RegisterPage() {
       firstBad?.focus()
       return
     }
-    setSent(true)
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+
+    setBusy(true)
+    try {
+      const { user } = await register({
+        role: values.role,
+        email: values.email.trim(),
+        password: values.password,
+        name: values.role === 'club_manager' ? values.manager.trim() : values.manager.trim() || values.gamertag.trim(),
+        gamertag: values.role === 'player' ? values.gamertag.trim() : undefined,
+        clubName: values.role === 'club_manager' ? values.club.trim() : undefined,
+      })
+      setUser(user)
+      setSent(true)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    } catch (err) {
+      setSubmitError(err instanceof ApiError ? err.message : 'Could not create your account.')
+    } finally {
+      setBusy(false)
+    }
   }
 
   const terms = useMemo(
@@ -221,36 +273,52 @@ export default function RegisterPage() {
                     </svg>
                     <div>
                       <h2 className="font-display text-lg font-bold text-[var(--text-strong)]">
-                        Registration request received
+                        {values.role === 'club_manager'
+                          ? 'Account created'
+                          : 'Welcome to IWVPL'}
                       </h2>
                       <p className="mt-2 text-sm leading-relaxed text-[var(--text-muted)]">
-                        Thank you, {values.manager || 'manager'}. Our admin team will review your
-                        entry for{' '}
-                        <strong className="text-[var(--text)]">{stripFlag(values.club)}</strong> and
-                        reply to <span className="text-[var(--text)]">{values.email}</span> within
-                        24&ndash;48 hours with your official submission forms. Your entry remains
-                        pending until that confirmation is received.
+                        {values.role === 'club_manager' ? (
+                          <>
+                            You are signed in as the manager of{' '}
+                            <strong className="text-[var(--text)]">
+                              {stripFlag(values.club)}
+                            </strong>
+                            . The club exists now, but it sits outside every division until a league
+                            admin assigns it — it will not appear in the standings until then.
+                          </>
+                        ) : (
+                          <>
+                            You are signed in as{' '}
+                            <strong className="text-[var(--text)]">{values.gamertag}</strong> and
+                            you are a free agent. Clubs can find you and send you an offer from your
+                            dashboard.
+                          </>
+                        )}
                       </p>
                       <div className="mt-5 flex flex-wrap gap-2.5">
-                        <Button
-                          size="sm"
-                          onClick={() => {
-                            openPanel()
-                          }}
-                        >
-                          Review cart
+                        <Button size="sm" onClick={() => navigate('/dashboard')}>
+                          Go to dashboard
                         </Button>
+                        {values.role === 'club_manager' && (
+                          <Button size="sm" variant="outline" onClick={() => openPanel()}>
+                            Review cart
+                          </Button>
+                        )}
                         <Button
-                          variant="outline"
+                          variant="ghost"
                           size="sm"
                           onClick={() => {
                             setSent(false)
                             setValues(EMPTY)
                             setTouched(false)
                             setErrors({})
+                            setSubmitError(null)
                           }}
                         >
-                          Register another club
+                          {values.role === 'club_manager'
+                            ? 'Register another club'
+                            : 'Register another account'}
                         </Button>
                       </div>
                     </div>
@@ -258,10 +326,61 @@ export default function RegisterPage() {
                 </div>
               )}
 
-              <SectionHead eyebrow="Entry form" title="Club & manager details" />
+              <SectionHead
+                eyebrow="Entry form"
+                title={values.role === 'club_manager' ? 'Club & manager details' : 'Player details'}
+              />
+
+              {/* Two genuinely different registrations behind one form. A
+                  manager entry creates a club and pays an entry fee; a player
+                  entry creates a free agent and costs nothing, so the fee,
+                  cart and region/format questions are all hidden for them
+                  rather than shown and then ignored. */}
+              <div className="mb-6 grid gap-3 sm:grid-cols-2">
+                {(
+                  [
+                    { id: 'club_manager', title: 'I manage a club', hint: 'Create a club and sign players' },
+                    { id: 'player', title: 'I am a player', hint: 'Join as a free agent' },
+                  ] as const
+                ).map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => {
+                      setValues({ ...values, role: opt.id })
+                      setErrors({})
+                      setSubmitError(null)
+                    }}
+                    aria-pressed={values.role === opt.id}
+                    className={cx(
+                      'rounded-card border p-4 text-left transition-colors',
+                      values.role === opt.id
+                        ? 'border-[var(--accent-ring)] bg-[var(--accent-tint)]'
+                        : 'border-[var(--border-strong)] bg-[var(--surface)] hover:bg-[var(--surface-hover)]',
+                    )}
+                  >
+                    <span className="block text-sm font-bold text-[var(--text-strong)]">
+                      {opt.title}
+                    </span>
+                    <span className="mt-0.5 block text-[12px] text-[var(--text-muted)]">
+                      {opt.hint}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {submitError && (
+                <p
+                  role="alert"
+                  className="mb-6 rounded-lg border border-[var(--danger-text)] bg-[var(--danger-text)]/10 px-4 py-3 text-sm text-[var(--danger-text)]"
+                >
+                  {submitError}
+                </p>
+              )}
 
               <form onSubmit={onSubmit} noValidate className="space-y-8">
-                {/* --- club --- */}
+                {/* --- club (managers only) --- */}
+                {values.role === 'club_manager' && (
                 <fieldset className="surface rounded-card p-6 sm:p-7">
                   <legend className="sr-only">Club details</legend>
                   <p className="mb-5 text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--accent-text)]">
@@ -305,6 +424,7 @@ export default function RegisterPage() {
                     </div>
                   </div>
                 </fieldset>
+                )}
 
                 {/* --- manager --- */}
                 <fieldset className="surface rounded-card p-6 sm:p-7">
@@ -314,7 +434,12 @@ export default function RegisterPage() {
                   </p>
 
                   <div className="grid gap-5 sm:grid-cols-2">
-                    <Field label="Manager name" error={errorFor('manager')} htmlFor="manager">
+                    <Field
+                      label={values.role === 'club_manager' ? 'Manager name' : 'Your name'}
+                      error={errorFor('manager')}
+                      htmlFor="manager"
+                      className={values.role === 'player' ? 'sm:col-span-2' : undefined}
+                    >
                       <input
                         id="manager"
                         name="manager"
@@ -342,25 +467,76 @@ export default function RegisterPage() {
                       />
                     </Field>
 
+                    {/* Discord is a club-admin contact channel. A player has no fixtures to be
+                        reached about, so it is not asked of them. */}
+                    {values.role === 'club_manager' && (
+                      <Field
+                        label="Discord username"
+                        error={errorFor('discord')}
+                        htmlFor="discord"
+                        className="sm:col-span-2"
+                      >
+                        <input
+                          id="discord"
+                          name="discord"
+                          type="text"
+                          value={values.discord}
+                          onChange={set('discord')}
+                          placeholder="e.g. manager#1234"
+                          aria-invalid={Boolean(errorFor('discord'))}
+                          className={cx(inputCls, errorFor('discord') ? 'border-[var(--danger-text)]' : 'border-[var(--border-strong)]')}
+                        />
+                        <p className="mt-2 text-xs text-[var(--text-faint)]">
+                          Required so we can reach you about fixtures and league admin.
+                        </p>
+                      </Field>
+                    )}
+
+                    {values.role === 'player' && (
+                      <Field
+                        label="Gamertag"
+                        error={errorFor('gamertag')}
+                        htmlFor="gamertag"
+                        className="sm:col-span-2"
+                      >
+                        <input
+                          id="gamertag"
+                          name="gamertag"
+                          type="text"
+                          value={values.gamertag}
+                          onChange={set('gamertag')}
+                          placeholder="e.g. LethaL_ShoTs11"
+                          autoCapitalize="none"
+                          spellCheck={false}
+                          aria-invalid={Boolean(errorFor('gamertag'))}
+                          className={cx(inputCls, errorFor('gamertag') ? 'border-[var(--danger-text)]' : 'border-[var(--border-strong)]')}
+                        />
+                        <p className="mt-2 text-xs text-[var(--text-faint)]">
+                          Your exact in-game name, including underscores and capitals. This is how
+                          clubs find you to offer a contract.
+                        </p>
+                      </Field>
+                    )}
+
+                    {/* Password lives with the contact details because it is
+                        what makes this an account rather than an application. */}
                     <Field
-                      label="Discord username"
-                      error={errorFor('discord')}
-                      htmlFor="discord"
+                      label="Password"
+                      error={errorFor('password')}
+                      htmlFor="password"
                       className="sm:col-span-2"
                     >
                       <input
-                        id="discord"
-                        name="discord"
-                        type="text"
-                        value={values.discord}
-                        onChange={set('discord')}
-                        placeholder="e.g. manager#1234"
-                        aria-invalid={Boolean(errorFor('discord'))}
-                        className={cx(inputCls, errorFor('discord') ? 'border-[var(--danger-text)]' : 'border-[var(--border-strong)]')}
+                        id="password"
+                        name="password"
+                        type="password"
+                        autoComplete="new-password"
+                        value={values.password}
+                        onChange={set('password')}
+                        placeholder="At least 8 characters"
+                        aria-invalid={Boolean(errorFor('password'))}
+                        className={cx(inputCls, errorFor('password') ? 'border-[var(--danger-text)]' : 'border-[var(--border-strong)]')}
                       />
-                      <p className="mt-2 text-xs text-[var(--text-faint)]">
-                        Required so we can reach you about fixtures and league admin.
-                      </p>
                     </Field>
                   </div>
                 </fieldset>
@@ -424,8 +600,12 @@ export default function RegisterPage() {
                   )}
 
                   <div className="mt-7 flex flex-wrap items-center gap-3 border-t border-[var(--border)] pt-6">
-                    <Button type="submit" size="lg">
-                      Submit registration
+                    <Button type="submit" size="lg" disabled={busy}>
+                      {busy
+                        ? 'Creating account…'
+                        : values.role === 'club_manager'
+                          ? 'Create club & sign up'
+                          : 'Create my account'}
                     </Button>
                     <Button
                       type="button"
@@ -434,6 +614,7 @@ export default function RegisterPage() {
                         setValues(EMPTY)
                         setErrors({})
                         setTouched(false)
+                        setSubmitError(null)
                       }}
                     >
                       Reset form
@@ -443,8 +624,12 @@ export default function RegisterPage() {
               </form>
             </div>
 
-            {/* ================= sidebar ================= */}
+            {/* Entry passes, the fee and the cart belong to the club entry only. A player
+                registering has nothing to pay, so showing them a checkout next
+                to the form implies a charge that does not exist. */}
             <aside className="space-y-6">
+              {values.role === 'club_manager' && (
+              <>
               {/* entry passes */}
               <Card className="overflow-hidden p-0">
                 <div className="border-b border-[var(--border)] bg-gradient-to-r from-[var(--accent-tint)] to-transparent px-6 py-4">
@@ -544,6 +729,8 @@ export default function RegisterPage() {
                   Read the full entry terms
                 </button>
               </Card>
+              </>
+              )}
             </aside>
           </div>
         </Container>

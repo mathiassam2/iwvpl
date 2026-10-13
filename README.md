@@ -116,8 +116,60 @@ _source/assets-originals/    pristine pre-optimisation copies
 | `/transfer` | 210 logged moves, scope tabs + club filter + player search |
 | `/leaderboard` | Tabbed, top-3 podium + chasing pack |
 | `/news`, `/news/:slug` | Article index and detail |
-| `/about`, `/contact`, `/register`, `/login` | Content, validated forms |
+| `/about`, `/contact` | Content pages |
+| `/register` | Real sign-up. Picks **manager** (creates a club) or **player** (creates a free agent) |
+| `/login` | Real sign-in against `/api/auth/login` |
+| `/dashboard` | Signed in only. Manager sees squad + recruitment; player sees offers |
 | `*` | 404 |
+
+### Accounts and the transfer market
+
+Sign-up is self-service for two roles only — `club_manager` and `player`. `owner` and `admin`
+are inserted by hand, because a public form that can mint itself an admin makes the permission
+model fiction.
+
+| Endpoint | Auth | Purpose |
+| --- | --- | --- |
+| `POST /api/auth/register` | — | Create an account. Managers also create a club. |
+| `POST /api/auth/login` | — | Sign in, sets the session cookie |
+| `POST /api/auth/logout` | session | Deletes the session row and clears the cookie |
+| `GET /api/auth/me` | — | Current account, or `{ user: null }`. Never 401s |
+| `POST /api/manager/club` | manager | Create and claim a club |
+| `GET /api/manager/players?q=` | manager | Search **players who have an account** |
+| `POST /api/manager/offers` | manager | Offer a contract |
+| `GET /api/manager/offers` | manager | Outbox |
+| `DELETE /api/manager/offers/:id` | manager | Withdraw a pending offer |
+| `GET /api/manager/squad` | manager | Current squad |
+| `GET /api/player/me` | player | Membership status |
+| `GET /api/player/offers` | player | Inbox |
+| `POST /api/player/offers/:id/accept` | player | Accept — the player's click performs the move |
+| `POST /api/player/offers/:id/reject` | player | Decline; membership untouched |
+| `POST /api/player/leave` | player | Leave. No approval, no notice period |
+| `GET /api/notifications` | session | Bell contents + unread count |
+| `POST /api/notifications/read` | session | Mark all read |
+
+Four decisions worth knowing before changing this code:
+
+- **`transfers` is a fact, `transfer_requests` is a conversation.** An offer writes a pending
+  request and nothing else. The row in `transfers` is written only when the player accepts, so
+  the public transfer page never reports a signing that did not happen.
+- **Managers may only offer to players who have an account.** An offer asks for a decision;
+  sending one to a crawled player with no login produces a request nobody can ever answer.
+  Roughly 500 players came from the crawl with no account, and they are invisible to the
+  recruitment search by design.
+- **Membership is not binding.** `POST /api/player/leave` moves the player to `club_id = NULL`
+  and `is_free_agent = TRUE` with no counterparty consent. Pending offers from other clubs
+  survive, because a free agent is exactly who they were aimed at.
+- **New clubs are created active but unassigned.** They are left out of every division on
+  purpose: a fabricated `standings_snapshot` row is not something a later result can correct.
+  A league admin assigns the division separately.
+
+Sessions are server-side rows keyed by `sha256` of the cookie value, so a dump does not hand out
+live sessions and revocation is a single `DELETE`. The cookie is `SameSite=None; Secure` in
+production because the public site is on GitHub Pages while the API is on Render — a cross-site
+hop that `Lax` cookies do not survive. That in turn is why `server.ts` sets an explicit
+`Access-Control-Allow-Origin` instead of a wildcard: a wildcard is rejected by the browser
+whenever `Allow-Credentials` is set.
 
 ---
 

@@ -3,10 +3,12 @@ import { Link, NavLink, useLocation } from 'react-router-dom'
 import { ButtonLink } from '@/components/ui'
 import { SITE } from '@/data'
 import { asset } from '@/lib/assets'
+import { useAuth } from '@/lib/auth'
 import { useCart } from '@/lib/cart'
 import { cx } from '@/lib/format'
 import { setInert } from '@/lib/inert'
 import { CartPanel } from '@/pages/CartPage'
+import AccountMenu from '@/components/layout/AccountMenu'
 
 const LEAGUE_LINKS = [
   { label: 'Standings', href: '/standings', desc: 'League tables & form guides' },
@@ -232,6 +234,10 @@ export function Header() {
   const [hovered, setHovered] = useState(false)
   const [focusWithin, setFocusWithin] = useState(false)
   const { pathname, hash } = useLocation()
+  /* Signed in, the Login link and Register button give way to the account
+     menu. Read here rather than inside AccountMenu because the same decision
+     governs the mobile drawer further down. */
+  const { user } = useAuth()
 
   const frosted = scrolled || hovered || focusWithin
 
@@ -337,29 +343,37 @@ export function Header() {
             </NavLink>
           ))}
 
-          <span aria-hidden className="mx-1.5 h-5 w-px bg-[var(--border-strong)]" />
+          {!user && (
+            <>
+              <span aria-hidden className="mx-1.5 h-5 w-px bg-[var(--border-strong)]" />
 
-          <NavLink
-            to="/login"
-            className={({ isActive }) =>
-              cx(
-                'rounded-md px-3 py-2 text-sm font-semibold transition-colors',
-                isActive
-                  ? 'text-[var(--text-strong)]'
-                  : 'text-[var(--text-muted)] hover:text-[var(--text-strong)]',
-              )
-            }
-          >
-            Login
-          </NavLink>
+              <NavLink
+                to="/login"
+                className={({ isActive }) =>
+                  cx(
+                    'rounded-md px-3 py-2 text-sm font-semibold transition-colors',
+                    isActive
+                      ? 'text-[var(--text-strong)]'
+                      : 'text-[var(--text-muted)] hover:text-[var(--text-strong)]',
+                  )
+                }
+              >
+                Login
+              </NavLink>
+            </>
+          )}
         </nav>
 
         {/* ---------- actions ---------- */}
         <div className="flex items-center gap-2">
           <CartButton />
-          <ButtonLink to="/register" size="sm" className="hidden sm:inline-flex">
-            Register
-          </ButtonLink>
+          {user ? (
+            <AccountMenu />
+          ) : (
+            <ButtonLink to="/register" size="sm" className="hidden sm:inline-flex">
+              Register
+            </ButtonLink>
+          )}
 
           <button
             onClick={() => setMobileOpen((v) => !v)}
@@ -468,8 +482,13 @@ export function Header() {
           <p className="mb-3 mt-6 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--text-muted)]">
             Explore
           </p>
+          {/* Signed in, the drawer offers the dashboard rather than a Login link and a
+              Register button for an account that already exists. */}
           <div className="flex flex-col">
-            {[...PRIMARY, { label: 'Login', href: '/login' }].map((l) => (
+            {[
+              ...PRIMARY,
+              user ? { label: 'Dashboard', href: '/dashboard' } : { label: 'Login', href: '/login' },
+            ].map((l) => (
               <NavLink
                 key={l.href}
                 to={l.href}
@@ -485,9 +504,11 @@ export function Header() {
             ))}
           </div>
 
-          <ButtonLink to="/register" size="lg" className="mt-6 w-full">
-            Register your team
-          </ButtonLink>
+          {!user && (
+            <ButtonLink to="/register" size="lg" className="mt-6 w-full">
+              Register your team
+            </ButtonLink>
+          )}
         </div>
       </div>
     </header>

@@ -3,6 +3,7 @@ import { HashRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { AppShell } from '@/components/layout/AppShell'
 import HomePage from '@/pages/HomePage'
 import { useParallax } from '@/hooks/useParallax'
+import { AuthProvider } from '@/lib/auth'
 import { CartProvider } from '@/lib/cart'
 
 const StandingsPage = lazy(() => import('@/pages/StandingsPage'))
@@ -21,6 +22,7 @@ const ClubDetailPage = lazy(() => import('@/pages/ClubDetailPage'))
 const MatchPage = lazy(() => import('@/pages/MatchPage'))
 const PlayerPage = lazy(() => import('@/pages/PlayerPage'))
 const CartPage = lazy(() => import('@/pages/CartPage'))
+const DashboardPage = lazy(() => import('@/pages/DashboardPage'))
 const NotFoundPage = lazy(() => import('@/pages/NotFoundPage'))
 
 function RouteFallback() {
@@ -67,8 +69,11 @@ export default function App() {
    */
   return (
     <HashRouter>
-      <CartProvider>
-        <AppShell>
+      {/* Inside the router so redirects can use the history, and above the
+          shell so the header can read the session on first paint. */}
+      <AuthProvider>
+        <CartProvider>
+          <AppShell>
           <ParallaxDriver />
           <ScrollToTop />
         <Suspense fallback={<RouteFallback />}>
@@ -97,11 +102,13 @@ export default function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/cart" element={<CartPage />} />
             <Route path="/checkout" element={<CartPage />} />
+            <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
           </Suspense>
         </AppShell>
-      </CartProvider>
+        </CartProvider>
+      </AuthProvider>
     </HashRouter>
   )
 }
