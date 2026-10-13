@@ -16,9 +16,15 @@
 --   CREATE TABLE IF NOT EXISTS the same form 001 uses
 --
 -- There is deliberately no `ADD UNIQUE KEY IF NOT EXISTS`: TiDB's AddIndexSpec
--- permits IF NOT EXISTS on KEY/INDEX but not on UNIQUE, so that statement could
--- not be written at all. The uniqueness is declared inline on the column
--- instead, which AddColumnSpec's ColumnOption does allow.
+-- permits IF NOT EXISTS on KEY/INDEX but not on UNIQUE, so that statement cannot
+-- be written at all. Declaring the uniqueness inline on the column parses but is
+-- refused at execution:
+--
+--   unsupported add column 'user_id' constraint UNIQUE KEY
+--
+-- The index is therefore a separate single-statement file, 003, which the ledger
+-- applies exactly once. One statement per file is what makes that safe: DDL in
+-- TiDB is atomic, so it cannot half-apply and cannot need re-running.
 
 -- ---------------------------------------------------------------------------
 -- Which account controls which player
@@ -26,8 +32,8 @@
 
 -- A player row is the EA FC identity (gamertag, slug, stats); a user row is the
 -- login. Exactly one account may control a given player, and an account may
--- control at most one — hence UNIQUE, which also makes the players->user lookup
--- a single-index read on every signed-in request.
+-- control at most one — enforced by the unique index in 003, which also makes
+-- the players->user lookup a single-index read on every signed-in request.
 --
 -- NULL is the normal state for the ~500 players seeded from the crawl. They are
 -- real people with real squads, but none of them have signed up, and a player
@@ -38,7 +44,7 @@
 -- No FK, matching players.club_id above: both columns are rewritten whenever a
 -- player signs or leaves, and TiDB has no useful ON UPDATE behaviour for it.
 ALTER TABLE players
-  ADD COLUMN IF NOT EXISTS user_id INT UNSIGNED NULL UNIQUE AFTER source_url;
+  ADD COLUMN IF NOT EXISTS user_id INT UNSIGNED NULL AFTER source_url;
 
 -- ---------------------------------------------------------------------------
 -- Transfer requests

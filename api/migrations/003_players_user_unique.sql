@@ -1,0 +1,20 @@
+-- One account per player, enforced by the database.
+--
+-- Separate file, one statement, on purpose.
+--
+-- TiDB allows IF NOT EXISTS on ADD KEY and ADD INDEX but not on ADD UNIQUE, so
+-- this cannot be written idempotently inside 002. Two other ways around it are
+-- also refused: declaring UNIQUE inline on the added column parses but fails at
+-- execution with
+--
+--   unsupported add column 'user_id' constraint UNIQUE KEY
+--
+-- What is left is the migration ledger itself. Each file is applied exactly
+-- once and recorded by filename, and a single DDL statement in TiDB is atomic —
+-- it either lands or it does not, so there is no partial state to make a retry
+-- fail. Splitting this out is what buys the idempotency that 002 cannot have.
+--
+-- NULLs do not collide in a unique index, so the ~500 crawled players that have
+-- user_id = NULL all pass. Only a second account trying to claim the same player
+-- would be rejected.
+ALTER TABLE players ADD UNIQUE KEY uq_players_user (user_id);
