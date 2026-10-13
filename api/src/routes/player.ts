@@ -129,14 +129,16 @@ player.post(
     const me = await ownPlayer(req.user!.id)
     const requestId = id(req.params.id, 'Offer')
 
+    // from_club_id is deliberately not read. It records who the player played for
+    // when the offer was made, and they are free to walk away in between, so
+    // the transfer log takes the club from the player row instead.
     const row = await queryOne<{
       id: number
       status: string
       to_club_id: number
-      from_club_id: number | null
       kind: string | null
     }>(
-      `SELECT id, status, to_club_id, from_club_id, kind
+      `SELECT id, status, to_club_id, kind
          FROM transfer_requests
         WHERE id = ? AND player_id = ?`,
       [requestId, me.id],
