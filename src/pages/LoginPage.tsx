@@ -90,7 +90,7 @@ export default function LoginPage() {
                 wordmark on the one page the eye is meant to be on the form. */}
             <h1 className="text-3xl font-extrabold sm:text-4xl">Welcome back</h1>
             <p className="mt-2.5 text-[15px] text-[var(--text-muted)]">
-              Sign in to your Manager Portal.
+              Sign in to your portal.
             </p>
 
             <form onSubmit={onSubmit} noValidate className="mt-9 space-y-4">

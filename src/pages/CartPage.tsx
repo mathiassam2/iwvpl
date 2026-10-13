@@ -1,9 +1,9 @@
 import { useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { Button, ButtonLink, Container, EmptyState, Eyebrow, Section } from '@/components/ui'
+import { Badge, Button, ButtonLink, Container, EmptyState, Eyebrow, Section, SectionHead } from '@/components/ui'
 import { HeaderWash } from '@/components/layout/HeaderWash'
 import { useCart } from '@/lib/cart'
-import { SITE } from '@/data'
+import { SITE, siteData } from '@/data'
 import { cx } from '@/lib/format'
 
 function CloseIcon() {
@@ -169,7 +169,7 @@ export function CartPanel() {
 
 /** Full-page cart, mirroring the WooCommerce checkout layout. */
 export function CartView() {
-  const { detailed, count, total, canTotal, setQty, remove, clear } = useCart()
+  const { detailed, count, total, canTotal, setQty, remove, clear, add, has } = useCart()
   return (
     /* Header overlap, same treatment as PageHeader and the club/match bands.
        Without it the bar sits on a flat `--bg` fill and reads as a solid strip. */
@@ -296,6 +296,46 @@ export function CartView() {
             </div>
           </>
         )}
+
+        {/* The shop, inline.
+            An empty cart used to dead-end at "Back to registration", which is
+            a form rather than a shop — the one thing a person on this page
+            wants is the thing they came to buy, and it was a link away. The
+            passes stay reachable here whether the cart is full or not, since
+            adding a second division's entry is normal. */}
+        <section className="mt-16 border-t border-[var(--border)] pt-10">
+          <SectionHead eyebrow="Shop" title="Entry passes" />
+          <ul className="mt-6 grid gap-5 sm:grid-cols-2">
+            {siteData.products.map((p) => {
+              const inCart = has(p.slug)
+              return (
+                <li key={p.slug} className="surface flex gap-4 rounded-card p-4">
+                  <img
+                    src={p.image}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    className="h-20 w-20 shrink-0 rounded-lg object-cover"
+                  />
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <Badge tone="neutral">{p.kicker}</Badge>
+                    <h3 className="mt-1.5 text-sm font-bold leading-snug text-[var(--text-strong)]">
+                      {p.name}
+                    </h3>
+                    <div className="mt-auto flex items-center justify-between gap-3 pt-3">
+                      <span className="numeric text-base font-bold text-[var(--accent-text)]">
+                        {p.price}
+                      </span>
+                      <Button size="sm" variant={inCart ? 'outline' : 'primary'} onClick={() => add(p.slug)}>
+                        {inCart ? 'Add another' : 'Add to cart'}
+                      </Button>
+                    </div>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        </section>
       </Container>
     </Section>
   )

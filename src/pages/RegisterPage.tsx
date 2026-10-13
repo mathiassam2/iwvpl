@@ -403,7 +403,7 @@ export default function RegisterPage() {
                    /entries, which left the only route to them in the footer.
                    The fee is quoted in the lede above, so the link belongs next
                    to the form a manager is filling in. */
-                <p className="mt-4 text-[13px] text-[var(--text-muted)]">
+                <p className="mb-6 mt-4 text-[13px] text-[var(--text-muted)]">
                   Not ready to sign up yet?{' '}
                   <Link to="/entries" className="font-semibold text-[var(--accent-text)] hover:underline">
                     See what each entry pass includes

@@ -384,9 +384,28 @@ export function Header() {
           {user ? (
             <AccountMenu />
           ) : (
-            <ButtonLink to="/register" size="sm" className="hidden sm:inline-flex">
-              Register
-            </ButtonLink>
+            <>
+              {/* Login lives in the desktop nav at lg and up. Below that the
+                  nav is hidden and Register is hidden until sm, which left a
+                  phone bar with nothing but the hamburger and signing in two
+                  taps deep. This puts it back on the surface. */}
+              <NavLink
+                to="/login"
+                className={({ isActive }) =>
+                  cx(
+                    'rounded-md px-2 py-2 text-sm font-semibold transition-colors lg:hidden',
+                    isActive
+                      ? 'text-[var(--text-strong)]'
+                      : 'text-[var(--text-muted)] hover:text-[var(--text-strong)]',
+                  )
+                }
+              >
+                Login
+              </NavLink>
+              <ButtonLink to="/register" size="sm" className="hidden sm:inline-flex">
+                Register
+              </ButtonLink>
+            </>
           )}
 
           <button
