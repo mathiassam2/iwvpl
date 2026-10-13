@@ -105,6 +105,28 @@ export const getMatches = (limit = 50) =>
 
 export const getClubs = () => request<{ clubs: Club[] }>('/api/clubs').then((r) => r.clubs)
 
+/** Clubs awaiting an admin decision, with the manager who applied. */
+export interface PendingClub {
+  id: number
+  name: string
+  slug: string
+  created_at: string
+  user_id: number | null
+  email: string | null
+  display_name: string | null
+  players: number
+}
+
+export const getPendingClubs = () =>
+  request<{ clubs: PendingClub[] }>('/api/admin/clubs/pending').then((r) => r.clubs)
+
+/** Approve publishes the club; reject withdraws it. Both notify the manager. */
+export const decideClub = (slug: string, decision: 'approve' | 'reject') =>
+  request<{ ok: true; status: string }>(`/api/admin/clubs/${slug}/decision`, {
+    method: 'POST',
+    body: JSON.stringify({ decision }),
+  })
+
 export const setResult = (matchId: number, homeScore: number, awayScore: number) =>
   request<{ ok: true }>(`/api/admin/matches/${matchId}/result`, {
     method: 'POST',

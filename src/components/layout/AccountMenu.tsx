@@ -227,7 +227,9 @@ export default function AccountMenu() {
                 </span>
                 Dashboard
               </Link>
-              {user.clubSlug && (
+              {/* Only for a live club. A pending one is not on the public site yet, so the
+                  link would lead to a page describing a club nobody can see. */}
+              {user.clubSlug && user.clubStatus === 'active' && (
                 <Link to={`/clubs/${user.clubSlug}`} role="menuitem" className={row}>
                   <span className="w-4 text-center" aria-hidden>
                     ♙

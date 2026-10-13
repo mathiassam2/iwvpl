@@ -68,6 +68,8 @@ export interface User {
   clubId: number | null
   clubName: string | null
   clubSlug: string | null
+  /** 'active' | 'pending' | 'withdrawn'. Null when the account owns no club. */
+  clubStatus: 'active' | 'pending' | 'withdrawn' | null
   playerId: number | null
   gamertag: string | null
   unread: number

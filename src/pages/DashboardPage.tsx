@@ -198,6 +198,29 @@ function ManagerPanel() {
     <div className="space-y-8">
       <Notice {...(notice ?? { kind: 'ok', text: null })} />
 
+      {/* ---- approval status ---- */}
+      {user.clubStatus === 'pending' && (
+        <section className={card}>
+          <SectionHead eyebrow="Approval" title="Waiting for league admin" />
+          <p className="text-sm leading-relaxed text-[var(--text-muted)]">
+            <strong className="text-[var(--text)]">{user.clubName}</strong> has been submitted and
+            is waiting to be approved. It is not on the public site yet and cannot play fixtures
+            until it is. You can carry on signing players below in the meantime — a squad can be
+            built before the club is approved.
+          </p>
+        </section>
+      )}
+
+      {user.clubStatus === 'withdrawn' && (
+        <section className={card}>
+          <SectionHead eyebrow="Approval" title="Club not approved" />
+          <p className="text-sm leading-relaxed text-[var(--text-muted)]">
+            <strong className="text-[var(--text)]">{user.clubName}</strong> was not approved. Create
+            another club from this dashboard if you want to apply again.
+          </p>
+        </section>
+      )}
+
       {/* ---- squad ---- */}
       <section className={card}>
         <SectionHead eyebrow="Squad" title={myClub?.name ?? 'Your squad'} />

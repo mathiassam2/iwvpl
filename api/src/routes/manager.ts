@@ -52,12 +52,17 @@ async function ownClub(userId: number): Promise<{ id: number; name: string; slug
 /**
  * Create a club and claim it.
  *
- * Left out of every division on purpose. Putting it in a table would give it a
- * position and a points total it never earned, and the standings file is
+ * Created 'pending'. A league admin approves it before it appears anywhere
+ * public. The manager can still build a squad in the meantime — signing
+ * players is their own business — but the club cannot be listed or play until
+ * then.
+ *
+ * Also left out of every division on purpose. Putting it in a table would give
+ * it a position and a points total it never earned, and the standings file is
  * documented as authoritative base state that incremental results are applied
  * to — a fabricated row there is not something a later result can fix.
  *
- * An admin assigns the division separately.
+ * An admin assigns the division separately, after approving.
  */
 manager.post(
   '/club',
@@ -81,7 +86,7 @@ manager.post(
     const clubId = await withTransaction(async (conn) => {
       const [clubRes] = await conn.execute(
         `INSERT INTO clubs (name, slug, status, created_at, updated_at)
-         VALUES (?, ?, 'active', NOW(), NOW())`,
+         VALUES (?, ?, 'pending', NOW(), NOW())`,
         [name, slug],
       )
       const id = (clubRes as any).insertId
@@ -96,7 +101,7 @@ manager.post(
       user.id,
       'welcome',
       'Club created',
-      `${name} is ready. An admin assigns it to a division before it can play fixtures.`,
+      `${name} is waiting for league admin approval. Build your squad in the meantime.`,
       '/dashboard',
     )
 

@@ -41,6 +41,8 @@ export interface PublicUser {
   clubId: number | null
   clubName: string | null
   clubSlug: string | null
+  /** 'active' | 'pending' | 'withdrawn'. Null when the account owns no club. */
+  clubStatus: string | null
   playerId: number | null
   gamertag: string | null
   unread: number
@@ -196,8 +198,8 @@ export async function unreadCount(userId: number): Promise<number> {
  */
 export async function toPublicUser(user: AccountUser): Promise<PublicUser> {
   const club = user.club_id
-    ? await queryOne<{ name: string; slug: string }>(
-        'SELECT name, slug FROM clubs WHERE id = ?',
+    ? await queryOne<{ name: string; slug: string; status: string }>(
+        'SELECT name, slug, status FROM clubs WHERE id = ?',
         [user.club_id],
       )
     : undefined
@@ -210,6 +212,7 @@ export async function toPublicUser(user: AccountUser): Promise<PublicUser> {
     clubId: user.club_id,
     clubName: club?.name ?? null,
     clubSlug: club?.slug ?? null,
+    clubStatus: club?.status ?? null,
     playerId: user.player_id ?? null,
     gamertag: user.gamertag ?? null,
     unread: await unreadCount(user.id),

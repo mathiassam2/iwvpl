@@ -2,8 +2,10 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   ApiError,
   addPlayer,
+  decideClub,
   getClubs,
   getMatches,
+  getPendingClubs,
   getStandings,
   removePlayer,
   setResult,
@@ -11,10 +13,11 @@ import {
   withdrawResult,
   type Club,
   type Match,
+  type PendingClub,
   type Standing,
 } from './api'
 
-type Tab = 'standings' | 'results' | 'clubs'
+type Tab = 'standings' | 'results' | 'clubs' | 'applications'
 
 interface Notice {
   kind: 'ok' | 'error' | 'info'
@@ -28,6 +31,7 @@ export default function App() {
     results: 'Match centre',
     standings: 'League table',
     clubs: 'Club management',
+    applications: 'Club applications',
   }
 
   const report = useCallback((kind: Notice['kind'], text: string) => setNotice({ kind, text }), [])
@@ -62,12 +66,26 @@ export default function App() {
         <aside className="sidebar">
           <p className="nav-label">WORKSPACE</p>
           <nav className="tabs" role="tablist" aria-label="Admin sections">
-            {(['results', 'standings', 'clubs'] as Tab[]).map((t) => (
+            {(['results', 'standings', 'clubs', 'applications'] as Tab[]).map((t) => (
               <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>
                 <span className="nav-icon" aria-hidden="true">
-                  {t === 'results' ? '◉' : t === 'standings' ? '▤' : '♙'}
+                  {t === 'results'
+                    ? '◉'
+                    : t === 'standings'
+                      ? '▤'
+                      : t === 'clubs'
+                        ? '♙'
+                        : '✦'}
                 </span>
-                <span>{t === 'results' ? 'Matches' : t === 'standings' ? 'Standings' : 'Clubs'}</span>
+                <span>
+                  {t === 'results'
+                    ? 'Matches'
+                    : t === 'standings'
+                      ? 'Standings'
+                      : t === 'clubs'
+                        ? 'Clubs'
+                        : 'Applications'}
+                </span>
                 {t === tab && <span className="nav-arrow">›</span>}
               </button>
             ))}
@@ -85,7 +103,9 @@ export default function App() {
                   ? 'Record match scores and keep the table up to date.'
                   : tab === 'standings'
                     ? 'Review the current league table and recent form.'
-                    : 'Update club details and manage player rosters.'}
+                    : tab === 'applications'
+                      ? 'Approve or reject clubs created from the registration form.'
+                      : 'Update club details and manage player rosters.'}
               </p>
             </div>
             <span className="live-indicator"><i /> LIVE DATA</span>
@@ -101,6 +121,7 @@ export default function App() {
           {tab === 'standings' && <Standings guard={guard} report={report} />}
           {tab === 'results' && <Results guard={guard} report={report} />}
           {tab === 'clubs' && <Clubs guard={guard} report={report} />}
+          {tab === 'applications' && <Applications guard={guard} report={report} />}
         </main>
       </div>
     </div>
@@ -398,6 +419,127 @@ function Results({
 }
 
 /* ------------------------------------------------------------------- clubs */
+
+function Applications({
+  guard,
+  report,
+}: {
+  guard: <T>(fn: () => Promise<T>, what: string) => Promise<T>
+  report: (kind: Notice['kind'], text: string) => void
+}) {
+  const [clubs, setClubs] = useState<PendingClub[] | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    const data = await guard(getPendingClubs, 'Could not load applications')
+    setClubs(data)
+  }, [guard])
+
+  useEffect(() => {
+    load().catch(() => setClubs([]))
+  }, [load])
+
+  /* Rejecting is destructive and there is no undo other than retyping the
+   * whole application, so it asks first. Approve does not: it is what the
+   * row is sitting there waiting for. */
+  const decide = async (club: PendingClub, decision: 'approve' | 'reject') => {
+    if (
+      decision === 'reject' &&
+      !window.confirm(
+        `Reject "${club.name}"?\n\nThe club is withdrawn, not deleted, and ${club.display_name ?? club.email ?? 'the manager'} is notified.`,
+      )
+    ) {
+      return
+    }
+
+    setBusy(club.slug)
+    try {
+      await guard(() => decideClub(club.slug, decision), `Could not ${decision} ${club.name}`)
+      report('ok', `${club.name} ${decision === 'approve' ? 'approved' : 'rejected'}.`)
+      await load()
+    } catch {
+      /* already reported */
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  if (clubs === null) return <div className="loading">Loading applications…</div>
+
+  return (
+    <div className="card">
+      <header>
+        <h2>Club applications</h2>
+        <span className="hint">
+          {clubs.length === 0 ? 'Nothing waiting' : `${clubs.length} waiting`}
+        </span>
+      </header>
+
+      {clubs.length === 0 ? (
+        <p className="empty">
+          Every club has been reviewed. New ones appear here the moment a manager creates one
+          from the registration form.
+        </p>
+      ) : (
+        <table>
+          <thead>
+            <tr>
+              <th>Club</th>
+              <th>Manager</th>
+              <th>Applied</th>
+              <th>Squad</th>
+              <th style={{ textAlign: 'right' }}>Decision</th>
+            </tr>
+          </thead>
+          <tbody>
+            {clubs.map((c) => (
+              <tr key={c.slug}>
+                <td>
+                  <span className="name">{c.name}</span>
+                </td>
+                <td>
+                  <div className="name">{c.display_name ?? <span className="hint">No name given</span>}</div>
+                  {c.email && <div className="hint">{c.email}</div>}
+                </td>
+                <td>
+                  <span className="hint">{c.created_at?.slice(0, 10)}</span>
+                </td>
+                <td>
+                  <span className="hint">
+                    {c.players === 0 ? '—' : `${c.players} signed`}
+                  </span>
+                </td>
+                <td style={{ textAlign: 'right' }}>
+                  <div className="row-actions">
+                    <button
+                      className="btn sm primary"
+                      disabled={busy === c.slug}
+                      onClick={() => void decide(c, 'approve')}
+                    >
+                      Approve
+                    </button>
+                    <button
+                      className="btn sm danger"
+                      disabled={busy === c.slug}
+                      onClick={() => void decide(c, 'reject')}
+                    >
+                      Reject
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      <p className="footnote">
+        Approving makes the club visible on the public site. Assign it to a division from Clubs
+        before it can play fixtures.
+      </p>
+    </div>
+  )
+}
 
 function Clubs({
   guard,

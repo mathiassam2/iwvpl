@@ -13,8 +13,9 @@
  */
 
 import { Router } from 'express'
-import { execute, withTransaction, type Params } from '../db.js'
+import { execute, queryAll, queryOne, withTransaction, type Params } from '../db.js'
 import { clearResult, setResult } from '../domain/applyResult.js'
+import { notify } from '../domain/auth.js'
 
 export const admin = Router()
 
@@ -278,5 +279,86 @@ admin.delete(
       return res.status(404).json({ error: 'Player not found on that club.' })
     }
     res.json({ ok: true })
+  }),
+)
+
+/* ------------------------------------------------------- club applications */
+
+/**
+ * Clubs awaiting approval.
+ *
+ * Every club created from the public registration form lands here as 'pending'.
+ * It is a claim about a name and an owner, not a fact about the league, so an
+ * admin decides. GET /api/clubs already hides anything not 'active', so a
+ * pending club is invisible publicly from the moment it is created.
+ *
+ * The manager's details come along because the decision is about the pair —
+ * approving a club whose owner cannot be contacted is not much use.
+ */
+admin.get(
+  '/clubs/pending',
+  handler(async (_req, res) => {
+    const rows = await queryAll(
+      `SELECT c.id, c.name, c.slug, c.created_at,
+              u.id AS user_id, u.email, u.display_name,
+              (SELECT COUNT(*) FROM players p WHERE p.club_id = c.id) AS players
+         FROM clubs c
+         LEFT JOIN users u ON u.club_id = c.id AND u.is_active = TRUE
+        WHERE c.status = 'pending'
+        ORDER BY c.created_at`,
+    )
+    res.json({ clubs: rows })
+  }),
+)
+
+/**
+ * Approve or reject a pending club.
+ *
+ * Separate from the generic PATCH /clubs/:slug because this one has to tell
+ * the manager what happened. Changing status silently would leave someone
+ * staring at a club that never appears, with no way to find out why.
+ *
+ * Rejected is 'withdrawn' rather than a delete: the account and the club row
+ * stay, so the same manager can create another club without colliding on a
+ * slug they no longer control.
+ */
+admin.post(
+  '/clubs/:slug/decision',
+  handler(async (req, res) => {
+    const slug = requiredString(req.params.slug, 'slug', 140)
+    const decision = requiredString(req.body.decision, 'decision', 16)
+    if (decision !== 'approve' && decision !== 'reject') {
+      return res.status(400).json({ error: 'decision must be approve or reject.' })
+    }
+
+    const club = await queryOne<{ id: number; name: string; status: string }>(
+      'SELECT id, name, status FROM clubs WHERE slug = ?',
+      [slug],
+    )
+    if (!club) return res.status(404).json({ error: 'Club not found.' })
+    if (club.status !== 'pending') {
+      return res.status(409).json({ error: `That club is already ${club.status}.` })
+    }
+
+    const status = decision === 'approve' ? 'active' : 'withdrawn'
+    await execute('UPDATE clubs SET status = ?, updated_at = NOW() WHERE id = ?', [status, club.id])
+
+    const owner = await queryOne<{ id: number }>(
+      'SELECT id FROM users WHERE club_id = ? AND is_active = TRUE LIMIT 1',
+      [club.id],
+    )
+    if (owner) {
+      await notify(
+        owner.id,
+        decision === 'approve' ? 'club_approved' : 'club_rejected',
+        decision === 'approve' ? `${club.name} approved` : `${club.name} not approved`,
+        decision === 'approve'
+          ? 'Your club is live on the public site. An admin will assign it to a division before it plays fixtures.'
+          : 'A league admin did not approve this club. You can create another one from your dashboard.',
+        '/dashboard',
+      )
+    }
+
+    res.json({ ok: true, status })
   }),
 )

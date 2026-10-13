@@ -128,9 +128,13 @@ auth.post(
     const created = await withTransaction(async (conn) => {
       let clubId: number | null = null
       if (clubName) {
+        // 'pending', not 'active'. A club name chosen by the public is a claim,
+        // not a fact: until a league admin approves it the club exists but is
+        // listed nowhere public and cannot play fixtures. GET /api/clubs
+        // already filters on status, so pending needs no separate hiding.
         const [res] = await conn.execute(
           `INSERT INTO clubs (name, slug, status, created_at, updated_at)
-           VALUES (?, ?, 'active', NOW(), NOW())`,
+           VALUES (?, ?, 'pending', NOW(), NOW())`,
           [clubName, clubSlug(clubName)],
         )
         clubId = (res as any).insertId
@@ -172,7 +176,7 @@ auth.post(
       'welcome',
       role === 'club_manager' ? 'Club created' : 'Welcome to IWVPL',
       role === 'club_manager'
-        ? `${created.clubName} is ready. Assign it to a division from the admin app before it can play fixtures.`
+        ? `${created.clubName} is waiting for league admin approval. You can build your squad in the meantime — it just cannot play fixtures until it is approved.`
         : 'You are a free agent until a club signs you.',
       '/dashboard',
     )
