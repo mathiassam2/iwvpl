@@ -315,11 +315,19 @@ export function Header() {
         )}
       />
 
-      <div className="relative mx-auto flex h-full w-full max-w-[110rem] items-center justify-between gap-4 px-5 sm:px-6 lg:px-8">
-        <Logo />
+      {/* Three equal columns rather than justify-between. With justify-between the
+          nav floats between the logo and the actions, so it sits off-centre by
+          however much wider the right side is — and signing in replaces a
+          Register button with the cart, a bell and the account menu, which is
+          enough to shove the whole nav left. `1fr auto 1fr` gives the two sides
+          equal width, so the middle column is genuinely centred. */}
+        <div className="relative mx-auto grid h-full w-full max-w-[110rem] grid-cols-[1fr_auto_1fr] items-center gap-4 px-5 sm:px-6 lg:px-8">
+          <div className="justify-self-start">
+            <Logo />
+          </div>
 
-        {/* ---------- desktop nav ---------- */}
-        <nav className="hidden items-center gap-0.5 lg:flex" aria-label="Main">
+          {/* ---------- desktop nav ---------- */}
+          <nav className="hidden items-center gap-0.5 lg:flex" aria-label="Main">
           <LeagueMenu />
 
           {PRIMARY.map((l) => (
@@ -365,7 +373,7 @@ export function Header() {
         </nav>
 
         {/* ---------- actions ---------- */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-end gap-2">
           <CartButton />
           {user ? (
             <AccountMenu />
