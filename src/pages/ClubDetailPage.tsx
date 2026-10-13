@@ -68,6 +68,9 @@ export default function ClubDetailPage() {
     [slug],
   )
 
+  /** Whether the crawl knows this club at all. Everything below is crawl data. */
+  const inCrawl = Boolean(crawled)
+
   const club = liveClub === undefined ? crawled : (liveClub ?? crawled)
 
   const data = useMemo(() => {
@@ -90,9 +93,17 @@ export default function ClubDetailPage() {
         rows: board.rows.filter((r) => sameClub(r.team, club.name)),
       }))
       .filter((g) => g.rows.length > 0)
-    const squad = squadFor(club.name)
+    /*
+     * `squadFor` is a seeded random-name generator, not a lookup — it invents
+     * a plausible 22 for any key it is given. For a club in the crawl that is
+     * harmless dressing; for a club created through an account it would print
+     * a starting XI of strangers under its name, which is a fabricated fact
+     * about a real club. A live-only club gets its actual roster instead, and
+     * no invented one.
+     */
+    const squad = inCrawl ? squadFor(club.name) : null
     return { standing, matches: played, next, last, transfers, scorers, squad }
-  }, [club])
+  }, [club, inCrawl])
 
   if (!club || !data) {
     return (
@@ -137,21 +148,37 @@ export default function ClubDetailPage() {
             )}
           </div>
           <span className="numeric shrink-0 rounded-lg bg-[var(--surface-2)] px-2.5 py-1 text-xs font-bold text-[var(--text-muted)]">
-            {data.squad.formation}
+            {data.squad ? data.squad.formation : 'No XI yet'}
           </span>
         </div>
 
-        <div className="p-4 sm:p-5">
-          <div className="mx-auto max-w-[30rem]">
-            <Pitch squad={data.squad} home />
-          </div>
-        </div>
+        {data.squad ? (
+          <>
+            <div className="p-4 sm:p-5">
+              <div className="mx-auto max-w-[30rem]">
+                <Pitch squad={data.squad} home />
+              </div>
+            </div>
 
-        <p className="border-t border-[var(--border)] px-5 py-3 text-xs text-[var(--text-faint)]">
-          Manager <span className="font-semibold text-[var(--text-muted)]">{data.squad.manager}</span>
-          {' · '}
-          <span className="text-[var(--text-faint)]">Lineup is placeholder data until squads are registered.</span>
-        </p>
+            <p className="border-t border-[var(--border)] px-5 py-3 text-xs text-[var(--text-faint)]">
+              Manager{' '}
+              <span className="font-semibold text-[var(--text-muted)]">{data.squad.manager}</span>
+              {' · '}
+              <span className="text-[var(--text-faint)]">
+                Lineup is placeholder data until squads are registered.
+              </span>
+            </p>
+          </>
+        ) : (
+          /* A club the crawl has never heard of has no lineup, and inventing
+             one would be inventing a fact about it. Say so instead. */
+          <div className="p-5 sm:p-6">
+            <EmptyState
+              title="No starting XI yet"
+              hint="Once your manager signs players and fixtures are played, the lineup appears here."
+            />
+          </div>
+        )}
       </Card>
 
       {/* matches */}
@@ -181,7 +208,34 @@ export default function ClubDetailPage() {
     </div>
   )
 
-  const squadPanel = (
+  /*
+   * For a club the crawl does not know, the real roster is the one the API
+   * returned. For a club it does know, the crawl's squad is used — it carries
+   * shirt numbers and roles that the database has no columns for.
+   */
+  const squadPanel = !data.squad ? (
+    <Card className="p-0">
+      <p className="border-b border-[var(--border)] bg-[var(--surface-2)] px-5 py-3 text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--accent-text)]">
+        Squad · {liveClub?.roster.length ?? 0} signed
+      </p>
+      {liveClub && liveClub.roster.length > 0 ? (
+        <ul className="divide-y divide-[var(--border)]">
+          {liveClub.roster.map((p) => (
+            <li key={p.name} className="px-5 py-2.5 text-sm text-[var(--text)]">
+              {p.name}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div className="p-5">
+          <EmptyState
+            title="No players signed"
+            hint="Players appear here once a manager signs them."
+          />
+        </div>
+      )}
+    </Card>
+  ) : (
     <div className="grid gap-6 lg:grid-cols-2">
       <Card className="p-0">
         <p className="border-b border-[var(--border)] bg-[var(--surface-2)] px-5 py-3 text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--accent-text)]">
@@ -408,7 +462,13 @@ export default function ClubDetailPage() {
                 <Tabs
                   tabs={[
                     { id: 'overview', label: 'Overview' },
-                    { id: 'squad', label: 'Squad', count: data.squad.starters.length + data.squad.bench.length },
+                    {
+                      id: 'squad',
+                      label: 'Squad',
+                      count: data.squad
+                        ? data.squad.starters.length + data.squad.bench.length
+                        : (liveClub?.roster.length ?? 0),
+                    },
                     { id: 'stats', label: 'Stats' },
                   ]}
                   active={tab}
