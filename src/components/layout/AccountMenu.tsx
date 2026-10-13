@@ -211,7 +211,7 @@ export default function AccountMenu() {
           aria-expanded={open}
           className="flex h-10 items-center gap-2 rounded-lg border border-[var(--border-strong)] pl-1.5 pr-2.5 transition-colors hover:bg-[var(--surface-hover)]"
         >
-          <span className="grid h-7 w-7 place-items-center rounded-md bg-[var(--accent-tint)] text-[11px] font-bold text-[var(--accent-text)]">
+          <span className="grid h-7 w-7 place-items-center rounded-full bg-[var(--accent-solid)] text-[11px] font-bold text-[var(--on-volt)]">
             {initials(user.name)}
           </span>
           <span className="hidden max-w-[9rem] truncate text-sm font-semibold text-[var(--text-strong)] sm:inline">

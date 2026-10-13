@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button, Container, Section, SectionHead, Select } from '@/components/ui'
 import { TermsDialog } from '@/components/ui/TermsDialog'
@@ -407,6 +407,20 @@ export default function RegisterPage() {
                   </button>
                 ))}
               </div>
+
+              {values.role === 'club_manager' && (
+                /* The entry passes used to live in a sidebar here and moved to
+                   /entries, which left the only route to them in the footer.
+                   The fee is quoted in the lede above, so the link belongs next
+                   to the form a manager is filling in. */
+                <p className="mt-4 text-[13px] text-[var(--text-muted)]">
+                  Not ready to sign up yet?{' '}
+                  <Link to="/entries" className="font-semibold text-[var(--accent-text)] hover:underline">
+                    See what each entry pass includes
+                  </Link>
+                  .
+                </p>
+              )}
 
               {submitError && (
                 <p

@@ -16,13 +16,17 @@
  * the admin team processes afterwards.
  */
 
+import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Badge, Button, ButtonLink, Card, Container, Section, SectionHead } from '@/components/ui'
 import { SITE, siteData } from '@/data'
+import { useAuth } from '@/lib/auth'
 import { useCart } from '@/lib/cart'
 
 export default function EntriesPage() {
   const { add, has, openPanel } = useCart()
+  const { user } = useAuth()
+  const navigate = useNavigate()
 
   const activeClubs = siteData.clubs.filter((c) => c.status === 'Active').length
   const slotsLeft = SITE.teamCap - SITE.teamsRegistered
@@ -68,7 +72,12 @@ export default function EntriesPage() {
                             size="sm"
                             onClick={() => {
                               if (!has(p.slug)) add(p.slug)
-                              openPanel()
+                              // The cart panel only exists behind an account. A
+                              // signed-out visitor gets the cart page instead,
+                              // which is the thing that actually shows the item
+                              // landed — otherwise the click looks broken.
+                              if (user) openPanel()
+                              else navigate('/cart')
                             }}
                           >
                             {has(p.slug) ? 'In cart' : 'Add to cart'}
