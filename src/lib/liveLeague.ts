@@ -225,3 +225,49 @@ export async function getLivePlayer(
     bestRank: stats.length ? Math.min(...stats.map((s) => s.rank)) : null,
   }
 }
+
+/**
+ * One club, live, by slug.
+ *
+ * `null` means "not an active club in the database", so the caller falls back
+ * to the crawl. A pending or withdrawn club is deliberately invisible here
+ * even though its row exists — it has not been approved, and exposing it would
+ * publish an unapproved entry.
+ */
+export async function getLiveClub(
+  slug: string,
+  signal: AbortSignal,
+): Promise<(Club & { division: string | null; roster: Array<{ name: string }> }) | null> {
+  try {
+    const response = await get<{
+      id: number
+      name: string
+      slug: string
+      short_code: string | null
+      flag: string | null
+      logo_url: string | null
+      logo_local: string | null
+      status: string
+      division: { name: string } | null
+      players: Array<{ gamertag: string }>
+    }>(`/api/clubs/${encodeURIComponent(slug)}`, signal)
+
+    if (response.status !== 'active') return null
+
+    return {
+      name: response.name,
+      flag: response.flag ?? '',
+      code: response.short_code ?? '',
+      url: '',
+      logo: response.logo_url ?? '',
+      logoLocal: response.logo_local ?? '',
+      players: response.players.length,
+      status: 'Active',
+      raw: response.name,
+      division: response.division?.name ?? null,
+      roster: response.players.map((p) => ({ name: p.gamertag })),
+    }
+  } catch {
+    return null
+  }
+}

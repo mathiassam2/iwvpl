@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import {
   Badge,
@@ -16,6 +16,7 @@ import { NextMatchCard, Pitch, TableSnippet, TeamFormStrip } from '@/components/
 import { SITE, siteData } from '@/data'
 import { AVATAR_PLACEHOLDER, CLUB_PLACEHOLDER, clubSlug, cx, stripFlag } from '@/lib/format'
 import { matchIndexOf } from '@/lib/match'
+import { getLiveClub, liveLeagueEnabled } from '@/lib/liveLeague'
 import { squadFor } from '@/lib/fixtures'
 
 const STATUS_TONE = {
@@ -34,10 +35,40 @@ export default function ClubDetailPage() {
   const { slug = '' } = useParams()
   const [tab, setTab] = useState('overview')
 
-  const club = useMemo(
+  /**
+   * Club identity, live, falling back to the crawl.
+   *
+   * Without this the page resolved the slug against `siteData.clubs` and an
+   * approved club created through an account read "not found" — the row is in
+   * the database, the crawl JSON is from before it existed. Only the identity
+   * comes from the API; history below is still the crawl, which is empty for a
+   * new club and correctly so.
+   */
+  const [liveClub, setLiveClub] = useState<Awaited<ReturnType<typeof getLiveClub>> | undefined>(
+    undefined,
+  )
+
+  useEffect(() => {
+    if (!liveLeagueEnabled || !slug) return
+    const controller = new AbortController()
+
+    void (async () => {
+      try {
+        setLiveClub(await getLiveClub(slug, controller.signal))
+      } catch {
+        setLiveClub(null)
+      }
+    })()
+
+    return () => controller.abort()
+  }, [slug])
+
+  const crawled = useMemo(
     () => siteData.clubs.find((c) => clubSlug(stripFlag(c.name)) === clubSlug(slug)),
     [slug],
   )
+
+  const club = liveClub === undefined ? crawled : (liveClub ?? crawled)
 
   const data = useMemo(() => {
     if (!club) return null
