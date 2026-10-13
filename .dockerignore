@@ -32,7 +32,10 @@ _source
 
 # Not needed to build or serve
 README.md
-scripts
+# The root build runs this audit before Vite.
+scripts/*
+!scripts/
+!scripts/audit-iw-mark.mjs
 .vscode
 .idea
 *.log
