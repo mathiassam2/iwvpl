@@ -13,6 +13,7 @@ const ESSENTIAL = [
   { label: 'Leaderboard', href: '/leaderboard' },
   { label: 'Clubs', href: '/clubs' },
   { label: 'Transfer', href: '/transfer' },
+  { label: 'Entries', href: '/entries' },
   { label: 'Login', href: '/login' },
   { label: 'Register', href: '/register' },
 ]

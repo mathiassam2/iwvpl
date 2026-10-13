@@ -1,7 +1,7 @@
 import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/PageHeader'
-import { Badge, Button, ButtonLink, Card, Container, Section, SectionHead, Select } from '@/components/ui'
+import { Button, Container, Section, SectionHead, Select } from '@/components/ui'
 import { TermsDialog } from '@/components/ui/TermsDialog'
 import { SITE, siteData } from '@/data'
 import { ApiError, register } from '@/lib/api'
@@ -97,12 +97,12 @@ export default function RegisterPage() {
   const [termsOpen, setTermsOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
-  const { add, has, openPanel } = useCart()
+  // Only the panel opener survives here. Adding passes to the cart moved to
+  // /entries, where they can be browsed without a form half-finished beside
+  // them; the success panel still offers a shortcut to the cart.
+  const { openPanel } = useCart()
   const { setUser } = useAuth()
   const navigate = useNavigate()
-
-  const activeClubs = siteData.clubs.filter((c) => c.status === 'Active').length
-  const slotsLeft = SITE.teamCap - SITE.teamsRegistered
 
   const errorFor = (k: keyof Fields) => (touched ? errors[k] : undefined)
 
@@ -261,8 +261,14 @@ export default function RegisterPage() {
       />
 
       <Section>
+        {/* `wide`, not `narrow`, so the form shares the page header's left
+            edge — the header uses `wide` and a centred form beside a
+            left-aligned heading reads as a mistake. The inner max-width keeps
+            the fields a comfortable measure on an ultrawide screen. */}
         <Container size="wide">
-          <div className="grid gap-10 lg:grid-cols-[1.2fr_0.8fr] lg:gap-14">
+          {/* One column. The entry-pass sidebar moved to /entries — a price
+              list beside a signup form reads as part of submitting it. */}
+          <div className="max-w-2xl">
             {/* ================= form ================= */}
             <div>
               {sent && (
@@ -592,14 +598,7 @@ export default function RegisterPage() {
                       </span>
                       <p id="agree-help" className="mt-1.5 text-xs text-[var(--text-faint)]">
                         Covers what your entry includes, the {SITE.registrationFee} fee, the
-                        24&ndash;48 hour confirmation window, roster submission and code of conduct.{' '}
-                        <button
-                          type="button"
-                          onClick={() => setTermsOpen(true)}
-                          className="font-semibold text-[var(--accent-text)] underline underline-offset-2"
-                        >
-                          Read them now
-                        </button>
+                        24&ndash;48 hour confirmation window, roster submission and code of conduct.
                       </p>
                     </div>
                   </div>
@@ -634,114 +633,6 @@ export default function RegisterPage() {
               </form>
             </div>
 
-            {/* Entry passes, the fee and the cart belong to the club entry only. A player
-                registering has nothing to pay, so showing them a checkout next
-                to the form implies a charge that does not exist. */}
-            <aside className="space-y-6">
-              {values.role === 'club_manager' && (
-              <>
-              {/* entry passes */}
-              <Card className="overflow-hidden p-0">
-                <div className="border-b border-[var(--border)] bg-gradient-to-r from-[var(--accent-tint)] to-transparent px-6 py-4">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--accent-text)]">
-                    Available entries
-                  </p>
-                  <p className="mt-1 font-display text-base font-bold text-[var(--text-strong)]">
-                    {SITE.season}
-                  </p>
-                </div>
-
-                <ul className="divide-y divide-[var(--border)]">
-                  {siteData.products.map((p) => (
-                    <li key={p.slug} className="p-5">
-                      <img
-                        src={p.image}
-                        alt=""
-                        loading="lazy"
-                        decoding="async"
-                        className="mb-4 h-28 w-full rounded-lg object-cover"
-                      />
-                      <Badge tone="neutral">{p.kicker}</Badge>
-                      <h3 className="mt-2 text-sm font-bold leading-snug text-[var(--text-strong)]">
-                        {p.name}
-                      </h3>
-                      <p className="mt-1.5 line-clamp-3 text-xs leading-relaxed text-[var(--text-muted)]">
-                        {p.summary}
-                      </p>
-                      <div className="mt-4 flex items-center justify-between gap-3">
-                        <span className="numeric text-lg font-bold text-[var(--accent-text)]">
-                          {p.price}
-                        </span>
-                        <Button
-                          size="sm"
-                          onClick={() => {
-                            if (!has(p.slug)) add(p.slug)
-                            openPanel()
-                          }}
-                        >
-                          {has(p.slug) ? 'In cart' : 'Add to cart'}
-                        </Button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-
-                <div className="border-t border-[var(--border)] bg-[var(--surface-2)] px-5 py-4">
-                  <ButtonLink to="/cart" variant="outline" size="sm" className="w-full">
-                    Go to cart
-                  </ButtonLink>
-                </div>
-              </Card>
-
-              {/* snapshot */}
-              <Card className="p-6">
-                <h3 className="font-display text-base font-bold text-[var(--text-strong)]">
-                  Season snapshot
-                </h3>
-                <dl className="mt-4 space-y-3">
-                  {[
-                    ['Team cap', `${SITE.teamCap} clubs`],
-                    ['Registered', `${SITE.teamsRegistered} clubs`],
-                    ['Slots left', `${slotsLeft} clubs`],
-                    ['Active rosters', `${activeClubs} clubs`],
-                    ['Entry fee', SITE.registrationFee],
-                  ].map(([k, v]) => (
-                    <div
-                      key={k}
-                      className="flex items-center justify-between gap-4 border-b border-[var(--border)] pb-3 last:border-0 last:pb-0"
-                    >
-                      <dt className="text-sm text-[var(--text-muted)]">{k}</dt>
-                      <dd className="numeric text-sm font-bold text-[var(--text-strong)]">{v}</dd>
-                    </div>
-                  ))}
-                </dl>
-              </Card>
-
-              {/* confirmation note */}
-              <Card className="border-[var(--badge-gold-bg)] bg-[var(--badge-gold-bg)] p-6">
-                <h3 className="flex items-center gap-2 font-display text-base font-bold text-[var(--badge-gold-fg)]">
-                  <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden>
-                    <circle cx="10" cy="10" r="8.5" stroke="currentColor" strokeWidth="1.6" />
-                    <path d="M10 6v5M10 14h.01" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-                  </svg>
-                  Confirmation note
-                </h3>
-                <p className="mt-3 text-sm leading-relaxed text-[var(--text-muted)]">
-                  Your purchase does not immediately finalise registration. Please allow
-                  24&ndash;48 hours for our admin team to process your entry. You will receive a
-                  confirmation email containing your team submission forms.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setTermsOpen(true)}
-                  className="mt-4 text-sm font-semibold text-[var(--accent-text)] underline underline-offset-4 transition-opacity hover:opacity-70"
-                >
-                  Read the full entry terms
-                </button>
-              </Card>
-              </>
-              )}
-            </aside>
           </div>
         </Container>
       </Section>
