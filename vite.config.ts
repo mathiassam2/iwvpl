@@ -3,13 +3,25 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { fileURLToPath, URL } from 'node:url'
 
-// GitHub Pages serves from https://mathiassam2.github.io/iwvpl/
+// The deploy base.
+//
+// Two targets exist and they are not the same:
+//
+//   GitHub Pages  https://mathiassam2.github.io/iwvpl/  ->  base '/iwvpl/'
+//   Render        https://<app>.onrender.com/           ->  base '/'
 //
 // This used to be gated behind GITHUB_PAGES, so a build made locally (or in CI
 // without that variable) shipped with base `/` and every asset 404'd on Pages.
-// It is now unconditional: Vite's dev server serves the same base, so local
-// development happens at http://localhost:3000/iwvpl/.
-const base = '/iwvpl/'
+// It is now an explicit BASE_PATH that defaults to the Pages value, so a local
+// `npm run build` keeps reproducing the live site. The Docker build sets
+// BASE_PATH=/ for Render.
+//
+// Note this is only half the problem. Vite rewrites `/…` references inside
+// index.html but not string literals in JS/TS, which is why `asset()` in
+// src/lib/assets.ts routes public files through import.meta.env.BASE_URL.
+// Changing this value without that helper agreeing is how a build ends up with
+// working HTML and 404ing images.
+const base = process.env.BASE_PATH ?? '/iwvpl/'
 
 export default defineConfig({
   base,

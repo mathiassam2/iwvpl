@@ -1,6 +1,12 @@
 # Dependencies
 node_modules/
 
+# API
+api/.env
+api/dist/
+api/certs/
+admin/dist/
+
 # Build output - the GitHub Pages workflow builds this from source
 dist/
 

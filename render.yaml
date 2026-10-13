@@ -1,0 +1,73 @@
+# Render blueprint.
+#
+# Creates a single web service that serves the public site, the admin app and
+# the API from one origin. There is deliberately no separate static site: the
+# SPA and the API sharing an origin is what removes CORS and makes SameSite
+# cookies work, and splitting them across two Render services would undo that.
+#
+#   New -> Blueprint -> point at this repo -> Render applies this file.
+#
+# Every value marked `sync: false` you supply in the dashboard the first time.
+# Render will not overwrite them on later deploys, which is what you want for
+# anything that can rotate.
+
+services:
+  - type: web
+    name: iwvpl
+    runtime: docker
+    plan: free
+    region: singapore
+
+    # The app answers here. Kept cheap on purpose: it runs one SELECT 1 against
+    # TiDB, and the free plan spins an idle service down after 15 minutes, so a
+    # frequent check keeps it awake for a demo at the cost of request units.
+    healthCheckPath: /api/health
+
+    envVars:
+      # --- runtime ---------------------------------------------------------
+      - key: NODE_ENV
+        value: production
+      # config.ts binds 0.0.0.0 in production. Set explicitly so the behaviour
+      # does not depend on RENDER being present.
+      - key: HOST
+        value: 0.0.0.0
+      # Correct for one instance. Set to false and migrate as a deploy step
+      # before scaling past a single replica, or they race on the same file.
+      - key: MIGRATE_ON_BOOT
+        value: "true"
+
+      # --- TiDB Cloud ------------------------------------------------------
+      # From the cluster's Connect dialog. Use the copy buttons: the rendered
+      # text omits dots in both the host and the username, and the host will
+      # fail DNS while the username is rejected for a missing prefix.
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        value: "4000"
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_NAME
+        value: iwvpl
+      - key: DB_SSL
+        value: "true"
+      # The CA cert downloaded from the Connect dialog. Render has no
+      # filesystem access to api/certs/, so the PEM is pasted inline here with
+      # literal \n escapes — config.ts expands them.
+      - key: DB_SSL_CA
+        sync: false
+      - key: DB_POOL_SIZE
+        value: "10"
+
+      # --- admin gate ------------------------------------------------------
+      # One shared credential, not a permission model. Anyone who has this can
+      # write to the database.
+      - key: ADMIN_ENABLED
+        value: "true"
+      - key: ADMIN_USERNAME
+        value: admin
+      # Generate with:
+      #   node -e "console.log(require('crypto').randomBytes(24).toString('base64url'))"
+      - key: ADMIN_PASSWORD
+        sync: false

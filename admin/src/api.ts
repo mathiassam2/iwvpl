@@ -1,0 +1,133 @@
+/**
+ * API client for the admin app.
+ *
+ * Requests are same-origin and relative: in production the API serves this
+ * bundle at the same host, and in dev Vite proxies /api. There is deliberately
+ * no base URL to configure — an absolute URL would reintroduce CORS and a
+ * second place for the host to be wrong.
+ *
+ * Credentials are always sent. Same-origin makes this a no-op in production,
+ * but it is what lets the dev proxy reuse the browser's basic-auth session.
+ */
+
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message)
+  }
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(path, {
+    ...init,
+    // Basic auth is enforced at the HTTP layer, so the browser supplies the
+    // header itself once the user has passed the prompt. Sending cookies
+    // matters for the dev proxy, where the two look like different origins.
+    credentials: 'include',
+    headers: {
+      'content-type': 'application/json',
+      ...(init?.headers ?? {}),
+    },
+  })
+
+  if (!res.ok) {
+    let message = `Request failed (${res.status})`
+    try {
+      const body = await res.json()
+      if (body?.error) message = body.error
+    } catch {
+      /* non-JSON error body - keep the generic message */
+    }
+    throw new ApiError(res.status, message)
+  }
+
+  return res.status === 204 ? (undefined as T) : ((await res.json()) as T)
+}
+
+/* ------------------------------------------------------------------ types */
+
+export interface Standing {
+  position: number
+  played: number
+  won: number
+  drawn: number
+  lost: number
+  goals_for: number
+  goals_against: number
+  goal_difference: number
+  points: number
+  form: string
+  club_id: number
+  name: string
+  slug: string
+  short_code: string | null
+  logo_local: string | null
+  flag: string | null
+  division_name: string
+}
+
+export interface Match {
+  id: number
+  kickoff: string
+  status: string
+  home_score: number | null
+  away_score: number | null
+  home_name: string
+  home_slug: string
+  home_code: string | null
+  home_logo: string | null
+  away_name: string
+  away_slug: string
+  away_code: string | null
+  away_logo: string | null
+}
+
+export interface Club {
+  id: number
+  name: string
+  slug: string
+  short_code: string | null
+  flag: string | null
+  logo_local: string | null
+  logo_url: string | null
+  status: string
+}
+
+/* --------------------------------------------------------------- requests */
+
+export const getStandings = () =>
+  request<{ standings: Standing[] }>('/api/standings').then((r) => r.standings)
+
+export const getMatches = (limit = 50) =>
+  request<{ matches: Match[] }>(`/api/matches?limit=${limit}`).then((r) => r.matches)
+
+export const getClubs = () => request<{ clubs: Club[] }>('/api/clubs').then((r) => r.clubs)
+
+export const setResult = (matchId: number, homeScore: number, awayScore: number) =>
+  request<{ ok: true }>(`/api/admin/matches/${matchId}/result`, {
+    method: 'POST',
+    body: JSON.stringify({ homeScore, awayScore }),
+  })
+
+export const withdrawResult = (matchId: number) =>
+  request<{ ok: true }>(`/api/admin/matches/${matchId}/result`, { method: 'DELETE' })
+
+export const updateClub = (slug: string, patch: Partial<Pick<Club, 'name' | 'shortCode' | 'status'>> & { shortCode?: string | null }) =>
+  request<{ ok: true }>(`/api/admin/clubs/${slug}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  })
+
+export const addPlayer = (slug: string, gamertag: string) =>
+  request<{ ok: true; id: number }>(`/api/admin/clubs/${slug}/players`, {
+    method: 'POST',
+    body: JSON.stringify({ gamertag }),
+  })
+
+export const removePlayer = (slug: string, gamertag: string) =>
+  request<{ ok: true }>(
+    `/api/admin/clubs/${slug}/players/${encodeURIComponent(gamertag)}`,
+    { method: 'DELETE' },
+  )

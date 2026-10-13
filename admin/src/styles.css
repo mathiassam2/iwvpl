@@ -1,0 +1,169 @@
+/*
+ * Admin styles.
+ *
+ * The palette is copied from the public SPA's tokens (src/styles/index.css)
+ * so the two feel like one product, but it is duplicated rather than imported:
+ * the admin is a separate package with its own build and no dependency on the
+ * SPA's source tree. The site is dark-only, and so is this.
+ */
+
+:root {
+  --bg-deep: #07080a;
+  --bg: #0a0b0d;
+  --surface-solid: #12151a;
+  --surface-hover: rgb(255 255 255 / 0.045);
+  --text: #eef0f3;
+  --text-strong: #ffffff;
+  --text-muted: #98a1ae;
+  --text-faint: #7d8592;
+  --border: #232830;
+  --border-strong: #313742;
+  --accent: #c8ff3d;
+  --accent-tint: rgb(200 255 61 / 0.12);
+  --accent-ring: rgb(200 255 61 / 0.3);
+  --danger: #ff7a7a;
+  --warn: #ffc46b;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.shell { max-width: 1180px; margin: 0 auto; padding: 28px 20px 72px; }
+
+/* ------------------------------------------------------------------ head */
+
+.masthead {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap;
+  padding-bottom: 18px; margin-bottom: 22px;
+  border-bottom: 1px solid var(--border);
+}
+.masthead h1 { margin: 0; font-size: 20px; font-weight: 700; color: var(--text-strong); }
+.masthead .tag {
+  font-size: 11px; font-weight: 700; letter-spacing: .18em;
+  text-transform: uppercase; color: var(--accent);
+}
+
+.tabs { display: flex; gap: 6px; margin-bottom: 20px; flex-wrap: wrap; }
+.tabs button {
+  background: transparent; border: 1px solid var(--border); color: var(--text-muted);
+  padding: 7px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.tabs button:hover { background: var(--surface-hover); color: var(--text); }
+.tabs button[aria-selected='true'] {
+  background: var(--accent-tint); border-color: var(--accent-ring); color: var(--accent);
+}
+
+/* ----------------------------------------------------------------- cards */
+
+.card {
+  background: var(--surface-solid); border: 1px solid var(--border);
+  border-radius: 12px;
+  /* The Clubs table carries code, status, squad and three controls per row and
+     will not fit a narrow window. Scroll it sideways rather than clipping the
+     last column, which is how the Withdraw button ended up half off-screen. */
+  overflow-x: auto; overflow-y: hidden;
+}
+.card > header {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 13px 16px; border-bottom: 1px solid var(--border);
+}
+.card h2 { margin: 0; font-size: 13px; font-weight: 700; letter-spacing: .04em; color: var(--text-strong); }
+.card .hint { font-size: 12px; color: var(--text-faint); }
+
+/* ---------------------------------------------------------------- tables */
+
+table { width: 100%; border-collapse: collapse; }
+th {
+  text-align: left; font-size: 10px; font-weight: 700; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--text-faint);
+  padding: 10px 12px; border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+td { padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: var(--surface-hover); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+.club { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.club img { width: 22px; height: 22px; object-fit: contain; flex: none; border-radius: 4px; }
+.club .name { color: var(--text-strong); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.flag { font-size: 15px; flex: none; }
+
+.form { display: flex; gap: 3px; }
+.form input {
+  width: 38px; padding: 4px; text-align: center;
+  background: var(--bg); color: var(--text-strong);
+  border: 1px solid var(--border-strong); border-radius: 6px;
+  font-variant-numeric: tabular-nums; font-size: 14px;
+}
+.form input:focus { outline: none; border-color: var(--accent-ring); }
+.form input:disabled { opacity: .5; }
+
+.pos { color: var(--text-faint); font-variant-numeric: tabular-nums; width: 34px; }
+.pts { color: var(--text-strong); font-weight: 700; }
+
+.form-strip { display: flex; gap: 1px; }
+.form-strip span {
+  display: grid; place-items: center; width: 19px; height: 19px;
+  border-radius: 4px; font-size: 10px; font-weight: 700;
+}
+.W { background: rgb(74 222 128 / .16); color: #4ade80; }
+.D { background: rgb(255 255 255 / .07); color: var(--text-faint); }
+.L { background: rgb(255 122 122 / .16); color: var(--danger); }
+
+.score { font-variant-numeric: tabular-nums; color: var(--text-strong); font-weight: 600; }
+.score.pending { color: var(--text-faint); font-weight: 400; }
+
+/* --------------------------------------------------------------- buttons */
+
+.btn {
+  background: transparent; border: 1px solid var(--border-strong); color: var(--text-muted);
+  padding: 5px 11px; border-radius: 7px; font-size: 12px; font-weight: 600; cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.btn:hover:not(:disabled) { background: var(--surface-hover); color: var(--text); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #0a0b0d; }
+.btn.primary:hover:not(:disabled) { background: #d8ff85; color: #0a0b0d; }
+.btn.danger { border-color: rgb(255 122 122 / .4); color: var(--danger); }
+.btn.danger:hover:not(:disabled) { background: rgb(255 122 122 / .12); color: var(--danger); }
+.btn.sm { padding: 3px 8px; font-size: 11px; }
+
+input.text {
+  background: var(--bg); color: var(--text-strong);
+  border: 1px solid var(--border-strong); border-radius: 7px;
+  padding: 6px 9px; font-size: 13px;
+}
+input.text:focus { outline: none; border-color: var(--accent-ring); }
+select.text { cursor: pointer; }
+
+.row-actions { display: flex; gap: 5px; justify-content: flex-end; align-items: center; white-space: nowrap; }
+
+/* --------------------------------------------------------------- notices */
+
+.notice {
+  padding: 10px 14px; border-radius: 9px; font-size: 13px;
+  display: flex; gap: 9px; align-items: flex-start;
+  margin-bottom: 16px;
+}
+.notice.error { background: rgb(255 122 122 / .1); border: 1px solid rgb(255 122 122 / .3); color: var(--danger); }
+.notice.ok { background: var(--accent-tint); border: 1px solid var(--accent-ring); color: var(--accent); }
+.notice.info { background: rgb(255 255 255 / .04); border: 1px solid var(--border); color: var(--text-muted); }
+
+.empty { padding: 34px 16px; text-align: center; color: var(--text-faint); }
+.loading { padding: 34px 16px; text-align: center; color: var(--text-faint); }
+
+.footnote { margin-top: 22px; font-size: 12px; color: var(--text-faint); line-height: 1.6; }
+.footnote code {
+  background: var(--surface-solid); border: 1px solid var(--border);
+  padding: 1px 5px; border-radius: 4px; font-size: 11px;
+}

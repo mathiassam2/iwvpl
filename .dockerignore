@@ -1,0 +1,38 @@
+# Keep the build context small and, more importantly, deterministic.
+#
+# Anything listed here is invisible to the Dockerfile's COPY . . — which is what
+# stops a developer's local .env, build output or 84MB of node_modules from
+# being baked into an image that runs in production.
+
+# Dependencies are reinstalled from the lockfiles inside the image.
+node_modules
+api/node_modules
+admin/node_modules
+
+# Build output. The image builds these itself; copying host output in would let
+# a stale local build silently ship.
+dist
+api/dist
+admin/dist
+
+# Secrets. api/.env holds the TiDB password and the admin password. This must
+# never enter an image, whatever else happens.
+.env
+api/.env
+admin/.env
+api/certs
+cert
+
+# Tooling output and caches
+*.tsbuildinfo
+_crawl
+_source
+.git
+.github
+
+# Not needed to build or serve
+README.md
+scripts
+.vscode
+.idea
+*.log
