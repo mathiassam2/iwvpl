@@ -74,12 +74,18 @@ league.get(
   '/clubs',
   handler(async (req, res) => {
     const includePending = req.query.includePending === 'true'
-    const where = includePending ? '' : 'WHERE status = \'active\''
+    const where = includePending ? '' : "WHERE c.status = 'active'"
 
     const clubs = await queryAll(
-      `SELECT id, name, slug, short_code, flag, logo_url, logo_local, status
-         FROM clubs ${where}
-        ORDER BY name`,
+      `SELECT c.id, c.name, c.slug, c.short_code, c.flag, c.logo_url, c.logo_local, c.status,
+              (SELECT COUNT(*) FROM players p WHERE p.club_id = c.id) AS players,
+              /* The division the club is currently entered in. Membership is
+                 per-season, so the most recent row is the current one. The
+                 admin app reads this to preselect the division dropdown. */
+              (SELECT dc.division_id FROM division_clubs dc
+                WHERE dc.club_id = c.id ORDER BY dc.id DESC LIMIT 1) AS division_id
+         FROM clubs c ${where}
+        ORDER BY c.name`,
     )
     res.json({ clubs })
   }),
@@ -240,5 +246,158 @@ league.get(
     )
 
     res.json({ board: column, rows })
+  }),
+)
+
+/* -------------------------------------------------------------- divisions */
+
+/**
+ * Divisions of the current season.
+ *
+ * Public because division names already appear in the standings response, so
+ * this leaks nothing new — and the admin app assigns clubs from the same list
+ * rather than hard-coding division names.
+ */
+league.get(
+  '/divisions',
+  handler(async (_req, res) => {
+    const rows = await queryAll(
+      `SELECT d.id, d.name, d.slug, s.id AS season_id, s.name AS season
+         FROM divisions d
+         JOIN seasons s ON s.id = d.season_id
+        WHERE s.is_current = TRUE
+        ORDER BY d.name`,
+    )
+    res.json({ divisions: rows })
+  }),
+)
+
+/* ---------------------------------------------------------------- players */
+
+/**
+ * One player, addressed by slug.
+ *
+ * The public profile route exists because players created through an account
+ * are rows here and nothing else — the SPA's static crawl JSON cannot know
+ * about them. Everything the profile page shows is assembled here: club from
+ * players.club_id, season totals from player_season_stats, career from
+ * transfers.
+ *
+ * Rank is counted within the player's own division rather than taken from the
+ * crawl, so a new signing is ranked against the same table it will appear in.
+ * A player with no stats row simply has no boards, which is how the profile
+ * page renders a newcomer with no season history.
+ */
+league.get(
+  '/players/:slug',
+  handler(async (req, res) => {
+    const player = await queryOne<{
+      id: number
+      gamertag: string
+      slug: string
+      avatar_local: string | null
+      is_free_agent: number
+      club_name: string | null
+      club_logo: string | null
+      club_flag: string | null
+    }>(
+      `SELECT p.id, p.gamertag, p.slug, p.avatar_local, p.is_free_agent,
+              c.name AS club_name, c.logo_local AS club_logo, c.flag AS club_flag
+         FROM players p
+         LEFT JOIN clubs c ON c.id = p.club_id
+        WHERE p.slug = ?`,
+      [req.params.slug],
+    )
+    if (!player) return res.status(404).json({ error: 'Player not found' })
+
+    const totals = await queryOne<{
+      goals: number
+      assists: number
+      saves: number
+      appearances: number
+      division_id: number | null
+    }>(
+      `SELECT ps.goals, ps.assists, ps.saves, ps.appearances, ps.division_id
+         FROM player_season_stats ps
+         JOIN seasons s ON s.id = ps.season_id AND s.is_current = TRUE
+        WHERE ps.player_id = ?
+        LIMIT 1`,
+      [player.id],
+    )
+
+    // Rank within the same division, counting how many are strictly ahead.
+    // Absent a stats row there is nothing to rank.
+    const rank = async (column: string): Promise<number | null> => {
+      if (!totals) return null
+      const row = await queryOne<{ n: number }>(
+        `SELECT COUNT(*) + 1 AS n
+           FROM player_season_stats mine
+           JOIN player_season_stats other ON other.division_id = mine.division_id
+           JOIN seasons s ON s.id = mine.season_id AND s.is_current = TRUE
+          WHERE mine.player_id = ?
+            AND other.${column} > mine.${column}`,
+        [player.id],
+      )
+      return Number(row?.n ?? 1)
+    }
+
+    const moves = await queryAll(
+      `SELECT t.occurred_at, t.kind, t.from_club_id, t.to_club_id,
+              fc.name AS from_name, fc.logo_local AS from_logo,
+              tc.name AS to_name, tc.logo_local AS to_logo
+         FROM transfers t
+         LEFT JOIN clubs fc ON fc.id = t.from_club_id
+         LEFT JOIN clubs tc ON tc.id = t.to_club_id
+        WHERE t.player_id = ?
+        ORDER BY t.occurred_at DESC, t.id DESC
+        LIMIT 50`,
+      [player.id],
+    )
+
+    const boards = []
+    if (totals) {
+      const units: Array<[string, string, number]> = [
+        ['Goals', 'goals', totals.goals],
+        ['Assists', 'assists', totals.assists],
+        ['Saves', 'saves', totals.saves],
+      ]
+      for (const [board, column, value] of units) {
+        if (!value) continue
+        boards.push({ board, unit: column, value, rank: await rank(column) })
+      }
+    }
+
+    res.json({
+      player: {
+        gamertag: player.gamertag,
+        slug: player.slug,
+        avatar: player.avatar_local,
+        club: player.club_name
+          ? {
+              name: player.club_name,
+              logo: player.club_logo,
+              flag: player.club_flag,
+              free: false,
+            }
+          : { name: 'Free agent', logo: null, flag: null, free: true },
+        isFreeAgent: Boolean(player.is_free_agent),
+        appearances: totals?.appearances ?? 0,
+        stats: boards,
+        moves: moves.map((m: any) => {
+          // Direction is read off which side is the real club: joining from free
+          // agency or another club is an arrival, dropping to NULL is a
+          // departure. Same rule the static transfer feed uses.
+          const joined = !m.from_club_id || Boolean(m.to_club_id)
+          return {
+            date: m.occurred_at,
+            direction: joined ? 'in' : 'out',
+            club: joined ? m.to_name : m.from_name,
+            logo: joined ? m.to_logo : m.from_logo,
+            free: !joined || !m.to_club_id,
+            kind: m.kind,
+          }
+        }),
+      },
+    })
   }),
 )

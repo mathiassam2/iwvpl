@@ -373,3 +373,107 @@ admin.post(
     res.json({ ok: true, status })
   }),
 )
+
+
+/* ------------------------------------------------------- division assignment */
+
+/**
+ * The manager account that owns a club, if there is one.
+ *
+ * New clubs always have an owner by construction, so this normally resolves. A
+ * nil result is tolerated rather than treated as an error: the write already
+ * succeeded, and failing the request because a notification had no address
+ * would undo nothing and confuse whoever pressed the button.
+ */
+async function notifyClubManagers(
+  clubId: number,
+  kind: string,
+  title: string,
+  body: string,
+): Promise<void> {
+  const owner = await queryOne<{ id: number }>(
+    'SELECT id FROM users WHERE club_id = ? AND is_active = TRUE LIMIT 1',
+    [clubId],
+  )
+  if (owner) await notify(owner.id, kind, title, body, '/dashboard')
+}
+
+/**
+ * Put a club into a division.
+ *
+ * Creates the standings_snapshot row as well as the membership. Membership
+ * alone would leave the club in `division_clubs` and absent from every table:
+ * the standings page reads standings_snapshot, and applyResult only ever
+ * *adjusts* a row that already exists there — it cannot conjure one. So a club
+ * that joined without this step would be invisible until it happened to play,
+ * and a result entered against it would have nothing to apply to.
+ *
+ * Position is the bottom of the table. A newly admitted club has played
+ * nothing, so any position but last would be a claim it had not earned.
+ */
+admin.post(
+  '/clubs/:slug/division',
+  handler(async (req, res) => {
+    const slug = requiredString(req.params.slug, 'slug', 140)
+    const raw = Number.parseInt(String(req.body?.divisionId), 10)
+    if (!Number.isInteger(raw)) {
+      return res.status(400).json({ error: 'divisionId must be an integer.' })
+    }
+
+    const club = await queryOne<{ id: number; name: string }>(
+      'SELECT id, name FROM clubs WHERE slug = ?',
+      [slug],
+    )
+    if (!club) return res.status(404).json({ error: 'Club not found.' })
+
+    const division = await queryOne<{ id: number; name: string; season_id: number }>(
+      `SELECT d.id, d.name, d.season_id
+         FROM divisions d
+         JOIN seasons s ON s.id = d.season_id AND s.is_current = TRUE
+        WHERE d.id = ?`,
+      [raw],
+    )
+    if (!division) return res.status(404).json({ error: 'Division not found.' })
+
+    await withTransaction(async (conn) => {
+      await conn.execute(
+        `INSERT INTO division_clubs (division_id, club_id, code_at_registration, created_at)
+         VALUES (?, ?, (SELECT short_code FROM clubs WHERE id = ?), NOW())
+         ON DUPLICATE KEY UPDATE code_at_registration = VALUES(code_at_registration)`,
+        [division.id, club.id, club.id],
+      )
+
+      // Re-entering a division the club already holds is a no-op rather than a
+      // second row: uq_standings makes that impossible, and resetting a club's
+      // position on re-assign would throw away results it has since played.
+      const [existing] = await conn.query(
+        'SELECT id FROM standings_snapshot WHERE season_id = ? AND division_id = ? AND club_id = ?',
+        [division.season_id, division.id, club.id],
+      )
+      if ((existing as any[]).length > 0) return
+
+      const [bottom] = await conn.query(
+        'SELECT COALESCE(MAX(position), 0) + 1 AS pos FROM standings_snapshot WHERE season_id = ? AND division_id = ?',
+        [division.season_id, division.id],
+      )
+      const position = Number((bottom as any[])[0]?.pos ?? 1)
+
+      await conn.execute(
+        `INSERT INTO standings_snapshot
+           (season_id, division_id, club_id, position, played, won, drawn, lost,
+            goals_for, goals_against, goal_difference, points, form, updated_at)
+         VALUES (?, ?, ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, '', NOW())`,
+        [division.season_id, division.id, club.id, position],
+      )
+    })
+
+    await notifyClubManagers(
+      club.id,
+      'club_division',
+      `${club.name} entered ${division.name}`,
+      `${club.name} has been entered into ${division.name} and now appears in the league table.`,
+    )
+
+    res.json({ ok: true, divisionId: division.id, divisionName: division.name })
+  }),
+)

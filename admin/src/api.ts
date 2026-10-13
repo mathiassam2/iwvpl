@@ -93,6 +93,9 @@ export interface Club {
   logo_local: string | null
   logo_url: string | null
   status: string
+  /** Division currently entered in, null when unassigned. */
+  division_id: number | null
+  players: number
 }
 
 /* --------------------------------------------------------------- requests */
@@ -125,6 +128,29 @@ export const decideClub = (slug: string, decision: 'approve' | 'reject') =>
   request<{ ok: true; status: string }>(`/api/admin/clubs/${slug}/decision`, {
     method: 'POST',
     body: JSON.stringify({ decision }),
+  })
+
+export interface Division {
+  id: number
+  name: string
+  slug: string
+  season: string
+}
+
+export const getDivisions = () =>
+  request<{ divisions: Division[] }>('/api/divisions').then((r) => r.divisions)
+
+/**
+ * Put a club into a division.
+ *
+ * Also creates its standings row, so it appears in the league table
+ * immediately rather than waiting to play a match that cannot be scheduled
+ * without a table to enter.
+ */
+export const assignDivision = (slug: string, divisionId: number) =>
+  request<{ ok: true; divisionName: string }>(`/api/admin/clubs/${slug}/division`, {
+    method: 'POST',
+    body: JSON.stringify({ divisionId }),
   })
 
 export const setResult = (matchId: number, homeScore: number, awayScore: number) =>

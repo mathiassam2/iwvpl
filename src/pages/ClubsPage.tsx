@@ -1,10 +1,12 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { ClubCard } from '@/components/league'
 import { Container, EmptyState, Section, Select, Tabs } from '@/components/ui'
 import { SITE, siteData } from '@/data'
 import type { ClubStatus } from '@/types/site'
 import { stripFlag } from '@/lib/format'
+import { getLiveClubs, liveLeagueEnabled } from '@/lib/liveLeague'
+import type { Club } from '@/types/site'
 
 type Filter = 'all' | ClubStatus
 
@@ -19,22 +21,49 @@ export default function ClubsPage() {
   const [filter, setFilter] = useState<Filter>('all')
   const [q, setQ] = useState('')
 
+  /**
+   * Live clubs, with the crawl as the fallback.
+   *
+   * `siteData` is baked into the bundle at build time, so a club created
+   * through an account was nowhere on this page and its own profile URL 404'd.
+   * Preferring the live list fixes both. If the fetch fails — API down, or a
+   * build with no VITE_API_BASE_URL — the crawl renders exactly as before,
+   * because a page that shows nothing is worse than one that shows yesterday.
+   */
+  const [clubs, setClubs] = useState<Club[]>(siteData.clubs)
+
+  useEffect(() => {
+    if (!liveLeagueEnabled) return
+    const controller = new AbortController()
+
+    void (async () => {
+      try {
+        const live = await getLiveClubs(controller.signal)
+        if (!controller.signal.aborted && live.length) setClubs(live)
+      } catch {
+        /* keep the crawl list */
+      }
+    })()
+
+    return () => controller.abort()
+  }, [])
+
   const counts = useMemo(() => {
-    const c: Record<string, number> = { all: siteData.clubs.length }
-    for (const club of siteData.clubs) {
+    const c: Record<string, number> = { all: clubs.length }
+    for (const club of clubs) {
       c[club.status] = (c[club.status] ?? 0) + 1
     }
     return c
-  }, [])
+  }, [clubs])
 
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase()
-    return siteData.clubs.filter((c) => {
+    return clubs.filter((c) => {
       if (filter !== 'all' && c.status !== filter) return false
       if (!term) return true
       return stripFlag(c.name).toLowerCase().includes(term) || c.code.toLowerCase().includes(term)
     })
-  }, [filter, q])
+  }, [clubs, filter, q])
 
   return (
     <div className="page-enter">
@@ -96,7 +125,7 @@ export default function ClubsPage() {
               <p className="mb-5 text-xs text-[var(--text-muted)]">
                 Showing{' '}
                 <span className="numeric font-semibold text-[var(--text)]">{filtered.length}</span>{' '}
-                of {siteData.clubs.length} clubs
+                of {clubs.length} clubs
               </p>
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                 {filtered.map((club) => (

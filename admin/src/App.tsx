@@ -2,8 +2,10 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   ApiError,
   addPlayer,
+  assignDivision,
   decideClub,
   getClubs,
+  getDivisions,
   getMatches,
   getPendingClubs,
   getStandings,
@@ -12,6 +14,7 @@ import {
   updateClub,
   withdrawResult,
   type Club,
+  type Division,
   type Match,
   type PendingClub,
   type Standing,
@@ -551,6 +554,8 @@ function Clubs({
   const [clubs, setClubs] = useState<Club[] | null>(null)
   const [codes, setCodes] = useState<Record<string, string>>({})
   const [statuses, setStatuses] = useState<Record<string, string>>({})
+  const [divisions, setDivisions] = useState<Division[]>([])
+  const [divisionOf, setDivisionOf] = useState<Record<string, string>>({})
   const [players, setPlayers] = useState<Record<string, string[]>>({})
   const [newPlayer, setNewPlayer] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState<string | null>(null)
@@ -560,6 +565,24 @@ function Clubs({
     setClubs(data)
     setCodes(Object.fromEntries(data.map((c) => [c.slug, c.short_code ?? ''])))
     setStatuses(Object.fromEntries(data.map((c) => [c.slug, c.status])))
+
+    // Divisions are public metadata, and the club rows carry the one they are
+    // already in, so the two load together and the select starts on the real
+    // value rather than on the first option in the list.
+    try {
+      const [divs, full] = await Promise.all([
+        getDivisions(),
+        fetch('/api/clubs?includePending=true').then((r) => (r.ok ? r.json() : { clubs: [] })),
+      ])
+      setDivisions(divs)
+      const current: Record<string, string> = {}
+      for (const c of full.clubs ?? []) {
+        if (c.division_id) current[c.slug] = String(c.division_id)
+      }
+      setDivisionOf(current)
+    } catch {
+      /* the column degrades to "not assigned"; the rest still works */
+    }
   }, [guard])
 
   useEffect(() => {
@@ -582,7 +605,17 @@ function Clubs({
         shortCode: codes[c.slug] || null,
         status: statuses[c.slug],
       })
-      report('ok', `Saved ${c.name}.`)
+
+      // Division is a separate call: it has to create the club's standings row,
+      // which is not something the club PATCH knows how to do.
+      const chosen = divisionOf[c.slug] ?? ''
+      if (chosen && chosen !== (c.division_id ? String(c.division_id) : '')) {
+        const res = await assignDivision(c.slug, Number(chosen))
+        report('ok', `Saved ${c.name} and entered it into ${res.divisionName}.`)
+      } else {
+        report('ok', `Saved ${c.name}.`)
+      }
+
       await load()
     } catch {
       /* already reported */
@@ -636,6 +669,7 @@ function Clubs({
               <th>Club</th>
               <th>Code</th>
               <th>Status</th>
+              <th>Division</th>
               <th>Squad</th>
               <th style={{ textAlign: 'right' }}>Actions</th>
             </tr>
@@ -669,6 +703,24 @@ function Clubs({
                     <option value="active">Active</option>
                     <option value="pending">Pending</option>
                     <option value="withdrawn">Withdrawn</option>
+                  </select>
+                </td>
+                <td>
+                  <select
+                    className="text"
+                    aria-label={`Division for ${c.name}`}
+                    value={divisionOf[c.slug] ?? ''}
+                    disabled={c.status !== 'active'}
+                    onChange={(e) =>
+                      setDivisionOf((s) => ({ ...s, [c.slug]: e.target.value }))
+                    }
+                  >
+                    <option value="">Not entered</option>
+                    {divisions.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}
+                      </option>
+                    ))}
                   </select>
                 </td>
                 <td>

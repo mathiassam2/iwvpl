@@ -13,6 +13,10 @@ interface Fields {
      a player entry creates a free-agent player row. */
   role: 'club_manager' | 'player'
   club: string
+  /* Optional. Decorative rather than identity — codes are not unique and the
+     slug is the real key — but a manager knows what to call their club and it
+     saves an admin a round trip. */
+  shortCode: string
   region: string
   format: string
   manager: string
@@ -39,6 +43,7 @@ const FORMATS = [
 const EMPTY: Fields = {
   role: 'club_manager',
   club: '',
+  shortCode: '',
   region: '',
   format: '',
   manager: '',
@@ -161,6 +166,7 @@ export default function RegisterPage() {
         name: values.role === 'club_manager' ? values.manager.trim() : values.manager.trim() || values.gamertag.trim(),
         gamertag: values.role === 'player' ? values.gamertag.trim() : undefined,
         clubName: values.role === 'club_manager' ? values.club.trim() : undefined,
+        shortCode: values.role === 'club_manager' ? values.shortCode.trim() : undefined,
       })
       setUser(user)
       // Snapshot what was created, then clear the form. The confirmation
@@ -445,6 +451,29 @@ export default function RegisterPage() {
                     </Field>
 
                     <div className="grid gap-5 sm:grid-cols-2">
+                      <Field
+                        label="Short code"
+                        error={errorFor('shortCode')}
+                        htmlFor="shortCode"
+                      >
+                        <input
+                          id="shortCode"
+                          name="shortCode"
+                          type="text"
+                          value={values.shortCode}
+                          onChange={(e) =>
+                            setValues((v) => ({ ...v, shortCode: e.target.value.toUpperCase() }))
+                          }
+                          placeholder="e.g. KKV"
+                          maxLength={8}
+                          autoCapitalize="characters"
+                          spellCheck={false}
+                          className={cx(inputCls, 'uppercase')}
+                        />
+                        <p className="mt-2 text-xs text-[var(--text-faint)]">
+                          Optional. Shown beside your club in tables — an admin can add it later.
+                        </p>
+                      </Field>
                       <Field label="Region" error={errorFor('region')} htmlFor="region">
                         <Select
                           id="region"

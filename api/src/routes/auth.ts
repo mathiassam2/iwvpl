@@ -99,6 +99,15 @@ auth.post(
     const gamertag = role === 'player' ? clean(req.body?.gamertag, 'Gamertag', 120) : null
     const clubName = role === 'club_manager' ? clean(req.body?.clubName, 'Club name', 120) : null
 
+    /* Optional. The code is decorative — it is not unique and slugs are the
+       real identity — but a manager naming their own club knows what to call
+       it, and it saves an admin a round trip. Uppercased because every
+       existing code in the crawl is. */
+    const shortCode =
+      role === 'club_manager' && req.body?.shortCode
+        ? clean(req.body.shortCode, 'Short code', 8).toUpperCase()
+        : null
+
     if (gamertag) {
       const clash = await queryOne(
         'SELECT id FROM players WHERE gamertag_key = ?',
@@ -133,9 +142,9 @@ auth.post(
         // listed nowhere public and cannot play fixtures. GET /api/clubs
         // already filters on status, so pending needs no separate hiding.
         const [res] = await conn.execute(
-          `INSERT INTO clubs (name, slug, status, created_at, updated_at)
-           VALUES (?, ?, 'pending', NOW(), NOW())`,
-          [clubName, clubSlug(clubName)],
+          `INSERT INTO clubs (name, slug, short_code, status, created_at, updated_at)
+           VALUES (?, ?, ?, 'pending', NOW(), NOW())`,
+          [clubName, clubSlug(clubName), shortCode],
         )
         clubId = (res as any).insertId
       }

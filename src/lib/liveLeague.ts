@@ -1,5 +1,19 @@
 import { asset } from '@/lib/assets'
-import type { Match, Standing } from '@/types/site'
+import { AVATAR_PLACEHOLDER } from '@/lib/format'
+import type { PlayerProfile } from '@/lib/players'
+import type { Club, Match, Standing } from '@/types/site'
+
+interface ApiClub {
+  id: number
+  name: string
+  slug: string
+  short_code: string | null
+  flag: string | null
+  logo_url: string | null
+  logo_local: string | null
+  status: string
+  players: number
+}
 
 interface ApiMatch {
   id: number
@@ -110,4 +124,104 @@ export async function getLiveStandings(signal: AbortSignal): Promise<Record<stri
   }
 
   return divisions
+}
+
+/* ------------------------------------------------------------------ clubs */
+
+/**
+ * Clubs, live.
+ *
+ * The crawl JSON is a build-time snapshot, so a club created through an
+ * account exists only in the database and the clubs page reported "not found"
+ * for it. This is the live equivalent of `siteData.clubs`, shaped the same so
+ * the page does not care which source it got.
+ *
+ * Only `status = 'active'` clubs are served, which is the same filter the
+ * crawl-backed list applies — a pending club is a claim nobody has approved
+ * yet and has no business on the public site.
+ */
+export async function getLiveClubs(signal: AbortSignal): Promise<Club[]> {
+  const response = await get<{ clubs: ApiClub[] }>('/api/clubs', signal)
+
+  return response.clubs.map((c) => ({
+    name: c.name,
+    flag: c.flag ?? '',
+    code: c.short_code ?? '',
+    // Internal detail page, never the original site.
+    url: '',
+    logo: c.logo_url ?? '',
+    logoLocal: c.logo_local ?? '',
+    players: Number(c.players ?? 0),
+    status: (c.status === 'active' ? 'Active' : 'Pending') as Club['status'],
+    raw: c.name,
+  }))
+}
+
+/* ---------------------------------------------------------------- players */
+
+/**
+ * One player, live.
+ *
+ * `null` means the profile is not in the database — the caller should fall back
+ * to the crawl, which is the only source for players the league never had
+ * accounts for. Throwing would be wrong: a 404 here means "not ours", not
+ * "broken".
+ */
+export async function getLivePlayer(
+  slug: string,
+  signal: AbortSignal,
+): Promise<PlayerProfile | null> {
+  let response: {
+    player: {
+      gamertag: string
+      avatar: string | null
+      club: { name: string; logo: string | null; flag: string | null; free: boolean }
+      stats: Array<{ board: string; unit: string; value: number; rank: number | null }>
+      moves: Array<{
+        date: string
+        direction: 'in' | 'out'
+        club: string | null
+        logo: string | null
+        free: boolean
+      }>
+    }
+  }
+
+  try {
+    response = await get<typeof response>(`/api/players/${encodeURIComponent(slug)}`, signal)
+  } catch {
+    return null
+  }
+
+  const p = response.player
+  const stats = p.stats
+    .filter((s) => s.rank !== null)
+    .map((s) => ({
+      board: s.board,
+      value: s.value,
+      rank: s.rank as number,
+      unit: s.unit as 'goals' | 'assists' | 'saves',
+    }))
+
+  return {
+    name: p.gamertag,
+    avatar: p.avatar || AVATAR_PLACEHOLDER,
+    club: {
+      name: p.club.name,
+      logo: p.club.logo ? asset(p.club.logo) : '',
+      flag: p.club.flag ?? '',
+      free: p.club.free,
+    },
+    stats,
+    moves: p.moves
+      .filter((m) => m.club)
+      .map((m) => ({
+        date: m.date,
+        direction: m.direction,
+        club: m.club as string,
+        clubLogo: m.logo ? asset(m.logo) : '',
+        free: m.free,
+      })),
+    bestRank: stats.length ? Math.min(...stats.map((s) => s.rank)) : null,
+  }
 }

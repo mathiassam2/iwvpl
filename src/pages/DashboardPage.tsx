@@ -17,7 +17,6 @@ import { Button, ButtonLink, Container, EmptyState, SmartImage } from '@/compone
 import { useAuth } from '@/lib/auth'
 import { ApiError } from '@/lib/api'
 import {
-  addToSquad,
   cancelOffer,
   createClub,
   decideOffer,
@@ -26,7 +25,6 @@ import {
   managerOffers,
   playerOverview,
   searchPlayers,
-  searchSquad,
   sendOffer,
   squad,
   type Offer,
@@ -104,11 +102,6 @@ function ManagerPanel() {
   const [results, setResults] = useState<Awaited<ReturnType<typeof searchPlayers>>['players']>([])
   const [searched, setSearched] = useState(false)
 
-  // Two searches, two different sets. `results` is the offer list (players with
-  // accounts); `roster` is everyone who can be put on a squad.
-  const [rosterQuery, setRosterQuery] = useState('')
-  const [roster, setRoster] = useState<Awaited<ReturnType<typeof searchSquad>>['players']>([])
-  const [rosterSearched, setRosterSearched] = useState(false)
 
   const loadClub = useCallback(async () => {
     try {
@@ -174,46 +167,6 @@ function ManagerPanel() {
     }
   }, [query])
 
-  const onSearchRoster = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setBusy(true)
-    setNotice(null)
-    try {
-      setRoster((await searchSquad(rosterQuery.trim())).players)
-      setRosterSearched(true)
-    } catch (err) {
-      setNotice({ kind: 'error', text: msg(err) })
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const onAddToSquad = async (p: { id: number; gamertag: string; club_name: string | null }) => {
-    // Taking someone off another club's roster is a release and a signing in
-    // one step, and from their manager's side their player has just vanished.
-    if (
-      p.club_name &&
-      !window.confirm(
-        `${p.gamertag} currently plays for ${p.club_name}.\n\nAdding them moves them straight onto your squad without asking them or their current manager. Continue?`,
-      )
-    ) {
-      return
-    }
-
-    setBusy(true)
-    setNotice(null)
-    try {
-      await addToSquad(p.id)
-      setNotice({ kind: 'ok', text: `${p.gamertag} added to your squad.` })
-      // Both lists and the squad itself are server-owned.
-      await Promise.all([loadClub(), refreshResults()])
-      setRoster((await searchSquad(rosterQuery.trim())).players)
-    } catch (err) {
-      setNotice({ kind: 'error', text: msg(err) })
-    } finally {
-      setBusy(false)
-    }
-  }
 
   const onOffer = async (playerId: number) => {
     setBusy(true)
@@ -387,60 +340,6 @@ function ManagerPanel() {
             title="No matching players"
             hint="Only players who have signed up themselves appear here."
           />
-        )}
-      </section>
-
-      {/* ---- roster ---- */}
-      <section className={card}>
-        <PanelHead label="Squad" title="Add a player to your squad" />
-        <p className="mb-4 ">
-          Any player in the league, whether or not they have an account. This adds them to your
-          squad immediately and records a transfer — it does not ask them. Use{' '}
-          <strong className="text-[var(--text)]">Sign a player</strong> above when you would
-          rather the player agreed first.
-        </p>
-
-        <form onSubmit={onSearchRoster} className="flex flex-col gap-3 sm:flex-row">
-          <input
-            value={rosterQuery}
-            onChange={(e) => setRosterQuery(e.target.value)}
-            placeholder="Search any player by gamertag"
-            maxLength={80}
-            className={field}
-          />
-          <Button type="submit" variant="outline" disabled={busy}>
-            Search
-          </Button>
-        </form>
-
-        {rosterSearched && roster.length > 0 && (
-          <ul className="mt-4 divide-y divide-[var(--border)]">
-            {roster.map((p) => (
-              <li key={p.id} className="flex items-center gap-3 py-3">
-                <div className="min-w-0 flex-1">
-                  <Link
-                    to={`/players/${p.slug}`}
-                    className="block truncate text-sm font-semibold text-[var(--text-strong)] hover:text-[var(--accent-text)]"
-                  >
-                    {p.gamertag}
-                  </Link>
-                  <p className="truncate text-[12px] text-[var(--text-muted)]">
-                    {p.club_name ?? 'Free agent'}
-                    {!p.has_account && (
-                      <span className="text-[var(--text-faint)]"> · no account</span>
-                    )}
-                  </p>
-                </div>
-                <Button size="sm" disabled={busy} onClick={() => void onAddToSquad(p)}>
-                  {p.club_name ? 'Take' : 'Add'}
-                </Button>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {rosterSearched && roster.length === 0 && (
-          <EmptyState title="No matching players" hint="Try a different gamertag." />
         )}
       </section>
 

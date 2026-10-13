@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import {
   Badge,
@@ -21,7 +21,8 @@ import {
   isoToFlag,
   stripFlag,
 } from '@/lib/format'
-import { findPlayerBySlug, playerHref } from '@/lib/players'
+import { findPlayerBySlug, playerHref, type PlayerProfile } from '@/lib/players'
+import { getLivePlayer, liveLeagueEnabled } from '@/lib/liveLeague'
 
 /** "2026-10-08 13:33" -> "8 Oct 2026" */
 function moveDate(d: string): string {
@@ -41,7 +42,36 @@ export default function PlayerPage() {
   const { slug = '' } = useParams()
   const [tab, setTab] = useState('overview')
 
-  const player = useMemo(() => findPlayerBySlug(slug), [slug])
+  const crawled = useMemo(() => findPlayerBySlug(slug), [slug])
+
+  /**
+   * Live profile, with the crawl as the fallback.
+   *
+   * `findPlayerBySlug` joins the static leaderboards and transfer feed, so it
+   * cannot know about a player who registered as one — that profile read
+   * "Player not found" for exactly the people the site had just let in. Ask
+   * the API first, and only fall back when it says it has no such player.
+   */
+  const [live, setLive] = useState<PlayerProfile | null | undefined>(undefined)
+
+  useEffect(() => {
+    if (!liveLeagueEnabled || !slug) return
+    const controller = new AbortController()
+
+    void (async () => {
+      try {
+        setLive(await getLivePlayer(slug, controller.signal))
+      } catch {
+        setLive(null)
+      }
+    })()
+
+    return () => controller.abort()
+  }, [slug])
+
+  // `undefined` means the live answer is still in flight; showing the crawl in
+  // the meantime is better than flashing "not found".
+  const player = live === undefined ? crawled : (live ?? crawled)
 
   const totals = useMemo(() => {
     if (!player) return null
