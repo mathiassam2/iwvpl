@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type Dispatch,
@@ -25,6 +26,7 @@ import {
   getPendingClubs,
   getSeasonDivisionMovements,
   getStandings,
+  generateFixtures,
   moveClub,
   removePlayer,
   scheduleMatch,
@@ -632,6 +634,10 @@ function Results({
   const [fixtureClubs, setFixtureClubs] = useState<Club[]>([])
   const [fixtureDivisions, setFixtureDivisions] = useState<Division[]>([])
   const [fixtureSeasons, setFixtureSeasons] = useState<AdminSeason[]>([])
+  const [generateOpen, setGenerateOpen] = useState(false)
+  const [generateLeagues, setGenerateLeagues] = useState<Set<string>>(() => new Set())
+  const [generateRounds, setGenerateRounds] = useState('1')
+  const [generateBusy, setGenerateBusy] = useState(false)
   const [createSeasonId, setCreateSeasonId] = useState('')
   const [createDivisionId, setCreateDivisionId] = useState('')
   const [scheduleTarget, setScheduleTarget] = useState<number | 'new' | null>(null)
@@ -863,6 +869,55 @@ function Results({
     }
   }
 
+  /**
+   * Generate a round robin for the chosen leagues.
+   *
+   * Writes the fixtures without a kickoff so the admin is choosing the shape of
+   * the season here and the dates afterwards, and reports what was skipped so a
+   * second run cannot look like it doubled the fixture list.
+   */
+  const generateSchedule = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const divisionIds = [...generateLeagues].map(Number).filter(Number.isSafeInteger)
+    if (divisionIds.length === 0) {
+      report('error', 'Choose at least one league.')
+      return
+    }
+    const rounds = Number(generateRounds)
+    if (!Number.isSafeInteger(rounds) || rounds < 1 || rounds > 20) {
+      report('error', 'Enter a whole number of rounds between 1 and 20.')
+      return
+    }
+    setGenerateBusy(true)
+    try {
+      const result = await guard(
+        () =>
+          generateFixtures({
+            seasonId: Number(createSeasonId) || undefined,
+            divisionIds,
+            rounds,
+          }),
+        'Could not generate the fixture list',
+      )
+      const parts = [`${result.created} fixture${result.created === 1 ? '' : 's'} created`]
+      if (result.skipped > 0) {
+        parts.push(`${result.skipped} already existed and ${result.skipped === 1 ? 'was' : 'were'} left alone`)
+      }
+      if (result.missing > 0) {
+        parts.push(
+          `${result.missing} league${result.missing === 1 ? '' : 's'} skipped for having fewer than two clubs`,
+        )
+      }
+      report(result.created > 0 ? 'ok' : 'info', `${parts.join(' · ')}. They are in Needs scheduling.`)
+      setGenerateOpen(false)
+      await load()
+    } catch {
+      /* already reported */
+    } finally {
+      setGenerateBusy(false)
+    }
+  }
+
   const saveNewMatch = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!createDivisionId) {
@@ -982,6 +1037,18 @@ function Results({
               }}
             >
               <span aria-hidden="true">＋</span> New fixture
+            </button>
+            <button
+              className="btn"
+              onClick={() => {
+                setGenerateLeagues(
+                  new Set(fixtureDivisions.map((division) => String(division.id))),
+                )
+                setGenerateRounds('1')
+                setGenerateOpen(true)
+              }}
+            >
+              <span aria-hidden="true">⛬</span> Auto schedule
             </button>
             <button
               className="btn reload-btn"
@@ -1212,6 +1279,121 @@ function Results({
         the standings while keeping the fixture; <strong>Delete fixture</strong> permanently
         removes the match.
       </p>
+      {generateOpen && (
+        <div
+          className="squad-modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !generateBusy) setGenerateOpen(false)
+          }}
+        >
+          <form
+            className="squad-modal generate-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="generate-modal-title"
+            onSubmit={(event) => void generateSchedule(event)}
+          >
+            <header>
+              <div>
+                <p className="eyebrow">FIXTURE BUILDER</p>
+                <h2 id="generate-modal-title">Auto schedule</h2>
+                <p className="club-edit-subtitle">
+                  Build a round robin across the leagues you pick. Every fixture is created with no
+                  date, so they land in Needs scheduling for you to fill in.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Close auto schedule"
+                disabled={generateBusy}
+                onClick={() => setGenerateOpen(false)}
+              >
+                ×
+              </button>
+            </header>
+            <div className="club-edit-content">
+              <div className="generate-section">
+                <div className="generate-section-heading">
+                  <h3>Leagues</h3>
+                  <button
+                    className="btn sm"
+                    type="button"
+                    onClick={() =>
+                      setGenerateLeagues((current) =>
+                        current.size === fixtureDivisions.length
+                          ? new Set()
+                          : new Set(fixtureDivisions.map((division) => String(division.id))),
+                      )
+                    }
+                  >
+                    {generateLeagues.size === fixtureDivisions.length && fixtureDivisions.length > 0
+                      ? 'Clear all'
+                      : 'Select all'}
+                  </button>
+                </div>
+                <div className="generate-leagues">
+                  {fixtureDivisions.map((division) => {
+                    const on = generateLeagues.has(String(division.id))
+                    return (
+                      <label className="generate-league" key={division.id}>
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          onChange={(event) => {
+                            setGenerateLeagues((current) => {
+                              const next = new Set(current)
+                              if (event.target.checked) next.add(String(division.id))
+                              else next.delete(String(division.id))
+                              return next
+                            })
+                          }}
+                        />
+                        <span>{division.name}</span>
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
+              <div className="generate-section">
+                <div className="generate-section-heading">
+                  <h3>Rounds</h3>
+                </div>
+                <input
+                  className="text generate-rounds"
+                  type="number"
+                  min="1"
+                  max="20"
+                  value={generateRounds}
+                  onChange={(event) => setGenerateRounds(event.target.value)}
+                  aria-label="Rounds per league"
+                />
+                <p className="generate-help">
+                  One round plays every club once. Two rounds plays every pairing home and away,
+                  which is the usual league format.
+                </p>
+              </div>
+            </div>
+            <footer className="club-edit-footer">
+              <button
+                type="button"
+                className="btn"
+                disabled={generateBusy}
+                onClick={() => setGenerateOpen(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn primary"
+                type="submit"
+                disabled={generateBusy || generateLeagues.size === 0}
+              >
+                {generateBusy ? 'Building…' : 'Generate fixtures'}
+              </button>
+            </footer>
+          </form>
+        </div>
+      )}
       {scheduleTarget !== null && (
         <div
           className="squad-modal-backdrop"
@@ -1936,6 +2118,12 @@ function SeasonManagement({
   readOnly,
   onSeasonChange,
   onCurrentSeasonChanged,
+  onCompleteSeason,
+  onUndoSeason,
+  seasonBusy,
+  canUndo,
+  previousSeasonName,
+  rolloverHint,
 }: {
   guard: <T>(fn: () => Promise<T>, what: string) => Promise<T>
   report: (kind: Notice['kind'], text: string) => void
@@ -1946,6 +2134,12 @@ function SeasonManagement({
   readOnly: boolean
   onSeasonChange: (seasonId: string) => void
   onCurrentSeasonChanged: (seasonId: number) => void
+  onCompleteSeason: () => void
+  onUndoSeason: () => void
+  seasonBusy: boolean
+  canUndo: boolean
+  previousSeasonName: string | null
+  rolloverHint: string | null
 }) {
   const [editingSeasonId, setEditingSeasonId] = useState<number | null>(null)
   const [seasonName, setSeasonName] = useState('')
@@ -2055,6 +2249,16 @@ function SeasonManagement({
           )}
         </div>
         <div className="season-management-actions">
+          {canUndo && (
+            <button
+              className="btn sm"
+              type="button"
+              disabled={seasonBusy}
+              onClick={onUndoSeason}
+            >
+              Undo · back to {previousSeasonName}
+            </button>
+          )}
           <button
             className="btn sm"
             type="button"
@@ -2068,9 +2272,18 @@ function SeasonManagement({
             {expanded ? 'Hide options' : 'More options'}
           </button>
           <button
+            className="btn primary sm season-complete-btn"
+            type="button"
+            disabled={seasonBusy || readOnly}
+            title={rolloverHint ?? undefined}
+            onClick={onCompleteSeason}
+          >
+            Complete season
+          </button>
+          <button
             className="btn primary sm"
             type="button"
-            disabled={busy}
+            disabled={seasonBusy}
             onClick={() => {
               const year = Math.max(new Date().getFullYear(), ...seasons.map((season) => season.year))
               setNewSeasonYear(String(year))
@@ -2241,6 +2454,26 @@ function Clubs({
   const [bulkAction, setBulkAction] = useState<BulkAction | null>(null)
   const [bulkLeague, setBulkLeague] = useState('')
   const [bulkStatus, setBulkStatus] = useState('')
+  // Direction of the single Relocate button, and the plan it is confirming.
+  const [bulkDirectionOverride, setBulkDirectionOverride] = useState<ClubMovementType | null>(null)
+  const [confirmRelocate, setConfirmRelocate] = useState<{
+    source: Division
+    neighbour: Division
+    neighbourType: ClubMovementType
+    type: ClubMovementType
+    inbound: Club[]
+  } | null>(null)
+  const closeCompleteSeason = () => {
+    setSeasonCompleteOpen(false)
+    setConfirmRelocate(null)
+  }
+  const openCompleteSeason = () => {
+    const year = Math.max(new Date().getFullYear(), ...seasons.map((season) => season.year)) + 1
+    setNextSeasonYear(String(year))
+    setNextSeasonName(`${year} Season 1`)
+    const plan = selectedCount > 0 && !bulkMoveBlock(bulkDirection) ? planBulkRelocate(bulkDirection) : null
+    setConfirmRelocate(plan)
+  }
   // Which movement the club editor is waiting on confirmation for, and the one
   // it has actually sent. Both are per club so a failed move cannot leave the
   // confirm strip open on a different club.
@@ -2620,17 +2853,18 @@ function Clubs({
    */
   const leagueRankByClubId = new Map<number, number>()
   const leagueSizeByDivisionId = new Map<number, number>()
+  const rankedClubsByDivisionId = new Map<number, Club[]>()
   for (const division of divisions) {
     const members = clubs.filter((club) => club.division_id === division.id)
     leagueSizeByDivisionId.set(division.id, members.length)
-    members
-      .sort((a, b) => {
-        const positionA = standingsByClub.get(a.id)?.position ?? Number.POSITIVE_INFINITY
-        const positionB = standingsByClub.get(b.id)?.position ?? Number.POSITIVE_INFINITY
-        if (positionA !== positionB) return positionA - positionB
-        return a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true })
-      })
-      .forEach((club, index) => leagueRankByClubId.set(club.id, index + 1))
+    const ranked = [...members].sort((a, b) => {
+      const positionA = standingsByClub.get(a.id)?.position ?? Number.POSITIVE_INFINITY
+      const positionB = standingsByClub.get(b.id)?.position ?? Number.POSITIVE_INFINITY
+      if (positionA !== positionB) return positionA - positionB
+      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true })
+    })
+    ranked.forEach((club, index) => leagueRankByClubId.set(club.id, index + 1))
+    rankedClubsByDivisionId.set(division.id, ranked)
   }
 
   const clubMovement = (club: Club) => {
@@ -2753,6 +2987,35 @@ function Clubs({
    * anything is written.
    */
   const bulkHasPending = bulkLeague !== '' || bulkStatus !== ''
+
+  /**
+   * Which way the Relocate button will go.
+   *
+   * Guessed from where the selection sits in its league — clubs in the
+   * promotion zone are obviously going up — and overridable with the direction
+   * control. Re-guessed whenever the selection changes, so a leftover override
+   * from a previous pick can never point the next one the wrong way.
+   */
+  const selectionKey = [...selectedSlugs].sort().join(',')
+  const inferredDirection: ClubMovementType = useMemo(() => {
+    if (selectedClubs.length === 0) return 'relegation'
+    const allPromotion = selectedClubs.every((club) => clubMovement(club).promotion)
+    return allPromotion ? 'promotion' : 'relegation'
+  }, [selectedClubs])
+  const bulkDirection = bulkDirectionOverride ?? inferredDirection
+  useEffect(() => {
+    setBulkDirectionOverride(null)
+  }, [selectionKey])
+
+  /** The season to return to: the most recently created one that is not current. */
+  const previousSeason =
+    [...seasons].filter((season) => !Boolean(season.is_current)).sort((a, b) => b.id - a.id)[0] ??
+    null
+  const [seasonBusy, setSeasonBusy] = useState(false)
+  const [seasonCompleteOpen, setSeasonCompleteOpen] = useState(false)
+  const [nextSeasonName, setNextSeasonName] = useState('')
+  const [nextSeasonYear, setNextSeasonYear] = useState('')
+  const createdSeasonName = previousSeason?.name ?? 'The newer season'
   const bulkPendingLabels = [
     bulkLeague !== '' &&
       `move to ${
@@ -2772,6 +3035,42 @@ function Clubs({
    * says so up front instead of stalling halfway through and leaving the admin
    * to work out which half succeeded.
    */
+  const planBulkRelocate = (
+    type: ClubMovementType,
+  ): {
+    source: Division
+    neighbour: Division
+    type: ClubMovementType
+    neighbourType: ClubMovementType
+    inbound: Club[]
+  } | null => {
+    if (selectedCount === 0) return null
+    const sources = new Set(selectedClubs.map((club) => getDivisionId(club)))
+    if (sources.size !== 1) return null
+    const source = orderedDivisions.find((division) => String(division.id) === [...sources][0])
+    if (!source) return null
+    const index = orderedDivisions.indexOf(source)
+    const neighbour =
+      type === 'promotion' ? orderedDivisions[index - 1] : orderedDivisions[index + 1]
+    if (!neighbour) return null
+    // The club going the other way. Relegating out of a league leaves the one
+    // below it a club too many, so the counterpart is taken from that league's
+    // promotion zone — the clubs its own rules already nominate.
+    const neighbourType: ClubMovementType = type === 'promotion' ? 'relegation' : 'promotion'
+    const ranked = rankedClubsByDivisionId.get(neighbour.id) ?? []
+    const inbound =
+      neighbourType === 'promotion' ? ranked.slice(0, selectedCount) : ranked.slice(-selectedCount)
+    return { source, neighbour, type, neighbourType, inbound }
+  }
+
+  /**
+   * Whether a bulk relocate can run, and why not when it cannot.
+   *
+   * A relocation moves twice: the selected clubs travel one way, and an equal
+   * number come back the other so both leagues keep the size their rules say
+   * they should have. That second half is spending slots too, so both quotas
+   * are checked before anything is sent.
+   */
   const bulkMoveBlock = (type: ClubMovementType): string | null => {
     if (readOnly) return 'This season is read-only.'
     if (selectedCount === 0) return 'Select at least one club.'
@@ -2781,16 +3080,40 @@ function Clubs({
     }
     const source = orderedDivisions.find((division) => String(division.id) === [...sources][0])
     if (!source) return 'Those clubs are not in a league yet. Set their league first.'
-    const plan = movementPlan(selectedClubs[0])[type]
-    if (!plan.destination) {
-      return `${source.name} is the ${type === 'promotion' ? 'highest' : 'lowest'} league; there is nothing ${type === 'promotion' ? 'above' : 'below'} it.`
+    const outboundPlan = movementPlan(selectedClubs[0])[type]
+    if (!outboundPlan.destination) {
+      return `${source.name} is the ${type === 'promotion' ? 'highest' : 'lowest'} league; there is nothing ${type === 'promotion' ? 'above' : 'below'} it to swap with.`
     }
-    const remaining = Math.max(0, plan.quota - plan.completed)
-    if (remaining < selectedCount) {
-      return `Only ${remaining} ${type} slot${remaining === 1 ? '' : 's'} left for ${source.name}, but ${selectedCount} club${selectedCount === 1 ? '' : 's'} are selected.`
+    const plan = planBulkRelocate(type)
+    if (!plan) {
+      return `${source.name} has no neighbouring league to take the place in return.`
+    }
+    if (plan.inbound.length < selectedCount) {
+      return `${plan.neighbour.name} can only send ${plan.inbound.length} club${plan.inbound.length === 1 ? '' : 's'} the other way, so the leagues would not stay the same size.`
+    }
+    const outboundRemaining = Math.max(0, outboundPlan.quota - outboundPlan.completed)
+    if (outboundRemaining < selectedCount) {
+      return `Only ${outboundRemaining} ${type} slot${outboundRemaining === 1 ? '' : 's'} left for ${source.name}, but ${selectedCount} club${selectedCount === 1 ? '' : 's'} are selected.`
+    }
+    const inboundPlan = movementPlan(plan.inbound[0])[plan.neighbourType]
+    const inboundRemaining = Math.max(0, inboundPlan.quota - inboundPlan.completed)
+    if (inboundRemaining < selectedCount) {
+      return `${plan.neighbour.name} has ${inboundRemaining} ${plan.neighbourType} slot${inboundRemaining === 1 ? '' : 's'} left, so it can only send ${inboundRemaining} club${inboundRemaining === 1 ? '' : 's'} back.`
     }
     return null
   }
+
+  /**
+   * Why Complete season cannot run as things stand, if it cannot.
+   *
+   * Stated on the button rather than left to a failed confirm: a selection
+   * spread across two leagues, or one bigger than the slots left, is a problem
+   * the admin can see before committing.
+   */
+  const rolloverHint: string | null =
+    selectedCount > 0
+      ? bulkMoveBlock(bulkDirection)
+      : null
 
   /**
    * Run one action over the selection and report it as a single outcome.
@@ -2820,7 +3143,11 @@ function Clubs({
       }
       await refresh()
       if (failed.length === 0) {
+        // Drop the selection once the work is done. The staged fields are
+        // cleared with it, so a bar left showing a spent selection invites a
+        // second press against rows the admin has already moved on from.
         report('ok', describeDone)
+        clearSelection()
       } else if (done === 0) {
         report('error', `Could not ${describeDone.replace(/\.$/, '')}: ${failed.join(', ')}.`)
       } else {
@@ -2873,19 +3200,98 @@ function Clubs({
     setBulkStatus('')
   }
 
-  const bulkMove = async (type: ClubMovementType) => {
-    const blocked = bulkMoveBlock(type)
+  /**
+   * Finish the season: apply the queued movement, then start the next one.
+   *
+   * One action because the order matters and neither half is useful alone. A
+   * new season is copied from the leagues as they stand, so any promotion or
+   * relegation has to be committed first or the new season would start from
+   * the standings the movement was meant to replace.
+   */
+  const completeSeason = async (name: string, year: number) => {
+    const plan = planBulkRelocate(bulkDirection)
+    const blocked = plan ? bulkMoveBlock(bulkDirection) : selectedCount > 0
+      ? bulkMoveBlock(bulkDirection)
+      : null
     if (blocked) {
       report('error', blocked)
       return
     }
-    const destination = movementPlan(selectedClubs[0])[type].destination
-    await runBulk(
-      selectedClubs,
-      (club) => moveClub(club.slug, type).then(() => undefined),
-      `${type === 'promotion' ? 'Promoted' : 'Relegated'} ${selectedCount} club${selectedCount === 1 ? '' : 's'} into ${destination?.name ?? 'the next league'}.`,
-      type,
-    )
+    setSeasonBusy(true)
+    try {
+      const failed: string[] = []
+      if (plan) {
+        for (const club of selectedClubs) {
+          try {
+            await moveClub(club.slug, plan.type).then(() => undefined)
+          } catch {
+            failed.push(club.name)
+          }
+        }
+        for (const club of plan.inbound) {
+          try {
+            await moveClub(club.slug, plan.neighbourType).then(() => undefined)
+          } catch {
+            failed.push(club.name)
+          }
+        }
+      }
+      const created = await guard(() => createSeason(name, year), 'Could not start the new season')
+      setSeasons((current) =>
+        [
+          ...current.map((season) => ({ ...season, is_current: false })),
+          created.season,
+        ].sort(
+          (a, b) => Number(Boolean(b.is_current)) - Number(Boolean(a.is_current)) || b.year - a.year,
+        ),
+      )
+      clearSelection()
+      closeCompleteSeason()
+      setSeasonId(String(created.season.id))
+      report(
+        failed.length === 0 ? 'ok' : 'error',
+        failed.length === 0
+          ? `${created.season.name} started. ${created.divisions.length} league${
+              created.divisions.length === 1 ? '' : 's'
+            } carried over with the new league places.`
+          : `${created.season.name} started, but these clubs did not move: ${failed.join(', ')}.`,
+      )
+    } catch {
+      /* already reported */
+    } finally {
+      setSeasonBusy(false)
+    }
+  }
+
+  /**
+   * Undo a rollover by putting the previous season back in charge.
+   *
+   * Seasons are retained rather than replaced, so this only moves the
+   * is_current flag. The season that was rolled into is still there and can be
+   * re-activated from the list, which makes this safe to offer.
+   */
+  const undoSeasonRollover = async () => {
+    if (!previousSeason) return
+    setSeasonBusy(true)
+    try {
+      const restored = await guard(
+        () => setCurrentSeason(previousSeason.id),
+        'Could not switch back to the previous season',
+      )
+      setSeasons((current) =>
+        current.map((season) => ({
+          ...season,
+          is_current: season.id === restored.id,
+        })),
+      )
+      clearSelection()
+      setSeasonId(String(restored.id))
+      report('ok', `${restored.name} is current again. ${createdSeasonName} is still on record.`)
+    } catch {
+      /* already reported */
+    } finally {
+      setSeasonBusy(false)
+    }
   }
 
   const clubGroups = [
@@ -2989,6 +3395,12 @@ function Clubs({
               setConfirmingMovement(null)
               setSeasonId(String(nextSeasonId))
             }}
+            onCompleteSeason={openCompleteSeason}
+            onUndoSeason={() => void undoSeasonRollover()}
+            seasonBusy={seasonBusy}
+            canUndo={previousSeason !== null}
+            previousSeasonName={previousSeason?.name ?? null}
+            rolloverHint={rolloverHint}
           />
           {readOnly && (
             <p className="season-readonly-banner" role="status">
@@ -3137,7 +3549,19 @@ function Clubs({
                               }
                             }}
                           >
-                            <td className="club-select-cell">
+                            <td
+                              className="club-select-cell"
+                              onClick={(event) => {
+                                // The whole cell toggles, not just the 16px
+                                // box: reaching for a checkbox that sits in a
+                                // corner of a 60px row is how selections get
+                                // missed. The input stops propagation so
+                                // clicking it directly does not double-fire.
+                                event.stopPropagation()
+                                if (readOnly) return
+                                toggleSelected(c.slug, !selectedSlugs.has(c.slug))
+                              }}
+                            >
                               <input
                                 type="checkbox"
                                 checked={selectedSlugs.has(c.slug)}
@@ -3237,47 +3661,11 @@ function Clubs({
                     'Update'
                   )}
                 </button>
-                <span className="bulk-bar-divider" aria-hidden="true" />
-                <button
-                  className="btn sm promotion"
-                  type="button"
-                  disabled={bulkBusy}
-                  aria-busy={bulkAction === 'promotion'}
-                  title={bulkMoveBlock('promotion') ?? undefined}
-                  onClick={() => void bulkMove('promotion')}
-                >
-                  {bulkAction === 'promotion' ? (
-                    <>
-                      <span className="spinner" aria-hidden="true" />
-                      Promoting…
-                    </>
-                  ) : (
-                    'Promote ↑'
-                  )}
-                </button>
-                <button
-                  className="btn sm relegation"
-                  type="button"
-                  disabled={bulkBusy}
-                  aria-busy={bulkAction === 'relegation'}
-                  title={bulkMoveBlock('relegation') ?? undefined}
-                  onClick={() => void bulkMove('relegation')}
-                >
-                  {bulkAction === 'relegation' ? (
-                    <>
-                      <span className="spinner" aria-hidden="true" />
-                      Relegating…
-                    </>
-                  ) : (
-                    'Relegate ↓'
-                  )}
-                </button>
               </div>
               <p className="bulk-bar-hint" role="status">
                 {bulkHasPending
                   ? `Update will apply to ${selectedCount} club${selectedCount === 1 ? '' : 's'}: ${bulkPendingLabels.join(', ')}.`
-                  : (bulkMoveBlock('promotion') ??
-                    'Pick a league or status above, then press Update. Or move the selection up or down the ladder.')}
+                  : 'Pick a league or status above, then press Update.'}
               </p>
               <button
                 className="bulk-bar-clear"
@@ -3296,6 +3684,124 @@ function Clubs({
             Gamertags are matched case-insensitively — registering a name that already exists is
             rejected rather than creating a duplicate player.
           </p>
+          {seasonCompleteOpen && (
+            <div
+              className="squad-modal-backdrop"
+              onMouseDown={(event) => {
+                if (event.target === event.currentTarget && !seasonBusy) closeCompleteSeason()
+              }}
+            >
+              <form
+                className="squad-modal season-rollover-modal"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="season-rollover-title"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  void completeSeason(nextSeasonName.trim(), Number(nextSeasonYear))
+                }}
+              >
+                <header>
+                  <div>
+                    <p className="eyebrow">END OF SEASON</p>
+                    <h2 id="season-rollover-title">Complete {selectedSeason?.name}</h2>
+                    <p className="club-edit-subtitle">
+                      One action: the movement below is committed first, then the new season
+                      starts from the leagues as they stand afterwards.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    aria-label="Close"
+                    disabled={seasonBusy}
+                    onClick={closeCompleteSeason}
+                  >
+                    ×
+                  </button>
+                </header>
+                <div className="club-edit-content">
+                  <div className="season-rollover-moves">
+                    {confirmRelocate ? (
+                      <>
+                        <div className="season-rollover-leg">
+                          <strong>
+                            {confirmRelocate.source.name} → {confirmRelocate.neighbour.name}
+                          </strong>
+                          <ul>
+                            {selectedClubs.map((club) => (
+                              <li key={club.slug}>{club.name}</li>
+                            ))}
+                          </ul>
+                        </div>
+                        <div className="season-rollover-leg">
+                          <strong>
+                            {confirmRelocate.neighbour.name} → {confirmRelocate.source.name}
+                          </strong>
+                          <ul>
+                            {confirmRelocate.inbound.map((club) => (
+                              <li key={club.slug}>{club.name}</li>
+                            ))}
+                          </ul>
+                          <span className="season-rollover-note">
+                            Taken automatically so both leagues keep the size their movement rules
+                            say they should have.
+                          </span>
+                        </div>
+                      </>
+                    ) : (
+                      <p className="season-rollover-none">
+                        No clubs selected, so nothing will move. The new season starts from the
+                        leagues exactly as they are now.
+                      </p>
+                    )}
+                  </div>
+                  <div className="season-create-form">
+                    <label>
+                      <span>New season name</span>
+                      <input
+                        className="text"
+                        value={nextSeasonName}
+                        onChange={(event) => setNextSeasonName(event.target.value)}
+                        maxLength={64}
+                        required
+                        autoFocus
+                      />
+                    </label>
+                    <label>
+                      <span>Season year</span>
+                      <input
+                        className="text"
+                        type="number"
+                        min="2000"
+                        max="9999"
+                        value={nextSeasonYear}
+                        onChange={(event) => setNextSeasonYear(event.target.value)}
+                        required
+                      />
+                    </label>
+                  </div>
+                </div>
+                <footer className="club-edit-footer">
+                  <p className="fixture-summary">
+                    Past seasons are kept, so this can be undone by switching the current season
+                    back — nothing is deleted.
+                  </p>
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={seasonBusy}
+                    onClick={closeCompleteSeason}
+                  >
+                    Cancel
+                  </button>
+                  <button className="btn primary" type="submit" disabled={seasonBusy}>
+                    {seasonBusy ? 'Starting…' : 'Confirm and start new season'}
+                  </button>
+                </footer>
+              </form>
+            </div>
+          )}
           {activeClub && (
             <div
               className="squad-modal-backdrop"

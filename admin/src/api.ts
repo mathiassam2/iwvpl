@@ -168,6 +168,27 @@ export const getClubs = (seasonId?: number) =>
     `/api/clubs${seasonId == null ? '' : `?seasonId=${seasonId}`}`,
   ).then((r) => r.clubs)
 
+/**
+ * Build a round-robin fixture list for whole leagues at once.
+ *
+ * Every fixture is written with no kickoff, so they land in Needs scheduling
+ * for the admin to date. Pairs that already exist in that season are skipped
+ * rather than duplicated.
+ */
+export const generateFixtures = ({
+  seasonId,
+  divisionIds,
+  rounds,
+}: {
+  seasonId?: number
+  divisionIds: number[]
+  rounds: number
+}) =>
+  request<{ created: number; skipped: number; missing: number }>('/api/admin/matches/generate', {
+    method: 'POST',
+    body: JSON.stringify({ seasonId, divisionIds, rounds }),
+  })
+
 export const scheduleMatch = (matchId: number, kickoff: string | null) =>
   request<{ ok: true; kickoff: string | null }>(`/api/admin/matches/${matchId}/schedule`, {
     method: 'PATCH',
