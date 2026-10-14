@@ -218,7 +218,6 @@ league.get(
       AND (? IS NULL OR m.season_id = ?)
       AND (? IS NULL OR home.slug = ? OR away.slug = ?)
       AND ${scoreFilter}
-      AND NOT ((m.home_score IS NULL OR m.away_score IS NULL) AND m.kickoff IS NULL)
       AND ${searchFilter}`
     const whereParams = [
       status,
@@ -269,9 +268,17 @@ league.get(
           WHERE ${where}`,
         whereParams,
       ),
-      queryOne<{ pending: number; completed: number }>(
-        `SELECT SUM(m.home_score IS NULL OR m.away_score IS NULL) AS pending,
-                SUM(m.home_score IS NOT NULL AND m.away_score IS NOT NULL) AS completed
+      // Unfiltered counts for the admin's tab labels. Kept separate from
+      // `total`, which is scoped to the current filter: the admin needs the size
+      // of every view at once, and a count that changed as you moved between
+      // them was reporting a different population each time.
+      //
+      // The public site only ever asks for status=finished and reads `total`,
+      // so the undated fixtures this now includes do not reach it.
+      queryOne<{ all_total: number; pending_total: number; completed_total: number }>(
+        `SELECT COUNT(*) AS all_total,
+                SUM(m.home_score IS NULL OR m.away_score IS NULL) AS pending_total,
+                SUM(m.home_score IS NOT NULL AND m.away_score IS NOT NULL) AS completed_total
            FROM matches m`,
       ),
     ])
@@ -279,8 +286,9 @@ league.get(
     res.json({
       matches: rows,
       total: Number(count?.total ?? 0),
-      pending: Number(summary?.pending ?? 0),
-      completed: Number(summary?.completed ?? 0),
+      allTotal: Number(summary?.all_total ?? 0),
+      pendingTotal: Number(summary?.pending_total ?? 0),
+      completedTotal: Number(summary?.completed_total ?? 0),
       limit,
       offset,
     })

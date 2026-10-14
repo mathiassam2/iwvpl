@@ -121,9 +121,12 @@ export const getStandings = (seasonId?: number, division?: string) => {
 
 export interface MatchPage {
   matches: Match[]
+  /** Matches the current filter would return, for paging this list. */
   total: number
-  pending: number
-  completed: number
+  /** Unfiltered totals, so the tab labels do not change as you switch views. */
+  allTotal: number
+  pendingTotal: number
+  completedTotal: number
   limit: number
   offset: number
 }

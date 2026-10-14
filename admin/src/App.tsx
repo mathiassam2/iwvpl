@@ -627,6 +627,7 @@ function Results({
   const [prioritySelected, setPrioritySelected] = useState<Set<number>>(() => new Set())
   const [priorityBusy, setPriorityBusy] = useState(false)
   const [totalMatches, setTotalMatches] = useState(0)
+  const [allTotal, setAllTotal] = useState(0)
   const [pendingCount, setPendingCount] = useState(0)
   const [completedCount, setCompletedCount] = useState(0)
   const [loadingMatches, setLoadingMatches] = useState(false)
@@ -714,8 +715,9 @@ function Results({
       setPriorityData(priorities.matches)
       setPriorityTotal(priorities.total)
       setTotalMatches(data.total)
-      setPendingCount(data.pending)
-      setCompletedCount(data.completed)
+      setAllTotal(data.allTotal)
+      setPendingCount(data.pendingTotal)
+      setCompletedCount(data.completedTotal)
       setScheduleDrafts((current) => ({
         ...current,
         ...Object.fromEntries(loadedMatches.map((match) => [match.id, dateTimeInputValue(match.kickoff)])),
@@ -1162,7 +1164,7 @@ function Results({
             { key: 'priority' as const, label: 'Needs scheduling', count: priorityTotal },
             { key: 'pending' as const, label: 'Unplayed', count: pendingCount },
             { key: 'completed' as const, label: 'Completed', count: completedCount },
-            { key: 'all' as const, label: 'All fixtures', count: totalMatches },
+            { key: 'all' as const, label: 'All fixtures', count: allTotal },
           ] as const).map((tab) => (
             <button
               key={tab.key}
@@ -1358,7 +1360,7 @@ function Results({
               ? `${pendingCount} unplayed`
               : matchTab === 'completed'
                 ? `${completedCount} with a result`
-                : `${totalMatches} in this season`}
+                : `${allTotal} in this season`}
           </span>
           <div className="match-controls-right">
             <label className="match-sort-control">
