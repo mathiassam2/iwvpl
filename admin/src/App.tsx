@@ -578,14 +578,19 @@ function Results({
               {priorityMatches.filter((group) => group.matches.length > 0).map((group) => (
                 <section className={`priority-group urgency-${group.key}`} key={group.key}>
                   <header>
-                    <div>
+                    <div className="priority-group-title">
+                      <span className="priority-indicator" aria-hidden="true" />
+                      <div>
                       <h3>{group.title}</h3>
                       <p>{group.hint}</p>
+                      </div>
                     </div>
-                    <span className="priority-count">{group.matches.length}</span>
+                    <span className="priority-count">
+                      {group.matches.length} {group.matches.length === 1 ? 'fixture' : 'fixtures'}
+                    </span>
                   </header>
                   <div className="priority-fixtures">
-                    {group.matches.slice(0, 4).map((match) => (
+                    {group.matches.map((match) => (
                       <div className="priority-fixture" key={match.id}>
                         <div className="priority-fixture-teams">
                           <strong>{match.home_name}</strong><span>vs</span><strong>{match.away_name}</strong>
@@ -594,18 +599,13 @@ function Results({
                           {match.kickoff ? formatKickoff(match.kickoff) : 'Date & time not set'}
                         </time>
                         <button
-                          className="priority-action"
+                          className="btn priority-action"
                           onClick={() => setScheduleTarget(match.id)}
                         >
-                          {match.kickoff ? 'Edit time' : 'Set schedule'} <span aria-hidden="true">›</span>
+                          {match.kickoff ? 'Edit schedule' : 'Set schedule'}
                         </button>
                       </div>
                     ))}
-                    {group.matches.length > 4 && (
-                      <p className="priority-more">
-                        +{group.matches.length - 4} more in the fixture list below
-                      </p>
-                    )}
                   </div>
                 </section>
               ))}
