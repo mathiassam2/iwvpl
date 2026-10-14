@@ -100,8 +100,15 @@ export interface Club {
 
 /* --------------------------------------------------------------- requests */
 
-export const getStandings = () =>
-  request<{ standings: Standing[] }>('/api/standings').then((r) => r.standings)
+export const getStandings = (seasonId?: number, division?: string) => {
+  const params = new URLSearchParams()
+  if (seasonId != null) params.set('seasonId', String(seasonId))
+  if (division) params.set('division', division)
+  const query = params.toString()
+  return request<{ standings: Standing[] }>(
+    `/api/standings${query ? `?${query}` : ''}`,
+  ).then((r) => r.standings)
+}
 
 export interface MatchPage {
   matches: Match[]
@@ -183,6 +190,7 @@ export interface Division {
   id: number
   name: string
   slug: string
+  season_id?: number
   season: string
   sort_order: number
   promotion_count: number | null

@@ -1,6 +1,7 @@
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { siteData } from '@/data'
 import { CLUB_PLACEHOLDER, stripFlag } from '@/lib/format'
+import { getLiveResults, liveLeagueEnabled } from '@/lib/liveLeague'
 import { useMarqueeSpeed } from '@/lib/useMarqueeSpeed'
 
 /**
@@ -39,7 +40,7 @@ function fallbackCode(name: string): string {
   return '—'
 }
 
-function Crest({ logo, alt }: { logo?: string; alt: string }) {
+function Crest({ logo }: { logo?: string }) {
   return (
     <img
       src={logo || CLUB_PLACEHOLDER}
@@ -54,14 +55,35 @@ function Crest({ logo, alt }: { logo?: string; alt: string }) {
 
 export function Scroller() {
   const sectionRef = useRef<HTMLElement>(null)
+  const [liveResults, setLiveResults] = useState<typeof siteData.results | null>(null)
+  const [error, setError] = useState('')
+  const [reload, setReload] = useState(0)
   useMarqueeSpeed(sectionRef)
+
+  useEffect(() => {
+    if (!liveLeagueEnabled) return
+    const controller = new AbortController()
+    setError('')
+
+    getLiveResults(controller.signal)
+      .then(setLiveResults)
+      .catch((cause: unknown) => {
+        if (!controller.signal.aborted) {
+          setError(cause instanceof Error ? cause.message : 'Could not load latest match results.')
+        }
+      })
+
+    return () => controller.abort()
+  }, [reload])
+
+  const results = liveLeagueEnabled ? liveResults ?? [] : siteData.results
 
   const { items, codeOf } = useMemo(() => {
     const map = new Map<string, string>()
     for (const row of siteData.standings) {
       if (row.code) map.set(row.team, row.code)
     }
-    const rows = siteData.results.slice(0, 26)
+    const rows = results.slice(0, 26)
     return {
       codeOf: (name: string) => map.get(name) || fallbackCode(name),
       items: rows.map((m, i) => ({
@@ -74,21 +96,31 @@ export function Scroller() {
         awayLogo: m.awayLogo,
       })),
     }
-  }, [])
+  }, [results])
 
+  if (error) {
+    return (
+      <p role="alert" className="px-4 py-3 text-center text-xs text-[var(--danger-text)]">
+        {error}{' '}
+        <button className="font-semibold underline" onClick={() => setReload((value) => value + 1)}>
+          Retry
+        </button>
+      </p>
+    )
+  }
   if (!items.length) return null
 
   const group = (hidden?: boolean) => (
     <div className="marquee__group" aria-hidden={hidden || undefined}>
       {items.map((m) => (
         <span className="marquee__item" key={m.key}>
-          <Crest logo={m.homeLogo} alt={m.home} />
+          <Crest logo={m.homeLogo} />
           <span className="marquee__code">{codeOf(m.home)}</span>
           <span className="marquee__score">
             {m.hs} – {m.as}
           </span>
           <span className="marquee__code">{codeOf(m.away)}</span>
-          <Crest logo={m.awayLogo} alt={m.away} />
+          <Crest logo={m.awayLogo} />
         </span>
       ))}
     </div>

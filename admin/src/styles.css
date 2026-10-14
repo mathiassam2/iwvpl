@@ -237,6 +237,10 @@ button { -webkit-tap-highlight-color: transparent; }
 .match-empty { display: grid; gap: 5px; padding: 34px 15px; }
 .match-empty strong { color: var(--text); font-size: 14px; }
 .match-empty span { color: var(--muted); font-size: 12px; }
+.standings-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
+.standings-filters label { display: grid; gap: 7px; color: var(--muted); font-size: 11px; font-weight: 700; }
+.standings-filters .custom-select { width: 100%; min-width: 0; }
+.standings-filters .custom-select-trigger { min-height: 42px; }
 .fixture-modal { width: min(100%, 520px); overflow-x: hidden; }
 .fixture-modal h2 span { color: var(--faint); font-weight: 500; }
 .fixture-note { margin: 0; padding: 11px 13px; border: 1px solid var(--border); border-radius: 8px; color: var(--muted); background: var(--bg); font-size: 11px; line-height: 1.55; }
@@ -365,6 +369,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   border-top: 1px solid var(--border); background: var(--surface);
 }
 @media (max-width: 480px) {
+  .standings-filters { grid-template-columns: 1fr; }
   .squad-modal-backdrop { padding: 12px; }
   .club-edit-content { padding: 18px 15px; }
   .club-edit-fields { grid-template-columns: 1fr; }

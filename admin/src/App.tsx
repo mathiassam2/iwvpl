@@ -162,7 +162,7 @@ export default function App() {
                 {tab === 'results'
                   ? 'Record match scores and keep the table up to date.'
                   : tab === 'standings'
-                    ? 'Review the current league table and recent form.'
+                    ? 'Review standings by season and league division.'
                     : tab === 'clubs' && clubSection === 'applications'
                       ? 'Review and respond to clubs waiting for approval.'
                       : tab === 'clubs'
@@ -179,7 +179,7 @@ export default function App() {
             </div>
           )}
 
-          {tab === 'standings' && <Standings guard={guard} report={report} />}
+          {tab === 'standings' && <Standings guard={guard} />}
           {tab === 'results' && <Results guard={guard} report={report} />}
           {tab === 'clubs' && (
             <Clubs
@@ -201,35 +201,125 @@ export default function App() {
 
 function Standings({
   guard,
-  report,
 }: {
   guard: <T>(fn: () => Promise<T>, what: string) => Promise<T>
-  report: (kind: Notice['kind'], text: string) => void
 }) {
+  const [seasons, setSeasons] = useState<AdminSeason[] | null>(null)
+  const [seasonId, setSeasonId] = useState('')
+  const [divisions, setDivisions] = useState<Division[]>([])
+  const [divisionId, setDivisionId] = useState('')
   const [rows, setRows] = useState<Standing[] | null>(null)
+  const divisionsRequestId = useRef(0)
+  const standingsRequestId = useRef(0)
 
-  const load = useCallback(async () => {
-    const data = await guard(getStandings, 'Could not load standings')
-    setRows(data)
+  useEffect(() => {
+    guard(getAdminSeasons, 'Could not load seasons for standings')
+      .then((availableSeasons) => {
+        setSeasons(availableSeasons)
+        setSeasonId(
+          String(
+            availableSeasons.find((season) => Boolean(season.is_current))?.id ??
+              availableSeasons[0]?.id ??
+              '',
+          ),
+        )
+      })
+      .catch(() => setSeasons([]))
   }, [guard])
 
   useEffect(() => {
-    load().catch(() => setRows([]))
-  }, [load])
+    const requestId = ++divisionsRequestId.current
+    setDivisions([])
+    setDivisionId('')
+    setRows(null)
+    if (!seasonId) return
 
-  if (rows === null) return <div className="loading">Loading standings…</div>
+    guard(
+      () => getDivisions(Number(seasonId)),
+      'Could not load divisions for the selected standings season',
+    )
+      .then((seasonDivisions) => {
+        if (requestId !== divisionsRequestId.current) return
+        setDivisions(seasonDivisions)
+        setDivisionId(String(seasonDivisions[0]?.id ?? ''))
+      })
+      .catch(() => {
+        if (requestId === divisionsRequestId.current) setDivisions([])
+      })
+  }, [guard, seasonId])
 
-  const division = rows[0]?.division_name
+  const selectedDivision = divisions.find(
+    (division) =>
+      String(division.id) === divisionId &&
+      (division.season_id == null || division.season_id === Number(seasonId)),
+  )
+
+  useEffect(() => {
+    const requestId = ++standingsRequestId.current
+    setRows(null)
+    if (!seasonId || !selectedDivision) return
+
+    guard(
+      () => getStandings(Number(seasonId), selectedDivision.slug),
+      'Could not load standings',
+    )
+      .then((seasonStandings) => {
+        if (requestId === standingsRequestId.current) setRows(seasonStandings)
+      })
+      .catch(() => {
+        if (requestId === standingsRequestId.current) setRows([])
+      })
+  }, [guard, seasonId, selectedDivision])
+
+  const selectedSeason = seasons?.find((season) => String(season.id) === seasonId)
+
+  if (seasons === null) return <div className="loading">Loading seasons…</div>
 
   return (
     <>
+      <div className="standings-filters">
+        <label>
+          <span>Season</span>
+          <CustomSelect
+            ariaLabel="Standings season"
+            value={seasonId}
+            disabled={seasons.length === 0}
+            options={seasons.map((season) => ({
+              value: String(season.id),
+              label: `${season.name}${season.is_current ? ' · Current' : ''}`,
+            }))}
+            onChange={setSeasonId}
+          />
+        </label>
+        <label>
+          <span>League</span>
+          <CustomSelect
+            ariaLabel="Standings league"
+            value={divisionId}
+            disabled={!seasonId || divisions.length === 0}
+            options={divisions.map((division) => ({
+              value: String(division.id),
+              label: division.name,
+            }))}
+            onChange={setDivisionId}
+          />
+        </label>
+      </div>
       <div className="card">
         <header>
-          <h2>{division ?? 'Standings'}</h2>
-          <span className="hint">Updates as results are recorded</span>
+          <h2>{selectedDivision?.name ?? 'Standings'}</h2>
+          <span className="hint">
+            {selectedSeason ? `${selectedSeason.name} · ` : ''}Updates as results are recorded
+          </span>
         </header>
-        {rows.length === 0 ? (
-          <div className="empty">No standings rows.</div>
+        {seasons.length === 0 ? (
+          <div className="empty">No seasons are available.</div>
+        ) : divisions.length === 0 && seasonId ? (
+          <div className="empty">No divisions are configured for this season.</div>
+        ) : rows === null ? (
+          <div className="loading">Loading standings…</div>
+        ) : rows.length === 0 ? (
+          <div className="empty">No standings rows for this league and season.</div>
         ) : (
           <table>
             <thead>
@@ -283,10 +373,9 @@ function Standings({
       </div>
 
       <p className="footnote">
-        This table is <strong>materialised</strong>, not recomputed from results. The seeded
-        snapshot covers 153 matches while only 50 are stored, so each new result is applied
-        incrementally to the existing rows. Editing a result reverses its old contribution
-        before applying the new one, which keeps the arithmetic exact.
+        Each season has its own <strong>materialised standings snapshot</strong>. Results update
+        the snapshot for the match&rsquo;s season and league; editing a result reverses its previous
+        contribution before applying the updated score.
       </p>
     </>
   )
