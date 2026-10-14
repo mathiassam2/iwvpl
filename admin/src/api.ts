@@ -104,6 +104,7 @@ export interface SeasonDivisionMovement {
   source_division_id: number
   destination_division_id: number
   movement_type: 'promotion' | 'relegation' | 'transfer'
+  source_position: number | null
 }
 
 /* --------------------------------------------------------------- requests */
@@ -228,6 +229,9 @@ export const recordSeasonDivisionMovement = (slug: string, sourceDivisionId: num
     method: 'POST',
     body: JSON.stringify({ slug, sourceDivisionId }),
   }).then((r) => r.movement)
+
+export const resetSeasonDivisionMovements = () =>
+  request<{ cleared: number }>('/api/admin/season-movements', { method: 'DELETE' })
 
 export const getAdminSeasons = () =>
   request<{ seasons: AdminSeason[] }>('/api/admin/seasons').then((r) => r.seasons)

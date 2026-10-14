@@ -482,6 +482,44 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .club-subnav button:hover { color: var(--text); }
 .club-subnav button[aria-selected="true"] { border-color: rgb(200 255 61 / 16%); color: var(--accent); background: var(--accent-soft); }
 .club-subnav button span { display: grid; place-items: center; min-width: 19px; height: 19px; padding: 0 5px; border-radius: 99px; color: var(--faint); background: var(--surface-hover); font-size: 9px; }
+.season-preview { display: grid; gap: 17px; }
+.season-preview-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 19px 21px; border: 1px solid var(--border); border-radius: 13px; background: linear-gradient(120deg, rgb(200 255 61 / 7%), transparent 55%), var(--surface); }
+.season-preview-heading > div { display: grid; gap: 6px; }
+.season-preview-eyebrow { color: var(--accent); font-size: 9px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
+.season-preview-heading h2 { margin: 0; color: var(--text); font-size: 18px; letter-spacing: -.03em; }
+.season-preview-heading p { max-width: 70ch; margin: 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.season-preview-heading .btn { flex: none; }
+.season-preview-summary { display: grid; grid-template-columns: repeat(3, minmax(100px, .65fr)) minmax(180px, 1.4fr); gap: 10px; }
+.season-preview-summary > div { display: grid; align-content: center; gap: 4px; min-height: 70px; padding: 11px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.season-preview-summary strong { color: var(--text); font-size: 20px; font-variant-numeric: tabular-nums; }
+.season-preview-summary span { color: var(--faint); font-size: 9px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+.season-preview-summary .promotion strong { color: var(--accent); }
+.season-preview-summary .relegation strong { color: #ffaaa6; }
+.season-preview-summary p { align-self: center; margin: 0; padding: 0 12px; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.season-preview-warning { margin: 0; padding: 11px 14px; border: 1px solid rgb(255 190 92 / 25%); border-radius: 9px; color: #f1c988; background: rgb(255 190 92 / 6%); font-size: 11px; line-height: 1.5; }
+.season-preview-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); align-items: start; gap: 13px; }
+.season-preview-league { min-width: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.season-preview-league > header { display: flex; min-height: 64px; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 15px; border-bottom: 1px solid var(--border); }
+.season-preview-league > header > div:first-child { display: grid; gap: 4px; }
+.season-preview-league h3 { margin: 0; color: var(--text); font-size: 13px; }
+.season-preview-league > header > div:first-child > span { color: var(--faint); font-size: 9px; }
+.season-preview-rules { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px; }
+.season-preview-rules span { padding: 4px 7px; border: 1px solid var(--border); border-radius: 99px; color: var(--muted); background: var(--bg); font-size: 9px; font-weight: 700; white-space: nowrap; }
+.season-preview-league ol { margin: 0; padding: 0; list-style: none; }
+.season-preview-league li { display: flex; min-height: 49px; align-items: center; gap: 9px; padding: 7px 12px; border-bottom: 1px solid var(--border); }
+.season-preview-league li:last-child { border-bottom: 0; }
+.season-preview-league li.incoming.promotion { background: rgb(200 255 61 / 7%); }
+.season-preview-league li.incoming.relegation { background: rgb(255 136 136 / 7%); }
+.season-preview-position { width: 20px; color: var(--faint); font-size: 10px; font-variant-numeric: tabular-nums; text-align: center; }
+.season-preview-league li img { width: 22px; height: 22px; flex: none; object-fit: contain; }
+.season-preview-club-name { min-width: 0; overflow: hidden; color: var(--text); font-size: 11px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.season-preview-movement { display: grid; flex: none; gap: 2px; margin-left: auto; color: var(--muted); font-size: 9px; font-weight: 750; text-align: right; text-transform: capitalize; }
+.season-preview-movement small { color: var(--faint); font-size: 8px; font-weight: 500; text-transform: none; }
+.season-preview-returning { flex: none; margin-left: auto; color: var(--faint); font-size: 8px; }
+.season-preview-empty { display: grid; justify-items: center; gap: 6px; padding: 34px 18px; border: 1px dashed var(--border-strong); border-radius: 11px; color: var(--muted); text-align: center; }
+.season-preview-empty strong { color: var(--text); font-size: 12px; }
+.season-preview-empty span, .season-preview-empty-league { color: var(--faint); font-size: 10px; }
+.season-preview-empty-league { margin: 0; padding: 20px 14px; }
 .division-management { display: grid; gap: 12px; }
 .division-management > .card, .season-management { overflow: visible; }
 .season-management > header { min-height: 82px; padding: 17px 20px; }
@@ -653,7 +691,14 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .match-pagination .btn { min-height: 34px; }
   .footnote { margin-top: 14px; }
   .club-subnav { width: 100%; }
-  .club-subnav button { flex: 1; justify-content: center; }
+  .club-subnav { flex-wrap: wrap; }
+  .club-subnav button { flex: 1 1 42%; justify-content: center; }
+  .season-preview-heading { align-items: stretch; flex-direction: column; padding: 15px; }
+  .season-preview-heading .btn { align-self: flex-start; }
+  .season-preview-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .season-preview-summary > div { min-height: 61px; padding: 9px; }
+  .season-preview-summary p { grid-column: 1 / -1; padding: 2px 1px; }
+  .season-preview-grid { grid-template-columns: minmax(0, 1fr); }
   .club-league-groups { gap: 11px; }
   .club-league-overview { align-items: flex-start; flex-wrap: wrap; }
   .club-league-overview h2 { font-size: 15px; }

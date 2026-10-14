@@ -18,6 +18,7 @@ import {
   getSeasonDivisionMovements,
   getStandings,
   recordSeasonDivisionMovement,
+  resetSeasonDivisionMovements,
   removePlayer,
   scheduleMatch,
   setResult,
@@ -38,7 +39,7 @@ import {
 } from './api'
 
 type Tab = 'standings' | 'results' | 'clubs'
-type ClubSection = 'clubs' | 'applications' | 'divisions'
+type ClubSection = 'clubs' | 'preview' | 'applications' | 'divisions'
 
 interface Notice {
   kind: 'ok' | 'error' | 'info'
@@ -59,7 +60,9 @@ export default function App() {
       ? 'applications'
       : savedTab === 'divisions' || savedSection === 'divisions'
         ? 'divisions'
-        : 'clubs'
+        : savedSection === 'preview'
+          ? 'preview'
+          : 'clubs'
   })
   const [notice, setNotice] = useState<Notice | null>(null)
   const [pendingApplicationCount, setPendingApplicationCount] = useState(0)
@@ -2156,11 +2159,41 @@ function Clubs({
     }
   }
 
+  const resetMovementProgress = async () => {
+    if (
+      !window.confirm(
+        'Reset this season’s promotion/relegation progress? This clears movement records only and will not change any club’s current league.',
+      )
+    ) {
+      return
+    }
+    setBusy('reset-movements')
+    try {
+      const result = await guard(
+        resetSeasonDivisionMovements,
+        'Could not reset this season’s movement progress',
+      )
+      setSeasonMovements([])
+      report('ok', `Reset movement progress (${result.cleared} record${result.cleared === 1 ? '' : 's'} cleared).`)
+    } catch {
+      /* already reported */
+    } finally {
+      setBusy(null)
+    }
+  }
+
   const getDivisionId = (club: Club) => String(club.division_id ?? '')
   const configuredDivisionIds = new Set(divisions.map((division) => String(division.id)))
   const standingsByClub = new Map(standings.map((standing) => [standing.club_id, standing]))
+  const activeSeasonMovements = (seasonMovements ?? []).filter(
+    (movement) =>
+      clubs.some(
+        (club) =>
+          club.id === movement.club_id && club.division_id === movement.destination_division_id,
+      ),
+  )
   const movementCompletedClubIds = new Set(
-    (seasonMovements ?? [])
+    activeSeasonMovements
       .filter((movement) => movement.movement_type !== 'transfer')
       .map((movement) => movement.club_id),
   )
@@ -2168,7 +2201,7 @@ function Clubs({
     number,
     { promotion: number; relegation: number }
   >()
-  for (const movement of seasonMovements ?? []) {
+  for (const movement of activeSeasonMovements) {
     if (movement.movement_type === 'transfer') continue
     const counts = completedMovementsByDivision.get(movement.source_division_id) ?? {
       promotion: 0,
@@ -2232,7 +2265,7 @@ function Clubs({
         const destination = divisions.find((division) => division.id === club.division_id)
         if (!destination || destination.id === sourceDivisionId) return false
         if (
-          seasonMovements.some(
+          activeSeasonMovements.some(
             (movement) =>
               movement.club_id === club.id &&
               movement.source_division_id === sourceDivisionId,
@@ -2248,6 +2281,103 @@ function Clubs({
         a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true }),
       )
   }
+  const projectedMoves = new Map<
+    number,
+    {
+      club: Club
+      source: Division
+      destination: Division
+      type: 'promotion' | 'relegation'
+      sourcePosition: number
+      completed: boolean
+    }
+  >()
+  for (const movement of activeSeasonMovements) {
+    if (movement.movement_type === 'transfer') continue
+    const club = clubs.find((item) => item.id === movement.club_id)
+    const source = divisions.find((item) => item.id === movement.source_division_id)
+    const destination = divisions.find((item) => item.id === movement.destination_division_id)
+    if (!club || !source || !destination || club.division_id !== destination.id) continue
+    projectedMoves.set(club.id, {
+      club,
+      source,
+      destination,
+      type: movement.movement_type,
+      sourcePosition:
+        movement.source_position ?? standingsByClub.get(club.id)?.position ?? Number.MAX_SAFE_INTEGER,
+      completed: true,
+    })
+  }
+  const orderedDivisions = [...divisions].sort(
+    (a, b) => a.sort_order - b.sort_order || a.id - b.id,
+  )
+  for (const [index, source] of orderedDivisions.entries()) {
+    const sourceClubs = clubs
+      .filter((club) => club.division_id === source.id)
+      .sort((a, b) => {
+        const positionA = standingsByClub.get(a.id)?.position ?? Number.POSITIVE_INFINITY
+        const positionB = standingsByClub.get(b.id)?.position ?? Number.POSITIVE_INFINITY
+        return positionA - positionB || a.name.localeCompare(b.name)
+      })
+    const promotionTarget = promotionTargetFor(source)
+    const completedPromotions = promotionCompletedFor(source)
+    const promotionDestination = orderedDivisions[index - 1]
+    const promotionsToProject = Math.max(0, promotionTarget - completedPromotions)
+    if (promotionDestination && promotionsToProject > 0) {
+      const candidates = sourceClubs.filter((club) => !projectedMoves.has(club.id))
+      for (const club of candidates.slice(0, promotionsToProject)) {
+        projectedMoves.set(club.id, {
+          club,
+          source,
+          destination: promotionDestination,
+          type: 'promotion',
+          sourcePosition: standingsByClub.get(club.id)?.position ?? Number.MAX_SAFE_INTEGER,
+          completed: false,
+        })
+      }
+    }
+    const relegationTarget = relegationTargetFor(source)
+    const completedRelegations = relegationCompletedFor(source)
+    const relegationDestination = orderedDivisions[index + 1]
+    const relegationsToProject = Math.max(0, relegationTarget - completedRelegations)
+    if (relegationDestination && relegationsToProject > 0) {
+      const candidates = sourceClubs.filter((club) => !projectedMoves.has(club.id))
+      for (const club of candidates.slice(-relegationsToProject)) {
+        projectedMoves.set(club.id, {
+          club,
+          source,
+          destination: relegationDestination,
+          type: 'relegation',
+          sourcePosition: standingsByClub.get(club.id)?.position ?? Number.MAX_SAFE_INTEGER,
+          completed: false,
+        })
+      }
+    }
+  }
+  const projectedTables = orderedDivisions.map((division) => {
+    const returning = clubs
+      .filter((club) => club.division_id === division.id && !projectedMoves.has(club.id))
+      .sort((a, b) => {
+        const positionA = standingsByClub.get(a.id)?.position ?? Number.POSITIVE_INFINITY
+        const positionB = standingsByClub.get(b.id)?.position ?? Number.POSITIVE_INFINITY
+        return positionA - positionB || a.name.localeCompare(b.name)
+      })
+    const incoming = [...projectedMoves.values()]
+      .filter((move) => move.destination.id === division.id)
+      .sort(
+        (a, b) =>
+          a.source.sort_order - b.source.sort_order ||
+          a.sourcePosition - b.sourcePosition ||
+          a.club.name.localeCompare(b.club.name),
+      )
+    return { division, clubs: [...returning, ...incoming.map((move) => move.club)], incoming }
+  })
+  const projectedPromotionCount = [...projectedMoves.values()].filter(
+    (move) => move.type === 'promotion',
+  ).length
+  const projectedRelegationCount = [...projectedMoves.values()].filter(
+    (move) => move.type === 'relegation',
+  ).length
   const clubGroups = [
     ...divisions.map((division) => ({
       id: String(division.id),
@@ -2292,7 +2422,14 @@ function Clubs({
           aria-selected={section === 'clubs'}
           onClick={() => setSection('clubs')}
         >
-          Clubs <span>{clubs.length}</span>
+          Current clubs <span>{clubs.length}</span>
+        </button>
+        <button
+          role="tab"
+          aria-selected={section === 'preview'}
+          onClick={() => setSection('preview')}
+        >
+          Next season preview
         </button>
         <button
           role="tab"
@@ -2320,6 +2457,104 @@ function Clubs({
           report={report}
           onPendingCountChange={onPendingCountChange}
         />
+      ) : section === 'preview' ? (
+        <section className="season-preview">
+          <header className="season-preview-heading">
+            <div>
+              <span className="season-preview-eyebrow">Season planning · {divisions[0]?.season ?? 'Current season'}</span>
+              <h2>Next season table preview</h2>
+              <p>
+                A projection from the current standings and each league&rsquo;s movement rules.
+                Returning clubs keep their order; projected arrivals are appended. Nothing is changed.
+              </p>
+            </div>
+            <button
+              className="btn sm"
+              type="button"
+              disabled={busy !== null || seasonMovements === null || seasonMovements.length === 0}
+              onClick={() => void resetMovementProgress()}
+            >
+              Reset movement progress
+            </button>
+          </header>
+          <div className="season-preview-summary">
+            <div>
+              <strong>{projectedTables.reduce((count, table) => count + table.clubs.length, 0)}</strong>
+              <span>projected clubs</span>
+            </div>
+            <div className="promotion">
+              <strong>{projectedPromotionCount}</strong>
+              <span>promotions</span>
+            </div>
+            <div className="relegation">
+              <strong>{projectedRelegationCount}</strong>
+              <span>relegations</span>
+            </div>
+            <p>Next season starts with zero played, won, drawn, lost, and points.</p>
+          </div>
+          {seasonMovements === null && (
+            <p className="season-preview-warning">
+              Movement history could not be loaded. This view is showing configured movement rules
+              only; completed moves may not be reflected.
+            </p>
+          )}
+          {projectedTables.length === 0 ? (
+            <div className="season-preview-empty">
+              <strong>No league tables to preview yet</strong>
+              <span>Create the next season&rsquo;s divisions in League setup when you are ready.</span>
+            </div>
+          ) : (
+            <div className="season-preview-grid">
+              {projectedTables.map(({ division, clubs: projectedClubs, incoming }) => {
+                const incomingByClubId = new Map(incoming.map((move) => [move.club.id, move]))
+                return (
+                  <article className="season-preview-league" key={division.id}>
+                    <header>
+                      <div>
+                        <h3>{division.name}</h3>
+                        <span>{projectedClubs.length} projected clubs</span>
+                      </div>
+                      <div className="season-preview-rules">
+                        {division.promotion_count ? <span>{division.promotion_count} up</span> : null}
+                        {relegationTargetFor(division) > 0 ? (
+                          <span>{relegationTargetFor(division)} down</span>
+                        ) : null}
+                      </div>
+                    </header>
+                    {projectedClubs.length === 0 ? (
+                      <p className="season-preview-empty-league">No clubs in this projected table.</p>
+                    ) : (
+                      <ol>
+                        {projectedClubs.map((club, index) => {
+                          const movement = incomingByClubId.get(club.id)
+                          return (
+                            <li
+                              className={movement ? `incoming ${movement.type}` : ''}
+                              key={club.id}
+                            >
+                              <span className="season-preview-position">{index + 1}</span>
+                              {club.logo_local ? <img src={club.logo_local} alt="" /> : null}
+                              {club.flag ? <span>{club.flag}</span> : null}
+                              <span className="season-preview-club-name">{club.name}</span>
+                              {movement ? (
+                                <span className="season-preview-movement">
+                                  {movement.completed ? 'Moved' : 'Projected'} {movement.type}
+                                  <small>from {movement.source.name}</small>
+                                </span>
+                              ) : (
+                                <span className="season-preview-returning">Returning</span>
+                              )}
+                            </li>
+                          )
+                        })}
+                      </ol>
+                    )}
+                  </article>
+                )
+              })}
+            </div>
+          )}
+        </section>
       ) : section === 'divisions' ? (
         <Divisions
           guard={guard}

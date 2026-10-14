@@ -1119,13 +1119,38 @@ admin.get(
   '/season-movements',
   handler(async (_req, res) => {
     const movements = await queryAll(
-      `SELECT m.club_id, m.source_division_id, m.destination_division_id, m.movement_type
+      `SELECT m.club_id, m.source_division_id, m.destination_division_id, m.movement_type,
+              source_standing.position AS source_position
          FROM season_division_movements m
          JOIN seasons s ON s.id = m.season_id
+         LEFT JOIN standings_snapshot source_standing
+           ON source_standing.season_id = m.season_id
+          AND source_standing.division_id = m.source_division_id
+          AND source_standing.club_id = m.club_id
         WHERE s.is_current = TRUE
         ORDER BY m.source_division_id, m.club_id`,
     )
     res.json({ movements })
+  }),
+)
+
+admin.delete(
+  '/season-movements',
+  handler(async (_req, res) => {
+    const cleared = await withTransaction(async (conn) => {
+      const [seasonRows] = await conn.query(
+        'SELECT id FROM seasons WHERE is_current = TRUE LIMIT 1 FOR UPDATE',
+      )
+      const season = (seasonRows as Array<{ id: number }>)[0]
+      if (!season) return null
+      const [result] = await conn.execute(
+        'DELETE FROM season_division_movements WHERE season_id = ?',
+        [season.id],
+      )
+      return (result as { affectedRows: number }).affectedRows
+    })
+    if (cleared === null) return res.status(404).json({ error: 'No current season.' })
+    res.json({ cleared })
   }),
 )
 
