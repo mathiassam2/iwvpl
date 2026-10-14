@@ -4,10 +4,10 @@ import { StandingsTable, StatTile, type StandingSortKey } from '@/components/lea
 import { Container, Section, Tabs } from '@/components/ui'
 import { SITE, siteData } from '@/data'
 import { getLiveStandings, liveLeagueEnabled } from '@/lib/liveLeague'
-import type { Standing } from '@/types/site'
+import type { StandingDivision } from '@/types/site'
 
 export default function StandingsPage() {
-  const [liveStandings, setLiveStandings] = useState<Record<string, Standing[]> | null>(null)
+  const [liveStandings, setLiveStandings] = useState<Record<string, StandingDivision> | null>(null)
   const [loading, setLoading] = useState(liveLeagueEnabled)
   const [error, setError] = useState('')
   const [reload, setReload] = useState(0)
@@ -43,8 +43,11 @@ export default function StandingsPage() {
   }, [reload])
 
   const divisions = liveStandings ? Object.keys(liveStandings) : initialDivisions
+  const division = liveStandings
+    ? liveStandings[div]
+    : siteData.standingsByDivision[div]
   const rows = liveStandings
-    ? liveStandings[div] ?? []
+    ? division?.rows ?? []
     : siteData.standingsByDivision[div]?.rows ?? []
 
   const sorted = useMemo(() => {
@@ -99,7 +102,7 @@ export default function StandingsPage() {
                 tabs={divisions.map((d) => ({
                   id: d,
                   label: d,
-                  count: liveStandings?.[d]?.length ?? siteData.standingsByDivision[d]?.rows.length,
+                  count: liveStandings?.[d]?.rows.length ?? siteData.standingsByDivision[d]?.rows.length,
                 }))}
                 active={div}
                 onChange={setDiv}
@@ -108,7 +111,38 @@ export default function StandingsPage() {
             </div>
           )}
 
-          {!loading && !error && <StandingsTable rows={sorted} sort={sort} onSort={onSort} />}
+          {!loading && !error && (
+            <>
+              {division?.promotionRange || division?.relegationRange ? (
+                <p className="mb-3 text-xs text-[var(--text-muted)]">
+                  {division.promotionRange && (
+                    <span>
+                      Promotion: positions {division.promotionRange.from}–{division.promotionRange.to}
+                    </span>
+                  )}
+                  {division.promotionRange && division.relegationRange && <span> · </span>}
+                  {division.relegationRange && (
+                    <span>
+                      Relegation: positions {division.relegationRange.from}–{division.relegationRange.to}
+                    </span>
+                  )}
+                </p>
+              ) : null}
+              {sorted.length > 0 ? (
+                <StandingsTable
+                  rows={sorted}
+                  sort={sort}
+                  onSort={onSort}
+                  promotionRange={division?.promotionRange}
+                  relegationRange={division?.relegationRange}
+                />
+              ) : (
+                <div className="surface rounded-card px-5 py-8 text-center text-sm text-[var(--text-muted)]">
+                  No clubs have been entered in this division yet.
+                </div>
+              )}
+            </>
+          )}
 
           {!loading && !error && (
             <div className="mt-10 grid gap-4 sm:grid-cols-3">

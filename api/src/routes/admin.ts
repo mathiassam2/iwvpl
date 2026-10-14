@@ -16,6 +16,7 @@ import { Router } from 'express'
 import { execute, queryAll, queryOne, withTransaction, type Params } from '../db.js'
 import { clearResult, setResult } from '../domain/applyResult.js'
 import { notify } from '../domain/auth.js'
+import { clubSlug } from '../domain/slug.js'
 
 export const admin = Router()
 
@@ -47,6 +48,64 @@ function optionalString(value: unknown, max = 512): string | null {
   if (!s) return null
   if (s.length > max) throw Object.assign(new Error('Value is too long.'), { status: 400 })
   return s
+}
+
+type DivisionRanges = {
+  promotion_from: number | null
+  promotion_to: number | null
+  relegation_from: number | null
+  relegation_to: number | null
+}
+
+function parsePosition(value: unknown, field: string): number | null {
+  if (value === undefined || value === null || value === '') return null
+  const position = Number(value)
+  if (!Number.isSafeInteger(position) || position < 1 || position > 1000) {
+    throw Object.assign(new Error(`${field} must be a standings position between 1 and 1000.`), {
+      status: 400,
+    })
+  }
+  return position
+}
+
+function parseDivisionRanges(body: Record<string, unknown> | undefined): DivisionRanges {
+  const ranges: DivisionRanges = {
+    promotion_from: parsePosition(body?.promotion_from, 'promotion_from'),
+    promotion_to: parsePosition(body?.promotion_to, 'promotion_to'),
+    relegation_from: parsePosition(body?.relegation_from, 'relegation_from'),
+    relegation_to: parsePosition(body?.relegation_to, 'relegation_to'),
+  }
+  const checkRange = (label: string, from: number | null, to: number | null) => {
+    if ((from === null) !== (to === null)) {
+      throw Object.assign(new Error(`${label} requires both a start and end position.`), {
+        status: 400,
+      })
+    }
+    if (from !== null && to !== null && from > to) {
+      throw Object.assign(new Error(`${label} start position must not exceed its end position.`), {
+        status: 400,
+      })
+    }
+  }
+  checkRange('Promotion range', ranges.promotion_from, ranges.promotion_to)
+  checkRange('Relegation range', ranges.relegation_from, ranges.relegation_to)
+  const promotionFrom = ranges.promotion_from
+  const promotionTo = ranges.promotion_to
+  const relegationFrom = ranges.relegation_from
+  const relegationTo = ranges.relegation_to
+  if (
+    promotionFrom !== null &&
+    promotionTo !== null &&
+    relegationFrom !== null &&
+    relegationTo !== null &&
+    promotionFrom <= relegationTo &&
+    relegationFrom <= promotionTo
+  ) {
+    throw Object.assign(new Error('Promotion and relegation ranges must not overlap.'), {
+      status: 400,
+    })
+  }
+  return ranges
 }
 
 function parseKickoff(value: unknown): string | null {
@@ -545,6 +604,147 @@ admin.post(
   }),
 )
 
+
+/* ------------------------------------------------------ division management */
+
+admin.post(
+  '/divisions',
+  handler(async (req, res) => {
+    const name = requiredString(req.body?.name, 'name', 64)
+    const ranges = parseDivisionRanges(req.body)
+    const division = await withTransaction(async (conn) => {
+      const [seasonRows] = await conn.query(
+        'SELECT id, name, year FROM seasons WHERE is_current = TRUE LIMIT 1 FOR UPDATE',
+      )
+      const season = (seasonRows as Array<{ id: number; name: string; year: number }>)[0]
+      if (!season) return null
+
+      const [duplicates] = await conn.query(
+        'SELECT id FROM divisions WHERE season_id = ? AND LOWER(name) = LOWER(?) LIMIT 1',
+        [season.id, name],
+      )
+      if ((duplicates as unknown[]).length > 0) {
+        throw Object.assign(new Error('A division with that name already exists this season.'), {
+          status: 409,
+        })
+      }
+
+      const baseSlug = clubSlug(name) || 'division'
+      let slug = `${baseSlug}-${season.year}`
+      let suffix = 2
+      while (true) {
+        const [existing] = await conn.query('SELECT id FROM divisions WHERE slug = ? LIMIT 1', [slug])
+        if ((existing as unknown[]).length === 0) break
+        slug = `${baseSlug}-${season.year}-${suffix++}`
+      }
+      const [inserted] = await conn.execute(
+        `INSERT INTO divisions
+           (season_id, name, slug, promotion_from, promotion_to, relegation_from, relegation_to, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+        [
+          season.id,
+          name,
+          slug,
+          ranges.promotion_from,
+          ranges.promotion_to,
+          ranges.relegation_from,
+          ranges.relegation_to,
+        ],
+      )
+      const id = (inserted as { insertId: number }).insertId
+      return {
+        id,
+        name,
+        slug,
+        season_id: season.id,
+        season: season.name,
+        ...ranges,
+      }
+    })
+    if (!division) return res.status(404).json({ error: 'There is no current season.' })
+    res.status(201).json({ division })
+  }),
+)
+
+admin.put(
+  '/divisions/:id',
+  handler(async (req, res) => {
+    const id = Number.parseInt(req.params.id, 10)
+    if (!Number.isInteger(id) || id < 1) {
+      return res.status(400).json({ error: 'Division id must be a positive integer.' })
+    }
+    const name = requiredString(req.body?.name, 'name', 64)
+    const ranges = parseDivisionRanges(req.body)
+    const division = await withTransaction(async (conn) => {
+      const [divisionRows] = await conn.query(
+          `SELECT d.id, d.name, d.slug, d.season_id, s.name AS season, s.year
+           FROM divisions d
+           JOIN seasons s ON s.id = d.season_id AND s.is_current = TRUE
+          WHERE d.id = ? FOR UPDATE`,
+        [id],
+      )
+      const current = (divisionRows as Array<{
+        id: number
+          name: string
+          slug: string
+          season_id: number
+          season: string
+          year: number
+      }>)[0]
+      if (!current) return null
+
+      const [duplicates] = await conn.query(
+        'SELECT id FROM divisions WHERE season_id = ? AND LOWER(name) = LOWER(?) AND id <> ? LIMIT 1',
+        [current.season_id, name, id],
+      )
+      if ((duplicates as unknown[]).length > 0) {
+        throw Object.assign(new Error('A division with that name already exists this season.'), {
+          status: 409,
+        })
+      }
+
+      let slug = current.slug
+      if (name !== current.name) {
+        const baseSlug = clubSlug(name) || 'division'
+        slug = `${baseSlug}-${current.year}`
+        let suffix = 2
+        while (true) {
+          const [existing] = await conn.query(
+            'SELECT id FROM divisions WHERE slug = ? AND id <> ? LIMIT 1',
+            [slug, id],
+          )
+          if ((existing as unknown[]).length === 0) break
+          slug = `${baseSlug}-${current.year}-${suffix++}`
+        }
+      }
+      await conn.execute(
+        `UPDATE divisions
+            SET name = ?, slug = ?, promotion_from = ?, promotion_to = ?,
+                relegation_from = ?, relegation_to = ?
+          WHERE id = ?`,
+        [
+          name,
+          slug,
+          ranges.promotion_from,
+          ranges.promotion_to,
+          ranges.relegation_from,
+          ranges.relegation_to,
+          id,
+        ],
+      )
+      return {
+        id,
+        name,
+        slug,
+        season_id: current.season_id,
+        season: current.season,
+        ...ranges,
+      }
+    })
+    if (!division) return res.status(404).json({ error: 'Current-season division not found.' })
+    res.json({ division })
+  }),
+)
 
 /* ------------------------------------------------------- division assignment */
 

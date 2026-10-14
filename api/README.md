@@ -215,6 +215,21 @@ as `DATETIME` wall-clock values and the admin UI treats them as
 `Asia/Kuala_Lumpur` (UTC+8); unscheduled, overdue and today's unplayed fixtures
 are surfaced in separate priority groups.
 
+The admin results list requests `/api/matches` in pages using `limit`, `offset`,
+`result` and `search` query parameters. The response includes the filtered
+`total` and overall pending/completed counts. `/api/matches/priorities` provides
+the unplayed fixtures that need scheduling attention independently of the
+current results page.
+
+### Division movement zones
+
+The Clubs > Divisions admin workspace manages divisions for the current season
+and stores inclusive, one-based promotion and relegation standings positions.
+Either range may be left unset; a configured range requires both endpoints,
+must be in ascending order, and cannot overlap the other range. The public
+standings endpoint includes these ranges so the table can color the matching
+positions and explain each zone.
+
 ## Testing
 
 ```bash

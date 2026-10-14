@@ -28,6 +28,22 @@ function intParam(value: unknown, fallback: number, min: number, max: number): n
   return Math.min(max, Math.max(min, n))
 }
 
+function kualaLumpurClock(now = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kuala_Lumpur',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(now)
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? ''
+  const date = `${part('year')}-${part('month')}-${part('day')}`
+  return { date, datetime: `${date} ${part('hour')}:${part('minute')}:${part('second')}` }
+}
+
 /* ------------------------------------------------------------------ health */
 
 league.get(
@@ -130,7 +146,79 @@ league.get(
     const limit = intParam(req.query.limit, 50, 1, 200)
     const offset = intParam(req.query.offset, 0, 0, 100000)
     const status = typeof req.query.status === 'string' ? req.query.status : null
+    const result = req.query.result === 'pending' || req.query.result === 'completed'
+      ? req.query.result
+      : 'all'
+    const search = typeof req.query.search === 'string' ? req.query.search.trim().slice(0, 100) : ''
+    const searchPattern = `%${search}%`
+    const scoreFilter = result === 'pending'
+      ? '(m.home_score IS NULL OR m.away_score IS NULL)'
+      : result === 'completed'
+        ? '(m.home_score IS NOT NULL AND m.away_score IS NOT NULL)'
+        : '1 = 1'
+    const searchFilter = search ? '(home.name LIKE ? OR away.name LIKE ?)' : '1 = 1'
+    const where = `(? IS NULL OR m.status = ?)
+      AND ${scoreFilter}
+      AND NOT ((m.home_score IS NULL OR m.away_score IS NULL) AND m.kickoff IS NULL)
+      AND ${searchFilter}`
+    const whereParams = [status, status, ...(search ? [searchPattern, searchPattern] : [])]
+    const { date, datetime } = kualaLumpurClock()
 
+    const [rows, count, summary] = await Promise.all([
+      queryAll(
+        `SELECT m.id, m.kickoff, m.status, m.home_score, m.away_score, m.source_url,
+                m.venue, m.stream_url,
+                home.name AS home_name, home.slug AS home_slug, home.short_code AS home_code,
+                home.logo_local AS home_logo, home.flag AS home_flag,
+                away.name AS away_name, away.slug AS away_slug, away.short_code AS away_code,
+                away.logo_local AS away_logo, away.flag AS away_flag
+           FROM matches m
+           JOIN clubs home ON home.id = m.home_club_id
+           JOIN clubs away ON away.id = m.away_club_id
+          WHERE ${where}
+          ORDER BY
+            CASE
+              WHEN (m.home_score IS NULL OR m.away_score IS NULL) AND m.kickoff IS NULL THEN 0
+              WHEN m.home_score IS NOT NULL AND m.away_score IS NOT NULL THEN 4
+              WHEN m.kickoff <= ? THEN 1
+              WHEN DATE(m.kickoff) = ? THEN 2
+              ELSE 3
+            END,
+            CASE WHEN m.kickoff <= ? OR DATE(m.kickoff) = ? THEN m.kickoff END ASC,
+            m.kickoff DESC, m.id DESC
+          LIMIT ? OFFSET ?`,
+        [...whereParams, datetime, date, datetime, date, limit, offset],
+      ),
+      queryOne<{ total: number }>(
+        `SELECT COUNT(*) AS total
+           FROM matches m
+           JOIN clubs home ON home.id = m.home_club_id
+           JOIN clubs away ON away.id = m.away_club_id
+          WHERE ${where}`,
+        whereParams,
+      ),
+      queryOne<{ pending: number; completed: number }>(
+        `SELECT SUM(m.home_score IS NULL OR m.away_score IS NULL) AS pending,
+                SUM(m.home_score IS NOT NULL AND m.away_score IS NOT NULL) AS completed
+           FROM matches m`,
+      ),
+    ])
+
+    res.json({
+      matches: rows,
+      total: Number(count?.total ?? 0),
+      pending: Number(summary?.pending ?? 0),
+      completed: Number(summary?.completed ?? 0),
+      limit,
+      offset,
+    })
+  }),
+)
+
+league.get(
+  '/matches/priorities',
+  handler(async (_req, res) => {
+    const { date, datetime } = kualaLumpurClock()
     const rows = await queryAll(
       `SELECT m.id, m.kickoff, m.status, m.home_score, m.away_score, m.source_url,
               m.venue, m.stream_url,
@@ -141,13 +229,12 @@ league.get(
          FROM matches m
          JOIN clubs home ON home.id = m.home_club_id
          JOIN clubs away ON away.id = m.away_club_id
-        WHERE (? IS NULL OR m.status = ?)
-        ORDER BY (m.kickoff IS NULL) DESC, m.kickoff DESC, m.id DESC
-        LIMIT ? OFFSET ?`,
-      [status, status, limit, offset],
+        WHERE (m.home_score IS NULL OR m.away_score IS NULL)
+          AND (m.kickoff IS NULL OR m.kickoff <= ? OR (DATE(m.kickoff) = ? AND m.kickoff > ?))
+        ORDER BY (m.kickoff IS NULL) DESC, m.kickoff ASC, m.id ASC`,
+      [datetime, date, datetime],
     )
-
-    res.json({ matches: rows, limit, offset })
+    res.json({ matches: rows })
   }),
 )
 
@@ -194,10 +281,12 @@ league.get(
       `SELECT s.position, s.played, s.won, s.drawn, s.lost,
               s.goals_for, s.goals_against, s.goal_difference, s.points, s.form,
               c.id AS club_id, c.name, c.slug, c.short_code, c.logo_local, c.flag,
-              d.name AS division_name, d.slug AS division_slug
+              d.name AS division_name, d.slug AS division_slug,
+              d.promotion_from, d.promotion_to, d.relegation_from, d.relegation_to
          FROM standings_snapshot s
          JOIN clubs c ON c.id = s.club_id
          JOIN divisions d ON d.id = s.division_id
+         JOIN seasons current_season ON current_season.id = d.season_id AND current_season.is_current = TRUE
         WHERE (? IS NULL OR d.slug = ?)
         ORDER BY d.id, s.position`,
       [
@@ -263,7 +352,8 @@ league.get(
   '/divisions',
   handler(async (_req, res) => {
     const rows = await queryAll(
-      `SELECT d.id, d.name, d.slug, s.id AS season_id, s.name AS season
+      `SELECT d.id, d.name, d.slug, s.id AS season_id, s.name AS season,
+              d.promotion_from, d.promotion_to, d.relegation_from, d.relegation_to
          FROM divisions d
          JOIN seasons s ON s.id = d.season_id
         WHERE s.is_current = TRUE

@@ -1,19 +1,22 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import {
   ApiError,
   addPlayer,
   assignDivision,
   decideClub,
+  createDivision,
   createMatch,
   getClubs,
   getDivisions,
   getMatches,
+  getMatchPriorities,
   getPendingClubs,
   getStandings,
   removePlayer,
   scheduleMatch,
   setResult,
   updateClub,
+  updateDivision,
   withdrawResult,
   type Club,
   type Division,
@@ -23,7 +26,7 @@ import {
 } from './api'
 
 type Tab = 'standings' | 'results' | 'clubs'
-type ClubSection = 'clubs' | 'applications'
+type ClubSection = 'clubs' | 'applications' | 'divisions'
 
 interface Notice {
   kind: 'ok' | 'error' | 'info'
@@ -33,14 +36,18 @@ interface Notice {
 export default function App() {
   const [tab, setTab] = useState<Tab>(() => {
     const saved = window.localStorage.getItem('iwvpl-admin-tab')
-    return saved === 'standings' || saved === 'clubs' || saved === 'applications'
-      ? saved === 'applications' ? 'clubs' : saved
+    return saved === 'standings' || saved === 'clubs' || saved === 'applications' || saved === 'divisions'
+      ? saved === 'applications' || saved === 'divisions' ? 'clubs' : saved
       : 'results'
   })
   const [clubSection, setClubSection] = useState<ClubSection>(() => {
     const savedTab = window.localStorage.getItem('iwvpl-admin-tab')
     const savedSection = window.localStorage.getItem('iwvpl-admin-club-section')
-    return savedTab === 'applications' || savedSection === 'applications' ? 'applications' : 'clubs'
+    return savedTab === 'applications' || savedSection === 'applications'
+      ? 'applications'
+      : savedTab === 'divisions' || savedSection === 'divisions'
+        ? 'divisions'
+        : 'clubs'
   })
   const [notice, setNotice] = useState<Notice | null>(null)
   const pageTitle: Record<Tab, string> = {
@@ -82,7 +89,6 @@ export default function App() {
           <span className="brand-mark">I</span>
           <span><strong>IWVPL</strong><small>LEAGUE OPERATIONS</small></span>
         </a>
-        <div className="masthead-meta"><span className="secure-dot" />Admin workspace</div>
       </header>
 
       <div className="workspace">
@@ -129,7 +135,6 @@ export default function App() {
                         : ''}
               </p>
             </div>
-            <span className="live-indicator"><i /> LIVE DATA</span>
           </div>
 
           {notice && (
@@ -303,10 +308,17 @@ function Results({
   report: (kind: Notice['kind'], text: string) => void
 }) {
   const [matches, setMatches] = useState<Match[] | null>(null)
+  const [priorityData, setPriorityData] = useState<Match[]>([])
+  const [totalMatches, setTotalMatches] = useState(0)
+  const [pendingCount, setPendingCount] = useState(0)
+  const [completedCount, setCompletedCount] = useState(0)
+  const [loadingMatches, setLoadingMatches] = useState(false)
   const [draft, setDraft] = useState<Record<number, { home: string; away: string }>>({})
   const [busy, setBusy] = useState<number | null>(null)
   const [filter, setFilter] = useState<'all' | 'pending' | 'completed'>('all')
   const [query, setQuery] = useState('')
+  const [search, setSearch] = useState('')
+  const [page, setPage] = useState(0)
   const [clubs, setClubs] = useState<Club[]>([])
   const [scheduleTarget, setScheduleTarget] = useState<number | 'new' | null>(null)
   const [scheduleDrafts, setScheduleDrafts] = useState<Record<number, string>>({})
@@ -315,27 +327,68 @@ function Results({
   const [createKickoff, setCreateKickoff] = useState('')
   const [now, setNow] = useState(Date.now())
   const [scheduleBusy, setScheduleBusy] = useState(false)
+  const requestId = useRef(0)
 
   const load = useCallback(async () => {
-    const data = await guard(() => getMatches(200), 'Could not load matches')
-    setMatches(data)
-    setScheduleDrafts(Object.fromEntries(data.map((match) => [match.id, dateTimeInputValue(match.kickoff)])))
-    setDraft(
-      Object.fromEntries(
-        data.map((m) => [
-          m.id,
-          {
-            home: m.home_score === null ? '' : String(m.home_score),
-            away: m.away_score === null ? '' : String(m.away_score),
-          },
-        ]),
-      ),
-    )
-  }, [guard])
+    const currentRequest = ++requestId.current
+    setLoadingMatches(true)
+    try {
+      const [data, priorities] = await Promise.all([
+        guard(
+          () => getMatches({
+            limit: 20,
+            offset: page * 20,
+            result: filter,
+            search,
+          }),
+          'Could not load matches',
+        ),
+        guard(() => getMatchPriorities(), 'Could not load schedule priorities'),
+      ])
+      if (currentRequest !== requestId.current) return
+      const lastPage = Math.max(0, Math.ceil(data.total / 20) - 1)
+      if (page > lastPage) {
+        setPage(lastPage)
+        return
+      }
+      const loadedMatches = [...data.matches, ...priorities]
+      setMatches(data.matches)
+      setPriorityData(priorities)
+      setTotalMatches(data.total)
+      setPendingCount(data.pending)
+      setCompletedCount(data.completed)
+      setScheduleDrafts((current) => ({
+        ...current,
+        ...Object.fromEntries(loadedMatches.map((match) => [match.id, dateTimeInputValue(match.kickoff)])),
+      }))
+      setDraft((current) => ({
+        ...current,
+        ...Object.fromEntries(
+          data.matches.map((match) => [
+            match.id,
+            {
+              home: match.home_score === null ? '' : String(match.home_score),
+              away: match.away_score === null ? '' : String(match.away_score),
+            },
+          ]),
+        ),
+      }))
+    } finally {
+      if (currentRequest === requestId.current) setLoadingMatches(false)
+    }
+  }, [filter, guard, page, search])
 
   useEffect(() => {
-    load().catch(() => setMatches([]))
+    load().catch(() => setMatches((current) => current ?? []))
   }, [load])
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setSearch(query.trim())
+      setPage(0)
+    }, 250)
+    return () => window.clearTimeout(timeout)
+  }, [query])
 
   useEffect(() => {
     getClubs().then(setClubs).catch((err) => {
@@ -432,6 +485,7 @@ function Results({
           : item,
         ) ?? null,
       )
+      await load()
       report('ok', result.kickoff ? 'Match schedule updated.' : 'Match moved to Needs scheduling.')
       setScheduleTarget(null)
     } catch {
@@ -457,7 +511,6 @@ function Results({
         () => createMatch(createHome, createAway, createKickoff || null),
         'Could not create fixture',
       )
-      setMatches((current) => [...(current ?? []), match])
       setDraft((current) => ({ ...current, [match.id]: { home: '', away: '' } }))
       setScheduleDrafts((current) => ({
         ...current,
@@ -473,6 +526,7 @@ function Results({
       setCreateAway('')
       setCreateKickoff('')
       setScheduleTarget(null)
+      await load()
     } catch {
       /* already reported by guard */
     } finally {
@@ -480,16 +534,8 @@ function Results({
     }
   }
 
-  const completedCount = matches.filter((m) => m.home_score !== null && m.away_score !== null).length
-  const pendingCount = matches.length - completedCount
-  const filteredMatches = matches.filter((m) => {
-    const played = m.home_score !== null && m.away_score !== null
-    const matchesFilter = filter === 'all' || (filter === 'completed' ? played : !played)
-    const matchesQuery = `${m.home_name} ${m.away_name}`.toLowerCase().includes(query.toLowerCase())
-    return matchesFilter && matchesQuery
-  })
   const urgency = (match: Match) => matchUrgency(match, now, today)
-  const visibleMatches = filteredMatches.filter((match) => urgency(match) !== 'unscheduled')
+  const visibleMatches = matches
   const priorityGroups: { key: MatchUrgency; title: string; hint: string }[] = [
     { key: 'unscheduled', title: 'Needs scheduling', hint: 'No kickoff date set' },
     { key: 'overdue', title: 'Past kickoff', hint: 'Kickoff passed · result still missing' },
@@ -497,7 +543,7 @@ function Results({
   ]
   const priorityMatches = priorityGroups.map((group) => ({
     ...group,
-    matches: matches
+    matches: priorityData
       .filter((match) => urgency(match) === group.key)
       .sort((a, b) =>
         group.key === 'unscheduled'
@@ -505,11 +551,10 @@ function Results({
           : (a.kickoff ?? '').localeCompare(b.kickoff ?? ''),
       ),
   }))
-  const sortedVisibleMatches = [...visibleMatches].sort((a, b) => {
-    const order: MatchUrgency[] = ['unscheduled', 'overdue', 'today', 'upcoming', 'completed']
-    const difference = order.indexOf(urgency(a)) - order.indexOf(urgency(b))
-    return difference || (a.kickoff ?? '').localeCompare(b.kickoff ?? '')
-  })
+  const sortedVisibleMatches = visibleMatches
+  const pageCount = Math.max(1, Math.ceil(totalMatches / 20))
+  const firstMatch = totalMatches === 0 ? 0 : page * 20 + 1
+  const lastMatch = Math.min((page + 1) * 20, totalMatches)
   const selectedClub = clubs.find((club) => club.slug === createHome)
   const awayOptions = clubs.filter(
     (club) => club.slug !== createHome && club.division_id === selectedClub?.division_id,
@@ -520,7 +565,7 @@ function Results({
       <div className="stats-grid">
         <div className="stat-card">
           <span className="stat-icon">▦</span>          <span className="stat-label">FIXTURES LOADED</span>
-          <strong>{matches.length}</strong><small>League fixtures in this view</small>
+          <strong>{pendingCount + completedCount}</strong><small>League fixtures in this season</small>
         </div>
         <div className="stat-card">
           <span className="stat-icon pending-icon">◷</span><span className="stat-label">UNPLAYED FIXTURES</span>
@@ -616,31 +661,34 @@ function Results({
         <div className="match-controls">
           <div className="filter-pills" role="group" aria-label="Filter fixtures">
             {(['all', 'pending', 'completed'] as const).map((f) => (
-              <button key={f} className={filter === f ? 'selected' : ''} onClick={() => setFilter(f)}>
+              <button
+                key={f}
+                className={filter === f ? 'selected' : ''}
+                onClick={() => { setFilter(f); setPage(0) }}
+              >
                 {f === 'pending' ? `Unplayed (${pendingCount})` : f === 'completed' ? `Completed (${completedCount})` : 'All fixtures'}
               </button>
             ))}
           </div>
           <label className="search-box">
             <span aria-hidden="true">⌕</span>
-            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Find a club…" aria-label="Find a club" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Find a club…"
+              aria-label="Find a club"
+            />
           </label>
         </div>
 
         {visibleMatches.length === 0 ? (
           <div className="empty match-empty">
-            <strong>
-              {filteredMatches.length > 0
-                ? 'Fixtures needing a date are shown above'
-                : matches.length === 0
-                  ? 'No matches found'
-                  : 'No fixtures match this view'}
-            </strong>
+            <strong>{query ? 'No matches found' : 'No fixtures to show'}</strong>
             <span>
-              {filteredMatches.length > 0
-                ? 'Set a kickoff date above to include them in the fixture list.'
-                : query
-                  ? 'Try another club name or clear your search.'
+              {query
+                ? 'Try another club name or clear your search.'
+                : priorityMatches[0].matches.length > 0 && filter !== 'completed'
+                  ? 'Fixtures needing a date are shown in the schedule priorities above.'
                   : 'Switch filters to see other fixtures.'}
             </span>
           </div>
@@ -709,6 +757,31 @@ function Results({
               )
             })}
           </div>
+        )}
+        {totalMatches > 0 && (
+          <nav className="match-pagination" aria-label="Match result pages">
+            <span>
+              Showing {firstMatch}–{lastMatch} of {totalMatches} fixtures
+              {loadingMatches && <span className="pagination-loading"> · Loading…</span>}
+            </span>
+            <div>
+              <button
+                className="btn"
+                onClick={() => setPage((current) => Math.max(0, current - 1))}
+                disabled={page === 0 || loadingMatches}
+              >
+                Previous
+              </button>
+              <span className="pagination-page">Page {page + 1} of {pageCount}</span>
+              <button
+                className="btn"
+                onClick={() => setPage((current) => Math.min(pageCount - 1, current + 1))}
+                disabled={page >= pageCount - 1 || loadingMatches}
+              >
+                Next
+              </button>
+            </div>
+          </nav>
         )}
       </section>
 
@@ -813,7 +886,7 @@ function Results({
             </form>
           ) : (
             (() => {
-              const match = matches.find((item) => item.id === scheduleTarget)
+              const match = [...matches, ...priorityData].find((item) => item.id === scheduleTarget)
               if (!match) return null
               return (
                 <form
@@ -1002,6 +1075,217 @@ function Applications({
       <p className="footnote">
         Approving makes the club visible on the public site. Assign it to a division from Clubs
         before it can play fixtures.
+      </p>
+    </div>
+  )
+}
+
+function Divisions({
+  guard,
+  report,
+}: {
+  guard: <T>(fn: () => Promise<T>, what: string) => Promise<T>
+  report: (kind: Notice['kind'], text: string) => void
+}) {
+  const [divisions, setDivisions] = useState<Division[] | null>(null)
+  const [editing, setEditing] = useState<number | 'new' | null>(null)
+  const [name, setName] = useState('')
+  const [promotionFrom, setPromotionFrom] = useState('')
+  const [promotionTo, setPromotionTo] = useState('')
+  const [relegationFrom, setRelegationFrom] = useState('')
+  const [relegationTo, setRelegationTo] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const load = useCallback(async () => {
+    const data = await guard(getDivisions, 'Could not load divisions')
+    setDivisions(data)
+  }, [guard])
+
+  useEffect(() => {
+    load().catch(() => setDivisions([]))
+  }, [load])
+
+  if (divisions === null) return <div className="loading">Loading divisions…</div>
+
+  const edit = (division: Division | null) => {
+    setEditing(division?.id ?? 'new')
+    setName(division?.name ?? '')
+    setPromotionFrom(division?.promotion_from == null ? '' : String(division.promotion_from))
+    setPromotionTo(division?.promotion_to == null ? '' : String(division.promotion_to))
+    setRelegationFrom(division?.relegation_from == null ? '' : String(division.relegation_from))
+    setRelegationTo(division?.relegation_to == null ? '' : String(division.relegation_to))
+  }
+
+  const save = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const promotionStart = promotionFrom === '' ? null : Number(promotionFrom)
+    const promotionEnd = promotionTo === '' ? null : Number(promotionTo)
+    const relegationStart = relegationFrom === '' ? null : Number(relegationFrom)
+    const relegationEnd = relegationTo === '' ? null : Number(relegationTo)
+    if ((promotionStart === null) !== (promotionEnd === null) ||
+        (relegationStart === null) !== (relegationEnd === null)) {
+      report('error', 'Enter both start and end positions for each range, or leave both blank.')
+      return
+    }
+    if (
+      (promotionStart !== null && promotionEnd !== null && promotionStart > promotionEnd) ||
+      (relegationStart !== null && relegationEnd !== null && relegationStart > relegationEnd)
+    ) {
+      report('error', 'Each range start position must not exceed its end position.')
+      return
+    }
+    if (
+      promotionStart !== null &&
+      promotionEnd !== null &&
+      relegationStart !== null &&
+      relegationEnd !== null &&
+      promotionStart <= relegationEnd &&
+      relegationStart <= promotionEnd
+    ) {
+      report('error', 'Promotion and relegation ranges cannot overlap.')
+      return
+    }
+    if ([promotionStart, promotionEnd, relegationStart, relegationEnd].some(
+      (position) => position !== null && (!Number.isInteger(position) || position < 1 || position > 1000),
+    )) {
+      report('error', 'Positions must be whole numbers between 1 and 1000.')
+      return
+    }
+
+    if (editing === null) return
+    const editId = editing
+    setBusy(true)
+    try {
+      const input = {
+        name: name.trim(),
+        promotion_from: promotionStart,
+        promotion_to: promotionEnd,
+        relegation_from: relegationStart,
+        relegation_to: relegationEnd,
+      }
+      const division = await guard(
+        () => editId === 'new'
+          ? createDivision(input)
+          : updateDivision(editId, input),
+        editId === 'new' ? 'Could not add division' : 'Could not update division',
+      )
+      setDivisions((current) => {
+        const rows = current ?? []
+        return editId === 'new'
+          ? [...rows, division].sort((a, b) => a.name.localeCompare(b.name))
+          : rows.map((item) => item.id === division.id ? division : item)
+            .sort((a, b) => a.name.localeCompare(b.name))
+      })
+      report('ok', `${division.name} saved.`)
+      setEditing(null)
+    } catch {
+      /* already reported */
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const form = (
+    <form className="division-editor" onSubmit={(event) => void save(event)}>
+      <label>
+        <span>Division name</span>
+        <input
+          className="text"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          maxLength={64}
+          required
+          autoFocus
+        />
+      </label>
+      <p className="division-range-help">
+        Ranges use inclusive standings positions. Leave both fields blank when there is no movement.
+      </p>
+      <div className="division-ranges">
+        <fieldset>
+          <legend>Promotion</legend>
+          <label>
+            <span>From position</span>
+            <input className="text" type="number" min="1" max="1000" step="1" inputMode="numeric"
+              value={promotionFrom} onChange={(event) => setPromotionFrom(event.target.value)} />
+          </label>
+          <label>
+            <span>To position</span>
+            <input className="text" type="number" min="1" max="1000" step="1" inputMode="numeric"
+              value={promotionTo} onChange={(event) => setPromotionTo(event.target.value)} />
+          </label>
+        </fieldset>
+        <fieldset>
+          <legend>Relegation</legend>
+          <label>
+            <span>From position</span>
+            <input className="text" type="number" min="1" max="1000" step="1" inputMode="numeric"
+              value={relegationFrom} onChange={(event) => setRelegationFrom(event.target.value)} />
+          </label>
+          <label>
+            <span>To position</span>
+            <input className="text" type="number" min="1" max="1000" step="1" inputMode="numeric"
+              value={relegationTo} onChange={(event) => setRelegationTo(event.target.value)} />
+          </label>
+        </fieldset>
+      </div>
+      <div className="division-editor-actions">
+        <button className="btn" type="button" disabled={busy} onClick={() => setEditing(null)}>Cancel</button>
+        <button className="btn primary" type="submit" disabled={busy}>
+          {busy ? 'Saving…' : editing === 'new' ? 'Add division' : 'Save changes'}
+        </button>
+      </div>
+    </form>
+  )
+
+  return (
+    <div className="division-management">
+      <div className="card">
+        <header>
+          <div>
+            <h2>Divisions</h2>
+            <p className="hint">{divisions[0]?.season ?? 'Current season'} · configure standings movement zones</p>
+          </div>
+          <button className="btn primary sm" onClick={() => edit(null)} disabled={editing !== null}>
+            <span aria-hidden="true">＋</span> Add division
+          </button>
+        </header>
+        {editing === 'new' && form}
+        {divisions.length === 0 && editing !== 'new' ? (
+          <p className="empty">There are no divisions in the current season yet. Add the first one to get started.</p>
+        ) : (
+          <div className="division-admin-list">
+            {divisions.map((division) => (
+              <article className="division-admin-item" key={division.id}>
+                {editing === division.id ? form : (
+                  <>
+                    <div className="division-admin-heading">
+                      <div>
+                        <h3>{division.name}</h3>
+                        <span className="hint">{division.season}</span>
+                      </div>
+                      <button className="btn sm" onClick={() => edit(division)} disabled={editing !== null}>
+                        Edit division
+                      </button>
+                    </div>
+                    <div className="division-range-summary">
+                      <p><span>Promotion</span><strong>
+                        {division.promotion_from == null ? 'Not set' : `${division.promotion_from}–${division.promotion_to}`}
+                      </strong></p>
+                      <p><span>Relegation</span><strong>
+                        {division.relegation_from == null ? 'Not set' : `${division.relegation_from}–${division.relegation_to}`}
+                      </strong></p>
+                    </div>
+                  </>
+                )}
+              </article>
+            ))}
+          </div>
+        )}
+      </div>
+      <p className="footnote">
+        Position ranges are inclusive and are shown to the public on the standings page. Divisions
+        are retained for season history, so they cannot be deleted here.
       </p>
     </div>
   )
@@ -1241,9 +1525,18 @@ function Clubs({
         >
           Applications
         </button>
+        <button
+          role="tab"
+          aria-selected={section === 'divisions'}
+          onClick={() => setSection('divisions')}
+        >
+          Divisions
+        </button>
       </div>
       {section === 'applications' ? (
         <Applications guard={guard} report={report} />
+      ) : section === 'divisions' ? (
+        <Divisions guard={guard} report={report} />
       ) : (
         <>
       <div className="card">

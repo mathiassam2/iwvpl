@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { Badge, SmartImage } from '@/components/ui'
-import type { Club, Leaderboard, Match, Standing } from '@/types/site'
+import type { Club, Leaderboard, Match, Standing, StandingDivision } from '@/types/site'
 import {
   AVATAR_PLACEHOLDER,
   CLUB_PLACEHOLDER,
@@ -46,7 +46,21 @@ export function FormGuide({ form }: { form: string[] }) {
  * screen. The home page renders only the top 10, so deriving the relegation
  * cut-off from `rows.length` painted positions 9 and 10 as relegated.
  */
-function posCell(pos: number, leagueSize: number) {
+function posCell(
+  pos: number,
+  leagueSize: number,
+  promotionRange?: StandingDivision['promotionRange'],
+  relegationRange?: StandingDivision['relegationRange'],
+) {
+  if (promotionRange !== undefined || relegationRange !== undefined) {
+    if (promotionRange && pos >= promotionRange.from && pos <= promotionRange.to) {
+      return 'bg-[var(--badge-up-bg)] text-[var(--badge-up-fg)]'
+    }
+    if (relegationRange && pos >= relegationRange.from && pos <= relegationRange.to) {
+      return 'bg-[var(--badge-down-bg)] text-[var(--badge-down-fg)]'
+    }
+    return 'text-[var(--text-muted)]'
+  }
   if (pos <= 2) return 'bg-[var(--badge-up-bg)] text-[var(--badge-up-fg)]'
   if (leagueSize - pos < 2) return 'bg-[var(--badge-down-bg)] text-[var(--badge-down-fg)]'
   return 'text-[var(--text-muted)]'
@@ -100,14 +114,20 @@ export function StandingsTable({
   sort,
   onSort,
   leagueSize,
+  promotionRange,
+  relegationRange,
 }: {
   rows: Standing[]
   sort?: SortState
   onSort?: (key: StandingSortKey) => void
   /** Full league size. Defaults to the row count for a full table. */
   leagueSize?: number
+  promotionRange?: StandingDivision['promotionRange']
+  relegationRange?: StandingDivision['relegationRange']
 }) {
   const size = leagueSize ?? rows.length
+  const hasConfiguredRanges = promotionRange !== undefined || relegationRange !== undefined
+  const showZoneLegend = !hasConfiguredRanges || promotionRange != null || relegationRange != null
 
   return (
     <div className="surface overflow-hidden rounded-card">
@@ -190,7 +210,7 @@ export function StandingsTable({
                 <span
                   className={cx(
                     'numeric grid h-7 w-7 place-items-center rounded-lg text-sm font-semibold transition-transform duration-300 group-hover:scale-110',
-                    posCell(r.pos, size),
+                    posCell(r.pos, size, promotionRange, relegationRange),
                   )}
                 >
                   {r.pos}
@@ -241,19 +261,32 @@ export function StandingsTable({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-[var(--border)] bg-[var(--surface-2)] px-4 py-3 text-[11px] text-[var(--text-muted)]">
-        <span className="inline-flex items-center gap-2">
-          <span
-            aria-hidden
-            className="h-3 w-3 rounded bg-[var(--badge-up-bg)] ring-1 ring-[var(--accent-ring)]"
-          />
-          Title / promotion
-        </span>
-        <span className="inline-flex items-center gap-2">
-          <span aria-hidden className="h-3 w-3 rounded bg-[var(--badge-down-bg)]" />
-          Relegation zone
-        </span>
-      </div>
+      {showZoneLegend && (
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-[var(--border)] bg-[var(--surface-2)] px-4 py-3 text-[11px] text-[var(--text-muted)]">
+          {promotionRange === undefined ? (
+            <span className="inline-flex items-center gap-2">
+              <span aria-hidden className="h-3 w-3 rounded bg-[var(--badge-up-bg)] ring-1 ring-[var(--accent-ring)]" />
+              Title / promotion
+            </span>
+          ) : promotionRange && (
+            <span className="inline-flex items-center gap-2">
+              <span aria-hidden className="h-3 w-3 rounded bg-[var(--badge-up-bg)] ring-1 ring-[var(--accent-ring)]" />
+              Promotion · {promotionRange.from}–{promotionRange.to}
+            </span>
+          )}
+          {relegationRange === undefined ? (
+            <span className="inline-flex items-center gap-2">
+              <span aria-hidden className="h-3 w-3 rounded bg-[var(--badge-down-bg)]" />
+              Relegation zone
+            </span>
+          ) : relegationRange && (
+            <span className="inline-flex items-center gap-2">
+              <span aria-hidden className="h-3 w-3 rounded bg-[var(--badge-down-bg)]" />
+              Relegation · {relegationRange.from}–{relegationRange.to}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   )
 }

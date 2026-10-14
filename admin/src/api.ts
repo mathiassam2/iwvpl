@@ -103,8 +103,37 @@ export interface Club {
 export const getStandings = () =>
   request<{ standings: Standing[] }>('/api/standings').then((r) => r.standings)
 
-export const getMatches = (limit = 200) =>
-  request<{ matches: Match[] }>(`/api/matches?limit=${limit}`).then((r) => r.matches)
+export interface MatchPage {
+  matches: Match[]
+  total: number
+  pending: number
+  completed: number
+  limit: number
+  offset: number
+}
+
+export const getMatches = ({
+  limit,
+  offset,
+  result,
+  search,
+}: {
+  limit: number
+  offset: number
+  result: 'all' | 'pending' | 'completed'
+  search: string
+}) => {
+  const params = new URLSearchParams({
+    limit: String(limit),
+    offset: String(offset),
+    result,
+    search,
+  })
+  return request<MatchPage>(`/api/matches?${params}`)
+}
+
+export const getMatchPriorities = () =>
+  request<{ matches: Match[] }>('/api/matches/priorities').then((r) => r.matches)
 
 export const getClubs = () => request<{ clubs: Club[] }>('/api/clubs').then((r) => r.clubs)
 
@@ -147,10 +176,28 @@ export interface Division {
   name: string
   slug: string
   season: string
+  promotion_from: number | null
+  promotion_to: number | null
+  relegation_from: number | null
+  relegation_to: number | null
 }
 
 export const getDivisions = () =>
   request<{ divisions: Division[] }>('/api/divisions').then((r) => r.divisions)
+
+export type DivisionInput = Omit<Division, 'id' | 'slug' | 'season'>
+
+export const createDivision = (division: DivisionInput) =>
+  request<{ division: Division }>('/api/admin/divisions', {
+    method: 'POST',
+    body: JSON.stringify(division),
+  }).then((r) => r.division)
+
+export const updateDivision = (id: number, division: DivisionInput) =>
+  request<{ division: Division }>(`/api/admin/divisions/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(division),
+  }).then((r) => r.division)
 
 /**
  * Put a club into a division.

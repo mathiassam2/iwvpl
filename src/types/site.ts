@@ -57,6 +57,8 @@ export interface Standing {
 export interface StandingDivision {
   columns: string[]
   rows: Standing[]
+  promotionRange?: { from: number; to: number } | null
+  relegationRange?: { from: number; to: number } | null
 }
 
 export interface Match {

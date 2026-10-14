@@ -711,7 +711,7 @@ export function StandingsPreview() {
     setError('')
 
     getLiveStandings(controller.signal)
-      .then((divisions) => setLiveRows(divisions['Premier League'] ?? []))
+      .then((divisions) => setLiveRows(divisions['Premier League']?.rows ?? []))
       .catch((cause: unknown) => {
         if (!controller.signal.aborted) {
           setError(cause instanceof Error ? cause.message : 'Could not load live standings.')

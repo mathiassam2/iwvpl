@@ -43,8 +43,7 @@ button { -webkit-tap-highlight-color: transparent; }
 }
 .brand strong { display: block; letter-spacing: .07em; font-size: 14px; }
 .brand small { display: block; color: var(--faint); font-size: 9px; font-weight: 700; letter-spacing: .18em; }
-.masthead-meta { display: flex; align-items: center; gap: 9px; color: var(--muted); font-size: 12px; }
-.secure-dot, .live-indicator i, .match-status i {
+.secure-dot, .match-status i {
   display: inline-block; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
   box-shadow: 0 0 12px rgb(200 255 61 / 42%);
 }
@@ -80,13 +79,6 @@ button { -webkit-tap-highlight-color: transparent; }
 .eyebrow span { padding: 0 5px; color: #475057; }
 .page-heading h1 { margin: 0; color: var(--text); font-size: clamp(27px, 3vw, 36px); line-height: 1.1; letter-spacing: -.04em; }
 .page-subtitle { margin: 9px 0 0; color: var(--muted); font-size: 13px; }
-.live-indicator {
-  display: inline-flex; align-items: center; gap: 8px; margin-bottom: 3px; padding: 7px 10px;
-  border: 1px solid var(--border); border-radius: 99px; color: var(--muted);
-  font-size: 9px; font-weight: 800; letter-spacing: .12em; white-space: nowrap;
-}
-.live-indicator i { width: 6px; height: 6px; }
-
 .stats-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; margin-bottom: 24px; }
 .stat-card {
   position: relative; display: grid; grid-template-columns: 1fr auto; align-content: start;
@@ -159,7 +151,7 @@ button { -webkit-tap-highlight-color: transparent; }
 
 .match-controls {
   display: flex; align-items: center; justify-content: space-between; gap: 14px;
-  padding: 0 20px 15px; border-bottom: 1px solid var(--border);
+  padding: 14px 20px 15px; border-bottom: 1px solid var(--border);
 }
 .filter-pills { display: flex; gap: 5px; }
 .filter-pills button {
@@ -177,6 +169,14 @@ button { -webkit-tap-highlight-color: transparent; }
 .search-box input::placeholder { color: var(--faint); }
 
 .match-list { display: grid; }
+.match-pagination {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  padding: 13px 20px; border-top: 1px solid var(--border); color: var(--muted); font-size: 11px;
+}
+.match-pagination > div { display: flex; align-items: center; gap: 9px; }
+.match-pagination .btn { min-height: 34px; padding-inline: 10px; }
+.pagination-page { color: var(--text); font-weight: 700; white-space: nowrap; }
+.pagination-loading { color: var(--faint); }
 .match-card { padding: 16px 20px 14px; border-bottom: 1px solid var(--border); }
 .match-card:last-child { border-bottom: 0; }
 .match-card-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 14px; }
@@ -379,6 +379,29 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .club-subnav button:hover { color: var(--text); }
 .club-subnav button[aria-selected="true"] { border-color: rgb(200 255 61 / 16%); color: var(--accent); background: var(--accent-soft); }
 .club-subnav button span { display: grid; place-items: center; min-width: 19px; height: 19px; padding: 0 5px; border-radius: 99px; color: var(--faint); background: var(--surface-hover); font-size: 9px; }
+.division-management { display: grid; gap: 12px; }
+.division-management .card > header > div { display: grid; gap: 3px; }
+.division-management .card > header .hint { font-size: 11px; }
+.division-admin-list { display: grid; }
+.division-admin-item { padding: 16px; border-bottom: 1px solid var(--border); }
+.division-admin-item:last-child { border-bottom: 0; }
+.division-admin-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.division-admin-heading h3 { margin: 0; color: var(--text); font-size: 14px; }
+.division-admin-heading .hint { display: block; margin-top: 3px; }
+.division-range-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+.division-range-summary p { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; }
+.division-range-summary span { color: var(--muted); font-size: 11px; }
+.division-range-summary strong { color: var(--text); font-size: 11px; }
+.division-editor { display: grid; gap: 14px; padding: 16px; border-bottom: 1px solid var(--border); background: rgb(255 255 255 / 1.5%); }
+.division-admin-item .division-editor { margin: 15px -16px -16px; }
+.division-editor > label, .division-ranges label { display: grid; gap: 6px; color: var(--muted); font-size: 11px; font-weight: 700; }
+.division-editor > label .text, .division-ranges .text { width: 100%; min-height: 38px; }
+.division-range-help { margin: -5px 0 0; color: var(--faint); font-size: 11px; }
+.division-ranges { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.division-ranges fieldset { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; min-width: 0; margin: 0; padding: 11px; border: 1px solid var(--border); border-radius: 8px; }
+.division-ranges legend { padding: 0 5px; color: var(--text); font-size: 11px; font-weight: 700; }
+.division-ranges label { min-width: 0; font-size: 10px; }
+.division-editor-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .notice { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 17px; padding: 10px 13px; border: 1px solid var(--border); border-radius: 9px; font-size: 12px; }
 .notice.error { border-color: rgb(255 136 136 / 35%); color: var(--danger); background: rgb(255 136 136 / 8%); }
 .notice.ok { border-color: rgb(200 255 61 / 25%); color: var(--accent); background: var(--accent-soft); }
@@ -398,7 +421,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .shell { padding: 0 14px calc(88px + env(safe-area-inset-bottom)); }
   .masthead { min-height: 62px; }
   .brand-mark { width: 34px; height: 34px; border-radius: 10px; }
-  .masthead-meta { font-size: 11px; }
+
   .workspace { display: block; padding-top: 23px; }
   .sidebar {
     position: fixed; z-index: 10; right: 0; bottom: 0; left: 0; top: auto;
@@ -413,7 +436,6 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .page-heading { align-items: flex-start; margin-bottom: 18px; }
   .page-heading h1 { font-size: 29px; }
   .page-subtitle { max-width: 34ch; font-size: 12px; }
-  .live-indicator { margin-top: 20px; padding: 6px 8px; font-size: 8px; }
   .stats-grid { gap: 0; margin-bottom: 15px; }
   .stat-card { min-height: 103px; padding: 11px 10px 10px; border: 0; border-radius: 0; background: transparent; }
   .stat-card + .stat-card { border-left: 1px solid var(--border); }
@@ -447,7 +469,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .priority-fixture time { font-size: 10px; white-space: normal; }
   .priority-action { grid-column: 2; grid-row: 2; }
   .priority-clear { min-height: 0; padding: 10px 0; border: 0; border-radius: 0; background: transparent; }
-  .match-controls { flex-wrap: wrap; gap: 8px; padding: 0 11px 11px; }
+  .match-controls { flex-wrap: wrap; gap: 8px; padding: 12px 11px 11px; }
   .filter-pills { flex: 1; gap: 2px; }
   .filter-pills button { min-height: 33px; padding: 0 7px; font-size: 10px; white-space: nowrap; }
   .search-box { width: 100%; height: 38px; }
@@ -469,9 +491,17 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .match-actions > div { gap: 5px; }
   .match-actions .btn { min-height: 36px; padding: 0 9px; font-size: 10px; }
   .save-btn { min-width: 102px; }
+  .match-pagination { flex-wrap: wrap; padding: 12px 11px; font-size: 10px; }
+  .match-pagination > div { width: 100%; justify-content: space-between; gap: 6px; }
+  .match-pagination .btn { min-height: 34px; }
   .footnote { margin-top: 14px; }
   .club-subnav { width: 100%; }
   .club-subnav button { flex: 1; justify-content: center; }
+  .division-admin-item { padding: 13px; }
+  .division-range-summary { grid-template-columns: 1fr; gap: 7px; margin-top: 11px; }
+  .division-editor { padding: 13px; }
+  .division-admin-item .division-editor { margin: 13px -13px -13px; }
+  .division-ranges { grid-template-columns: 1fr; gap: 9px; }
   .card table { min-width: 700px; }
 }
 
@@ -479,7 +509,6 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .shell { padding-right: 10px; padding-left: 10px; }
   .page-heading h1 { font-size: 26px; }
   .eyebrow { font-size: 8px; }
-  .live-indicator { gap: 5px; }
   .stat-card { padding-right: 8px; padding-left: 8px; }
   .stat-label { font-size: 7px; }
   .stat-card small { font-size: 8px; }

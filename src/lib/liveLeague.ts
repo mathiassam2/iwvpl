@@ -1,7 +1,7 @@
 import { asset } from '@/lib/assets'
 import { AVATAR_PLACEHOLDER } from '@/lib/format'
 import type { PlayerProfile } from '@/lib/players'
-import type { Club, Match, Standing } from '@/types/site'
+import type { Club, Match, StandingDivision } from '@/types/site'
 
 interface ApiClub {
   id: number
@@ -44,6 +44,10 @@ interface ApiStanding {
   logo_local: string | null
   flag: string | null
   division_name: string
+  promotion_from: number | null
+  promotion_to: number | null
+  relegation_from: number | null
+  relegation_to: number | null
 }
 
 const apiBase = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '')
@@ -99,12 +103,49 @@ export async function getLiveResults(signal: AbortSignal): Promise<Match[]> {
   return response.matches.map(toMatch)
 }
 
-export async function getLiveStandings(signal: AbortSignal): Promise<Record<string, Standing[]>> {
-  const response = await get<{ standings: ApiStanding[] }>('/api/standings', signal)
-  const divisions: Record<string, Standing[]> = {}
+export async function getLiveStandings(
+  signal: AbortSignal,
+): Promise<Record<string, StandingDivision>> {
+  const [response, divisionResponse] = await Promise.all([
+    get<{ standings: ApiStanding[] }>('/api/standings', signal),
+    get<{
+      divisions: Array<{
+        name: string
+        promotion_from: number | null
+        promotion_to: number | null
+        relegation_from: number | null
+        relegation_to: number | null
+      }>
+    }>('/api/divisions', signal),
+  ])
+  const divisions: Record<string, StandingDivision> = Object.fromEntries(
+    divisionResponse.divisions.map((division) => [
+      division.name,
+      {
+        columns: [],
+        rows: [],
+        promotionRange: division.promotion_from == null || division.promotion_to == null
+          ? null
+          : { from: division.promotion_from, to: division.promotion_to },
+        relegationRange: division.relegation_from == null || division.relegation_to == null
+          ? null
+          : { from: division.relegation_from, to: division.relegation_to },
+      },
+    ]),
+  )
 
   for (const row of response.standings) {
-    const rows = divisions[row.division_name] ?? (divisions[row.division_name] = [])
+    const division = divisions[row.division_name] ?? (divisions[row.division_name] = {
+      columns: [],
+      rows: [],
+      promotionRange: row.promotion_from == null || row.promotion_to == null
+        ? null
+        : { from: row.promotion_from, to: row.promotion_to },
+      relegationRange: row.relegation_from == null || row.relegation_to == null
+        ? null
+        : { from: row.relegation_from, to: row.relegation_to },
+    })
+    const rows = division.rows
     rows.push({
       pos: row.position,
       team: row.name,
