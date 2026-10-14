@@ -698,12 +698,23 @@ function Results({
                         <time>
                           {match.kickoff ? formatKickoff(match.kickoff) : 'Date & time not set'}
                         </time>
-                        <button
-                          className="btn priority-action"
-                          onClick={() => setScheduleTarget(match.id)}
-                        >
-                          {match.kickoff ? 'Edit schedule' : 'Set schedule'}
-                        </button>
+                        <div className="priority-fixture-actions">
+                          <button
+                            className="btn priority-action"
+                            onClick={() => setScheduleTarget(match.id)}
+                          >
+                            {match.kickoff ? 'Edit schedule' : 'Set schedule'}
+                          </button>
+                          {!match.kickoff && (
+                            <button
+                              className="btn danger priority-delete"
+                              disabled={busy === match.id}
+                              onClick={() => void removeFixture(match, false)}
+                            >
+                              {busy === match.id ? 'Deleting…' : 'Delete fixture'}
+                            </button>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
