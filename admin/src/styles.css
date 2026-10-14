@@ -56,13 +56,20 @@ button { -webkit-tap-highlight-color: transparent; }
 .nav-label { padding: 0 12px; margin-bottom: 10px; }
 .tabs { display: grid; gap: 5px; }
 .tabs button {
-  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 46px; padding: 0 12px;
+  position: relative; display: flex; align-items: center; gap: 12px; width: 100%; min-height: 46px; padding: 0 12px;
   border: 1px solid transparent; border-radius: 10px; color: var(--muted); background: transparent;
   text-align: left; font-weight: 600; cursor: pointer; transition: .15s ease;
 }
 .tabs button:hover { color: var(--text); background: var(--surface-hover); }
 .tabs button[aria-selected="true"] { color: var(--accent); background: var(--accent-soft); border-color: rgb(200 255 61 / 15%); }
 .nav-icon { display: grid; place-items: center; width: 22px; color: inherit; font-size: 17px; }
+.nav-badge {
+  display: inline-grid; place-items: center; min-width: 21px; height: 21px; margin-left: auto;
+  padding: 0 6px; border: 1px solid rgb(255 136 136 / 28%); border-radius: 999px;
+  color: #ffd1d1; background: rgb(255 91 91 / 14%); font-size: 10px; font-weight: 800;
+  line-height: 1; font-variant-numeric: tabular-nums;
+}
+.nav-badge + .nav-arrow { margin-left: 0; }
 .nav-arrow { margin-left: auto; font-size: 20px; line-height: 1; }
 .sidebar-note {
   display: flex; gap: 9px; align-items: flex-start; margin: 32px 5px 0; padding: 13px 11px;
@@ -376,6 +383,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .footnote code { padding: 1px 5px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); font-size: 10px; }
 .club-subnav { display: flex; gap: 5px; margin: 0 0 14px; padding: 4px; width: fit-content; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
 .club-subnav button { display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 0 12px; border: 1px solid transparent; border-radius: 7px; color: var(--muted); background: transparent; font-size: 11px; font-weight: 700; cursor: pointer; }
+.club-subnav-badge { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; color: #ffd1d1; background: rgb(255 91 91 / 14%); font-size: 9px; font-variant-numeric: tabular-nums; }
 .club-subnav button:hover { color: var(--text); }
 .club-subnav button[aria-selected="true"] { border-color: rgb(200 255 61 / 16%); color: var(--accent); background: var(--accent-soft); }
 .club-subnav button span { display: grid; place-items: center; min-width: 19px; height: 19px; padding: 0 5px; border-radius: 99px; color: var(--faint); background: var(--surface-hover); font-size: 9px; }
@@ -432,6 +440,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .tabs { grid-template-columns: repeat(3, 1fr); gap: 5px; }
   .tabs button { flex-direction: column; justify-content: center; gap: 1px; min-height: 54px; padding: 4px; border-radius: 9px; font-size: 10px; }
   .nav-icon { width: auto; font-size: 18px; line-height: 1.2; }
+  .nav-badge { position: absolute; top: 3px; left: calc(50% + 10px); min-width: 18px; height: 18px; padding: 0 4px; font-size: 9px; }
   .nav-arrow { display: none; }
   .page-heading { align-items: flex-start; margin-bottom: 18px; }
   .page-heading h1 { font-size: 29px; }

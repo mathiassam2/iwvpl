@@ -50,6 +50,7 @@ export default function App() {
         : 'clubs'
   })
   const [notice, setNotice] = useState<Notice | null>(null)
+  const [pendingApplicationCount, setPendingApplicationCount] = useState(0)
   const pageTitle: Record<Tab, string> = {
     results: 'Match centre',
     standings: 'League table',
@@ -81,6 +82,34 @@ export default function App() {
     },
     [report],
   )
+  const refreshPendingApplicationCount = useCallback(async () => {
+    const applications = await guard(getPendingClubs, 'Could not check club applications')
+    setPendingApplicationCount(applications.length)
+  }, [guard])
+
+  useEffect(() => {
+    const refresh = () => {
+      refreshPendingApplicationCount().catch(() => {})
+    }
+    refresh()
+    const interval = window.setInterval(refresh, 60_000)
+    window.addEventListener('focus', refresh)
+    return () => {
+      window.clearInterval(interval)
+      window.removeEventListener('focus', refresh)
+    }
+  }, [refreshPendingApplicationCount])
+
+  const tabLabels: Record<Tab, string> = {
+    clubs: 'Clubs',
+    results: 'Matches',
+    standings: 'Standings',
+  }
+  const tabIcons: Record<Tab, string> = {
+    clubs: '♙',
+    results: '◉',
+    standings: '▤',
+  }
 
   return (
     <div className="shell">
@@ -95,22 +124,19 @@ export default function App() {
         <aside className="sidebar">
           <p className="nav-label">WORKSPACE</p>
           <nav className="tabs" role="tablist" aria-label="Admin sections">
-            {(['results', 'standings', 'clubs'] as Tab[]).map((t) => (
+            {(['clubs', 'results', 'standings'] as Tab[]).map((t) => (
               <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>
-                <span className="nav-icon" aria-hidden="true">
-                  {t === 'results'
-                    ? '◉'
-                    : t === 'standings'
-                      ? '▤'
-                      : '♙'}
-                </span>
-                <span>
-                  {t === 'results'
-                    ? 'Matches'
-                    : t === 'standings'
-                      ? 'Standings'
-                      : 'Clubs'}
-                </span>
+                <span className="nav-icon" aria-hidden="true">{tabIcons[t]}</span>
+                <span>{tabLabels[t]}</span>
+                {t === 'clubs' && pendingApplicationCount > 0 && (
+                  <span
+                    className="nav-badge"
+                    aria-label={`${pendingApplicationCount} club applications need review`}
+                    title={`${pendingApplicationCount} club applications need review`}
+                  >
+                    {pendingApplicationCount > 99 ? '99+' : pendingApplicationCount}
+                  </span>
+                )}
                 {t === tab && <span className="nav-arrow">›</span>}
               </button>
             ))}
@@ -152,6 +178,8 @@ export default function App() {
               report={report}
               section={clubSection}
               setSection={setClubSection}
+              pendingApplicationCount={pendingApplicationCount}
+              onPendingCountChange={setPendingApplicationCount}
             />
           )}
         </main>
@@ -962,9 +990,11 @@ function Results({
 function Applications({
   guard,
   report,
+  onPendingCountChange,
 }: {
   guard: <T>(fn: () => Promise<T>, what: string) => Promise<T>
   report: (kind: Notice['kind'], text: string) => void
+  onPendingCountChange: (count: number) => void
 }) {
   const [clubs, setClubs] = useState<PendingClub[] | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
@@ -972,7 +1002,8 @@ function Applications({
   const load = useCallback(async () => {
     const data = await guard(getPendingClubs, 'Could not load applications')
     setClubs(data)
-  }, [guard])
+    onPendingCountChange(data.length)
+  }, [guard, onPendingCountChange])
 
   useEffect(() => {
     load().catch(() => setClubs([]))
@@ -1262,11 +1293,15 @@ function Clubs({
   report,
   section,
   setSection,
+  pendingApplicationCount,
+  onPendingCountChange,
 }: {
   guard: <T>(fn: () => Promise<T>, what: string) => Promise<T>
   report: (kind: Notice['kind'], text: string) => void
   section: ClubSection
   setSection: (section: ClubSection) => void
+  pendingApplicationCount: number
+  onPendingCountChange: (count: number) => void
 }) {
   const [clubs, setClubs] = useState<Club[] | null>(null)
   const [codes, setCodes] = useState<Record<string, string>>({})
@@ -1490,6 +1525,11 @@ function Clubs({
           onClick={() => setSection('applications')}
         >
           Applications
+          {pendingApplicationCount > 0 && (
+            <span className="club-subnav-badge" aria-label={`${pendingApplicationCount} waiting`}>
+              {pendingApplicationCount > 99 ? '99+' : pendingApplicationCount}
+            </span>
+          )}
         </button>
         <button
           role="tab"
@@ -1500,7 +1540,11 @@ function Clubs({
         </button>
       </div>
       {section === 'applications' ? (
-        <Applications guard={guard} report={report} />
+        <Applications
+          guard={guard}
+          report={report}
+          onPendingCountChange={onPendingCountChange}
+        />
       ) : section === 'divisions' ? (
         <Divisions guard={guard} report={report} />
       ) : (
