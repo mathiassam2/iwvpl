@@ -19,11 +19,31 @@ export function CustomSelect({
   ariaLabel: string
 }) {
   const [open, setOpen] = useState(false)
+  const [opensUp, setOpensUp] = useState(false)
   const [activeIndex, setActiveIndex] = useState(0)
   const rootRef = useRef<HTMLDivElement>(null)
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([])
   const selectedIndex = Math.max(0, options.findIndex((option) => option.value === value))
   const selected = options.find((option) => option.value === value)
+
+  /**
+   * Whether the menu has to open upwards.
+   *
+   * The menu is absolutely positioned below its trigger, which puts it off the
+   * bottom of the screen for any control sitting in the fixed bulk action bar.
+   * Measured at open time rather than hard-coded, so it also behaves on a short
+   * viewport or a control low in a long list. The height is an estimate from
+   * the option row height and the menu's padding — the menu scrolls past this
+   * either way, so being slightly out is better than never flipping.
+   */
+  const shouldOpenUpwards = (node: HTMLElement | null) => {
+    if (!node) return false
+    const rect = node.getBoundingClientRect()
+    const needed = Math.min(options.length, 8) * 36 + 22
+    const spaceBelow = window.innerHeight - rect.bottom
+    const spaceAbove = rect.top
+    return spaceBelow < needed && spaceAbove > spaceBelow
+  }
 
   useEffect(() => {
     if (!open) return
@@ -42,6 +62,7 @@ export function CustomSelect({
 
   const openAt = (index: number) => {
     setActiveIndex(index)
+    setOpensUp(shouldOpenUpwards(rootRef.current))
     setOpen(true)
   }
 
@@ -86,7 +107,7 @@ export function CustomSelect({
   }
 
   return (
-    <div className="custom-select" ref={rootRef}>
+    <div className={`custom-select${opensUp ? ' opens-up' : ''}`} ref={rootRef}>
       <button
         type="button"
         className="custom-select-trigger text"

@@ -236,15 +236,6 @@ export const getSeasonDivisionMovements = () =>
     (r) => r.movements,
   )
 
-export const recordSeasonDivisionMovement = (slug: string, sourceDivisionId: number) =>
-  request<{ movement: SeasonDivisionMovement }>('/api/admin/season-movements/backfill', {
-    method: 'POST',
-    body: JSON.stringify({ slug, sourceDivisionId }),
-  }).then((r) => r.movement)
-
-export const resetSeasonDivisionMovements = () =>
-  request<{ cleared: number }>('/api/admin/season-movements', { method: 'DELETE' })
-
 export const getAdminSeasons = () =>
   request<{ seasons: AdminSeason[] }>('/api/admin/seasons').then((r) => r.seasons)
 

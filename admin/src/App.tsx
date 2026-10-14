@@ -26,7 +26,6 @@ import {
   getSeasonDivisionMovements,
   getStandings,
   moveClub,
-  recordSeasonDivisionMovement,
   removePlayer,
   scheduleMatch,
   setResult,
@@ -2236,11 +2235,6 @@ function Clubs({
   const [bulkBusy, setBulkBusy] = useState(false)
   const [bulkLeague, setBulkLeague] = useState('')
   const [bulkStatus, setBulkStatus] = useState('')
-  const [backfillTarget, setBackfillTarget] = useState<{
-    divisionId: number
-    type: 'promotion' | 'relegation'
-  } | null>(null)
-  const [backfillClubSlug, setBackfillClubSlug] = useState('')
   // Which movement the club editor is waiting on confirmation for, and the one
   // it has actually sent. Both are per club so a failed move cannot leave the
   // confirm strip open on a different club.
@@ -2559,34 +2553,6 @@ function Clubs({
     }
   }
 
-  const recordPreviousMovement = async (source: Division, slug: string) => {
-    if (readOnly) return
-    setBusy(`movement-${source.id}-${slug}`)
-    try {
-      const movement = await guard(
-        () => recordSeasonDivisionMovement(slug, source.id),
-        'Could not record the completed movement',
-      )
-      setBackfillTarget(null)
-      setBackfillClubSlug('')
-      setSeasonMovements(null)
-      const updatedMovements = await guard(
-        getSeasonDivisionMovements,
-        'Could not refresh movement history',
-      )
-      setSeasonMovements(updatedMovements)
-      const movedClub = clubs?.find((club) => club.slug === slug)
-      report(
-        'ok',
-        `Recorded ${movedClub?.name ?? slug} as an already completed ${movement.movement_type}.`,
-      )
-    } catch {
-      /* already reported */
-    } finally {
-      setBusy(null)
-    }
-  }
-
   const getDivisionId = (club: Club) => String(club.division_id ?? '')
   const configuredDivisionIds = new Set(divisions.map((division) => String(division.id)))
   const standingsByClub = new Map(standings.map((standing) => [standing.club_id, standing]))
@@ -2615,13 +2581,6 @@ function Clubs({
     counts[movement.movement_type] += 1
     completedMovementsByDivision.set(movement.source_division_id, counts)
   }
-  const standingsCountByDivision = new Map<string, number>()
-  for (const standing of standings) {
-    standingsCountByDivision.set(
-      standing.division_slug,
-      (standingsCountByDivision.get(standing.division_slug) ?? 0) + 1,
-    )
-  }
   const promotionCompletedFor = (division: Division) =>
     completedMovementsByDivision.get(division.id)?.promotion ?? 0
   const promotionTargetFor = (division: Division) => division.promotion_count ?? 0
@@ -2639,53 +2598,51 @@ function Clubs({
     Math.max(0, promotionTargetFor(division) - promotionCompletedFor(division))
   const relegationCountFor = (division: Division) =>
     Math.max(0, relegationTargetFor(division) - relegationCompletedFor(division))
+  /**
+   * Each club's rank inside its own league, and how big that league is.
+   *
+   * Ranked from the league's club list rather than from standings rows alone.
+   * A club can be entered in a league without a standings_snapshot row behind
+   * it yet, and the previous code read that as "no position at all" — those
+   * clubs still sort to the bottom of the list, so they looked like the
+   * relegation zone while never being coloured for it. Ranking the list keeps
+   * position and league size describing the same set of clubs, so the bottom
+   * N is always the bottom N of what the admin is actually looking at.
+   */
+  const leagueRankByClubId = new Map<number, number>()
+  const leagueSizeByDivisionId = new Map<number, number>()
+  for (const division of divisions) {
+    const members = clubs.filter((club) => club.division_id === division.id)
+    leagueSizeByDivisionId.set(division.id, members.length)
+    members
+      .sort((a, b) => {
+        const positionA = standingsByClub.get(a.id)?.position ?? Number.POSITIVE_INFINITY
+        const positionB = standingsByClub.get(b.id)?.position ?? Number.POSITIVE_INFINITY
+        if (positionA !== positionB) return positionA - positionB
+        return a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true })
+      })
+      .forEach((club, index) => leagueRankByClubId.set(club.id, index + 1))
+  }
+
   const clubMovement = (club: Club) => {
     if (!movementTracked) return { promotion: false, relegation: false }
     if (movementCompletedClubIds.has(club.id)) return { promotion: false, relegation: false }
-    const standing = standingsByClub.get(club.id)
     const division = divisions.find((item) => item.id === club.division_id)
-    if (!standing || !division) return { promotion: false, relegation: false }
-    const divisionSize = standingsCountByDivision.get(division.slug) ?? 0
+    const position = leagueRankByClubId.get(club.id)
+    if (!division || position === undefined) return { promotion: false, relegation: false }
+    const divisionSize = leagueSizeByDivisionId.get(division.id) ?? 0
     const promotionCount = promotionCountFor(division)
     const relegationCount = relegationCountFor(division)
-    const promotion = promotionCount > 0 && standing.position <= promotionCount
+    const promotion = promotionCount > 0 && position <= promotionCount
     return {
       promotion,
-      relegation:
-        !promotion && relegationCount > 0 && standing.position > divisionSize - relegationCount,
+      relegation: !promotion && relegationCount > 0 && position > divisionSize - relegationCount,
     }
   }
   const hasPromotionZones =
     movementTracked && divisions.some((division) => promotionCountFor(division) > 0)
   const hasRelegationZones =
     movementTracked && divisions.some((division) => relegationCountFor(division) > 0)
-  const backfillCandidatesFor = (
-    sourceDivisionId: number,
-    type: 'promotion' | 'relegation',
-  ) => {
-    const sourceDivision = divisions.find((division) => division.id === sourceDivisionId)
-    if (!sourceDivision || seasonMovements === null) return []
-    return clubs
-      .filter((club) => {
-        const destination = divisions.find((division) => division.id === club.division_id)
-        if (!destination || destination.id === sourceDivisionId) return false
-        if (
-          activeSeasonMovements.some(
-            (movement) =>
-              movement.club_id === club.id &&
-              movement.source_division_id === sourceDivisionId,
-          )
-        ) {
-          return false
-        }
-        return type === 'promotion'
-          ? destination.sort_order < sourceDivision.sort_order
-          : destination.sort_order > sourceDivision.sort_order
-      })
-      .sort((a, b) =>
-        a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true }),
-      )
-  }
   const orderedDivisions = [...divisions].sort(
     (a, b) => a.sort_order - b.sort_order || a.id - b.id,
   )
@@ -2984,14 +2941,12 @@ function Clubs({
               setEditing(null)
               setSquadSlug(null)
               setConfirmingMovement(null)
-              setBackfillTarget(null)
               setSeasonId(nextSeasonId)
             }}
             onCurrentSeasonChanged={(nextSeasonId) => {
               setEditing(null)
               setSquadSlug(null)
               setConfirmingMovement(null)
-              setBackfillTarget(null)
               setSeasonId(String(nextSeasonId))
             }}
           />
@@ -3049,14 +3004,6 @@ function Clubs({
               </p>
             )}
             {clubGroups.map((group) => {
-              const sourceDivision = group.divisionId == null
-                ? undefined
-                : divisions.find((division) => division.id === group.divisionId)
-              const promotionCandidates = sourceDivision && promotionCountFor(sourceDivision) > 0
-                ? backfillCandidatesFor(sourceDivision.id, 'promotion')
-                : []
-              const activeBackfill =
-                backfillTarget?.divisionId === group.divisionId ? backfillTarget.type : null
               const groupAllSelected =
                 group.clubs.length > 0 && group.clubs.every((club) => selectedSlugs.has(club.slug))
               const groupSomeSelected =
@@ -3103,75 +3050,6 @@ function Clubs({
                     )}
                   </div>
                 </header>
-                {sourceDivision && movementTracked && (
-                  <>
-                    {promotionCandidates.length > 0 && (
-                      <div className="club-movement-backfill">
-                        <div className="club-movement-backfill-copy">
-                          <strong>Record a move completed earlier</strong>
-                          <span>
-                            Use this only if the club has already changed leagues this season.
-                            This updates the progress count and zone color; it does not move the club.
-                          </span>
-                        </div>
-                        <button
-                          className="btn sm"
-                          type="button"
-                          onClick={() => {
-                            setBackfillTarget({
-                              divisionId: sourceDivision.id,
-                              type: 'promotion',
-                            })
-                            setBackfillClubSlug('')
-                          }}
-                        >
-                          Mark prior promotion complete
-                        </button>
-                      </div>
-                    )}
-                    {activeBackfill && (
-                      <div className="club-movement-backfill-form">
-                        <strong>
-                          Mark a {activeBackfill} from {sourceDivision.name} as complete
-                        </strong>
-                        <span>This only updates this season&rsquo;s movement tracking.</span>
-                        <CustomSelect
-                          ariaLabel={`Choose club with completed ${activeBackfill} from ${sourceDivision.name}`}
-                          value={backfillClubSlug}
-                          onChange={setBackfillClubSlug}
-                          options={[
-                            {
-                              value: '',
-                              label: `Choose ${activeBackfill === 'promotion' ? 'promoted' : 'relegated'} club`,
-                            },
-                            ...promotionCandidates.map((club) => ({
-                              value: club.slug,
-                              label: club.name,
-                            })),
-                          ]}
-                        />
-                        <button
-                          className="btn primary sm"
-                          type="button"
-                          disabled={!backfillClubSlug || busy !== null}
-                          onClick={() => {
-                            void recordPreviousMovement(sourceDivision, backfillClubSlug)
-                          }}
-                        >
-                          Mark as completed
-                        </button>
-                        <button
-                          className="btn sm"
-                          type="button"
-                          disabled={busy !== null}
-                          onClick={() => setBackfillTarget(null)}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    )}
-                  </>
-                )}
                 {group.clubs.length === 0 ? (
                   <p className="club-league-empty">
                     {group.id === 'unassigned'
