@@ -279,19 +279,25 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 }
 .club-league-overview h2 { margin: 0; color: var(--text); font-size: 17px; letter-spacing: -.02em; }
 .club-league-overview p { margin: 5px 0 0; color: var(--faint); font-size: 11px; }
-.club-league-overview > span {
+.club-league-controls > span {
   flex: none; padding: 6px 10px; border: 1px solid var(--border); border-radius: 99px;
   color: var(--muted); background: var(--surface); font-size: 10px; font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 .club-zone-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--faint); font-size: 10px; }
-.movement-badge {
-  display: inline-flex; flex: none; align-items: center; min-height: 20px; padding: 2px 7px;
-  border: 1px solid transparent; border-radius: 99px; font-size: 9px; font-weight: 800;
-  letter-spacing: .025em; line-height: 1.2; white-space: nowrap;
-}
-.movement-badge.promotion { border-color: rgb(200 255 61 / 25%); color: var(--accent); background: var(--accent-soft); }
-.movement-badge.relegation { border-color: rgb(255 136 136 / 28%); color: #ffb2b2; background: rgb(255 136 136 / 9%); }
+.club-league-controls { display: flex; align-items: center; gap: 10px; }
+.club-sort-control { display: flex; align-items: center; gap: 7px; color: var(--faint); font-size: 10px; }
+.club-sort-control .custom-select { min-width: 145px; }
+.club-zone-key { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 10px; font-weight: 700; }
+.club-zone-key::before { width: 12px; height: 12px; border-radius: 3px; content: ''; }
+.club-zone-key.promotion::before { background: rgb(200 255 61 / 19%); box-shadow: inset 0 0 0 1px rgb(200 255 61 / 38%); }
+.club-zone-key.relegation::before { background: rgb(255 136 136 / 15%); box-shadow: inset 0 0 0 1px rgb(255 136 136 / 35%); }
+.club-management-table .club-row.promotion-zone { background: rgb(200 255 61 / 8%); }
+.club-management-table .club-row.relegation-zone { background: rgb(255 136 136 / 7%); }
+.club-management-table .club-row.promotion-zone:hover,
+.club-management-table .club-row.promotion-zone:focus-visible { background: rgb(200 255 61 / 13%); }
+.club-management-table .club-row.relegation-zone:hover,
+.club-management-table .club-row.relegation-zone:focus-visible { background: rgb(255 136 136 / 12%); }
 .club-league-group > header { min-height: 54px; }
 .club-league-heading { display: flex; align-items: center; gap: 9px; min-width: 0; }
 .club-league-count {
@@ -628,10 +634,12 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .club-subnav { width: 100%; }
   .club-subnav button { flex: 1; justify-content: center; }
   .club-league-groups { gap: 11px; }
-  .club-league-overview { align-items: flex-start; }
+  .club-league-overview { align-items: flex-start; flex-wrap: wrap; }
   .club-league-overview h2 { font-size: 15px; }
   .club-league-overview p { max-width: 30ch; line-height: 1.5; }
-  .club-league-overview > span { padding: 5px 8px; }
+  .club-league-controls { width: 100%; justify-content: space-between; }
+  .club-league-controls > span { padding: 5px 8px; }
+  .club-sort-control .custom-select { min-width: 132px; }
   .club-league-group > header { padding: 12px; }
   .club-league-group .club-league-heading h2 { overflow-wrap: anywhere; }
   .club-league-empty { padding: 16px 12px; }

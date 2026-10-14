@@ -1915,6 +1915,7 @@ function Clubs({
   const [squadSlug, setSquadSlug] = useState<string | null>(null)
   const [squadLoading, setSquadLoading] = useState(false)
   const [squadError, setSquadError] = useState<string | null>(null)
+  const [clubSort, setClubSort] = useState<'standings' | 'name'>('standings')
   const activeClub = clubs?.find((club) => club.slug === editing) ?? null
 
   const load = useCallback(async () => {
@@ -2118,34 +2119,54 @@ function Clubs({
       (standingsCountByDivision.get(standing.division_slug) ?? 0) + 1,
     )
   }
+  const relegationCountFor = (division: Division) => {
+    const configuredCount = division.relegation_count ?? 0
+    return configuredCount > 0
+      ? configuredCount
+      : (division.promotion_count ?? 0) > 0
+        ? 1
+        : 0
+  }
   const clubMovement = (club: Club) => {
     const standing = standingsByClub.get(club.id)
     const division = divisions.find((item) => item.id === club.division_id)
     if (!standing || !division) return { promotion: false, relegation: false }
     const divisionSize = standingsCountByDivision.get(division.slug) ?? 0
+    const promotionCount = division.promotion_count ?? 0
+    const relegationCount = relegationCountFor(division)
+    const promotion = promotionCount > 0 && standing.position <= promotionCount
     return {
-      promotion:
-        division.promotion_count != null &&
-        division.promotion_count > 0 &&
-        standing.position <= division.promotion_count,
+      promotion,
       relegation:
-        division.relegation_count != null &&
-        division.relegation_count > 0 &&
-        standing.position > divisionSize - division.relegation_count,
+        !promotion && relegationCount > 0 && standing.position > divisionSize - relegationCount,
     }
   }
   const hasPromotionZones = divisions.some((division) => (division.promotion_count ?? 0) > 0)
-  const hasRelegationZones = divisions.some((division) => (division.relegation_count ?? 0) > 0)
+  const hasRelegationZones = divisions.some((division) => relegationCountFor(division) > 0)
   const clubGroups = [
     ...divisions.map((division) => ({
       id: String(division.id),
       name: division.name,
-      clubs: clubs.filter((club) => getDivisionId(club) === String(division.id)),
+      clubs: clubs
+        .filter((club) => getDivisionId(club) === String(division.id))
+        .sort((a, b) => {
+          if (clubSort === 'name') {
+            return a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true })
+          }
+          const positionA = standingsByClub.get(a.id)?.position ?? Number.POSITIVE_INFINITY
+          const positionB = standingsByClub.get(b.id)?.position ?? Number.POSITIVE_INFINITY
+          if (positionA !== positionB) return positionA - positionB
+          return a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true })
+        }),
     })),
     {
       id: 'unassigned',
       name: 'Not assigned to a league',
-      clubs: clubs.filter((club) => !configuredDivisionIds.has(getDivisionId(club))),
+      clubs: clubs
+        .filter((club) => !configuredDivisionIds.has(getDivisionId(club)))
+        .sort((a, b) =>
+          a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true }),
+        ),
     },
   ]
 
@@ -2215,21 +2236,36 @@ function Clubs({
               <div>
                 <h2>Clubs by league</h2>
                 <p>
-                  Browse by league. Promotion and relegation badges follow the current table;
-                  click a club row to change its league.
+                  Clubs default to standings order. Click a row to edit the club or change its league.
                 </p>
               </div>
-              <span>{clubs.length} {clubs.length === 1 ? 'club' : 'clubs'}</span>
+              <div className="club-league-controls">
+                <label className="club-sort-control">
+                  <span>Order</span>
+                  <CustomSelect
+                    ariaLabel="Order clubs"
+                    value={clubSort}
+                    onChange={(value) => {
+                      if (value === 'standings' || value === 'name') setClubSort(value)
+                    }}
+                    options={[
+                      { value: 'standings', label: 'League standings' },
+                      { value: 'name', label: 'Name' },
+                    ]}
+                  />
+                </label>
+                <span>{clubs.length} {clubs.length === 1 ? 'club' : 'clubs'}</span>
+              </div>
             </div>
             {(hasPromotionZones || hasRelegationZones) && (
               <div className="club-zone-legend" aria-label="Promotion and relegation zone key">
                 {hasPromotionZones && (
-                  <span className="movement-badge promotion">Promotion zone</span>
+                  <span className="club-zone-key promotion">Promotion</span>
                 )}
                 {hasRelegationZones && (
-                  <span className="movement-badge relegation">Relegation zone</span>
+                  <span className="club-zone-key relegation">Relegation</span>
                 )}
-                <span>Based on each club&rsquo;s position in the current season standings.</span>
+                <span>Row colors follow current standings; promotion takes priority over relegation.</span>
               </div>
             )}
             {clubGroups.map((group) => (
@@ -2264,10 +2300,15 @@ function Clubs({
                           movement.promotion ? 'Promotion zone' : '',
                           movement.relegation ? 'Relegation zone' : '',
                         ].filter(Boolean)
+                        const zoneClass = movement.promotion
+                          ? ' promotion-zone'
+                          : movement.relegation
+                            ? ' relegation-zone'
+                            : ''
                         return (
                           <tr
                             key={c.slug}
-                            className="club-row"
+                            className={`club-row${zoneClass}`}
                             tabIndex={0}
                             aria-label={`Edit ${c.name}${zoneLabels.length ? `. ${zoneLabels.join(' and ')}.` : ''} Press Enter to open.`}
                             onClick={() => edit(c)}
@@ -2283,12 +2324,6 @@ function Clubs({
                                 {c.logo_local && <img src={c.logo_local} alt="" />}
                                 {c.flag && <span className="flag">{c.flag}</span>}
                                 <span className="name">{c.name}</span>
-                                {movement.promotion && (
-                                  <span className="movement-badge promotion">Promotion</span>
-                                )}
-                                {movement.relegation && (
-                                  <span className="movement-badge relegation">Relegation</span>
-                                )}
                               </div>
                             </td>
                             <td>
