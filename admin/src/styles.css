@@ -292,6 +292,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .club-zone-key::before { width: 12px; height: 12px; border-radius: 3px; content: ''; }
 .club-zone-key.promotion::before { background: rgb(200 255 61 / 19%); box-shadow: inset 0 0 0 1px rgb(200 255 61 / 38%); }
 .club-zone-key.relegation::before { background: rgb(255 136 136 / 15%); box-shadow: inset 0 0 0 1px rgb(255 136 136 / 35%); }
+.club-movement-warning { margin: 0; color: var(--danger); font-size: 11px; line-height: 1.5; }
 .club-management-table .club-row.promotion-zone { background: rgb(200 255 61 / 8%); }
 .club-management-table .club-row.relegation-zone { background: rgb(255 136 136 / 7%); }
 .club-management-table .club-row.promotion-zone:hover,
@@ -300,6 +301,18 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .club-management-table .club-row.relegation-zone:focus-visible { background: rgb(255 136 136 / 12%); }
 .club-league-group > header { min-height: 54px; }
 .club-league-heading { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.club-league-meta { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 10px; }
+.club-movement-progress { color: var(--muted); font-size: 10px; font-weight: 700; white-space: nowrap; }
+.club-movement-backfill {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 14px;
+  border-bottom: 1px solid var(--border); color: var(--faint); font-size: 10px;
+}
+.club-movement-backfill-form {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 14px;
+  border-bottom: 1px solid var(--border); color: var(--muted); font-size: 11px;
+}
+.club-movement-backfill-form > span { flex: 1 1 100%; line-height: 1.5; }
+.club-movement-backfill-form .custom-select { min-width: 190px; }
 .club-league-count {
   display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 6px;
   border: 1px solid var(--border); border-radius: 99px; color: var(--muted); background: var(--bg);

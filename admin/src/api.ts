@@ -99,6 +99,13 @@ export interface Club {
   players: number
 }
 
+export interface SeasonDivisionMovement {
+  club_id: number
+  source_division_id: number
+  destination_division_id: number
+  movement_type: 'promotion' | 'relegation' | 'transfer'
+}
+
 /* --------------------------------------------------------------- requests */
 
 export const getStandings = (seasonId?: number, division?: string) => {
@@ -211,6 +218,17 @@ export const getDivisions = (seasonId?: number) =>
     `/api/divisions${seasonId == null ? '' : `?seasonId=${seasonId}`}`,
   ).then((r) => r.divisions)
 
+export const getSeasonDivisionMovements = () =>
+  request<{ movements: SeasonDivisionMovement[] }>('/api/admin/season-movements').then(
+    (r) => r.movements,
+  )
+
+export const recordSeasonDivisionMovement = (slug: string, sourceDivisionId: number) =>
+  request<{ movement: SeasonDivisionMovement }>('/api/admin/season-movements/backfill', {
+    method: 'POST',
+    body: JSON.stringify({ slug, sourceDivisionId }),
+  }).then((r) => r.movement)
+
 export const getAdminSeasons = () =>
   request<{ seasons: AdminSeason[] }>('/api/admin/seasons').then((r) => r.seasons)
 
@@ -265,10 +283,13 @@ export const updateDivisionOrder = (divisionIds: number[]) =>
  * without a table to enter.
  */
 export const assignDivision = (slug: string, divisionId: number) =>
-  request<{ ok: true; divisionName: string }>(`/api/admin/clubs/${slug}/division`, {
-    method: 'POST',
-    body: JSON.stringify({ divisionId }),
-  })
+  request<{ ok: true; divisionName: string }>(
+    `/api/admin/clubs/${slug}/division`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ divisionId }),
+    },
+  )
 
 export const setResult = (matchId: number, homeScore: number, awayScore: number) =>
   request<{ ok: true }>(`/api/admin/matches/${matchId}/result`, {

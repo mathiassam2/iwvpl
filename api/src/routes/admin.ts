@@ -1115,6 +1115,142 @@ async function notifyClubManagers(
   if (owner) await notify(owner.id, kind, title, body, '/dashboard')
 }
 
+admin.get(
+  '/season-movements',
+  handler(async (_req, res) => {
+    const movements = await queryAll(
+      `SELECT m.club_id, m.source_division_id, m.destination_division_id, m.movement_type
+         FROM season_division_movements m
+         JOIN seasons s ON s.id = m.season_id
+        WHERE s.is_current = TRUE
+        ORDER BY m.source_division_id, m.club_id`,
+    )
+    res.json({ movements })
+  }),
+)
+
+admin.post(
+  '/season-movements/backfill',
+  handler(async (req, res) => {
+    const slug = requiredString(req.body?.slug, 'slug', 140)
+    const sourceDivisionId = Number.parseInt(String(req.body?.sourceDivisionId), 10)
+    if (!Number.isSafeInteger(sourceDivisionId) || sourceDivisionId < 1) {
+      return res.status(400).json({ error: 'sourceDivisionId must be a positive integer.' })
+    }
+
+    const outcome = await withTransaction(async (conn) => {
+      const [clubRows] = await conn.query(
+        'SELECT id FROM clubs WHERE slug = ? FOR UPDATE',
+        [slug],
+      )
+      const club = (clubRows as Array<{ id: number }>)[0]
+      if (!club) return { status: 404, error: 'Club not found.' }
+
+      const [sourceRows] = await conn.query(
+        `SELECT d.id, d.season_id, d.sort_order, d.promotion_count, d.relegation_count
+           FROM divisions d
+           JOIN seasons s ON s.id = d.season_id AND s.is_current = TRUE
+          WHERE d.id = ?
+          FOR UPDATE`,
+        [sourceDivisionId],
+      )
+      const source = (
+        sourceRows as Array<{
+          id: number
+          season_id: number
+          sort_order: number
+          promotion_count: number | null
+          relegation_count: number | null
+        }>
+      )[0]
+      if (!source) return { status: 404, error: 'Source league not found in the current season.' }
+
+      const [membershipRows] = await conn.query(
+        `SELECT d.id AS division_id, d.sort_order
+           FROM division_clubs dc
+           JOIN divisions d ON d.id = dc.division_id
+          WHERE dc.club_id = ? AND d.season_id = ?
+          ORDER BY dc.id DESC
+          FOR UPDATE`,
+        [club.id, source.season_id],
+      )
+      const destination = (
+        membershipRows as Array<{ division_id: number; sort_order: number }>
+      )[0]
+      if (!destination || Number(destination.division_id) === source.id) {
+        return { status: 400, error: 'Choose a club already moved to another league.' }
+      }
+
+      const movementType =
+        Number(destination.sort_order) > Number(source.sort_order)
+          ? 'relegation'
+          : Number(destination.sort_order) < Number(source.sort_order)
+            ? 'promotion'
+            : 'transfer'
+      if (movementType === 'transfer') {
+        return { status: 400, error: 'The selected leagues have no promotion or relegation order.' }
+      }
+
+      const configuredRelegationCount = source.relegation_count ?? 0
+      const targetCount =
+        movementType === 'promotion'
+          ? source.promotion_count ?? 0
+          : configuredRelegationCount > 0
+            ? configuredRelegationCount
+            : (source.promotion_count ?? 0) > 0
+              ? 1
+              : 0
+      if (targetCount < 1) {
+        return { status: 400, error: `No ${movementType} slots are configured for this league.` }
+      }
+
+      const [existingRows] = await conn.query(
+        `SELECT 1 FROM season_division_movements
+          WHERE season_id = ? AND club_id = ? AND source_division_id = ?
+          LIMIT 1`,
+        [source.season_id, club.id, source.id],
+      )
+      if ((existingRows as unknown[]).length > 0) {
+        return { status: 409, error: 'This club already has a recorded move from this league.' }
+      }
+
+      const [countRows] = await conn.query(
+        `SELECT COUNT(*) AS completed
+           FROM season_division_movements
+          WHERE season_id = ? AND source_division_id = ? AND movement_type = ?`,
+        [source.season_id, source.id, movementType],
+      )
+      const completed = Number((countRows as Array<{ completed: number }>)[0]?.completed ?? 0)
+      if (completed >= targetCount) {
+        return { status: 409, error: `All ${movementType} slots are already complete.` }
+      }
+
+      await conn.execute(
+        `INSERT INTO season_division_movements
+           (season_id, club_id, source_division_id, destination_division_id,
+            movement_type, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, NOW(), NOW())`,
+        [source.season_id, club.id, source.id, destination.division_id, movementType],
+      )
+
+      return {
+        status: 200,
+        movement: {
+          club_id: Number(club.id),
+          source_division_id: source.id,
+          destination_division_id: Number(destination.division_id),
+          movement_type: movementType,
+        },
+      }
+    })
+
+    if (outcome.status !== 200) {
+      return res.status(outcome.status).json({ error: outcome.error })
+    }
+    res.json({ movement: outcome.movement })
+  }),
+)
+
 /**
  * Put a club into a division.
  *
@@ -1143,8 +1279,13 @@ admin.post(
     )
     if (!club) return res.status(404).json({ error: 'Club not found.' })
 
-    const division = await queryOne<{ id: number; name: string; season_id: number }>(
-      `SELECT d.id, d.name, d.season_id
+    const division = await queryOne<{
+      id: number
+      name: string
+      season_id: number
+      sort_order: number
+    }>(
+      `SELECT d.id, d.name, d.season_id, d.sort_order
          FROM divisions d
          JOIN seasons s ON s.id = d.season_id AND s.is_current = TRUE
         WHERE d.id = ?`,
@@ -1158,7 +1299,22 @@ admin.post(
         [club.id],
       )
       const lockedClub = (clubRows as Array<{ id: number }>)[0]
-      if (!lockedClub) return false
+      if (!lockedClub) return null
+
+      const [membershipRows] = await conn.query(
+        `SELECT d.id AS division_id, d.sort_order
+           FROM division_clubs dc
+           JOIN divisions d ON d.id = dc.division_id
+          WHERE dc.club_id = ? AND d.season_id = ?
+          ORDER BY dc.id DESC
+          FOR UPDATE`,
+        [lockedClub.id, division.season_id],
+      )
+      const previousMemberships = membershipRows as Array<{
+        division_id: number
+        sort_order: number
+      }>
+      const previousMembership = previousMemberships[0]
 
       await conn.execute(
         `DELETE FROM division_clubs
@@ -1167,10 +1323,46 @@ admin.post(
           AND division_id <> ?`,
         [lockedClub.id, division.season_id, division.id],
       )
+
+      if (previousMembership && Number(previousMembership.division_id) !== division.id) {
+        const sourceDivisionId = Number(previousMembership.division_id)
+        const movementType =
+          division.sort_order > Number(previousMembership.sort_order)
+            ? 'relegation'
+            : division.sort_order < Number(previousMembership.sort_order)
+              ? 'promotion'
+              : 'transfer'
+
+        await conn.execute(
+          `DELETE FROM season_division_movements
+            WHERE season_id = ? AND club_id = ? AND source_division_id = ?`,
+          [division.season_id, lockedClub.id, division.id],
+        )
+        await conn.execute(
+          `INSERT INTO season_division_movements
+             (season_id, club_id, source_division_id, destination_division_id,
+              movement_type, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, NOW(), NOW())
+           ON DUPLICATE KEY UPDATE
+             destination_division_id = VALUES(destination_division_id),
+             movement_type = VALUES(movement_type),
+             updated_at = VALUES(updated_at)`,
+          [
+            division.season_id,
+            lockedClub.id,
+            sourceDivisionId,
+            division.id,
+            movementType,
+          ],
+        )
+      }
+
       await conn.execute(
-        `INSERT INTO division_clubs (division_id, club_id, code_at_registration, created_at)
+        `INSERT INTO division_clubs
+           (division_id, club_id, code_at_registration, created_at)
          VALUES (?, ?, (SELECT short_code FROM clubs WHERE id = ?), NOW())
-         ON DUPLICATE KEY UPDATE code_at_registration = VALUES(code_at_registration)`,
+         ON DUPLICATE KEY UPDATE
+           code_at_registration = VALUES(code_at_registration)`,
         [division.id, lockedClub.id, lockedClub.id],
       )
 
@@ -1195,7 +1387,7 @@ admin.post(
       )
       return true
     })
-    if (!changedDivision) return res.status(404).json({ error: 'Club not found.' })
+    if (changedDivision === null) return res.status(404).json({ error: 'Club not found.' })
 
     await notifyClubManagers(
       club.id,
@@ -1204,6 +1396,10 @@ admin.post(
       `${club.name} has been entered into ${division.name} and now appears in the league table.`,
     )
 
-    res.json({ ok: true, divisionId: division.id, divisionName: division.name })
+    res.json({
+      ok: true,
+      divisionId: division.id,
+      divisionName: division.name,
+    })
   }),
 )
