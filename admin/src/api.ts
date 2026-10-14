@@ -135,7 +135,10 @@ export const getMatches = ({
 export const getMatchPriorities = () =>
   request<{ matches: Match[] }>('/api/matches/priorities').then((r) => r.matches)
 
-export const getClubs = () => request<{ clubs: Club[] }>('/api/clubs').then((r) => r.clubs)
+export const getClubs = (seasonId?: number) =>
+  request<{ clubs: Club[] }>(
+    `/api/clubs${seasonId == null ? '' : `?seasonId=${seasonId}`}`,
+  ).then((r) => r.clubs)
 
 export const scheduleMatch = (matchId: number, kickoff: string | null) =>
   request<{ ok: true; kickoff: string | null }>(`/api/admin/matches/${matchId}/schedule`, {
@@ -143,10 +146,15 @@ export const scheduleMatch = (matchId: number, kickoff: string | null) =>
     body: JSON.stringify({ kickoff }),
   })
 
-export const createMatch = (homeSlug: string, awaySlug: string, kickoff: string | null) =>
+export const createMatch = (
+  homeSlug: string,
+  awaySlug: string,
+  kickoff: string | null,
+  seasonId?: number,
+) =>
   request<{ match: Match }>('/api/admin/matches', {
     method: 'POST',
-    body: JSON.stringify({ homeSlug, awaySlug, kickoff }),
+    body: JSON.stringify({ homeSlug, awaySlug, kickoff, ...(seasonId == null ? {} : { seasonId }) }),
   }).then((r) => r.match)
 
 /** Clubs awaiting an admin decision, with the manager who applied. */

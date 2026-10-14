@@ -357,6 +357,9 @@ function Results({
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(0)
   const [clubs, setClubs] = useState<Club[]>([])
+  const [fixtureClubs, setFixtureClubs] = useState<Club[]>([])
+  const [fixtureSeasons, setFixtureSeasons] = useState<AdminSeason[]>([])
+  const [createSeasonId, setCreateSeasonId] = useState('')
   const [scheduleTarget, setScheduleTarget] = useState<number | 'new' | null>(null)
   const [scheduleDrafts, setScheduleDrafts] = useState<Record<number, string>>({})
   const [createHome, setCreateHome] = useState('')
@@ -365,6 +368,7 @@ function Results({
   const [now, setNow] = useState(Date.now())
   const [scheduleBusy, setScheduleBusy] = useState(false)
   const requestId = useRef(0)
+  const fixtureClubRequestId = useRef(0)
 
   const load = useCallback(async () => {
     const currentRequest = ++requestId.current
@@ -433,6 +437,34 @@ function Results({
       report('error', `Could not load clubs for match scheduling: ${message}`)
     })
   }, [report])
+
+  useEffect(() => {
+    guard(getAdminSeasons, 'Could not load seasons for fixture creation')
+      .then((seasons) => {
+        setFixtureSeasons(seasons)
+        setCreateSeasonId((current) =>
+          current && seasons.some((season) => String(season.id) === current)
+            ? current
+            : String(seasons.find((season) => Boolean(season.is_current))?.id ?? ''),
+        )
+      })
+      .catch(() => setFixtureSeasons([]))
+  }, [guard])
+
+  useEffect(() => {
+    if (!createSeasonId) {
+      setFixtureClubs([])
+      return
+    }
+    const currentRequest = ++fixtureClubRequestId.current
+    guard(() => getClubs(Number(createSeasonId)), 'Could not load clubs for the selected season')
+      .then((seasonClubs) => {
+        if (currentRequest === fixtureClubRequestId.current) setFixtureClubs(seasonClubs)
+      })
+      .catch(() => {
+        if (currentRequest === fixtureClubRequestId.current) setFixtureClubs([])
+      })
+  }, [createSeasonId, guard])
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 30_000)
@@ -562,7 +594,12 @@ function Results({
     setScheduleBusy(true)
     try {
       const match = await guard(
-        () => createMatch(createHome, createAway, createKickoff || null),
+        () => createMatch(
+          createHome,
+          createAway,
+          createKickoff || null,
+          Number(createSeasonId),
+        ),
         'Could not create fixture',
       )
       setDraft((current) => ({ ...current, [match.id]: { home: '', away: '' } }))
@@ -579,6 +616,9 @@ function Results({
       setCreateHome('')
       setCreateAway('')
       setCreateKickoff('')
+      setCreateSeasonId((current) =>
+        String(fixtureSeasons.find((season) => Boolean(season.is_current))?.id ?? current),
+      )
       setScheduleTarget(null)
       await load()
     } catch {
@@ -609,8 +649,8 @@ function Results({
   const pageCount = Math.max(1, Math.ceil(totalMatches / 20))
   const firstMatch = totalMatches === 0 ? 0 : page * 20 + 1
   const lastMatch = Math.min((page + 1) * 20, totalMatches)
-  const selectedClub = clubs.find((club) => club.slug === createHome)
-  const awayOptions = clubs.filter(
+  const selectedClub = fixtureClubs.find((club) => club.slug === createHome)
+  const awayOptions = fixtureClubs.filter(
     (club) => club.slug !== createHome && club.division_id === selectedClub?.division_id,
   )
 
@@ -878,7 +918,11 @@ function Results({
                 <div>
                   <p className="eyebrow">FIXTURE SETUP</p>
                   <h2 id="fixture-modal-title">Create a fixture</h2>
-                  <p className="club-edit-subtitle">Choose two clubs in the same current division.</p>
+                  <p className="club-edit-subtitle">
+                    {createSeasonId
+                      ? `Choose two clubs in the same division for ${fixtureSeasons.find((season) => String(season.id) === createSeasonId)?.name ?? 'the selected season'}.`
+                      : 'Choose a season to load its clubs and divisions.'}
+                  </p>
                 </div>
                 <button
                   type="button"
@@ -893,13 +937,31 @@ function Results({
               <div className="club-edit-content">
                 <div className="club-edit-fields">
                   <label>
+                    <span>Season</span>
+                    <CustomSelect
+                      ariaLabel="Fixture season"
+                      value={createSeasonId}
+                      disabled={fixtureSeasons.length === 0}
+                      options={fixtureSeasons.map((season) => ({
+                        value: String(season.id),
+                        label: season.name,
+                      }))}
+                      onChange={(value) => {
+                        setCreateSeasonId(value)
+                        setCreateHome('')
+                        setCreateAway('')
+                      }}
+                    />
+                  </label>
+                  <label>
                     <span>Home club</span>
                     <CustomSelect
                       ariaLabel="Home club"
                       value={createHome}
+                      disabled={!createSeasonId}
                       options={[
                         { value: '', label: 'Choose home club' },
-                        ...clubs.filter((club) => club.division_id !== null).map((club) => ({
+                        ...fixtureClubs.filter((club) => club.division_id !== null).map((club) => ({
                           value: club.slug,
                           label: club.name,
                         })),
@@ -914,7 +976,7 @@ function Results({
                     <span>Away club</span>
                     <CustomSelect
                       ariaLabel="Away club"
-                      disabled={!createHome}
+                      disabled={!createHome || awayOptions.length === 0}
                       value={createAway}
                       options={[
                         { value: '', label: 'Choose away club' },
@@ -947,7 +1009,10 @@ function Results({
                 >
                   Cancel
                 </button>
-                <button className="btn primary" disabled={scheduleBusy || !createHome || !createAway}>
+                <button
+                  className="btn primary"
+                  disabled={scheduleBusy || !createSeasonId || !createHome || !createAway}
+                >
                   {scheduleBusy ? 'Creating…' : 'Create fixture'}
                 </button>
               </footer>

@@ -106,18 +106,36 @@ admin.post(
       return res.status(400).json({ error: 'Choose two different clubs.' })
     }
     const kickoff = parseKickoff(req.body?.kickoff)
+    const requestedSeasonId = req.body?.seasonId
+    const seasonId =
+      requestedSeasonId === undefined || requestedSeasonId === null || requestedSeasonId === ''
+        ? null
+        : Number(requestedSeasonId)
+    if (seasonId !== null && (!Number.isSafeInteger(seasonId) || seasonId < 1)) {
+      return res.status(400).json({ error: 'seasonId must be a positive integer.' })
+    }
 
     const result = await withTransaction(async (conn) => {
+      const selectedSeason = seasonId === null
+        ? (await conn.query(
+            'SELECT id FROM seasons WHERE is_current = TRUE LIMIT 1 FOR UPDATE',
+          ))[0]
+        : (await conn.query('SELECT id FROM seasons WHERE id = ? FOR UPDATE', [seasonId]))[0]
+      const selectedSeasonId = (selectedSeason as Array<{ id: number }>)[0]?.id
+      if (!selectedSeasonId) {
+        return { error: 'Choose an existing season before creating the fixture.' as const, status: 404 }
+      }
+
       const findClub = async (slug: string) => {
         const [rows] = await conn.query(
           `SELECT c.id, c.name, d.id AS division_id, s.id AS season_id
              FROM clubs c
              JOIN division_clubs dc ON dc.club_id = c.id
              JOIN divisions d ON d.id = dc.division_id
-             JOIN seasons s ON s.id = d.season_id AND s.is_current = TRUE
-            WHERE c.slug = ? AND c.status = 'active'
+             JOIN seasons s ON s.id = d.season_id
+            WHERE c.slug = ? AND c.status = 'active' AND s.id = ?
             ORDER BY dc.id DESC LIMIT 1`,
-          [slug],
+          [slug, selectedSeasonId],
         )
         return (rows as Array<{
           id: number
@@ -128,10 +146,10 @@ admin.post(
       }
       const [home, away] = await Promise.all([findClub(homeSlug), findClub(awaySlug)])
       if (!home || !away) {
-        return { error: 'Both clubs must be active and entered in the current season.' as const, status: 400 }
+        return { error: 'Both clubs must be active and entered in the selected season.' as const, status: 400 }
       }
       if (home.division_id !== away.division_id || home.season_id !== away.season_id) {
-        return { error: 'Choose two clubs from the same current division.' as const, status: 400 }
+        return { error: 'Choose two clubs from the same division in the selected season.' as const, status: 400 }
       }
 
       const [standings] = await conn.query(

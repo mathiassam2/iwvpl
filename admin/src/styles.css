@@ -244,7 +244,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .fixture-date-field { display: grid; gap: 7px; color: var(--muted); font-size: 11px; font-weight: 700; }
 .fixture-date-field .text { width: 100%; min-height: 42px; }
 .fixture-modal .club-edit-fields label { min-width: 0; }
-.fixture-modal .club-edit-fields label:first-child { grid-column: auto; }
+.fixture-modal .club-edit-fields label:first-child { grid-column: 1 / -1; }
 .fixture-modal .club-edit-fields label:last-child { grid-column: 1 / -1; }
 .fixture-modal .club-edit-fields .custom-select { width: 100%; min-width: 0; }
 .fixture-modal .club-edit-fields label > span small { color: var(--faint); font-size: 10px; font-weight: 500; }

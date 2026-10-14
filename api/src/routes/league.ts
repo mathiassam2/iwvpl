@@ -109,18 +109,31 @@ league.get(
   handler(async (req, res) => {
     const includePending = req.query.includePending === 'true'
     const where = includePending ? '' : "WHERE c.status = 'active'"
+    const requestedSeasonId = req.query.seasonId
+    let seasonId: number | null = null
+    if (requestedSeasonId !== undefined) {
+      seasonId = Number(requestedSeasonId)
+      if (!Number.isSafeInteger(seasonId) || seasonId < 1) {
+        return res.status(400).json({ error: 'seasonId must be a positive integer.' })
+      }
+      const season = await queryOne<{ id: number }>('SELECT id FROM seasons WHERE id = ?', [seasonId])
+      if (!season) return res.status(404).json({ error: 'Season not found.' })
+    }
 
     const clubs = await queryAll(
       `SELECT c.id, c.name, c.slug, c.short_code, c.flag, c.logo_url, c.logo_local, c.status,
               (SELECT COUNT(*) FROM players p WHERE p.club_id = c.id) AS players,
-              /* The division the club is entered in for the current season.
-                 Membership is per-season; older season rows are not current. */
               (SELECT dc.division_id FROM division_clubs dc
                 JOIN divisions d ON d.id = dc.division_id
-                JOIN seasons s ON s.id = d.season_id AND s.is_current = TRUE
-                WHERE dc.club_id = c.id ORDER BY dc.id DESC LIMIT 1) AS division_id
+                WHERE dc.club_id = c.id
+                  AND (? IS NULL OR d.season_id = ?)
+                  AND (? IS NOT NULL OR d.season_id = (
+                    SELECT id FROM seasons WHERE is_current = TRUE LIMIT 1
+                  ))
+                ORDER BY dc.id DESC LIMIT 1) AS division_id
          FROM clubs c ${where}
         ORDER BY c.name`,
+      [seasonId, seasonId, seasonId],
     )
     res.json({ clubs })
   }),
