@@ -113,17 +113,17 @@ export default function StandingsPage() {
 
           {!loading && !error && (
             <>
-              {division?.promotionRange || division?.relegationRange ? (
+              {division?.promotionCount || division?.relegationCount ? (
                 <p className="mb-3 text-xs text-[var(--text-muted)]">
-                  {division.promotionRange && (
+                  {division.promotionCount != null && (
                     <span>
-                      Promotion: positions {division.promotionRange.from}–{division.promotionRange.to}
+                      Promotion: top {division.promotionCount}
                     </span>
                   )}
-                  {division.promotionRange && division.relegationRange && <span> · </span>}
-                  {division.relegationRange && (
+                  {division.promotionCount != null && division.relegationCount != null && <span> · </span>}
+                  {division.relegationCount != null && (
                     <span>
-                      Relegation: positions {division.relegationRange.from}–{division.relegationRange.to}
+                      Relegation: bottom {division.relegationCount}
                     </span>
                   )}
                 </p>
@@ -133,6 +133,8 @@ export default function StandingsPage() {
                   rows={sorted}
                   sort={sort}
                   onSort={onSort}
+                  promotionCount={division?.promotionCount}
+                  relegationCount={division?.relegationCount}
                   promotionRange={division?.promotionRange}
                   relegationRange={division?.relegationRange}
                 />

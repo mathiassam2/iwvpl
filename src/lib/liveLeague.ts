@@ -44,10 +44,8 @@ interface ApiStanding {
   logo_local: string | null
   flag: string | null
   division_name: string
-  promotion_from: number | null
-  promotion_to: number | null
-  relegation_from: number | null
-  relegation_to: number | null
+  promotion_count: number | null
+  relegation_count: number | null
 }
 
 const apiBase = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '')
@@ -111,25 +109,30 @@ export async function getLiveStandings(
     get<{
       divisions: Array<{
         name: string
-        promotion_from: number | null
-        promotion_to: number | null
-        relegation_from: number | null
-        relegation_to: number | null
+        promotion_count: number | null
+        relegation_count: number | null
       }>
     }>('/api/divisions', signal),
   ])
+  const movementByDivision = new Map(
+    divisionResponse.divisions.map((division) => [
+      division.name,
+      {
+        promotion: division.promotion_count,
+        relegation: division.relegation_count,
+      },
+    ]),
+  )
   const divisions: Record<string, StandingDivision> = Object.fromEntries(
     divisionResponse.divisions.map((division) => [
       division.name,
       {
         columns: [],
         rows: [],
-        promotionRange: division.promotion_from == null || division.promotion_to == null
-          ? null
-          : { from: division.promotion_from, to: division.promotion_to },
-        relegationRange: division.relegation_from == null || division.relegation_to == null
-          ? null
-          : { from: division.relegation_from, to: division.relegation_to },
+        promotionCount: division.promotion_count,
+        relegationCount: division.relegation_count,
+        promotionRange: null,
+        relegationRange: null,
       },
     ]),
   )
@@ -138,13 +141,17 @@ export async function getLiveStandings(
     const division = divisions[row.division_name] ?? (divisions[row.division_name] = {
       columns: [],
       rows: [],
-      promotionRange: row.promotion_from == null || row.promotion_to == null
-        ? null
-        : { from: row.promotion_from, to: row.promotion_to },
-      relegationRange: row.relegation_from == null || row.relegation_to == null
-        ? null
-        : { from: row.relegation_from, to: row.relegation_to },
+      promotionCount: row.promotion_count,
+      relegationCount: row.relegation_count,
+      promotionRange: null,
+      relegationRange: null,
     })
+    if (!movementByDivision.has(row.division_name)) {
+      movementByDivision.set(row.division_name, {
+        promotion: row.promotion_count,
+        relegation: row.relegation_count,
+      })
+    }
     const rows = division.rows
     rows.push({
       pos: row.position,
@@ -162,6 +169,19 @@ export async function getLiveStandings(
       logo: row.logo_local ? asset(row.logo_local) : '',
       code: row.short_code ?? '',
     })
+  }
+
+  for (const [name, division] of Object.entries(divisions)) {
+    const movement = movementByDivision.get(name)
+    const teamCount = division.rows.length
+    division.promotionCount = movement?.promotion ?? null
+    division.relegationCount = movement?.relegation ?? null
+    division.promotionRange = movement?.promotion == null
+      ? null
+      : { from: 1, to: movement.promotion }
+    division.relegationRange = movement?.relegation == null || teamCount === 0
+      ? null
+      : { from: Math.max(1, teamCount - movement.relegation + 1), to: teamCount }
   }
 
   return divisions

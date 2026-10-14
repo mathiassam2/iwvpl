@@ -17,7 +17,7 @@ import { matchIndexOf } from '@/lib/match'
 import { asset } from '@/lib/assets'
 import { CLUB_PLACEHOLDER, cx, stripFlag, totalGoals } from '@/lib/format'
 import { getLiveResults, getLiveStandings, liveLeagueEnabled } from '@/lib/liveLeague'
-import type { Standing } from '@/types/site'
+import type { Standing, StandingDivision } from '@/types/site'
 
 
 /* ==================================================================== HERO */
@@ -702,6 +702,7 @@ const HOME_TABLE_ROWS = 10
 
 export function StandingsPreview() {
   const [liveRows, setLiveRows] = useState<Standing[] | null>(null)
+  const [liveDivision, setLiveDivision] = useState<StandingDivision | null>(null)
   const [error, setError] = useState('')
   const [reload, setReload] = useState(0)
 
@@ -711,7 +712,11 @@ export function StandingsPreview() {
     setError('')
 
     getLiveStandings(controller.signal)
-      .then((divisions) => setLiveRows(divisions['Premier League']?.rows ?? []))
+      .then((divisions) => {
+        const division = divisions['Premier League'] ?? null
+        setLiveDivision(division)
+        setLiveRows(division?.rows ?? [])
+      })
       .catch((cause: unknown) => {
         if (!controller.signal.aborted) {
           setError(cause instanceof Error ? cause.message : 'Could not load live standings.')
@@ -754,7 +759,14 @@ export function StandingsPreview() {
         />
         {!error && (!liveLeagueEnabled || liveRows !== null) && (
           <Reveal>
-            <StandingsTable rows={shown} leagueSize={rows.length} />
+            <StandingsTable
+              rows={shown}
+              leagueSize={rows.length}
+              promotionCount={liveDivision?.promotionCount}
+              relegationCount={liveDivision?.relegationCount}
+              promotionRange={liveDivision?.promotionRange}
+              relegationRange={liveDivision?.relegationRange}
+            />
           </Reveal>
         )}
         {!error && hidden > 0 && (

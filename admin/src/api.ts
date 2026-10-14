@@ -176,10 +176,8 @@ export interface Division {
   name: string
   slug: string
   season: string
-  promotion_from: number | null
-  promotion_to: number | null
-  relegation_from: number | null
-  relegation_to: number | null
+  promotion_count: number | null
+  relegation_count: number | null
 }
 
 export const getDivisions = () =>

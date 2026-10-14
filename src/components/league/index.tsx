@@ -114,6 +114,8 @@ export function StandingsTable({
   sort,
   onSort,
   leagueSize,
+  promotionCount,
+  relegationCount,
   promotionRange,
   relegationRange,
 }: {
@@ -122,6 +124,8 @@ export function StandingsTable({
   onSort?: (key: StandingSortKey) => void
   /** Full league size. Defaults to the row count for a full table. */
   leagueSize?: number
+  promotionCount?: number | null
+  relegationCount?: number | null
   promotionRange?: StandingDivision['promotionRange']
   relegationRange?: StandingDivision['relegationRange']
 }) {
@@ -271,7 +275,7 @@ export function StandingsTable({
           ) : promotionRange && (
             <span className="inline-flex items-center gap-2">
               <span aria-hidden className="h-3 w-3 rounded bg-[var(--badge-up-bg)] ring-1 ring-[var(--accent-ring)]" />
-              Promotion · {promotionRange.from}–{promotionRange.to}
+              Promotion · top {promotionCount ?? promotionRange.to - promotionRange.from + 1}
             </span>
           )}
           {relegationRange === undefined ? (
@@ -282,7 +286,7 @@ export function StandingsTable({
           ) : relegationRange && (
             <span className="inline-flex items-center gap-2">
               <span aria-hidden className="h-3 w-3 rounded bg-[var(--badge-down-bg)]" />
-              Relegation · {relegationRange.from}–{relegationRange.to}
+              Relegation · bottom {relegationCount ?? relegationRange.to - relegationRange.from + 1}
             </span>
           )}
         </div>

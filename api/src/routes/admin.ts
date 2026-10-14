@@ -50,62 +50,27 @@ function optionalString(value: unknown, max = 512): string | null {
   return s
 }
 
-type DivisionRanges = {
-  promotion_from: number | null
-  promotion_to: number | null
-  relegation_from: number | null
-  relegation_to: number | null
+type DivisionMovement = {
+  promotion_count: number | null
+  relegation_count: number | null
 }
 
-function parsePosition(value: unknown, field: string): number | null {
+function parseMovementCount(value: unknown, field: string): number | null {
   if (value === undefined || value === null || value === '') return null
-  const position = Number(value)
-  if (!Number.isSafeInteger(position) || position < 1 || position > 1000) {
-    throw Object.assign(new Error(`${field} must be a standings position between 1 and 1000.`), {
+  const count = Number(value)
+  if (!Number.isSafeInteger(count) || count < 0 || count > 1000) {
+    throw Object.assign(new Error(`${field} must be a whole number between 0 and 1000.`), {
       status: 400,
     })
   }
-  return position
+  return count === 0 ? null : count
 }
 
-function parseDivisionRanges(body: Record<string, unknown> | undefined): DivisionRanges {
-  const ranges: DivisionRanges = {
-    promotion_from: parsePosition(body?.promotion_from, 'promotion_from'),
-    promotion_to: parsePosition(body?.promotion_to, 'promotion_to'),
-    relegation_from: parsePosition(body?.relegation_from, 'relegation_from'),
-    relegation_to: parsePosition(body?.relegation_to, 'relegation_to'),
+function parseDivisionMovement(body: Record<string, unknown> | undefined): DivisionMovement {
+  return {
+    promotion_count: parseMovementCount(body?.promotion_count, 'promotion_count'),
+    relegation_count: parseMovementCount(body?.relegation_count, 'relegation_count'),
   }
-  const checkRange = (label: string, from: number | null, to: number | null) => {
-    if ((from === null) !== (to === null)) {
-      throw Object.assign(new Error(`${label} requires both a start and end position.`), {
-        status: 400,
-      })
-    }
-    if (from !== null && to !== null && from > to) {
-      throw Object.assign(new Error(`${label} start position must not exceed its end position.`), {
-        status: 400,
-      })
-    }
-  }
-  checkRange('Promotion range', ranges.promotion_from, ranges.promotion_to)
-  checkRange('Relegation range', ranges.relegation_from, ranges.relegation_to)
-  const promotionFrom = ranges.promotion_from
-  const promotionTo = ranges.promotion_to
-  const relegationFrom = ranges.relegation_from
-  const relegationTo = ranges.relegation_to
-  if (
-    promotionFrom !== null &&
-    promotionTo !== null &&
-    relegationFrom !== null &&
-    relegationTo !== null &&
-    promotionFrom <= relegationTo &&
-    relegationFrom <= promotionTo
-  ) {
-    throw Object.assign(new Error('Promotion and relegation ranges must not overlap.'), {
-      status: 400,
-    })
-  }
-  return ranges
 }
 
 function parseKickoff(value: unknown): string | null {
@@ -611,7 +576,7 @@ admin.post(
   '/divisions',
   handler(async (req, res) => {
     const name = requiredString(req.body?.name, 'name', 64)
-    const ranges = parseDivisionRanges(req.body)
+    const movement = parseDivisionMovement(req.body)
     const division = await withTransaction(async (conn) => {
       const [seasonRows] = await conn.query(
         'SELECT id, name, year FROM seasons WHERE is_current = TRUE LIMIT 1 FOR UPDATE',
@@ -639,16 +604,14 @@ admin.post(
       }
       const [inserted] = await conn.execute(
         `INSERT INTO divisions
-           (season_id, name, slug, promotion_from, promotion_to, relegation_from, relegation_to, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+           (season_id, name, slug, promotion_count, relegation_count, created_at)
+         VALUES (?, ?, ?, ?, ?, NOW())`,
         [
           season.id,
           name,
           slug,
-          ranges.promotion_from,
-          ranges.promotion_to,
-          ranges.relegation_from,
-          ranges.relegation_to,
+          movement.promotion_count,
+          movement.relegation_count,
         ],
       )
       const id = (inserted as { insertId: number }).insertId
@@ -658,7 +621,7 @@ admin.post(
         slug,
         season_id: season.id,
         season: season.name,
-        ...ranges,
+        ...movement,
       }
     })
     if (!division) return res.status(404).json({ error: 'There is no current season.' })
@@ -674,7 +637,7 @@ admin.put(
       return res.status(400).json({ error: 'Division id must be a positive integer.' })
     }
     const name = requiredString(req.body?.name, 'name', 64)
-    const ranges = parseDivisionRanges(req.body)
+    const movement = parseDivisionMovement(req.body)
     const division = await withTransaction(async (conn) => {
       const [divisionRows] = await conn.query(
           `SELECT d.id, d.name, d.slug, d.season_id, s.name AS season, s.year
@@ -719,16 +682,13 @@ admin.put(
       }
       await conn.execute(
         `UPDATE divisions
-            SET name = ?, slug = ?, promotion_from = ?, promotion_to = ?,
-                relegation_from = ?, relegation_to = ?
+            SET name = ?, slug = ?, promotion_count = ?, relegation_count = ?
           WHERE id = ?`,
         [
           name,
           slug,
-          ranges.promotion_from,
-          ranges.promotion_to,
-          ranges.relegation_from,
-          ranges.relegation_to,
+          movement.promotion_count,
+          movement.relegation_count,
           id,
         ],
       )
@@ -738,7 +698,7 @@ admin.put(
         slug,
         season_id: current.season_id,
         season: current.season,
-        ...ranges,
+        ...movement,
       }
     })
     if (!division) return res.status(404).json({ error: 'Current-season division not found.' })

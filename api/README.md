@@ -221,14 +221,14 @@ The admin results list requests `/api/matches` in pages using `limit`, `offset`,
 the unplayed fixtures that need scheduling attention independently of the
 current results page.
 
-### Division movement zones
+### Division movement settings
 
 The Clubs > Divisions admin workspace manages divisions for the current season
-and stores inclusive, one-based promotion and relegation standings positions.
-Either range may be left unset; a configured range requires both endpoints,
-must be in ascending order, and cannot overlap the other range. The public
-standings endpoint includes these ranges so the table can color the matching
-positions and explain each zone.
+and stores how many clubs are promoted from the top and relegated from the
+bottom. The standings positions are calculated from each division's current
+team count, so the same settings work when season sizes change. Either setting
+may be left unset. The public standings endpoint includes the movement counts
+and resolves them to positions for the table highlights and zone labels.
 
 ## Testing
 

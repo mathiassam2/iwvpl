@@ -1090,10 +1090,8 @@ function Divisions({
   const [divisions, setDivisions] = useState<Division[] | null>(null)
   const [editing, setEditing] = useState<number | 'new' | null>(null)
   const [name, setName] = useState('')
-  const [promotionFrom, setPromotionFrom] = useState('')
-  const [promotionTo, setPromotionTo] = useState('')
-  const [relegationFrom, setRelegationFrom] = useState('')
-  const [relegationTo, setRelegationTo] = useState('')
+  const [promotionCount, setPromotionCount] = useState('0')
+  const [relegationCount, setRelegationCount] = useState('0')
   const [busy, setBusy] = useState(false)
 
   const load = useCallback(async () => {
@@ -1110,58 +1108,20 @@ function Divisions({
   const edit = (division: Division | null) => {
     setEditing(division?.id ?? 'new')
     setName(division?.name ?? '')
-    setPromotionFrom(division?.promotion_from == null ? '' : String(division.promotion_from))
-    setPromotionTo(division?.promotion_to == null ? '' : String(division.promotion_to))
-    setRelegationFrom(division?.relegation_from == null ? '' : String(division.relegation_from))
-    setRelegationTo(division?.relegation_to == null ? '' : String(division.relegation_to))
+    setPromotionCount(division?.promotion_count == null ? '0' : String(division.promotion_count))
+    setRelegationCount(division?.relegation_count == null ? '0' : String(division.relegation_count))
   }
 
   const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    const promotionStart = promotionFrom === '' ? null : Number(promotionFrom)
-    const promotionEnd = promotionTo === '' ? null : Number(promotionTo)
-    const relegationStart = relegationFrom === '' ? null : Number(relegationFrom)
-    const relegationEnd = relegationTo === '' ? null : Number(relegationTo)
-    if ((promotionStart === null) !== (promotionEnd === null) ||
-        (relegationStart === null) !== (relegationEnd === null)) {
-      report('error', 'Enter both start and end positions for each range, or leave both blank.')
-      return
-    }
-    if (
-      (promotionStart !== null && promotionEnd !== null && promotionStart > promotionEnd) ||
-      (relegationStart !== null && relegationEnd !== null && relegationStart > relegationEnd)
-    ) {
-      report('error', 'Each range start position must not exceed its end position.')
-      return
-    }
-    if (
-      promotionStart !== null &&
-      promotionEnd !== null &&
-      relegationStart !== null &&
-      relegationEnd !== null &&
-      promotionStart <= relegationEnd &&
-      relegationStart <= promotionEnd
-    ) {
-      report('error', 'Promotion and relegation ranges cannot overlap.')
-      return
-    }
-    if ([promotionStart, promotionEnd, relegationStart, relegationEnd].some(
-      (position) => position !== null && (!Number.isInteger(position) || position < 1 || position > 1000),
-    )) {
-      report('error', 'Positions must be whole numbers between 1 and 1000.')
-      return
-    }
-
     if (editing === null) return
     const editId = editing
     setBusy(true)
     try {
       const input = {
         name: name.trim(),
-        promotion_from: promotionStart,
-        promotion_to: promotionEnd,
-        relegation_from: relegationStart,
-        relegation_to: relegationEnd,
+        promotion_count: Number(promotionCount) || null,
+        relegation_count: Number(relegationCount) || null,
       }
       const division = await guard(
         () => editId === 'new'
@@ -1199,33 +1159,39 @@ function Divisions({
         />
       </label>
       <p className="division-range-help">
-        Ranges use inclusive standings positions. Leave both fields blank when there is no movement.
+        Choose how many clubs move. Their positions are calculated from the division's current team count.
       </p>
       <div className="division-ranges">
         <fieldset>
           <legend>Promotion</legend>
           <label>
-            <span>From position</span>
-            <input className="text" type="number" min="1" max="1000" step="1" inputMode="numeric"
-              value={promotionFrom} onChange={(event) => setPromotionFrom(event.target.value)} />
-          </label>
-          <label>
-            <span>To position</span>
-            <input className="text" type="number" min="1" max="1000" step="1" inputMode="numeric"
-              value={promotionTo} onChange={(event) => setPromotionTo(event.target.value)} />
+            <span>Promote top</span>
+            <select className="text" value={promotionCount}
+              onChange={(event) => setPromotionCount(event.target.value)}>
+              <option value="0">No movement</option>
+              {Number(promotionCount) > 20 && (
+                <option value={promotionCount}>{promotionCount} clubs</option>
+              )}
+              {Array.from({ length: 20 }, (_, index) => index + 1).map((count) => (
+                <option key={count} value={count}>{count} {count === 1 ? 'club' : 'clubs'}</option>
+              ))}
+            </select>
           </label>
         </fieldset>
         <fieldset>
           <legend>Relegation</legend>
           <label>
-            <span>From position</span>
-            <input className="text" type="number" min="1" max="1000" step="1" inputMode="numeric"
-              value={relegationFrom} onChange={(event) => setRelegationFrom(event.target.value)} />
-          </label>
-          <label>
-            <span>To position</span>
-            <input className="text" type="number" min="1" max="1000" step="1" inputMode="numeric"
-              value={relegationTo} onChange={(event) => setRelegationTo(event.target.value)} />
+            <span>Relegate bottom</span>
+            <select className="text" value={relegationCount}
+              onChange={(event) => setRelegationCount(event.target.value)}>
+              <option value="0">No movement</option>
+              {Number(relegationCount) > 20 && (
+                <option value={relegationCount}>{relegationCount} clubs</option>
+              )}
+              {Array.from({ length: 20 }, (_, index) => index + 1).map((count) => (
+                <option key={count} value={count}>{count} {count === 1 ? 'club' : 'clubs'}</option>
+              ))}
+            </select>
           </label>
         </fieldset>
       </div>
@@ -1244,7 +1210,7 @@ function Divisions({
         <header>
           <div>
             <h2>Divisions</h2>
-            <p className="hint">{divisions[0]?.season ?? 'Current season'} · configure standings movement zones</p>
+            <p className="hint">{divisions[0]?.season ?? 'Current season'} · choose how many clubs move</p>
           </div>
           <button className="btn primary sm" onClick={() => edit(null)} disabled={editing !== null}>
             <span aria-hidden="true">＋</span> Add division
@@ -1270,10 +1236,10 @@ function Divisions({
                     </div>
                     <div className="division-range-summary">
                       <p><span>Promotion</span><strong>
-                        {division.promotion_from == null ? 'Not set' : `${division.promotion_from}–${division.promotion_to}`}
+                        {division.promotion_count == null ? 'Not set' : `Top ${division.promotion_count}`}
                       </strong></p>
                       <p><span>Relegation</span><strong>
-                        {division.relegation_from == null ? 'Not set' : `${division.relegation_from}–${division.relegation_to}`}
+                        {division.relegation_count == null ? 'Not set' : `Bottom ${division.relegation_count}`}
                       </strong></p>
                     </div>
                   </>
@@ -1284,8 +1250,8 @@ function Divisions({
         )}
       </div>
       <p className="footnote">
-        Position ranges are inclusive and are shown to the public on the standings page. Divisions
-        are retained for season history, so they cannot be deleted here.
+        Promotion and relegation are shown on the public standings. Divisions are retained for
+        season history, so they cannot be deleted here.
       </p>
     </div>
   )
