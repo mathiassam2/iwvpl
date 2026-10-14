@@ -304,14 +304,22 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .club-league-meta { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 10px; }
 .club-movement-progress { color: var(--muted); font-size: 10px; font-weight: 700; white-space: nowrap; }
 .club-movement-backfill {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 14px;
-  border-bottom: 1px solid var(--border); color: var(--faint); font-size: 10px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 14px;
+  border-bottom: 1px solid var(--border); background: rgb(255 255 255 / 1.5%);
 }
-.club-movement-backfill-form {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 14px;
-  border-bottom: 1px solid var(--border); color: var(--muted); font-size: 11px;
+.club-movement-backfill-copy {
+  display: grid; flex: 1 1 300px; gap: 3px; color: var(--muted); font-size: 10px; line-height: 1.45;
 }
+.club-movement-backfill-copy strong,
+.club-movement-backfill-form strong { color: var(--text); font-size: 11px; }
+.club-movement-backfill-copy > span,
+.club-movement-backfill-form > span { color: var(--faint); }
+.club-movement-backfill-form > strong { flex: 1 1 100%; }
 .club-movement-backfill-form > span { flex: 1 1 100%; line-height: 1.5; }
+.club-movement-backfill-form {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 14px;
+  border-bottom: 1px solid var(--border); background: rgb(255 255 255 / 1.5%); color: var(--muted); font-size: 11px;
+}
 .club-movement-backfill-form .custom-select { min-width: 190px; }
 .club-league-count {
   display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 6px;

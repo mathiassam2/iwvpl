@@ -2441,7 +2441,13 @@ function Clubs({
                   <>
                     {(promotionCandidates.length > 0 || relegationCandidates.length > 0) && (
                       <div className="club-movement-backfill">
-                        <span>Already completed before tracking?</span>
+                        <div className="club-movement-backfill-copy">
+                          <strong>Record a move completed earlier</strong>
+                          <span>
+                            Use this only if the club has already changed leagues this season.
+                            This updates the progress count and zone color; it does not move the club.
+                          </span>
+                        </div>
                         {promotionCandidates.length > 0 && (
                           <button
                             className="btn sm"
@@ -2454,7 +2460,7 @@ function Clubs({
                               setBackfillClubSlug('')
                             }}
                           >
-                            Record prior promotion
+                            Mark prior promotion complete
                           </button>
                         )}
                         {relegationCandidates.length > 0 && (
@@ -2469,23 +2475,26 @@ function Clubs({
                               setBackfillClubSlug('')
                             }}
                           >
-                            Record prior relegation
+                            Mark prior relegation complete
                           </button>
                         )}
                       </div>
                     )}
                     {activeBackfill && (
                       <div className="club-movement-backfill-form">
-                        <span>
-                          Select a club already moved from {sourceDivision.name}; this records the
-                          completed slot without changing the club&rsquo;s league.
-                        </span>
+                        <strong>
+                          Mark a {activeBackfill} from {sourceDivision.name} as complete
+                        </strong>
+                        <span>This only updates this season&rsquo;s movement tracking.</span>
                         <CustomSelect
-                          ariaLabel={`Previously moved club from ${sourceDivision.name}`}
+                          ariaLabel={`Choose club with completed ${activeBackfill} from ${sourceDivision.name}`}
                           value={backfillClubSlug}
                           onChange={setBackfillClubSlug}
                           options={[
-                            { value: '', label: 'Choose a club' },
+                            {
+                              value: '',
+                              label: `Choose ${activeBackfill === 'promotion' ? 'promoted' : 'relegated'} club`,
+                            },
                             ...activeBackfillCandidates.map((club) => ({
                               value: club.slug,
                               label: club.name,
@@ -2500,7 +2509,7 @@ function Clubs({
                             void recordPreviousMovement(sourceDivision, backfillClubSlug)
                           }}
                         >
-                          Confirm completed move
+                          Mark as completed
                         </button>
                         <button
                           className="btn sm"
