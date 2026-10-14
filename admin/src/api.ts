@@ -292,17 +292,21 @@ export const updateDivisionOrder = (divisionIds: number[]) =>
   })
 
 /**
- * Put a club into a division.
+ * Put a club into a division, or take it out of one with `null`.
  *
  * A plain move. It does not spend a promotion or relegation slot, whatever
  * direction the club travels: `moveClub` below is the only thing that does.
+ *
+ * Passing `null` unassigns the club from the current season. It drops this
+ * season's membership and table row, so the club lands in the unassigned
+ * table rather than silently staying where it was.
  *
  * Also creates its standings row, so it appears in the league table
  * immediately rather than waiting to play a match that cannot be scheduled
  * without a table to enter.
  */
-export const assignDivision = (slug: string, divisionId: number) =>
-  request<{ ok: true; divisionName: string }>(
+export const assignDivision = (slug: string, divisionId: number | null) =>
+  request<{ ok: true; divisionId: number | null; divisionName: string | null }>(
     `/api/admin/clubs/${slug}/division`,
     {
       method: 'POST',
@@ -344,7 +348,11 @@ export const withdrawResult = (matchId: number) =>
 export const deleteMatch = (matchId: number) =>
   request<{ ok: true; matchId: number }>(`/api/admin/matches/${matchId}`, { method: 'DELETE' })
 
-export const updateClub = (slug: string, patch: Partial<Pick<Club, 'name' | 'shortCode' | 'status'>> & { shortCode?: string | null }) =>
+/** `shortCode` is camelCase on the wire, and null clears the code. */
+export const updateClub = (
+  slug: string,
+  patch: { name?: string; shortCode?: string | null; status?: string },
+) =>
   request<{ ok: true }>(`/api/admin/clubs/${slug}`, {
     method: 'PATCH',
     body: JSON.stringify(patch),

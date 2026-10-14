@@ -77,16 +77,19 @@ button { -webkit-tap-highlight-color: transparent; }
 }
 .sidebar-note .secure-dot { margin-top: 5px; width: 6px; height: 6px; }
 
-.main-content { min-width: 0; }
+/* One rhythm for every top-level block. The views stack a handful of sections
+   (season bar, warnings, league tables, footnote) with no wrapper to carry
+   spacing, so the gap lives on the column itself rather than on each child. */
+.main-content { min-width: 0; display: grid; align-content: start; gap: 20px; }
 .page-heading {
   display: flex; justify-content: space-between; align-items: flex-end; gap: 16px;
-  margin: 0 0 27px;
+  margin: 0;
 }
 .eyebrow { margin-bottom: 7px; }
 .eyebrow span { padding: 0 5px; color: #475057; }
 .page-heading h1 { margin: 0; color: var(--text); font-size: clamp(27px, 3vw, 36px); line-height: 1.1; letter-spacing: -.04em; }
 .page-subtitle { margin: 9px 0 0; color: var(--muted); font-size: 13px; }
-.stats-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; margin-bottom: 24px; }
+.stats-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; }
 .stat-card {
   position: relative; display: grid; grid-template-columns: 1fr auto; align-content: start;
   min-height: 130px; padding: 17px 18px 15px; border: 1px solid var(--border);
@@ -242,7 +245,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .match-empty { display: grid; gap: 5px; padding: 34px 15px; }
 .match-empty strong { color: var(--text); font-size: 14px; }
 .match-empty span { color: var(--muted); font-size: 12px; }
-.standings-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
+.standings-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .standings-filters label { display: grid; gap: 7px; color: var(--muted); font-size: 11px; font-weight: 700; }
 .standings-filters .custom-select { width: 100%; min-width: 0; }
 .standings-filters .custom-select-trigger { min-height: 42px; }
@@ -255,11 +258,82 @@ button { -webkit-tap-highlight-color: transparent; }
 .fixture-modal .club-edit-fields label { min-width: 0; }
 .fixture-modal .club-edit-fields label:first-child { grid-column: 1 / -1; }
 .fixture-modal .club-edit-fields label:last-child { grid-column: 1 / -1; }
-.fixture-clubs-pair { display: grid; grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px; }
-.fixture-clubs-pair label { display: grid; min-width: 0; gap: 7px; color: var(--muted); font-size: 11px; font-weight: 700; }
-.fixture-clubs-pair .custom-select { width: 100%; min-width: 0; }
 .fixture-modal .club-edit-fields .custom-select { width: 100%; min-width: 0; }
 .fixture-modal .club-edit-fields label > span small { color: var(--faint); font-size: 10px; font-weight: 500; }
+
+/* --------------------------------------------------- fixture builder modal */
+/* The old dialog was a flat four-field form. It is built here as the fixture it
+   produces: context first, then the pairing as the centrepiece, then time. */
+
+/* Two classes, not one: `.squad-modal` sets the 460px dialog width further down
+   the file, and a single-class rule here would lose to it on source order. */
+.squad-modal.fixture-builder { width: min(100%, 760px); }
+.fixture-builder .club-edit-content { gap: 20px; padding: 20px; }
+.fixture-context {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px;
+  padding: 13px; border: 1px solid var(--border); border-radius: 11px; background: var(--bg);
+}
+.fixture-context label { display: grid; gap: 7px; min-width: 0; color: var(--muted); font-size: 11px; font-weight: 700; }
+.fixture-context .custom-select { width: 100%; min-width: 0; }
+
+.fixture-versus {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center; gap: 12px;
+}
+.fixture-slot {
+  display: grid; justify-items: center; gap: 9px; min-width: 0; padding: 17px 13px 13px;
+  border: 1px dashed var(--border-strong); border-radius: 13px;
+  background: linear-gradient(180deg, var(--surface-raised), var(--surface));
+  transition: border-color .15s ease, background .15s ease;
+}
+.fixture-slot.filled { border-style: solid; border-color: rgb(200 255 61 / 28%); background: linear-gradient(180deg, rgb(200 255 61 / 7%), var(--surface)); }
+.fixture-slot-crest {
+  display: grid; place-items: center; width: 58px; height: 58px; overflow: hidden;
+  border: 1px solid var(--border); border-radius: 15px; background: var(--bg);
+}
+.fixture-slot-crest img { width: 100%; height: 100%; object-fit: contain; }
+.fixture-slot-blank {
+  display: grid; place-items: center; width: 100%; height: 100%;
+  color: var(--faint); font-size: 17px; font-weight: 800;
+}
+.fixture-slot.filled .fixture-slot-blank { color: var(--accent); }
+.fixture-slot-role {
+  color: var(--faint); font-size: 9px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase;
+}
+.fixture-slot.filled .fixture-slot-role { color: var(--accent); }
+.fixture-slot-name {
+  max-width: 100%; min-height: 17px; color: var(--muted); font-size: 11px; font-weight: 650;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.fixture-slot.filled .fixture-slot-name { color: var(--text); }
+.fixture-slot .custom-select { width: 100%; min-width: 0; }
+.fixture-versus-badge {
+  display: grid; place-items: center; align-self: center; width: 42px; height: 42px;
+  border: 1px solid var(--border-strong); border-radius: 50%; background: var(--surface);
+  color: var(--faint); font-size: 11px; font-weight: 900; letter-spacing: .04em;
+}
+
+.fixture-kickoff {
+  display: grid; gap: 11px; padding: 15px; border: 1px solid var(--border);
+  border-radius: 11px; background: var(--bg);
+}
+.fixture-kickoff-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.fixture-kickoff-heading h3 { margin: 0; color: var(--text); font-size: 13px; }
+.fixture-kickoff-heading span { color: var(--faint); font-size: 10px; }
+.fixture-kickoff .text { width: 100%; min-height: 42px; }
+.fixture-kickoff-presets { display: flex; flex-wrap: wrap; gap: 7px; }
+
+.fixture-footer { align-items: center; flex-wrap: wrap; gap: 10px; }
+.fixture-summary {
+  flex: 1 1 200px; min-width: 0; margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5;
+}
+.fixture-summary strong { color: var(--text); }
+/* The builder is taller than the dialog, so the actions stay pinned to its
+   bottom edge instead of scrolling away behind the kickoff panel. */
+.fixture-builder > .fixture-footer {
+  position: sticky; z-index: 45; bottom: 0;
+  border-top: 1px solid var(--border); background: var(--surface);
+}
 
 .card {
   min-width: 0; border: 1px solid var(--border); border-radius: 12px;
@@ -277,7 +351,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .club { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .club img { width: 22px; height: 22px; border-radius: 4px; object-fit: contain; flex: none; }
 .club .name { overflow: hidden; color: var(--text); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.club-league-groups { display: grid; gap: 14px; }
+.club-league-groups { display: grid; gap: 16px; }
 .club-league-overview {
   display: flex; justify-content: space-between; align-items: center; gap: 16px;
   padding: 3px 2px 2px;
@@ -542,7 +616,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .custom-select-option[aria-selected="true"] { color: var(--text); }
 .custom-select-check { color: var(--accent); font-weight: 800; }
 .row-actions { display: flex; justify-content: flex-end; align-items: center; gap: 6px; white-space: nowrap; }
-.footnote { margin: 19px 2px 0; color: var(--faint); font-size: 11px; line-height: 1.65; }
+.footnote { margin: 0 2px; color: var(--faint); font-size: 11px; line-height: 1.65; }
 .footnote strong { color: var(--muted); }
 .footnote code { padding: 1px 5px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); font-size: 10px; }
 .club-subnav { display: flex; gap: 5px; margin: 0 0 14px; padding: 4px; width: fit-content; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
@@ -551,49 +625,25 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .club-subnav button:hover { color: var(--text); }
 .club-subnav button[aria-selected="true"] { border-color: rgb(200 255 61 / 16%); color: var(--accent); background: var(--accent-soft); }
 .club-subnav button span { display: grid; place-items: center; min-width: 19px; height: 19px; padding: 0 5px; border-radius: 99px; color: var(--faint); background: var(--surface-hover); font-size: 9px; }
-.season-preview { display: grid; gap: 17px; }
-.season-preview-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 19px 21px; border: 1px solid var(--border); border-radius: 13px; background: linear-gradient(120deg, rgb(200 255 61 / 7%), transparent 55%), var(--surface); }
-.season-preview-heading > div { display: grid; gap: 6px; }
-.season-preview-eyebrow { color: var(--accent); font-size: 9px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
-.season-preview-heading h2 { margin: 0; color: var(--text); font-size: 18px; letter-spacing: -.03em; }
-.season-preview-heading p { max-width: 70ch; margin: 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
-.season-preview-heading .btn { flex: none; }
-.season-preview-summary { display: grid; grid-template-columns: repeat(3, minmax(100px, .65fr)) minmax(180px, 1.4fr); gap: 10px; }
-.season-preview-summary > div { display: grid; align-content: center; gap: 4px; min-height: 70px; padding: 11px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
-.season-preview-summary strong { color: var(--text); font-size: 20px; font-variant-numeric: tabular-nums; }
-.season-preview-summary span { color: var(--faint); font-size: 9px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
-.season-preview-summary .promotion strong { color: var(--accent); }
-.season-preview-summary .relegation strong { color: #ffaaa6; }
-.season-preview-summary p { align-self: center; margin: 0; padding: 0 12px; color: var(--muted); font-size: 10px; line-height: 1.5; }
-.season-preview-warning { margin: 0; padding: 11px 14px; border: 1px solid rgb(255 190 92 / 25%); border-radius: 9px; color: #f1c988; background: rgb(255 190 92 / 6%); font-size: 11px; line-height: 1.5; }
-.season-preview-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); align-items: start; gap: 13px; }
-.season-preview-league { min-width: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
-.season-preview-league > header { display: flex; min-height: 64px; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 15px; border-bottom: 1px solid var(--border); }
-.season-preview-league > header > div:first-child { display: grid; gap: 4px; }
-.season-preview-league h3 { margin: 0; color: var(--text); font-size: 13px; }
-.season-preview-league > header > div:first-child > span { color: var(--faint); font-size: 9px; }
-.season-preview-rules { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px; }
-.season-preview-rules span { padding: 4px 7px; border: 1px solid var(--border); border-radius: 99px; color: var(--muted); background: var(--bg); font-size: 9px; font-weight: 700; white-space: nowrap; }
-.season-preview-league ol { margin: 0; padding: 0; list-style: none; }
-.season-preview-league li { display: flex; min-height: 49px; align-items: center; gap: 9px; padding: 7px 12px; border-bottom: 1px solid var(--border); }
-.season-preview-league li:last-child { border-bottom: 0; }
-.season-preview-league li.incoming.promotion { background: rgb(200 255 61 / 7%); }
-.season-preview-league li.incoming.relegation { background: rgb(255 136 136 / 7%); }
-.season-preview-position { width: 20px; color: var(--faint); font-size: 10px; font-variant-numeric: tabular-nums; text-align: center; }
-.season-preview-league li img { width: 22px; height: 22px; flex: none; object-fit: contain; }
-.season-preview-club-name { min-width: 0; overflow: hidden; color: var(--text); font-size: 11px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
-.season-preview-movement { display: grid; flex: none; gap: 2px; margin-left: auto; color: var(--muted); font-size: 9px; font-weight: 750; text-align: right; text-transform: capitalize; }
-.season-preview-movement small { color: var(--faint); font-size: 8px; font-weight: 500; text-transform: none; }
-.season-preview-returning { flex: none; margin-left: auto; color: var(--faint); font-size: 8px; }
-.season-preview-empty { display: grid; justify-items: center; gap: 6px; padding: 34px 18px; border: 1px dashed var(--border-strong); border-radius: 11px; color: var(--muted); text-align: center; }
-.season-preview-empty strong { color: var(--text); font-size: 12px; }
-.season-preview-empty span, .season-preview-empty-league { color: var(--faint); font-size: 10px; }
-.season-preview-empty-league { margin: 0; padding: 20px 14px; }
-.division-management { display: grid; gap: 12px; }
+.division-management { display: grid; gap: 16px; }
 .division-management > .card, .season-management { overflow: visible; }
 .season-management > header { min-height: 82px; padding: 17px 20px; }
-.season-management > header > div { display: grid; gap: 5px; }
+/* Scoped away from the combined header, which lays itself out as a row and
+   would otherwise inherit the stacked heading treatment for its button group. */
+.season-management > header:not(.season-management-header) > div { display: grid; gap: 5px; }
 .season-management > header .hint { max-width: 56ch; line-height: 1.5; }
+.season-management-actions { display: flex; flex: none; align-items: center; gap: 12px; }
+.season-management-caret { display: inline-block; font-size: 10px; transition: transform .15s ease; }
+.season-management.expanded .season-management-caret { transform: rotate(90deg); }
+.season-management-body[hidden] { display: none; }
+
+/* Picker, status and actions share one header row: the season in view is the
+   subject, the writable/live label is the qualifier, the rest is maintenance. */
+.season-management > .season-management-header {
+  display: grid; grid-template-columns: minmax(200px, 260px) minmax(0, 1fr) auto;
+  align-items: center; gap: 14px 18px; min-height: 0; padding: 14px 18px;
+}
+.season-management > .season-management-header .season-context-note { justify-items: start; }
 .season-create-form {
   display: grid; grid-template-columns: minmax(0, 1fr) minmax(150px, 210px);
   align-items: end; gap: 14px 16px; padding: 18px 20px;
@@ -664,10 +714,100 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .division-ranges legend { padding: 0 5px; color: var(--text); font-size: 11px; font-weight: 700; }
 .division-ranges label { min-width: 0; font-size: 10px; }
 .division-editor-actions { display: flex; justify-content: flex-end; gap: 8px; }
-.notice { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 17px; padding: 10px 13px; border: 1px solid var(--border); border-radius: 9px; font-size: 12px; }
-.notice.error { border-color: rgb(255 136 136 / 35%); color: var(--danger); background: rgb(255 136 136 / 8%); }
-.notice.ok { border-color: rgb(200 255 61 / 25%); color: var(--accent); background: var(--accent-soft); }
-.notice.info { color: var(--muted); background: rgb(255 255 255 / 3%); }
+
+/* ---------------------------------------------------------------- toaster */
+/* Top right so it never collides with the centered bulk action bar on the
+   bottom edge, and never covers a modal footer or the club list beneath it. */
+.toaster {
+  position: fixed; z-index: 60; top: 20px; right: 20px;
+  display: grid; justify-items: stretch; gap: 9px;
+  width: min(380px, calc(100vw - 40px)); pointer-events: none;
+}
+.toast {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 10px;
+  padding: 11px 12px; border: 1px solid var(--border-strong); border-radius: 11px;
+  background: var(--surface-raised); box-shadow: 0 16px 40px rgb(0 0 0 / 48%);
+  color: var(--text); font-size: 12px; line-height: 1.5; pointer-events: auto;
+  animation: toast-in .2s ease;
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast { animation: none; }
+}
+.toast-icon {
+  display: grid; place-items: center; width: 19px; height: 19px; margin-top: 1px;
+  border-radius: 50%; font-size: 11px; font-weight: 900;
+}
+.toast.ok .toast-icon { color: #121609; background: var(--accent); }
+.toast.error { border-color: rgb(255 136 136 / 42%); }
+.toast.error .toast-icon { color: #2a0d0d; background: var(--danger); }
+.toast.info .toast-icon { color: var(--bg); background: var(--muted); }
+.toast-text { min-width: 0; overflow-wrap: anywhere; }
+.toast.error .toast-text { color: #ffc9c9; }
+.toast-close {
+  flex: none; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 6px;
+  color: var(--faint); background: transparent; font-size: 16px; line-height: 1; cursor: pointer;
+}
+.toast-close:hover { color: var(--text); background: var(--surface-hover); }
+
+/* ------------------------------------------------------- season on club list */
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0;
+}
+.season-context-picker { display: grid; gap: 6px; min-width: 0; color: var(--muted); font-size: 11px; font-weight: 700; }
+.season-context-picker .custom-select { width: 100%; min-width: 0; }
+.season-context-note { display: grid; gap: 3px; font-size: 11px; }
+.season-context-note strong { color: var(--text); font-size: 13px; }
+/* --muted rather than --faint: this line states whether the season can be
+   edited, which is load-bearing, and --faint lands under AA at this size. */
+.season-context-note span { color: var(--muted); }
+.season-readonly-banner {
+  display: grid; gap: 3px; margin: 0; padding: 12px 15px;
+  border: 1px solid rgb(255 190 92 / 28%); border-radius: 11px;
+  color: #f1c988; background: rgb(255 190 92 / 6%); font-size: 12px; line-height: 1.5;
+}
+.season-readonly-banner strong { color: #ffd98f; }
+
+/* ------------------------------------------------------------- bulk actions */
+.club-select-col { width: 34px; }
+.club-select-cell, .club-group-select { width: 34px; }
+.club-group-select { display: grid; place-items: center; }
+.club-management-table input[type="checkbox"],
+.club-group-select input[type="checkbox"] {
+  width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer;
+}
+.club-management-table input[type="checkbox"]:disabled { cursor: not-allowed; opacity: .45; }
+.club-management-table .club-row.selected { background: var(--accent-soft); }
+.club-management-table .club-row.selected:hover,
+.club-management-table .club-row.selected:focus-visible { background: rgb(200 255 61 / 14%); }
+
+.bulk-bar {
+  position: fixed; z-index: 50; bottom: 20px; left: 50%; transform: translateX(-50%);
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center;
+  gap: 9px 14px; width: min(880px, calc(100vw - 40px));
+  padding: 12px 15px; border: 1px solid var(--border-strong); border-radius: 13px;
+  background: var(--surface-raised); box-shadow: 0 18px 48px rgb(0 0 0 / 52%);
+}
+.bulk-bar-count { display: grid; align-items: baseline; gap: 1px; padding-right: 14px; border-right: 1px solid var(--border); }
+.bulk-bar-count strong { font-size: 17px; font-variant-numeric: tabular-nums; }
+.bulk-bar-count span { color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.bulk-bar-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.bulk-bar-field { display: grid; gap: 4px; min-width: 132px; color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
+.bulk-bar-field .custom-select { min-width: 132px; }
+.bulk-bar-field .custom-select-trigger { min-height: 32px; }
+.bulk-bar-divider { width: 1px; align-self: stretch; background: var(--border); }
+.bulk-bar-hint { grid-column: 2 / 3; margin: 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
+.bulk-bar-clear {
+  flex: none; min-height: 32px; padding: 0 11px; border: 1px solid var(--border);
+  border-radius: 8px; color: var(--muted); background: transparent;
+  font-size: 11px; font-weight: 700; cursor: pointer;
+}
+.bulk-bar-clear:hover:not(:disabled) { color: var(--text); background: var(--surface-hover); }
+.bulk-bar-clear:disabled { opacity: .48; cursor: not-allowed; }
 .empty, .loading { padding: 34px 16px; color: var(--faint); text-align: center; }
 
 @media (max-width: 980px) {
@@ -696,10 +836,10 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .nav-icon { width: auto; font-size: 18px; line-height: 1.2; }
   .nav-badge { position: absolute; top: 3px; left: calc(50% + 10px); min-width: 18px; height: 18px; padding: 0 4px; font-size: 9px; }
   .nav-arrow { display: none; }
-  .page-heading { align-items: flex-start; margin-bottom: 18px; }
+  .page-heading { align-items: flex-start; }
   .page-heading h1 { font-size: 29px; }
   .page-subtitle { max-width: 34ch; font-size: 12px; }
-  .stats-grid { gap: 0; margin-bottom: 15px; }
+  .stats-grid { gap: 0; }
   .stat-card { min-height: 103px; padding: 11px 10px 10px; border: 0; border-radius: 0; background: transparent; }
   .stat-card + .stat-card { border-left: 1px solid var(--border); }
   .stat-icon { width: 27px; height: 27px; border-radius: 8px; font-size: 13px; }
@@ -761,16 +901,10 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .match-pagination { flex-wrap: wrap; padding: 12px 11px; font-size: 10px; }
   .match-pagination > div { width: 100%; justify-content: space-between; gap: 6px; }
   .match-pagination .btn { min-height: 34px; }
-  .footnote { margin-top: 14px; }
+  .footnote { margin-top: 0; }
   .club-subnav { width: 100%; }
   .club-subnav { flex-wrap: wrap; }
   .club-subnav button { flex: 1 1 42%; justify-content: center; }
-  .season-preview-heading { align-items: stretch; flex-direction: column; padding: 15px; }
-  .season-preview-heading .btn { align-self: flex-start; }
-  .season-preview-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .season-preview-summary > div { min-height: 61px; padding: 9px; }
-  .season-preview-summary p { grid-column: 1 / -1; padding: 2px 1px; }
-  .season-preview-grid { grid-template-columns: minmax(0, 1fr); }
   .club-league-groups { gap: 11px; }
   .club-league-overview { align-items: flex-start; flex-wrap: wrap; }
   .club-league-overview h2 { font-size: 15px; }

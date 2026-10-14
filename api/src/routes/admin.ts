@@ -1402,21 +1402,31 @@ async function applyDivisionMove(
 }
 
 /**
- * Put a club into a league by hand.
+ * Put a club into a league by hand, or take it out of one.
  *
  * This is a plain move and never spends one of the source league's season
  * slots, whatever direction it goes in. Sending a club up or down the ladder is
  * a separate endpoint so the two intentions stay distinct: choosing a league
  * from a dropdown and declaring an outcome are different decisions, and neither
  * should quietly cost the other.
+ *
+ * `divisionId: null` unassigns the club from the current season. Membership is
+ * per-season and lives in `division_clubs`, so this drops that season's rows
+ * rather than the club: the club stays on file, keeps its squad, and reappears
+ * in the unassigned table. The standings row goes with it, otherwise the club
+ * would linger in a league table it is no longer entered in. Fixtures are left
+ * alone — they reference the division, not the membership, and an admin
+ * unassigning a club mid-season should not lose the results already recorded.
  */
 admin.post(
   '/clubs/:slug/division',
   handler(async (req, res) => {
     const slug = requiredString(req.params.slug, 'slug', 140)
-    const raw = Number.parseInt(String(req.body?.divisionId), 10)
-    if (!Number.isInteger(raw)) {
-      return res.status(400).json({ error: 'divisionId must be an integer.' })
+    const body = req.body?.divisionId
+    const unassign = body === null || body === undefined
+    const raw = Number.parseInt(String(body), 10)
+    if (!unassign && !Number.isInteger(raw)) {
+      return res.status(400).json({ error: 'divisionId must be an integer or null.' })
     }
 
     const club = await queryOne<{ id: number; name: string }>(
@@ -1424,6 +1434,52 @@ admin.post(
       [slug],
     )
     if (!club) return res.status(404).json({ error: 'Club not found.' })
+
+    if (unassign) {
+      const season = await queryOne<{ id: number; name: string }>(
+        'SELECT id, name FROM seasons WHERE is_current = TRUE LIMIT 1',
+      )
+      if (!season) return res.status(404).json({ error: 'No current season.' })
+
+      const previous = await queryOne<{ name: string }>(
+        `SELECT d.name
+           FROM division_clubs dc
+           JOIN divisions d ON d.id = dc.division_id
+          WHERE dc.club_id = ? AND d.season_id = ?
+          ORDER BY dc.id DESC LIMIT 1`,
+        [club.id, season.id],
+      )
+
+      await withTransaction(async (conn) => {
+        await conn.execute(
+          `DELETE FROM division_clubs
+            WHERE club_id = ?
+              AND division_id IN (SELECT id FROM divisions WHERE season_id = ?)`,
+          [club.id, season.id],
+        )
+        await conn.execute('DELETE FROM standings_snapshot WHERE season_id = ? AND club_id = ?', [
+          season.id,
+          club.id,
+        ])
+        // A movement only counts while the club is still sitting where it was
+        // sent, which is the same rule applyDivisionMove applies on the way in.
+        await conn.execute('DELETE FROM season_division_movements WHERE season_id = ? AND club_id = ?', [
+          season.id,
+          club.id,
+        ])
+      })
+
+      if (previous) {
+        await notifyClubManagers(
+          club.id,
+          'club_division',
+          `${club.name} left ${previous.name}`,
+          `${club.name} has been taken out of ${previous.name} and is no longer in the league table.`,
+        )
+      }
+
+      return res.json({ ok: true, divisionId: null, divisionName: null })
+    }
 
     const division = await queryOne<SeasonDivision>(
       `SELECT d.id, d.name, d.season_id, d.sort_order, d.promotion_count, d.relegation_count

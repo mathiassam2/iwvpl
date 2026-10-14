@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type FormEvent,
+  type SetStateAction,
+} from 'react'
 import { CustomSelect } from './CustomSelect'
 import {
   ApiError,
@@ -19,7 +27,6 @@ import {
   getStandings,
   moveClub,
   recordSeasonDivisionMovement,
-  resetSeasonDivisionMovements,
   removePlayer,
   scheduleMatch,
   setResult,
@@ -42,11 +49,80 @@ import {
 } from './api'
 
 type Tab = 'standings' | 'results' | 'clubs'
-type ClubSection = 'clubs' | 'preview' | 'applications' | 'divisions'
+type ClubSection = 'clubs' | 'applications' | 'divisions'
 
 interface Notice {
   kind: 'ok' | 'error' | 'info'
   text: string
+}
+
+/**
+ * A notice on its way to the toaster.
+ *
+ * The id is what lets a toast retire itself on a timer without two notices
+ * landing together sharing one, and is what the dismiss button matches on.
+ */
+interface Toast extends Notice {
+  id: number
+}
+
+/**
+ * Corner toaster.
+ *
+ * Errors stay until dismissed because they usually say what to do next and
+ * losing one to a timeout costs the admin the message they were about to read.
+ * Successes are confirmations of something already done, so they clear
+ * themselves. Several stack rather than replace each other, because a bulk
+ * action reports per-item and the last line would otherwise hide the rest.
+ */
+function Toaster({
+  toasts,
+  onDismiss,
+}: {
+  toasts: Toast[]
+  onDismiss: (id: number) => void
+}) {
+  return (
+    <div className="toaster" role="region" aria-label="Notifications">
+      {toasts.map((toast) => (
+        <ToastRow key={toast.id} toast={toast} onDismiss={onDismiss} />
+      ))}
+    </div>
+  )
+}
+
+function ToastRow({
+  toast,
+  onDismiss,
+}: {
+  toast: Toast
+  onDismiss: (id: number) => void
+}) {
+  useEffect(() => {
+    if (toast.kind === 'error') return
+    const timer = window.setTimeout(() => onDismiss(toast.id), 4500)
+    return () => window.clearTimeout(timer)
+  }, [toast.id, toast.kind, onDismiss])
+
+  return (
+    <div
+      className={`toast ${toast.kind}`}
+      role={toast.kind === 'error' ? 'alert' : 'status'}
+    >
+      <span className="toast-icon" aria-hidden="true">
+        {toast.kind === 'ok' ? '\u2713' : toast.kind === 'error' ? '!' : 'i'}
+      </span>
+      <span className="toast-text">{toast.text}</span>
+      <button
+        type="button"
+        className="toast-close"
+        aria-label="Dismiss notification"
+        onClick={() => onDismiss(toast.id)}
+      >
+        ×
+      </button>
+    </div>
+  )
 }
 
 export default function App() {
@@ -63,19 +139,27 @@ export default function App() {
       ? 'applications'
       : savedTab === 'divisions' || savedSection === 'divisions'
         ? 'divisions'
-        : savedSection === 'preview'
-          ? 'preview'
-          : 'clubs'
+        : 'clubs'
   })
-  const [notice, setNotice] = useState<Notice | null>(null)
+  const [toasts, setToasts] = useState<Toast[]>([])
   const [pendingApplicationCount, setPendingApplicationCount] = useState(0)
+  // Monotonic so two notices raised in the same tick stay independent toasts
+  // instead of colliding on a shared identity.
+  const nextToastId = useRef(0)
   const pageTitle: Record<Tab, string> = {
     results: 'Match centre',
     standings: 'League table',
     clubs: 'Club management',
   }
 
-  const report = useCallback((kind: Notice['kind'], text: string) => setNotice({ kind, text }), [])
+  const report = useCallback((kind: Notice['kind'], text: string) => {
+    const id = (nextToastId.current += 1)
+    setToasts((current) => [...current, { id, kind, text }])
+  }, [])
+
+  const dismissToast = useCallback((id: number) => {
+    setToasts((current) => current.filter((toast) => toast.id !== id))
+  }, [])
 
   useEffect(() => {
     window.localStorage.setItem('iwvpl-admin-tab', tab)
@@ -181,13 +265,6 @@ export default function App() {
             </div>
           </div>
 
-          {notice && (
-            <div className={`notice ${notice.kind}`} role="status">
-              <span>{notice.text}</span>
-              <button className="btn sm" onClick={() => setNotice(null)}>Dismiss</button>
-            </div>
-          )}
-
           {tab === 'standings' && <Standings guard={guard} />}
           {tab === 'results' && <Results guard={guard} report={report} />}
           {tab === 'clubs' && (
@@ -202,6 +279,8 @@ export default function App() {
           )}
         </main>
       </div>
+
+      <Toaster toasts={toasts} onDismiss={dismissToast} />
     </div>
   )
 }
@@ -435,6 +514,93 @@ function matchUrgency(match: Match, now: number, today: string): MatchUrgency {
   return 'upcoming'
 }
 
+/**
+ * One side of the fixture pairing in the create-fixture dialog.
+ *
+ * Shown as a crest above the picker rather than another dropdown in a row, so
+ * the pairing reads as the fixture it will become — two clubs, one against the
+ * other — instead of a second two-column form to decode.
+ */
+function FixtureSlot({
+  side,
+  club,
+  value,
+  disabled,
+  options,
+  placeholder,
+  ariaLabel,
+  onChange,
+}: {
+  side: 'home' | 'away'
+  club: Club | null
+  value: string
+  disabled: boolean
+  options: Array<{ value: string; label: string }>
+  placeholder: string
+  ariaLabel: string
+  onChange: (value: string) => void
+}) {
+  return (
+    <div className={`fixture-slot ${side}${club ? ' filled' : ''}`}>
+      <span className="fixture-slot-crest">
+        {club?.logo_local ? (
+          <img src={club.logo_local} alt="" />
+        ) : (
+          <span className="fixture-slot-blank" aria-hidden="true">
+            {club ? club.name.slice(0, 2).toUpperCase() : (side === 'home' ? 'H' : 'A')}
+          </span>
+        )}
+      </span>
+      <span className="fixture-slot-role">{side === 'home' ? 'Home' : 'Away'}</span>
+      <span className="fixture-slot-name">{club?.name ?? 'Not chosen'}</span>
+      <CustomSelect
+        ariaLabel={ariaLabel}
+        value={value}
+        disabled={disabled}
+        options={[{ value: '', label: placeholder }, ...options]}
+        onChange={onChange}
+      />
+    </div>
+  )
+}
+
+const FIXTURE_KICKOFF_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/
+
+/**
+ * Render a `datetime-local` value the way the rest of the app renders kickoffs.
+ *
+ * A datetime-local value is already a naive Kuala Lumpur wall-clock string in
+ * exactly the shape `matchKickoffTime` expects, so it is passed straight
+ * through. Normalising it with `new Date(...).toISOString()` first would hand
+ * that parser a UTC instant, which it reads as local time and turns into NaN —
+ * and Intl throws a RangeError on NaN, which blanks the whole page.
+ *
+ * Returns null for anything half-typed or out of range so the summary degrades
+ * to "no date yet" instead of throwing.
+ */
+function formatFixtureKickoff(value: string): string | null {
+  if (!FIXTURE_KICKOFF_PATTERN.test(value)) return null
+  const [month, day] = value.slice(5, 10).split('-').map(Number)
+  const [hour, minute] = value.slice(11, 16).split(':').map(Number)
+  if (month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59) return null
+  return Number.isNaN(matchKickoffTime(value)) ? null : formatKickoff(value)
+}
+
+/** True when a non-empty datetime-local value can actually be sent to the API. */
+function fixtureKickoffValid(value: string): boolean {
+  return value === '' || formatFixtureKickoff(value) !== null
+}
+
+/** A datetime-local value `days` from today at `hour`:00, Kuala Lumpur wall time. */
+function fixtureKickoffPreset(days: number, hour: number): string {
+  const now = new Date()
+  const target = new Date(now)
+  target.setDate(now.getDate() + days)
+  target.setHours(hour, 0, 0, 0)
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${target.getFullYear()}-${pad(target.getMonth() + 1)}-${pad(target.getDate())}T${pad(target.getHours())}:00`
+}
+
 function Results({
   guard,
   report,
@@ -461,7 +627,6 @@ function Results({
       ? 'priority'
       : 'latest'
   })
-  const [clubs, setClubs] = useState<Club[]>([])
   const [fixtureClubs, setFixtureClubs] = useState<Club[]>([])
   const [fixtureDivisions, setFixtureDivisions] = useState<Division[]>([])
   const [fixtureSeasons, setFixtureSeasons] = useState<AdminSeason[]>([])
@@ -539,13 +704,6 @@ function Results({
     }, 250)
     return () => window.clearTimeout(timeout)
   }, [query])
-
-  useEffect(() => {
-    getClubs().then(setClubs).catch((err) => {
-      const message = err instanceof ApiError ? err.message : err instanceof Error ? err.message : String(err)
-      report('error', `Could not load clubs for match scheduling: ${message}`)
-    })
-  }, [report])
 
   useEffect(() => {
     guard(getAdminSeasons, 'Could not load seasons for fixture creation')
@@ -715,6 +873,10 @@ function Results({
     }
     if (createHome === createAway) {
       report('error', 'Choose two different clubs.')
+      return
+    }
+    if (!fixtureKickoffValid(createKickoff)) {
+      report('error', 'Enter a complete kickoff date and time, or clear the field.')
       return
     }
     setScheduleBusy(true)
@@ -1055,9 +1217,20 @@ function Results({
             if (event.target === event.currentTarget && !scheduleBusy) setScheduleTarget(null)
           }}
         >
-          {scheduleTarget === 'new' ? (
+{scheduleTarget === 'new' ? (
+            (() => {
+              const homeClub = divisionClubs.find((club) => club.slug === createHome) ?? null
+              const awayClub = divisionClubs.find((club) => club.slug === createAway) ?? null
+              const divisionName =
+                fixtureDivisions.find((division) => String(division.id) === createDivisionId)?.name ??
+                'that league'
+              const seasonName =
+                fixtureSeasons.find((season) => String(season.id) === createSeasonId)?.name ??
+                'the selected season'
+              const kickoffLabel = formatFixtureKickoff(createKickoff)
+              return (
             <form
-              className="squad-modal fixture-modal"
+              className="squad-modal fixture-modal fixture-builder"
               role="dialog"
               aria-modal="true"
               aria-labelledby="fixture-modal-title"
@@ -1069,8 +1242,8 @@ function Results({
                   <h2 id="fixture-modal-title">Create a fixture</h2>
                   <p className="club-edit-subtitle">
                     {createSeasonId
-                      ? `Choose a division, then select two clubs from ${fixtureSeasons.find((season) => String(season.id) === createSeasonId)?.name ?? 'the selected season'}.`
-                      : 'Choose a season to load its clubs and divisions.'}
+                      ? `Choose a league, then pick who is playing in ${seasonName}.`
+                      : 'Choose a season to load its clubs and leagues.'}
                   </p>
                 </div>
                 <button
@@ -1084,7 +1257,7 @@ function Results({
                 </button>
               </header>
               <div className="club-edit-content">
-                <div className="club-edit-fields">
+                <div className="fixture-context">
                   <label>
                     <span>Season</span>
                     <CustomSelect
@@ -1106,13 +1279,13 @@ function Results({
                     />
                   </label>
                   <label>
-                    <span>Division</span>
+                    <span>League</span>
                     <CustomSelect
-                      ariaLabel="Fixture division"
+                      ariaLabel="Fixture league"
                       value={createDivisionId}
                       disabled={!createSeasonId || fixtureDivisions.length === 0}
                       options={[
-                        { value: '', label: 'Choose division' },
+                        { value: '', label: 'Choose league' },
                         ...fixtureDivisions.map((division) => ({
                           value: String(division.id),
                           label: division.name,
@@ -1125,56 +1298,93 @@ function Results({
                       }}
                     />
                   </label>
-                  <div className="fixture-clubs-pair">
-                    <label>
-                      <span>Home club</span>
-                      <CustomSelect
-                        ariaLabel="Home club"
-                        value={createHome}
-                        disabled={!createDivisionId}
-                        options={[
-                          { value: '', label: 'Choose home club' },
-                          ...divisionClubs.map((club) => ({
-                            value: club.slug,
-                            label: club.name,
-                          })),
-                        ]}
-                        onChange={(value) => {
-                          setCreateHome(value)
-                          setCreateAway('')
-                        }}
-                      />
-                    </label>
-                    <label>
-                      <span>Away club</span>
-                      <CustomSelect
-                        ariaLabel="Away club"
-                        disabled={!createHome || awayOptions.length === 0}
-                        value={createAway}
-                        options={[
-                          { value: '', label: 'Choose away club' },
-                          ...awayOptions.map((club) => ({ value: club.slug, label: club.name })),
-                        ]}
-                        onChange={setCreateAway}
-                      />
-                    </label>
-                  </div>
-                  <label>
-                    <span>Kickoff date &amp; time <small>(Kuala Lumpur, UTC+8)</small></span>
-                    <input
-                      className="text"
-                      type="datetime-local"
-                      value={createKickoff}
-                      onChange={(event) => setCreateKickoff(event.target.value)}
-                    />
-                  </label>
                 </div>
-                <p className="fixture-note">
-                  You can leave kickoff blank and schedule the fixture later. It will appear in
-                  <strong> Needs scheduling</strong>.
-                </p>
+
+                <div className="fixture-versus">
+                  <FixtureSlot
+                    side="home"
+                    club={homeClub}
+                    disabled={!createDivisionId}
+                    value={createHome}
+                    ariaLabel="Home club"
+                    placeholder="Choose home club"
+                    options={divisionClubs.map((club) => ({ value: club.slug, label: club.name }))}
+                    onChange={(value) => {
+                      setCreateHome(value)
+                      setCreateAway('')
+                    }}
+                  />
+                  <div className="fixture-versus-badge" aria-hidden="true">
+                    <span>VS</span>
+                  </div>
+                  <FixtureSlot
+                    side="away"
+                    club={awayClub}
+                    disabled={!createHome || awayOptions.length === 0}
+                    value={createAway}
+                    ariaLabel="Away club"
+                    placeholder="Choose away club"
+                    options={awayOptions.map((club) => ({ value: club.slug, label: club.name }))}
+                    onChange={setCreateAway}
+                  />
+                </div>
+
+                <section className="fixture-kickoff">
+                  <div className="fixture-kickoff-heading">
+                    <h3>Kickoff</h3>
+                    <span>Entered in Kuala Lumpur time (UTC+8)</span>
+                  </div>
+                  <input
+                    className="text"
+                    type="datetime-local"
+                    aria-label="Kickoff date and time"
+                    value={createKickoff}
+                    onChange={(event) => setCreateKickoff(event.target.value)}
+                  />
+                  <div className="fixture-kickoff-presets">
+                    <button
+                      className="btn sm"
+                      type="button"
+                      disabled={scheduleBusy}
+                      onClick={() => setCreateKickoff(fixtureKickoffPreset(0, 20))}
+                    >
+                      Tonight 20:00
+                    </button>
+                    <button
+                      className="btn sm"
+                      type="button"
+                      disabled={scheduleBusy}
+                      onClick={() => setCreateKickoff(fixtureKickoffPreset(1, 20))}
+                    >
+                      Tomorrow 20:00
+                    </button>
+                    <button
+                      className="btn sm"
+                      type="button"
+                      disabled={scheduleBusy}
+                      onClick={() => setCreateKickoff('')}
+                    >
+                      Leave blank
+                    </button>
+                  </div>
+                  <p className="fixture-note">
+                    Leaving kickoff blank is allowed. The fixture is created anyway and shows under
+                    <strong> Needs scheduling</strong> until a date is set.
+                  </p>
+                </section>
               </div>
-              <footer className="club-edit-footer">
+              <footer className="club-edit-footer fixture-footer">
+                <p className="fixture-summary">
+                  {homeClub && awayClub ? (
+                    <>
+                      <strong>{homeClub.name}</strong> host <strong>{awayClub.name}</strong> in{' '}
+                      {divisionName}
+                      {kickoffLabel ? ` · ${kickoffLabel}` : ' · no date yet'}
+                    </>
+                  ) : (
+                    'Pick two clubs to see the fixture summary.'
+                  )}
+                </p>
                 <button
                   type="button"
                   className="btn"
@@ -1191,6 +1401,8 @@ function Results({
                 </button>
               </footer>
             </form>
+              )
+            })()
           ) : (
             (() => {
               const match = [...matches, ...priorityData].find((item) => item.id === scheduleTarget)
@@ -1393,30 +1605,20 @@ function Applications({
 function Divisions({
   guard,
   report,
-  onDivisionSaved,
-  onCurrentSeasonChanged,
-  onSeasonChanged,
+  onDivisionsChanged,
 }: {
   guard: <T>(fn: () => Promise<T>, what: string) => Promise<T>
   report: (kind: Notice['kind'], text: string) => void
-  onDivisionSaved: (division: Division) => void
-  onCurrentSeasonChanged: (divisions: Division[]) => void
-  onSeasonChanged: () => void
+  onDivisionsChanged: (divisions: Division[]) => void
 }) {
   const [divisions, setDivisions] = useState<Division[] | null>(null)
   const [seasons, setSeasons] = useState<AdminSeason[] | null>(null)
   const [editing, setEditing] = useState<number | 'new' | null>(null)
-  const [editingSeasonId, setEditingSeasonId] = useState<number | null>(null)
-  const [seasonName, setSeasonName] = useState('')
-  const [showNewSeason, setShowNewSeason] = useState(false)
-  const [newSeasonName, setNewSeasonName] = useState('')
-  const [newSeasonYear, setNewSeasonYear] = useState(String(new Date().getFullYear()))
   const [name, setName] = useState('')
   const [promotionCount, setPromotionCount] = useState('0')
   const [relegationCount, setRelegationCount] = useState('0')
   const [busy, setBusy] = useState(false)
   const [reordering, setReordering] = useState(false)
-  const [seasonBusy, setSeasonBusy] = useState(false)
   const [featuredBusy, setFeaturedBusy] = useState(false)
   const [featuredDivisionId, setFeaturedDivisionId] = useState('')
 
@@ -1467,87 +1669,6 @@ function Divisions({
     }
   }
 
-  const saveSeasonName = async (event: FormEvent<HTMLFormElement>, season: AdminSeason) => {
-    event.preventDefault()
-    setSeasonBusy(true)
-    try {
-      const updated = await guard(
-        () => updateSeason(season.id, seasonName.trim()),
-        'Could not update season name',
-      )
-      setSeasons((current) =>
-        (current ?? []).map((item) => item.id === updated.id ? updated : item),
-      )
-      if (Boolean(updated.is_current)) {
-        const updatedDivisions = divisions.map((division) => ({ ...division, season: updated.name }))
-        setDivisions(updatedDivisions)
-        onCurrentSeasonChanged(updatedDivisions)
-        onSeasonChanged()
-      }
-      setEditingSeasonId(null)
-      report('ok', `${updated.name} saved.`)
-    } catch {
-      /* already reported */
-    } finally {
-      setSeasonBusy(false)
-    }
-  }
-
-  const activateSeason = async (season: AdminSeason) => {
-    setSeasonBusy(true)
-    try {
-      const activated = await guard(
-        () => setCurrentSeason(season.id),
-        'Could not activate season',
-      )
-      const currentDivisions = await guard(getDivisions, 'Could not load the selected season divisions')
-      setSeasons((current) =>
-        (current ?? []).map((item) => ({ ...item, is_current: item.id === activated.id })),
-      )
-      setDivisions(currentDivisions)
-      setFeaturedDivisionId(String(activated.featured_division_id ?? ''))
-      onCurrentSeasonChanged(currentDivisions)
-      onSeasonChanged()
-      setEditing(null)
-      setEditingSeasonId(null)
-      report('ok', `${activated.name} is now the current season.`)
-    } catch {
-      /* already reported */
-    } finally {
-      setSeasonBusy(false)
-    }
-  }
-
-  const addSeason = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    setSeasonBusy(true)
-    try {
-      const created = await guard(
-        () => createSeason(newSeasonName.trim(), Number(newSeasonYear)),
-        'Could not create season',
-      )
-      const copiedDivisions = created.divisions.map((division) => ({
-        ...division,
-        season: created.season.name,
-      }))
-      setSeasons((current) => [
-        ...(current ?? []).map((season) => ({ ...season, is_current: false })),
-        created.season,
-      ].sort((a, b) => Number(Boolean(b.is_current)) - Number(Boolean(a.is_current)) || b.year - a.year))
-      setDivisions(copiedDivisions)
-      setFeaturedDivisionId(String(created.season.featured_division_id ?? ''))
-      onCurrentSeasonChanged(copiedDivisions)
-      onSeasonChanged()
-      setNewSeasonName('')
-      setShowNewSeason(false)
-      report('ok', `${created.season.name} created and activated with copied divisions and club entries.`)
-    } catch {
-      /* already reported */
-    } finally {
-      setSeasonBusy(false)
-    }
-  }
-
   const edit = (division: Division | null) => {
     setEditing(division?.id ?? 'new')
     setName(division?.name ?? '')
@@ -1572,14 +1693,12 @@ function Divisions({
           : updateDivision(editId, input),
         editId === 'new' ? 'Could not add division' : 'Could not update division',
       )
-      setDivisions((current) => {
-        const rows = current ?? []
-        return editId === 'new'
-          ? [...rows, division].sort((a, b) => a.sort_order - b.sort_order || a.id - b.id)
-          : rows.map((item) => item.id === division.id ? division : item)
-            .sort((a, b) => a.sort_order - b.sort_order || a.id - b.id)
-      })
-      onDivisionSaved(division)
+      const rows = editId === 'new'
+        ? [...divisions, division]
+        : divisions.map((item) => item.id === division.id ? division : item)
+      const sorted = rows.sort((a, b) => a.sort_order - b.sort_order || a.id - b.id)
+      setDivisions(sorted)
+      onDivisionsChanged(sorted)
       report('ok', `${division.name} saved.`)
       setEditing(null)
     } catch {
@@ -1604,6 +1723,9 @@ function Divisions({
       )
       const savedOrder = reordered.map((division, sort_order) => ({ ...division, sort_order }))
       setDivisions(savedOrder)
+      // Promotion and relegation destinations are derived from this order, so
+      // the club list has to see the new ladder immediately.
+      onDivisionsChanged(savedOrder)
       report('ok', 'League order saved.')
     } catch {
       /* already reported */
@@ -1683,139 +1805,6 @@ function Divisions({
 
   return (
     <div className="division-management">
-      <div className="card season-management">
-        <header>
-          <div>
-            <h2>Season management</h2>
-            <p className="hint">Rename seasons, preserve past tables, or switch the active season.</p>
-          </div>
-          <button
-            className="btn primary sm"
-            type="button"
-            disabled={seasonBusy}
-            onClick={() => {
-              const year = Math.max(new Date().getFullYear(), ...seasons.map((season) => season.year))
-              setNewSeasonYear(String(year))
-              setNewSeasonName(`${year} Season 1`)
-              setEditingSeasonId(null)
-              setShowNewSeason((shown) => !shown)
-            }}
-          >
-            ＋ New season
-          </button>
-        </header>
-        {showNewSeason && (
-          <form className="season-create-form" onSubmit={(event) => void addSeason(event)}>
-            <label>
-              <span>Season name</span>
-              <input
-                className="text"
-                value={newSeasonName}
-                onChange={(event) => setNewSeasonName(event.target.value)}
-                maxLength={64}
-                required
-                autoFocus
-              />
-            </label>
-            <label>
-              <span>Season year</span>
-              <input
-                className="text"
-                type="number"
-                min="2000"
-                max="9999"
-                value={newSeasonYear}
-                onChange={(event) => setNewSeasonYear(event.target.value)}
-                required
-              />
-            </label>
-            <p className="season-copy-note">
-              This will become current. Divisions and club entries will be copied from the current season;
-              fixtures and results start fresh.
-            </p>
-            <div className="division-editor-actions">
-              <button
-                className="btn"
-                type="button"
-                disabled={seasonBusy}
-                onClick={() => setShowNewSeason(false)}
-              >
-                Cancel
-              </button>
-              <button className="btn primary" type="submit" disabled={seasonBusy}>
-                {seasonBusy ? 'Creating…' : 'Create and activate'}
-              </button>
-            </div>
-          </form>
-        )}
-        <div className="season-admin-list">
-          {seasons.map((season) => (
-            <article className="season-admin-item" key={season.id}>
-              {editingSeasonId === season.id ? (
-                <form
-                  className="season-name-editor"
-                  onSubmit={(event) => void saveSeasonName(event, season)}
-                >
-                  <label>
-                    <span>Season name</span>
-                    <input
-                      className="text"
-                      value={seasonName}
-                      onChange={(event) => setSeasonName(event.target.value)}
-                      maxLength={64}
-                      required
-                      autoFocus
-                    />
-                  </label>
-                  <button className="btn sm primary" type="submit" disabled={seasonBusy}>
-                    Save name
-                  </button>
-                  <button
-                    className="btn sm"
-                    type="button"
-                    disabled={seasonBusy}
-                    onClick={() => setEditingSeasonId(null)}
-                  >
-                    Cancel
-                  </button>
-                </form>
-              ) : (
-                <>
-                  <div className="season-admin-name">
-                    <strong>{season.name}</strong>
-                    {Boolean(season.is_current) && <span className="season-current-badge">Current</span>}
-                  </div>
-                  <div className="season-admin-actions">
-                    <button
-                      className="btn sm"
-                      type="button"
-                      disabled={seasonBusy}
-                      onClick={() => {
-                        setSeasonName(season.name)
-                        setShowNewSeason(false)
-                        setEditingSeasonId(season.id)
-                      }}
-                    >
-                      Rename
-                    </button>
-                    {!Boolean(season.is_current) && (
-                      <button
-                        className="btn sm"
-                        type="button"
-                        disabled={seasonBusy}
-                        onClick={() => void activateSeason(season)}
-                      >
-                        Make current
-                      </button>
-                    )}
-                  </div>
-                </>
-              )}
-            </article>
-          ))}
-        </div>
-      </div>
-
       <div className="card">
         <header>
           <div>
@@ -1827,7 +1816,7 @@ function Divisions({
           <button
             className="btn primary sm"
             onClick={() => edit(null)}
-            disabled={editing !== null || reordering || seasonBusy}
+            disabled={editing !== null || reordering}
           >
             <span aria-hidden="true">＋</span> Add division
           </button>
@@ -1923,6 +1912,292 @@ function Divisions({
   )
 }
 
+/**
+ * Which season the club list is showing, and the maintenance actions for it.
+ *
+ * The picker and the season list are one card because they are one decision:
+ * the leagues, clubs and squads below are all scoped to the selected season,
+ * so splitting "pick a season" from "manage seasons" put a maintenance panel
+ * and the control that drives it in different places.
+ *
+ * The maintenance half is collapsed by default — this page is for the clubs —
+ * while the header keeps naming the season in view and whether it is writable,
+ * so nothing needed to orient yourself is hidden.
+ */
+function SeasonManagement({
+  guard,
+  report,
+  seasons,
+  setSeasons,
+  seasonId,
+  selectedSeason,
+  readOnly,
+  onSeasonChange,
+  onCurrentSeasonChanged,
+}: {
+  guard: <T>(fn: () => Promise<T>, what: string) => Promise<T>
+  report: (kind: Notice['kind'], text: string) => void
+  seasons: AdminSeason[]
+  setSeasons: Dispatch<SetStateAction<AdminSeason[]>>
+  seasonId: string
+  selectedSeason: AdminSeason | null
+  readOnly: boolean
+  onSeasonChange: (seasonId: string) => void
+  onCurrentSeasonChanged: (seasonId: number) => void
+}) {
+  const [editingSeasonId, setEditingSeasonId] = useState<number | null>(null)
+  const [seasonName, setSeasonName] = useState('')
+  const [showNewSeason, setShowNewSeason] = useState(false)
+  const [newSeasonName, setNewSeasonName] = useState('')
+  const [newSeasonYear, setNewSeasonYear] = useState(String(new Date().getFullYear()))
+  const [busy, setBusy] = useState(false)
+  // Collapsed by default: this is a maintenance panel, and the club list it
+  // scopes is what the page is actually for. It still shows which season is
+  // live, so nothing here is hidden that you need to orient yourself.
+  const [expanded, setExpanded] = useState(false)
+
+  const saveSeasonName = async (event: FormEvent<HTMLFormElement>, season: AdminSeason) => {
+    event.preventDefault()
+    setBusy(true)
+    try {
+      const updated = await guard(
+        () => updateSeason(season.id, seasonName.trim()),
+        'Could not update season name',
+      )
+      setSeasons((current) => current.map((item) => (item.id === updated.id ? updated : item)))
+      setEditingSeasonId(null)
+      onCurrentSeasonChanged(updated.id)
+      report('ok', `${updated.name} saved.`)
+    } catch {
+      /* already reported */
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const activateSeason = async (season: AdminSeason) => {
+    setBusy(true)
+    try {
+      const activated = await guard(
+        () => setCurrentSeason(season.id),
+        'Could not activate season',
+      )
+      setSeasons((current) =>
+        current.map((item) => ({ ...item, is_current: item.id === activated.id })),
+      )
+      setEditingSeasonId(null)
+      onCurrentSeasonChanged(activated.id)
+      report('ok', `${activated.name} is now the current season.`)
+    } catch {
+      /* already reported */
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const addSeason = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setBusy(true)
+    try {
+      const created = await guard(
+        () => createSeason(newSeasonName.trim(), Number(newSeasonYear)),
+        'Could not create season',
+      )
+      setSeasons((current) =>
+        [
+          ...current.map((season) => ({ ...season, is_current: false })),
+          created.season,
+        ].sort(
+          (a, b) =>
+            Number(Boolean(b.is_current)) - Number(Boolean(a.is_current)) || b.year - a.year,
+        ),
+      )
+      setNewSeasonName('')
+      setShowNewSeason(false)
+      onCurrentSeasonChanged(created.season.id)
+      report('ok', `${created.season.name} created and activated with copied divisions and club entries.`)
+    } catch {
+      /* already reported */
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section className={`card season-management${expanded ? ' expanded' : ''}`}>
+      <header className="season-management-header">
+        <label className="season-context-picker">
+          <span>Season</span>
+          <CustomSelect
+            ariaLabel="Season to show clubs for"
+            value={seasonId}
+            disabled={seasons.length === 0}
+            options={[
+              ...(seasons.length > 0 ? [] : [{ value: '', label: 'Loading seasons…' }]),
+              ...seasons.map((season) => ({
+                value: String(season.id),
+                label: Boolean(season.is_current) ? `${season.name} (current)` : season.name,
+              })),
+            ]}
+            onChange={onSeasonChange}
+          />
+        </label>
+        <div className="season-context-note">
+          {selectedSeason ? (
+            <>
+              <strong>{selectedSeason.name}</strong>
+              <span>{readOnly ? 'Closed season · read only' : 'Live season · editable'}</span>
+            </>
+          ) : (
+            <span>Loading seasons…</span>
+          )}
+        </div>
+        <div className="season-management-actions">
+          <button
+            className="btn sm"
+            type="button"
+            aria-expanded={expanded}
+            aria-controls="season-management-body"
+            onClick={() => setExpanded((open) => !open)}
+          >
+            <span className="season-management-caret" aria-hidden="true">
+              {'▸'}
+            </span>
+            {expanded ? 'Hide options' : 'More options'}
+          </button>
+          <button
+            className="btn primary sm"
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              const year = Math.max(new Date().getFullYear(), ...seasons.map((season) => season.year))
+              setNewSeasonYear(String(year))
+              setNewSeasonName(`${year} Season 1`)
+              setEditingSeasonId(null)
+              setExpanded(true)
+              setShowNewSeason((shown) => !shown)
+            }}
+          >
+            ＋ New season
+          </button>
+        </div>
+      </header>
+      <div className="season-management-body" id="season-management-body" hidden={!expanded}>
+      {showNewSeason && (
+        <form className="season-create-form" onSubmit={(event) => void addSeason(event)}>
+          <label>
+            <span>Season name</span>
+            <input
+              className="text"
+              value={newSeasonName}
+              onChange={(event) => setNewSeasonName(event.target.value)}
+              maxLength={64}
+              required
+              autoFocus
+            />
+          </label>
+          <label>
+            <span>Season year</span>
+            <input
+              className="text"
+              type="number"
+              min="2000"
+              max="9999"
+              value={newSeasonYear}
+              onChange={(event) => setNewSeasonYear(event.target.value)}
+              required
+            />
+          </label>
+          <p className="season-copy-note">
+            This will become current. Divisions and club entries will be copied from the current season;
+            fixtures and results start fresh.
+          </p>
+          <div className="division-editor-actions">
+            <button
+              className="btn"
+              type="button"
+              disabled={busy}
+              onClick={() => setShowNewSeason(false)}
+            >
+              Cancel
+            </button>
+            <button className="btn primary" type="submit" disabled={busy}>
+              {busy ? 'Creating…' : 'Create and activate'}
+            </button>
+          </div>
+        </form>
+      )}
+      <div className="season-admin-list">
+        {seasons.map((season) => (
+          <article className="season-admin-item" key={season.id}>
+            {editingSeasonId === season.id ? (
+              <form
+                className="season-name-editor"
+                onSubmit={(event) => void saveSeasonName(event, season)}
+              >
+                <label>
+                  <span>Season name</span>
+                  <input
+                    className="text"
+                    value={seasonName}
+                    onChange={(event) => setSeasonName(event.target.value)}
+                    maxLength={64}
+                    required
+                    autoFocus
+                  />
+                </label>
+                <button className="btn sm primary" type="submit" disabled={busy}>
+                  Save name
+                </button>
+                <button
+                  className="btn sm"
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setEditingSeasonId(null)}
+                >
+                  Cancel
+                </button>
+              </form>
+            ) : (
+              <>
+                <div className="season-admin-name">
+                  <strong>{season.name}</strong>
+                  {Boolean(season.is_current) && <span className="season-current-badge">Current</span>}
+                </div>
+                <div className="season-admin-actions">
+                  <button
+                    className="btn sm"
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      setSeasonName(season.name)
+                      setShowNewSeason(false)
+                      setEditingSeasonId(season.id)
+                    }}
+                  >
+                    Rename
+                  </button>
+                  {!Boolean(season.is_current) && (
+                    <button
+                      className="btn sm"
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void activateSeason(season)}
+                    >
+                      Make current
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </article>
+        ))}
+      </div>
+      </div>
+    </section>
+  )
+}
+
 function Clubs({
   guard,
   report,
@@ -1941,6 +2216,8 @@ function Clubs({
   const [clubs, setClubs] = useState<Club[] | null>(null)
   const [standings, setStandings] = useState<Standing[]>([])
   const [seasonMovements, setSeasonMovements] = useState<SeasonDivisionMovement[] | null>(null)
+  const [seasons, setSeasons] = useState<AdminSeason[]>([])
+  const [seasonId, setSeasonId] = useState('')
   const [codes, setCodes] = useState<Record<string, string>>({})
   const [statuses, setStatuses] = useState<Record<string, string>>({})
   const [divisions, setDivisions] = useState<Division[]>([])
@@ -1953,6 +2230,12 @@ function Clubs({
   const [squadLoading, setSquadLoading] = useState(false)
   const [squadError, setSquadError] = useState<string | null>(null)
   const [clubSort, setClubSort] = useState<'standings' | 'name'>('standings')
+  // Bulk selection is a set of slugs so it survives the resort that happens
+  // after every action, and so one row can be toggled without rebuilding it.
+  const [selectedSlugs, setSelectedSlugs] = useState<Set<string>>(() => new Set())
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [bulkLeague, setBulkLeague] = useState('')
+  const [bulkStatus, setBulkStatus] = useState('')
   const [backfillTarget, setBackfillTarget] = useState<{
     divisionId: number
     type: 'promotion' | 'relegation'
@@ -1971,11 +2254,28 @@ function Clubs({
   } | null>(null)
   const activeClub = clubs?.find((club) => club.slug === editing) ?? null
 
-  const load = useCallback(async () => {
+  const currentSeasonId = seasons.find((season) => Boolean(season.is_current))?.id ?? null
+  const selectedSeason = seasons.find((season) => String(season.id) === seasonId) ?? null
+  // Only the live season can be written to. Every earlier season is kept as
+  // history, so a past table stays exactly as the season finished rather than
+  // being edited months later by someone who has forgotten what it was.
+  const readOnly = currentSeasonId !== null && Number(seasonId) !== currentSeasonId
+  // Movement history is tracked per current season, so past seasons have none
+  // to show and the zone colours stay off.
+  const movementTracked = seasonMovements !== null && !readOnly
+
+  /**
+   * Load one season's clubs, leagues and table.
+   *
+   * Everything on this page is scoped to the selected season rather than
+   * whatever happens to be current, which is what makes the read-only past
+   * season view meaningful instead of a second copy of the live data.
+   */
+  const loadSeason = useCallback(async (targetSeasonId: number) => {
     const [data, currentDivisions, currentStandings, currentMovements] = await Promise.all([
-      guard(getClubs, 'Could not load clubs'),
-      guard(getDivisions, 'Could not load leagues'),
-      guard(getStandings, 'Could not load current standings').catch(() => []),
+      guard(() => getClubs(targetSeasonId), 'Could not load clubs'),
+      guard(() => getDivisions(targetSeasonId), 'Could not load leagues'),
+      guard(() => getStandings(targetSeasonId), 'Could not load standings').catch(() => []),
       guard(getSeasonDivisionMovements, 'Could not load current-season movement history').catch(
         () => null,
       ),
@@ -1992,11 +2292,35 @@ function Clubs({
         club.division_id ? String(club.division_id) : '',
       ])),
     )
+    setSelectedSlugs(new Set())
   }, [guard])
 
   useEffect(() => {
-    load().catch(() => setClubs([]))
-  }, [load])
+    guard(getAdminSeasons, 'Could not load seasons for club management')
+      .then((available) => {
+        setSeasons(available)
+        const preferred =
+          available.find((season) => Boolean(season.is_current)) ?? available[0]
+        if (preferred) setSeasonId(String(preferred.id))
+      })
+      .catch(() => setSeasons([]))
+  }, [guard])
+
+  useEffect(() => {
+    if (!seasonId) return
+    setClubs(null)
+    loadSeason(Number(seasonId)).catch(() => setClubs([]))
+  }, [loadSeason, seasonId])
+
+  // Everything that writes reloads the season it was working on, so a refresh
+  // after a season switch cannot land the previous season's rows back on screen.
+  const refresh = useCallback(async () => {
+    if (!seasonId) return
+    await loadSeason(Number(seasonId))
+  }, [loadSeason, seasonId])
+
+  // Whether the floating bulk bar is on screen.
+  const bulkBarVisible = clubs !== null && selectedSlugs.size > 0 && !readOnly
 
   const loadPlayers = async (slug: string) => {
     const res = await fetch(`/api/clubs/${encodeURIComponent(slug)}`)
@@ -2028,6 +2352,7 @@ function Clubs({
   if (clubs === null) return <div className="loading">Loading clubs…</div>
 
   const save = async (c: Club) => {
+    if (readOnly) return
     setBusy(c.slug)
     try {
       await guard(
@@ -2055,21 +2380,28 @@ function Clubs({
       // which is not something the club PATCH knows how to do. It is recorded as
       // a plain move, so it never spends a promotion or relegation slot — see
       // `move` below for that.
-      if (chosen && chosen !== (c.division_id ? String(c.division_id) : '')) {
+      //
+      // Clearing the picker is a real change, not "leave it alone": choosing
+      // Unassigned has to take the club out of its league and drop it into the
+      // unassigned table, so this tests whether the selection changed rather
+      // than whether there is a selection at all.
+      const wasIn = c.division_id ? String(c.division_id) : ''
+      if (chosen !== wasIn) {
+        const target = chosen === '' ? null : Number(chosen)
         const res = await guard(
-          () => assignDivision(c.slug, Number(chosen)),
-          `Could not assign ${c.name} to the division`,
+          () => assignDivision(c.slug, target),
+          target === null
+            ? `Could not remove ${c.name} from its league`
+            : `Could not assign ${c.name} to the division`,
         )
         setClubs((current) =>
           current?.map((club) =>
-            club.slug === c.slug
-                ? { ...club, division_id: Number(chosen) }
-                : club,
+            club.slug === c.slug ? { ...club, division_id: res.divisionId } : club,
           ) ?? null,
         )
         setSeasonMovements(null)
         const [updatedStandings, updatedMovements] = await Promise.all([
-          guard(getStandings, 'Could not refresh standings after changing the league'),
+          guard(() => getStandings(Number(seasonId)), 'Could not refresh standings after changing the league'),
           guard(
             getSeasonDivisionMovements,
             'Could not refresh movement history after changing the league',
@@ -2077,7 +2409,12 @@ function Clubs({
         ])
         setStandings(updatedStandings)
         setSeasonMovements(updatedMovements)
-        report('ok', `Saved ${c.name} and entered it into ${res.divisionName}. No movement slot used.`)
+        report(
+          'ok',
+          res.divisionName
+            ? `Saved ${c.name} and entered it into ${res.divisionName}. No movement slot used.`
+            : `Saved ${c.name} and removed it from its league. It is now unassigned.`,
+        )
       } else {
         report('ok', `Saved ${c.name}.`)
       }
@@ -2101,6 +2438,7 @@ function Clubs({
    * offering to make a move that already happened.
    */
   const move = async (c: Club, type: ClubMovementType) => {
+    if (readOnly) return
     setMovingClub({ slug: c.slug, type })
     try {
       const result = await guard(
@@ -2167,6 +2505,7 @@ function Clubs({
   }
 
   const add = async (c: Club) => {
+    if (readOnly) return
     const tag = (newPlayer[c.slug] ?? '').trim()
     if (!tag) {
       report('error', 'Enter a gamertag first.')
@@ -2195,6 +2534,7 @@ function Clubs({
   }
 
   const drop = async (c: Club, gamertag: string) => {
+    if (readOnly) return
     setBusy(c.slug)
     try {
       await guard(
@@ -2220,6 +2560,7 @@ function Clubs({
   }
 
   const recordPreviousMovement = async (source: Division, slug: string) => {
+    if (readOnly) return
     setBusy(`movement-${source.id}-${slug}`)
     try {
       const movement = await guard(
@@ -2239,29 +2580,6 @@ function Clubs({
         'ok',
         `Recorded ${movedClub?.name ?? slug} as an already completed ${movement.movement_type}.`,
       )
-    } catch {
-      /* already reported */
-    } finally {
-      setBusy(null)
-    }
-  }
-
-  const resetMovementProgress = async () => {
-    if (
-      !window.confirm(
-        'Reset this season’s promotion/relegation progress? This clears movement records only and will not change any club’s current league.',
-      )
-    ) {
-      return
-    }
-    setBusy('reset-movements')
-    try {
-      const result = await guard(
-        resetSeasonDivisionMovements,
-        'Could not reset this season’s movement progress',
-      )
-      setSeasonMovements([])
-      report('ok', `Reset movement progress (${result.cleared} record${result.cleared === 1 ? '' : 's'} cleared).`)
     } catch {
       /* already reported */
     } finally {
@@ -2322,7 +2640,7 @@ function Clubs({
   const relegationCountFor = (division: Division) =>
     Math.max(0, relegationTargetFor(division) - relegationCompletedFor(division))
   const clubMovement = (club: Club) => {
-    if (seasonMovements === null) return { promotion: false, relegation: false }
+    if (!movementTracked) return { promotion: false, relegation: false }
     if (movementCompletedClubIds.has(club.id)) return { promotion: false, relegation: false }
     const standing = standingsByClub.get(club.id)
     const division = divisions.find((item) => item.id === club.division_id)
@@ -2338,9 +2656,9 @@ function Clubs({
     }
   }
   const hasPromotionZones =
-    seasonMovements !== null && divisions.some((division) => promotionCountFor(division) > 0)
+    movementTracked && divisions.some((division) => promotionCountFor(division) > 0)
   const hasRelegationZones =
-    seasonMovements !== null && divisions.some((division) => relegationCountFor(division) > 0)
+    movementTracked && divisions.some((division) => relegationCountFor(division) > 0)
   const backfillCandidatesFor = (
     sourceDivisionId: number,
     type: 'promotion' | 'relegation',
@@ -2368,104 +2686,9 @@ function Clubs({
         a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true }),
       )
   }
-  const projectedMoves = new Map<
-    number,
-    {
-      club: Club
-      source: Division
-      destination: Division
-      type: 'promotion' | 'relegation'
-      sourcePosition: number
-      completed: boolean
-    }
-  >()
-  for (const movement of activeSeasonMovements) {
-    if (movement.movement_type === 'transfer') continue
-    const club = clubs.find((item) => item.id === movement.club_id)
-    const source = divisions.find((item) => item.id === movement.source_division_id)
-    const destination = divisions.find((item) => item.id === movement.destination_division_id)
-    if (!club || !source || !destination || club.division_id !== destination.id) continue
-    projectedMoves.set(club.id, {
-      club,
-      source,
-      destination,
-      type: movement.movement_type,
-      sourcePosition:
-        movement.source_position ?? standingsByClub.get(club.id)?.position ?? Number.MAX_SAFE_INTEGER,
-      completed: true,
-    })
-  }
   const orderedDivisions = [...divisions].sort(
     (a, b) => a.sort_order - b.sort_order || a.id - b.id,
   )
-  for (const [index, source] of orderedDivisions.entries()) {
-    const sourceClubs = clubs
-      .filter((club) => club.division_id === source.id)
-      .sort((a, b) => {
-        const positionA = standingsByClub.get(a.id)?.position ?? Number.POSITIVE_INFINITY
-        const positionB = standingsByClub.get(b.id)?.position ?? Number.POSITIVE_INFINITY
-        return positionA - positionB || a.name.localeCompare(b.name)
-      })
-    const promotionTarget = promotionTargetFor(source)
-    const completedPromotions = promotionCompletedFor(source)
-    const promotionDestination = orderedDivisions[index - 1]
-    const promotionsToProject = Math.max(0, promotionTarget - completedPromotions)
-    if (promotionDestination && promotionsToProject > 0) {
-      const candidates = sourceClubs.filter((club) => !projectedMoves.has(club.id))
-      for (const club of candidates.slice(0, promotionsToProject)) {
-        projectedMoves.set(club.id, {
-          club,
-          source,
-          destination: promotionDestination,
-          type: 'promotion',
-          sourcePosition: standingsByClub.get(club.id)?.position ?? Number.MAX_SAFE_INTEGER,
-          completed: false,
-        })
-      }
-    }
-    const relegationTarget = relegationTargetFor(source)
-    const completedRelegations = relegationCompletedFor(source)
-    const relegationDestination = orderedDivisions[index + 1]
-    const relegationsToProject = Math.max(0, relegationTarget - completedRelegations)
-    if (relegationDestination && relegationsToProject > 0) {
-      const candidates = sourceClubs.filter((club) => !projectedMoves.has(club.id))
-      for (const club of candidates.slice(-relegationsToProject)) {
-        projectedMoves.set(club.id, {
-          club,
-          source,
-          destination: relegationDestination,
-          type: 'relegation',
-          sourcePosition: standingsByClub.get(club.id)?.position ?? Number.MAX_SAFE_INTEGER,
-          completed: false,
-        })
-      }
-    }
-  }
-  const projectedTables = orderedDivisions.map((division) => {
-    const returning = clubs
-      .filter((club) => club.division_id === division.id && !projectedMoves.has(club.id))
-      .sort((a, b) => {
-        const positionA = standingsByClub.get(a.id)?.position ?? Number.POSITIVE_INFINITY
-        const positionB = standingsByClub.get(b.id)?.position ?? Number.POSITIVE_INFINITY
-        return positionA - positionB || a.name.localeCompare(b.name)
-      })
-    const incoming = [...projectedMoves.values()]
-      .filter((move) => move.destination.id === division.id)
-      .sort(
-        (a, b) =>
-          a.source.sort_order - b.source.sort_order ||
-          a.sourcePosition - b.sourcePosition ||
-          a.club.name.localeCompare(b.club.name),
-      )
-    return { division, clubs: [...returning, ...incoming.map((move) => move.club)], incoming }
-  })
-  const projectedPromotionCount = [...projectedMoves.values()].filter(
-    (move) => move.type === 'promotion',
-  ).length
-  const projectedRelegationCount = [...projectedMoves.values()].filter(
-    (move) => move.type === 'relegation',
-  ).length
-
   /**
    * What the club editor's movement buttons would do, for one club.
    *
@@ -2529,6 +2752,145 @@ function Clubs({
 
     return { source, promotion: describe('promotion'), relegation: describe('relegation') }
   }
+
+  /* ------------------------------------------------------------- bulk edits */
+
+  const selectedClubs = clubs.filter((club) => selectedSlugs.has(club.slug))
+  const selectedCount = selectedClubs.length
+  const toggleSelected = (slug: string, on: boolean) => {
+    setSelectedSlugs((current) => {
+      const next = new Set(current)
+      if (on) next.add(slug)
+      else next.delete(slug)
+      return next
+    })
+  }
+  const setGroupSelected = (groupClubs: Club[], on: boolean) => {
+    setSelectedSlugs((current) => {
+      const next = new Set(current)
+      for (const club of groupClubs) {
+        if (on) next.add(club.slug)
+        else next.delete(club.slug)
+      }
+      return next
+    })
+  }
+  const clearSelection = () => setSelectedSlugs(new Set())
+
+  /**
+   * Whether a bulk promote/relegate can run, and why not when it cannot.
+   *
+   * A movement spends a season slot out of one league, so a bulk move has to
+   * come from a single league and fit inside what that league has left. The
+   * server enforces both of these per call regardless; this is here so the bar
+   * says so up front instead of stalling halfway through and leaving the admin
+   * to work out which half succeeded.
+   */
+  const bulkMoveBlock = (type: ClubMovementType): string | null => {
+    if (readOnly || bulkBusy) return 'This season is read-only.'
+    if (selectedCount === 0) return 'Select at least one club.'
+    const sources = new Set(selectedClubs.map((club) => getDivisionId(club)))
+    if (sources.size !== 1) {
+      return 'Select clubs from one league only — a move spends that league’s slots.'
+    }
+    const source = orderedDivisions.find((division) => String(division.id) === [...sources][0])
+    if (!source) return 'Those clubs are not in a league yet. Set their league first.'
+    const plan = movementPlan(selectedClubs[0])[type]
+    if (!plan.destination) {
+      return `${source.name} is the ${type === 'promotion' ? 'highest' : 'lowest'} league; there is nothing ${type === 'promotion' ? 'above' : 'below'} it.`
+    }
+    const remaining = Math.max(0, plan.quota - plan.completed)
+    if (remaining < selectedCount) {
+      return `Only ${remaining} ${type} slot${remaining === 1 ? '' : 's'} left for ${source.name}, but ${selectedCount} club${selectedCount === 1 ? '' : 's'} are selected.`
+    }
+    return null
+  }
+
+  /**
+   * Run one action over the selection and report it as a single outcome.
+   *
+   * Deliberately not routed through `guard`: that raises a toast per failure,
+   * which turns one bulk action into a wall of notifications and buries the
+   * summary. Failures are collected and reported once, naming the clubs that
+   * did not go through.
+   */
+  const runBulk = async (
+    targets: Club[],
+    action: (club: Club) => Promise<void>,
+    describeDone: string,
+  ) => {
+    setBulkBusy(true)
+    const failed: string[] = []
+    let done = 0
+    try {
+      for (const club of targets) {
+        try {
+          await action(club)
+          done += 1
+        } catch {
+          failed.push(club.name)
+        }
+      }
+      await refresh()
+      if (failed.length === 0) {
+        report('ok', describeDone)
+      } else if (done === 0) {
+        report('error', `Could not ${describeDone.replace(/\.$/, '')}: ${failed.join(', ')}.`)
+      } else {
+        report(
+          'error',
+          `${done} of ${targets.length} clubs updated. Failed: ${failed.join(', ')}.`,
+        )
+      }
+      if (failed.length === 0) clearSelection()
+    } finally {
+      setBulkBusy(false)
+    }
+  }
+
+  const bulkAssignLeague = async () => {
+    if (bulkLeague === '') return
+    const target = bulkLeague === 'unassigned' ? null : Number(bulkLeague)
+    const name =
+      target === null
+        ? 'the unassigned list'
+        : (divisions.find((division) => division.id === target)?.name ?? 'the league')
+    await runBulk(
+      selectedClubs,
+      async (club) => {
+        const current = getDivisionId(club)
+        if (current === (target === null ? '' : String(target))) return
+        await assignDivision(club.slug, target)
+      },
+      `Moved ${selectedCount} club${selectedCount === 1 ? '' : 's'} to ${name}. No movement slots used.`,
+    )
+    setBulkLeague('')
+  }
+
+  const bulkSetStatus = async () => {
+    if (bulkStatus === '') return
+    await runBulk(
+      selectedClubs,
+      (club) => updateClub(club.slug, { status: bulkStatus }).then(() => undefined),
+      `Set ${selectedCount} club${selectedCount === 1 ? '' : 's'} to ${bulkStatus}.`,
+    )
+    setBulkStatus('')
+  }
+
+  const bulkMove = async (type: ClubMovementType) => {
+    const blocked = bulkMoveBlock(type)
+    if (blocked) {
+      report('error', blocked)
+      return
+    }
+    const destination = movementPlan(selectedClubs[0])[type].destination
+    await runBulk(
+      selectedClubs,
+      (club) => moveClub(club.slug, type).then(() => undefined),
+      `${type === 'promotion' ? 'Promoted' : 'Relegated'} ${selectedCount} club${selectedCount === 1 ? '' : 's'} into ${destination?.name ?? 'the next league'}.`,
+    )
+  }
+
   const clubGroups = [
     ...divisions.map((division) => ({
       id: String(division.id),
@@ -2555,7 +2917,7 @@ function Clubs({
     {
       id: 'unassigned',
       divisionId: null,
-      name: 'Not assigned to a league',
+      name: 'Unassigned',
       movementProgress: null,
       clubs: clubs
         .filter((club) => !configuredDivisionIds.has(getDivisionId(club)))
@@ -2574,13 +2936,6 @@ function Clubs({
           onClick={() => setSection('clubs')}
         >
           Current clubs <span>{clubs.length}</span>
-        </button>
-        <button
-          role="tab"
-          aria-selected={section === 'preview'}
-          onClick={() => setSection('preview')}
-        >
-          Next season preview
         </button>
         <button
           role="tab"
@@ -2608,130 +2963,45 @@ function Clubs({
           report={report}
           onPendingCountChange={onPendingCountChange}
         />
-      ) : section === 'preview' ? (
-        <section className="season-preview">
-          <header className="season-preview-heading">
-            <div>
-              <span className="season-preview-eyebrow">Season planning · {divisions[0]?.season ?? 'Current season'}</span>
-              <h2>Next season table preview</h2>
-              <p>
-                A projection from the current standings and each league&rsquo;s movement rules.
-                Returning clubs keep their order; projected arrivals are appended. Nothing is changed.
-              </p>
-            </div>
-            <button
-              className="btn sm"
-              type="button"
-              disabled={busy !== null || seasonMovements === null || seasonMovements.length === 0}
-              onClick={() => void resetMovementProgress()}
-            >
-              Reset movement progress
-            </button>
-          </header>
-          <div className="season-preview-summary">
-            <div>
-              <strong>{projectedTables.reduce((count, table) => count + table.clubs.length, 0)}</strong>
-              <span>projected clubs</span>
-            </div>
-            <div className="promotion">
-              <strong>{projectedPromotionCount}</strong>
-              <span>promotions</span>
-            </div>
-            <div className="relegation">
-              <strong>{projectedRelegationCount}</strong>
-              <span>relegations</span>
-            </div>
-            <p>Next season starts with zero played, won, drawn, lost, and points.</p>
-          </div>
-          {seasonMovements === null && (
-            <p className="season-preview-warning">
-              Movement history could not be loaded. This view is showing configured movement rules
-              only; completed moves may not be reflected.
-            </p>
-          )}
-          {projectedTables.length === 0 ? (
-            <div className="season-preview-empty">
-              <strong>No league tables to preview yet</strong>
-              <span>Create the next season&rsquo;s divisions in League setup when you are ready.</span>
-            </div>
-          ) : (
-            <div className="season-preview-grid">
-              {projectedTables.map(({ division, clubs: projectedClubs, incoming }) => {
-                const incomingByClubId = new Map(incoming.map((move) => [move.club.id, move]))
-                return (
-                  <article className="season-preview-league" key={division.id}>
-                    <header>
-                      <div>
-                        <h3>{division.name}</h3>
-                        <span>{projectedClubs.length} projected clubs</span>
-                      </div>
-                      <div className="season-preview-rules">
-                        {division.promotion_count ? <span>{division.promotion_count} up</span> : null}
-                        {relegationTargetFor(division) > 0 ? (
-                          <span>{relegationTargetFor(division)} down</span>
-                        ) : null}
-                      </div>
-                    </header>
-                    {projectedClubs.length === 0 ? (
-                      <p className="season-preview-empty-league">No clubs in this projected table.</p>
-                    ) : (
-                      <ol>
-                        {projectedClubs.map((club, index) => {
-                          const movement = incomingByClubId.get(club.id)
-                          return (
-                            <li
-                              className={movement ? `incoming ${movement.type}` : ''}
-                              key={club.id}
-                            >
-                              <span className="season-preview-position">{index + 1}</span>
-                              {club.logo_local ? <img src={club.logo_local} alt="" /> : null}
-                              {club.flag ? <span>{club.flag}</span> : null}
-                              <span className="season-preview-club-name">{club.name}</span>
-                              {movement ? (
-                                <span className="season-preview-movement">
-                                  {movement.completed ? 'Moved' : 'Projected'} {movement.type}
-                                  <small>from {movement.source.name}</small>
-                                </span>
-                              ) : (
-                                <span className="season-preview-returning">Returning</span>
-                              )}
-                            </li>
-                          )
-                        })}
-                      </ol>
-                    )}
-                  </article>
-                )
-              })}
-            </div>
-          )}
-        </section>
       ) : section === 'divisions' ? (
         <Divisions
           guard={guard}
           report={report}
-          onDivisionSaved={(savedDivision) => {
-            setDivisions((current) =>
-              current.some((division) => division.id === savedDivision.id)
-                ? current.map((division) =>
-                    division.id === savedDivision.id ? savedDivision : division,
-                  ).sort((a, b) => a.sort_order - b.sort_order || a.id - b.id)
-                : [...current, savedDivision].sort(
-                    (a, b) => a.sort_order - b.sort_order || a.id - b.id,
-                  ),
-            )
-          }}
-          onCurrentSeasonChanged={setDivisions}
-          onSeasonChanged={() => {
-            setSeasonMovements(null)
-            void load().catch((cause: unknown) => {
-              const message = cause instanceof Error ? cause.message : String(cause)
-              report('error', `Could not refresh clubs for the selected season: ${message}`)
-            })
-          }}
+          onDivisionsChanged={(nextDivisions) => setDivisions(nextDivisions)}
         />
       ) : (
         <>
+          <SeasonManagement
+            guard={guard}
+            report={report}
+            seasons={seasons}
+            setSeasons={setSeasons}
+            seasonId={seasonId}
+            selectedSeason={selectedSeason}
+            readOnly={readOnly}
+            onSeasonChange={(nextSeasonId) => {
+              if (!nextSeasonId || nextSeasonId === seasonId) return
+              setEditing(null)
+              setSquadSlug(null)
+              setConfirmingMovement(null)
+              setBackfillTarget(null)
+              setSeasonId(nextSeasonId)
+            }}
+            onCurrentSeasonChanged={(nextSeasonId) => {
+              setEditing(null)
+              setSquadSlug(null)
+              setConfirmingMovement(null)
+              setBackfillTarget(null)
+              setSeasonId(String(nextSeasonId))
+            }}
+          />
+          {readOnly && (
+            <p className="season-readonly-banner" role="status">
+              <strong>{selectedSeason?.name}</strong> is a closed season, so this list is read only.
+              Clubs, leagues and squads below are exactly as that season finished. Switch to the
+              current season to make changes.
+            </p>
+          )}
           <div className="club-league-groups">
             <div className="club-league-overview">
               <div>
@@ -2772,7 +3042,7 @@ function Clubs({
                 </span>
               </div>
             )}
-            {seasonMovements === null && (
+            {seasonMovements === null && !readOnly && (
               <p className="club-movement-warning" role="status">
                 Movement progress could not be loaded, so zone colors are hidden. Refresh the page
                 before making league changes.
@@ -2785,27 +3055,37 @@ function Clubs({
               const promotionCandidates = sourceDivision && promotionCountFor(sourceDivision) > 0
                 ? backfillCandidatesFor(sourceDivision.id, 'promotion')
                 : []
-              const relegationCandidates = sourceDivision && relegationCountFor(sourceDivision) > 0
-                ? backfillCandidatesFor(sourceDivision.id, 'relegation')
-                : []
               const activeBackfill =
                 backfillTarget?.divisionId === group.divisionId ? backfillTarget.type : null
-              const activeBackfillCandidates =
-                activeBackfill === 'promotion'
-                  ? promotionCandidates
-                  : activeBackfill === 'relegation'
-                    ? relegationCandidates
-                    : []
+              const groupAllSelected =
+                group.clubs.length > 0 && group.clubs.every((club) => selectedSlugs.has(club.slug))
+              const groupSomeSelected =
+                !groupAllSelected && group.clubs.some((club) => selectedSlugs.has(club.slug))
               return (
                 <section className="card club-league-group" key={group.id}>
                 <header>
                   <div className="club-league-heading">
+                    {group.clubs.length > 0 && (
+                      <label className="club-group-select">
+                        <input
+                          type="checkbox"
+                          checked={groupAllSelected}
+                          ref={(node) => {
+                            if (node) node.indeterminate = groupSomeSelected
+                          }}
+                          disabled={readOnly}
+                          aria-label={`Select all clubs in ${group.name}`}
+                          onChange={(event) => setGroupSelected(group.clubs, event.target.checked)}
+                        />
+                        <span className="visually-hidden">Select all in {group.name}</span>
+                      </label>
+                    )}
                     <h2>{group.name}</h2>
                     <span className="club-league-count">{group.clubs.length}</span>
                   </div>
                   <div className="club-league-meta">
                     <span className="hint">{group.clubs.length === 1 ? 'club' : 'clubs'}</span>
-                    {seasonMovements !== null &&
+                    {movementTracked &&
                       group.movementProgress &&
                       group.movementProgress.promotionTarget > 0 && (
                       <span className="club-movement-progress">
@@ -2813,7 +3093,7 @@ function Clubs({
                         {group.movementProgress.promotionTarget} promoted
                       </span>
                     )}
-                    {seasonMovements !== null &&
+                    {movementTracked &&
                       group.movementProgress &&
                       group.movementProgress.relegationTarget > 0 && (
                       <span className="club-movement-progress">
@@ -2823,9 +3103,9 @@ function Clubs({
                     )}
                   </div>
                 </header>
-                {sourceDivision && seasonMovements !== null && (
+                {sourceDivision && movementTracked && (
                   <>
-                    {(promotionCandidates.length > 0 || relegationCandidates.length > 0) && (
+                    {promotionCandidates.length > 0 && (
                       <div className="club-movement-backfill">
                         <div className="club-movement-backfill-copy">
                           <strong>Record a move completed earlier</strong>
@@ -2834,36 +3114,19 @@ function Clubs({
                             This updates the progress count and zone color; it does not move the club.
                           </span>
                         </div>
-                        {promotionCandidates.length > 0 && (
-                          <button
-                            className="btn sm"
-                            type="button"
-                            onClick={() => {
-                              setBackfillTarget({
-                                divisionId: sourceDivision.id,
-                                type: 'promotion',
-                              })
-                              setBackfillClubSlug('')
-                            }}
-                          >
-                            Mark prior promotion complete
-                          </button>
-                        )}
-                        {relegationCandidates.length > 0 && (
-                          <button
-                            className="btn sm"
-                            type="button"
-                            onClick={() => {
-                              setBackfillTarget({
-                                divisionId: sourceDivision.id,
-                                type: 'relegation',
-                              })
-                              setBackfillClubSlug('')
-                            }}
-                          >
-                            Mark prior relegation complete
-                          </button>
-                        )}
+                        <button
+                          className="btn sm"
+                          type="button"
+                          onClick={() => {
+                            setBackfillTarget({
+                              divisionId: sourceDivision.id,
+                              type: 'promotion',
+                            })
+                            setBackfillClubSlug('')
+                          }}
+                        >
+                          Mark prior promotion complete
+                        </button>
                       </div>
                     )}
                     {activeBackfill && (
@@ -2881,7 +3144,7 @@ function Clubs({
                               value: '',
                               label: `Choose ${activeBackfill === 'promotion' ? 'promoted' : 'relegated'} club`,
                             },
-                            ...activeBackfillCandidates.map((club) => ({
+                            ...promotionCandidates.map((club) => ({
                               value: club.slug,
                               label: club.name,
                             })),
@@ -2919,6 +3182,7 @@ function Clubs({
                   <table className="club-management-table">
                     <thead>
                       <tr>
+                        <th className="club-select-col"><span className="visually-hidden">Select</span></th>
                         <th>Club</th>
                         <th>Code</th>
                         <th>Status</th>
@@ -2940,17 +3204,31 @@ function Clubs({
                         return (
                           <tr
                             key={c.slug}
-                            className={`club-row${zoneClass}`}
+                            className={`club-row${zoneClass}${selectedSlugs.has(c.slug) ? ' selected' : ''}`}
                             tabIndex={0}
                             aria-label={`Edit ${c.name}${zoneLabels.length ? `. ${zoneLabels.join(' and ')}.` : ''} Press Enter to open.`}
-                            onClick={() => edit(c)}
+                            onClick={() => {
+                              if (readOnly) return
+                              edit(c)
+                            }}
                             onKeyDown={(event) => {
                               if (event.key === 'Enter' || event.key === ' ') {
                                 event.preventDefault()
+                                if (readOnly) return
                                 edit(c)
                               }
                             }}
                           >
+                            <td className="club-select-cell">
+                              <input
+                                type="checkbox"
+                                checked={selectedSlugs.has(c.slug)}
+                                disabled={readOnly}
+                                aria-label={`Select ${c.name}`}
+                                onClick={(event) => event.stopPropagation()}
+                                onChange={(event) => toggleSelected(c.slug, event.target.checked)}
+                              />
+                            </td>
                             <td>
                               <div className="club">
                                 {c.logo_local && <img src={c.logo_local} alt="" />}
@@ -2985,6 +3263,87 @@ function Clubs({
               )
             })}
           </div>
+
+          {bulkBarVisible && (
+            <div className="bulk-bar" role="region" aria-label="Bulk actions">
+              <div className="bulk-bar-count">
+                <strong>{selectedCount}</strong>
+                <span>selected</span>
+              </div>
+              <div className="bulk-bar-actions">
+                <label className="bulk-bar-field">
+                  <span>Move to league</span>
+                  <CustomSelect
+                    ariaLabel="Bulk move clubs to league"
+                    value={bulkLeague}
+                    disabled={bulkBusy}
+                    options={[
+                      { value: '', label: 'Choose league…' },
+                      ...divisions.map((division) => ({
+                        value: String(division.id),
+                        label: division.name,
+                      })),
+                      { value: 'unassigned', label: 'Unassigned' },
+                    ]}
+                    onChange={(value) => {
+                      setBulkLeague(value)
+                      if (value === '') return
+                      void bulkAssignLeague()
+                    }}
+                  />
+                </label>
+                <label className="bulk-bar-field">
+                  <span>Set status</span>
+                  <CustomSelect
+                    ariaLabel="Bulk set club status"
+                    value={bulkStatus}
+                    disabled={bulkBusy}
+                    options={[
+                      { value: '', label: 'Choose status…' },
+                      { value: 'active', label: 'Active' },
+                      { value: 'pending', label: 'Pending' },
+                      { value: 'withdrawn', label: 'Withdrawn' },
+                    ]}
+                    onChange={(value) => {
+                      setBulkStatus(value)
+                      if (value === '') return
+                      void bulkSetStatus()
+                    }}
+                  />
+                </label>
+                <span className="bulk-bar-divider" aria-hidden="true" />
+                <button
+                  className="btn sm promotion"
+                  type="button"
+                  disabled={bulkBusy}
+                  title={bulkMoveBlock('promotion') ?? undefined}
+                  onClick={() => void bulkMove('promotion')}
+                >
+                  Promote ↑
+                </button>
+                <button
+                  className="btn sm relegation"
+                  type="button"
+                  disabled={bulkBusy}
+                  title={bulkMoveBlock('relegation') ?? undefined}
+                  onClick={() => void bulkMove('relegation')}
+                >
+                  Relegate ↓
+                </button>
+              </div>
+              <p className="bulk-bar-hint" role="status">
+                {bulkMoveBlock('promotion') ?? 'Promote or relegate sends every selected club one league.'}
+              </p>
+              <button
+                className="bulk-bar-clear"
+                type="button"
+                disabled={bulkBusy}
+                onClick={clearSelection}
+              >
+                Clear selection
+              </button>
+            </div>
+          )}
 
           <p className="footnote">
             Short codes are <strong>not unique</strong>: the crawl assigns <code>KKV</code> to both
@@ -3093,7 +3452,7 @@ function Clubs({
                               }))
                             }
                             options={[
-                              { value: '', label: 'Not entered' },
+                              { value: '', label: 'Unassigned' },
                               ...divisions.map((division) => ({
                                 value: String(division.id),
                                 label: division.name,
