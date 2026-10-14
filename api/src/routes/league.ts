@@ -206,7 +206,14 @@ league.get(
       : result === 'completed'
         ? '(m.home_score IS NOT NULL AND m.away_score IS NOT NULL)'
         : '1 = 1'
-    const searchFilter = search ? '(home.name LIKE ? OR away.name LIKE ?)' : '1 = 1'
+    // LOWER on both sides for the same reason as the priorities search: the
+    // column collation is not pinned, so plain LIKE follows the cluster
+    // default and is not reliably case-insensitive. Short codes are compared
+    // too, since that is what the tables and crests actually show.
+    const searchFilter = search
+      ? `(LOWER(home.name) LIKE LOWER(?) OR LOWER(away.name) LIKE LOWER(?)
+          OR LOWER(home.short_code) LIKE LOWER(?) OR LOWER(away.short_code) LIKE LOWER(?))`
+      : '1 = 1'
     const where = `(? IS NULL OR m.status = ?)
       AND (? IS NULL OR m.season_id = ?)
       AND (? IS NULL OR home.slug = ? OR away.slug = ?)
@@ -221,7 +228,7 @@ league.get(
       clubSlug,
       clubSlug,
       clubSlug,
-      ...(search ? [searchPattern, searchPattern] : []),
+      ...(search ? [searchPattern, searchPattern, searchPattern, searchPattern] : []),
     ]
     const { date, datetime } = kualaLumpurClock()
     const ordering = latestFirst
@@ -294,8 +301,14 @@ league.get(
     // Both ends of the fixture are searched: an admin looking up a club wants
     // its games whether it is listed home or away, and half the results is a
     // worse answer than none.
+    //
+    // LOWER on both sides rather than relying on the column collation. The
+    // schema does not pin a collation, so LIKE inherits the cluster default,
+    // and TiDB commonly defaults to a binary one — which made the search
+    // quietly case-sensitive.
     const searchClause = search
-      ? `AND (home.name LIKE ? OR away.name LIKE ? OR home.short_code LIKE ? OR away.short_code LIKE ?)`
+      ? `AND (LOWER(home.name) LIKE LOWER(?) OR LOWER(away.name) LIKE LOWER(?)
+             OR LOWER(home.short_code) LIKE LOWER(?) OR LOWER(away.short_code) LIKE LOWER(?))`
       : ''
     const searchParams = search
       ? [`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`]
