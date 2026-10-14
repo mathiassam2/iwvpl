@@ -222,7 +222,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .score-entry input::placeholder { color: #4a545b; }
 .score-entry input:disabled { opacity: .55; }
 .match-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 37px; margin-top: 13px; padding-left: 44px; }
-.match-actions > div { display: flex; gap: 7px; }
+.match-actions > div { display: flex; gap: 7px; margin-left: auto; }
 .saved-score { color: var(--faint); font-size: 11px; }
 .save-btn { min-width: 118px; }
 .match-empty { display: grid; gap: 5px; padding: 34px 15px; }
