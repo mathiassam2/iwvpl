@@ -263,7 +263,27 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .club { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .club img { width: 22px; height: 22px; border-radius: 4px; object-fit: contain; flex: none; }
 .club .name { overflow: hidden; color: var(--text); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.club-management-table { min-width: 820px; }
+.club-league-groups { display: grid; gap: 14px; }
+.club-league-overview {
+  display: flex; justify-content: space-between; align-items: center; gap: 16px;
+  padding: 3px 2px 2px;
+}
+.club-league-overview h2 { margin: 0; color: var(--text); font-size: 17px; letter-spacing: -.02em; }
+.club-league-overview p { margin: 5px 0 0; color: var(--faint); font-size: 11px; }
+.club-league-overview > span {
+  flex: none; padding: 6px 10px; border: 1px solid var(--border); border-radius: 99px;
+  color: var(--muted); background: var(--surface); font-size: 10px; font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.club-league-group > header { min-height: 54px; }
+.club-league-heading { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.club-league-count {
+  display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 6px;
+  border: 1px solid var(--border); border-radius: 99px; color: var(--muted); background: var(--bg);
+  font-size: 10px; font-variant-numeric: tabular-nums;
+}
+.club-league-empty { margin: 0; padding: 19px 16px; color: var(--faint); font-size: 12px; }
+.club-management-table { min-width: 700px; }
 .club-management-table .club-row { cursor: pointer; transition: background .15s ease; }
 .club-management-table .club-row td { height: 60px; padding-block: 8px; }
 .club-management-table .club-row:hover,
@@ -506,6 +526,14 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .footnote { margin-top: 14px; }
   .club-subnav { width: 100%; }
   .club-subnav button { flex: 1; justify-content: center; }
+  .club-league-groups { gap: 11px; }
+  .club-league-overview { align-items: flex-start; }
+  .club-league-overview h2 { font-size: 15px; }
+  .club-league-overview p { max-width: 30ch; line-height: 1.5; }
+  .club-league-overview > span { padding: 5px 8px; }
+  .club-league-group > header { padding: 12px; }
+  .club-league-group .club-league-heading h2 { overflow-wrap: anywhere; }
+  .club-league-empty { padding: 16px 12px; }
   .division-admin-item { padding: 13px; }
   .division-range-summary { grid-template-columns: 1fr; gap: 7px; margin-top: 11px; }
   .division-editor { padding: 13px; }

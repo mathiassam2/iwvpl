@@ -278,7 +278,8 @@ league.get(
   '/standings',
   handler(async (req, res) => {
     const rows = await queryAll(
-      `SELECT s.position, s.played, s.won, s.drawn, s.lost,
+      `SELECT ROW_NUMBER() OVER (PARTITION BY d.id ORDER BY s.position) AS position,
+              s.played, s.won, s.drawn, s.lost,
               s.goals_for, s.goals_against, s.goal_difference, s.points, s.form,
               c.id AS club_id, c.name, c.slug, c.short_code, c.logo_local, c.flag,
               d.name AS division_name, d.slug AS division_slug,
@@ -287,7 +288,18 @@ league.get(
          JOIN clubs c ON c.id = s.club_id
          JOIN divisions d ON d.id = s.division_id
          JOIN seasons current_season ON current_season.id = d.season_id AND current_season.is_current = TRUE
+         JOIN division_clubs current_membership
+           ON current_membership.club_id = s.club_id
+          AND current_membership.division_id = s.division_id
         WHERE (? IS NULL OR d.slug = ?)
+          AND NOT EXISTS (
+            SELECT 1
+              FROM division_clubs newer_membership
+              JOIN divisions newer_division ON newer_division.id = newer_membership.division_id
+             WHERE newer_membership.club_id = current_membership.club_id
+               AND newer_division.season_id = d.season_id
+               AND newer_membership.id > current_membership.id
+          )
         ORDER BY d.id, s.position`,
       [
         typeof req.query.division === 'string' ? req.query.division : null,

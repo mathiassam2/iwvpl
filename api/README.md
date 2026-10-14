@@ -230,6 +230,11 @@ team count, so the same settings work when season sizes change. Either setting
 may be left unset. The public standings endpoint includes the movement counts
 and resolves them to positions for the table highlights and zone labels.
 
+Each club can belong to only one division in the current season. Reassigning a
+club replaces its current membership; its old standings snapshot is retained
+internally so results from existing fixtures can still be corrected, while
+public standings show the club only in its latest assigned division.
+
 ## Testing
 
 ```bash

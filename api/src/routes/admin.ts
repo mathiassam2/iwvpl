@@ -766,22 +766,33 @@ admin.post(
     )
     if (!division) return res.status(404).json({ error: 'Division not found.' })
 
-    await withTransaction(async (conn) => {
+    const changedDivision = await withTransaction(async (conn) => {
+      const [clubRows] = await conn.query(
+        'SELECT id FROM clubs WHERE id = ? FOR UPDATE',
+        [club.id],
+      )
+      const lockedClub = (clubRows as Array<{ id: number }>)[0]
+      if (!lockedClub) return false
+
+      await conn.execute(
+        `DELETE FROM division_clubs
+          WHERE club_id = ?
+          AND division_id IN (SELECT id FROM divisions WHERE season_id = ?)
+          AND division_id <> ?`,
+        [lockedClub.id, division.season_id, division.id],
+      )
       await conn.execute(
         `INSERT INTO division_clubs (division_id, club_id, code_at_registration, created_at)
          VALUES (?, ?, (SELECT short_code FROM clubs WHERE id = ?), NOW())
          ON DUPLICATE KEY UPDATE code_at_registration = VALUES(code_at_registration)`,
-        [division.id, club.id, club.id],
+        [division.id, lockedClub.id, lockedClub.id],
       )
 
-      // Re-entering a division the club already holds is a no-op rather than a
-      // second row: uq_standings makes that impossible, and resetting a club's
-      // position on re-assign would throw away results it has since played.
       const [existing] = await conn.query(
         'SELECT id FROM standings_snapshot WHERE season_id = ? AND division_id = ? AND club_id = ?',
-        [division.season_id, division.id, club.id],
+        [division.season_id, division.id, lockedClub.id],
       )
-      if ((existing as any[]).length > 0) return
+      if ((existing as unknown[]).length > 0) return true
 
       const [bottom] = await conn.query(
         'SELECT COALESCE(MAX(position), 0) + 1 AS pos FROM standings_snapshot WHERE season_id = ? AND division_id = ?',
@@ -794,9 +805,11 @@ admin.post(
            (season_id, division_id, club_id, position, played, won, drawn, lost,
             goals_for, goals_against, goal_difference, points, form, updated_at)
          VALUES (?, ?, ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, '', NOW())`,
-        [division.season_id, division.id, club.id, position],
+        [division.season_id, division.id, lockedClub.id, position],
       )
+      return true
     })
+    if (!changedDivision) return res.status(404).json({ error: 'Club not found.' })
 
     await notifyClubManagers(
       club.id,

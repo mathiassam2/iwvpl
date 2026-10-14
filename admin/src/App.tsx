@@ -1114,9 +1114,11 @@ function Applications({
 function Divisions({
   guard,
   report,
+  onDivisionSaved,
 }: {
   guard: <T>(fn: () => Promise<T>, what: string) => Promise<T>
   report: (kind: Notice['kind'], text: string) => void
+  onDivisionSaved: (division: Division) => void
 }) {
   const [divisions, setDivisions] = useState<Division[] | null>(null)
   const [editing, setEditing] = useState<number | 'new' | null>(null)
@@ -1167,6 +1169,7 @@ function Divisions({
           : rows.map((item) => item.id === division.id ? division : item)
             .sort((a, b) => a.name.localeCompare(b.name))
       })
+      onDivisionSaved(division)
       report('ok', `${division.name} saved.`)
       setEditing(null)
     } catch {
@@ -1318,28 +1321,20 @@ function Clubs({
   const activeClub = clubs?.find((club) => club.slug === editing) ?? null
 
   const load = useCallback(async () => {
-    const data = await guard(getClubs, 'Could not load clubs')
+    const [data, currentDivisions] = await Promise.all([
+      guard(getClubs, 'Could not load clubs'),
+      guard(getDivisions, 'Could not load leagues'),
+    ])
     setClubs(data)
     setCodes(Object.fromEntries(data.map((c) => [c.slug, c.short_code ?? ''])))
     setStatuses(Object.fromEntries(data.map((c) => [c.slug, c.status])))
-
-    // Divisions are public metadata, and the club rows carry the one they are
-    // already in, so the two load together and the select starts on the real
-    // value rather than on the first option in the list.
-    try {
-      const [divs, full] = await Promise.all([
-        getDivisions(),
-        fetch('/api/clubs?includePending=true').then((r) => (r.ok ? r.json() : { clubs: [] })),
-      ])
-      setDivisions(divs)
-      const current: Record<string, string> = {}
-      for (const c of full.clubs ?? []) {
-        if (c.division_id) current[c.slug] = String(c.division_id)
-      }
-      setDivisionOf(current)
-    } catch {
-      /* the column degrades to "not assigned"; the rest still works */
-    }
+    setDivisions(currentDivisions)
+    setDivisionOf(
+      Object.fromEntries(data.map((club) => [
+        club.slug,
+        club.division_id ? String(club.division_id) : '',
+      ])),
+    )
   }, [guard])
 
   useEffect(() => {
@@ -1509,6 +1504,21 @@ function Clubs({
     }
   }
 
+  const getDivisionId = (club: Club) => String(club.division_id ?? '')
+  const configuredDivisionIds = new Set(divisions.map((division) => String(division.id)))
+  const clubGroups = [
+    ...divisions.map((division) => ({
+      id: String(division.id),
+      name: division.name,
+      clubs: clubs.filter((club) => getDivisionId(club) === String(division.id)),
+    })),
+    {
+      id: 'unassigned',
+      name: 'Not assigned to a league',
+      clubs: clubs.filter((club) => !configuredDivisionIds.has(getDivisionId(club))),
+    },
+  ]
+
   return (
     <>
       <div className="club-subnav" role="tablist" aria-label="Club workspace">
@@ -1546,99 +1556,125 @@ function Clubs({
           onPendingCountChange={onPendingCountChange}
         />
       ) : section === 'divisions' ? (
-        <Divisions guard={guard} report={report} />
+        <Divisions
+          guard={guard}
+          report={report}
+          onDivisionSaved={(savedDivision) => {
+            setDivisions((current) =>
+              current.some((division) => division.id === savedDivision.id)
+                ? current.map((division) =>
+                    division.id === savedDivision.id ? savedDivision : division,
+                  )
+                : [...current, savedDivision].sort((a, b) => a.name.localeCompare(b.name)),
+            )
+          }}
+        />
       ) : (
         <>
-      <div className="card">
-        <header>
-          <h2>Clubs</h2>
-          <span className="hint">{clubs.length} registered</span>
-        </header>
-        <table className="club-management-table">
-          <thead>
-            <tr>
-              <th>Club</th>
-              <th>Code</th>
-              <th>Status</th>
-              <th>Division</th>
-              <th>Squad</th>
-            </tr>
-          </thead>
-          <tbody>
-            {clubs.map((c) => (
-              <tr
-                key={c.slug}
-                className="club-row"
-                tabIndex={0}
-                aria-label={`Edit ${c.name}. Press Enter to open.`}
-                onClick={() => edit(c)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault()
-                    edit(c)
-                  }
+          <div className="club-league-groups">
+            <div className="club-league-overview">
+              <div>
+                <h2>Clubs by league</h2>
+                <p>Browse each league separately, or find clubs that still need a league.</p>
+              </div>
+              <span>{clubs.length} {clubs.length === 1 ? 'club' : 'clubs'}</span>
+            </div>
+            {clubGroups.map((group) => (
+              <section className="card club-league-group" key={group.id}>
+                <header>
+                  <div className="club-league-heading">
+                    <h2>{group.name}</h2>
+                    <span className="club-league-count">{group.clubs.length}</span>
+                  </div>
+                  <span className="hint">{group.clubs.length === 1 ? 'club' : 'clubs'}</span>
+                </header>
+                {group.clubs.length === 0 ? (
+                  <p className="club-league-empty">
+                    {group.id === 'unassigned'
+                      ? 'All clubs have been assigned to a league.'
+                      : 'No clubs have been assigned to this league yet.'}
+                  </p>
+                ) : (
+                  <table className="club-management-table">
+                    <thead>
+                      <tr>
+                        <th>Club</th>
+                        <th>Code</th>
+                        <th>Status</th>
+                        <th>Squad</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {group.clubs.map((c) => (
+                        <tr
+                          key={c.slug}
+                          className="club-row"
+                          tabIndex={0}
+                          aria-label={`Edit ${c.name}. Press Enter to open.`}
+                          onClick={() => edit(c)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault()
+                              edit(c)
+                            }
+                          }}
+                        >
+                          <td>
+                            <div className="club">
+                              {c.logo_local && <img src={c.logo_local} alt="" />}
+                              {c.flag && <span className="flag">{c.flag}</span>}
+                              <span className="name">{c.name}</span>
+                            </div>
+                          </td>
+                          <td>
+                            <span className="hint">{c.short_code || '—'}</span>
+                          </td>
+                          <td>
+                            <span>{c.status}</span>
+                          </td>
+                          <td>
+                            <button
+                              className="squad-link"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                void viewSquad(c)
+                              }}
+                            >
+                              View Squad <span className="squad-count">{c.players}</span>
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </section>
+            ))}
+          </div>
+
+          <p className="footnote">
+            Short codes are <strong>not unique</strong>: the crawl assigns <code>KKV</code> to both
+            KITA KITA VFC and KOEMPOEL KEBOW VFC, so the schema deliberately does not constrain them.
+            Gamertags are matched case-insensitively — registering a name that already exists is
+            rejected rather than creating a duplicate player.
+          </p>
+          {activeClub && (
+            <div
+              className="squad-modal-backdrop"
+              onMouseDown={(event) => {
+                if (event.target === event.currentTarget) cancelEdit(activeClub)
+              }}
+            >
+              <form
+                className="squad-modal club-edit-modal"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="club-edit-title"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  void save(activeClub)
                 }}
               >
-                <td>
-                  <div className="club">
-                    {c.logo_local && <img src={c.logo_local} alt="" />}
-                    {c.flag && <span className="flag">{c.flag}</span>}
-                    <span className="name">{c.name}</span>
-                  </div>
-                </td>
-                <td>
-                  <span className="hint">{c.short_code || '—'}</span>
-                </td>
-                <td>
-                  <span>{c.status}</span>
-                </td>
-                <td>
-                  <span>
-                    {divisions.find(
-                      (d) => String(d.id) === (divisionOf[c.slug] ?? String(c.division_id ?? '')),
-                    )?.name ?? 'Not entered'}
-                  </span>
-                </td>
-                <td>
-                  <button
-                    className="squad-link"
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      void viewSquad(c)
-                    }}
-                  >
-                    View Squad <span className="squad-count">{c.players}</span>
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <p className="footnote">
-        Short codes are <strong>not unique</strong>: the crawl assigns <code>KKV</code> to both
-        KITA KITA VFC and KOEMPOEL KEBOW VFC, so the schema deliberately does not constrain them.
-        Gamertags are matched case-insensitively — registering a name that already exists is
-        rejected rather than creating a duplicate player.
-      </p>
-      {activeClub && (
-        <div
-          className="squad-modal-backdrop"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) cancelEdit(activeClub)
-          }}
-        >
-          <form
-            className="squad-modal club-edit-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="club-edit-title"
-            onSubmit={(event) => {
-              event.preventDefault()
-              void save(activeClub)
-            }}
-          >
             <header>
               <div className="club-edit-heading">
                 {activeClub.logo_local && <img src={activeClub.logo_local} alt="" />}
@@ -1693,7 +1729,7 @@ function Clubs({
                   </select>
                 </label>
                 <label>
-                  <span>Division</span>
+                  <span>League</span>
                   <select
                     className="text"
                     value={divisionOf[activeClub.slug] ?? ''}
