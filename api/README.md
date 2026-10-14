@@ -3,8 +3,8 @@
 The backend for the league site. Serves the JSON API, the public SPA and (once
 built) the admin app from a single origin.
 
-Phase 1 is complete: schema, migrations, seed, connection handling and read-only
-endpoints. There is no write path yet — that arrives with the admin app.
+The API provides public read endpoints and basic-auth-protected admin writes,
+along with the schema, migrations, seed and connection handling.
 
 ## Why single origin
 
@@ -27,6 +27,7 @@ api/
       slug.ts               slug rules — must match src/lib/format.ts
       seed.ts               seeds from the crawl output
     routes/league.ts        read-only endpoints
+    routes/admin.ts         basic-auth-protected admin writes
     middleware/basicAuth.ts HTTP basic auth for /admin
 ```
 
@@ -204,6 +205,15 @@ base row and one write would vanish.
 The previous scoreline is read from the stored match, never from the request. A
 client-supplied "previous" value would let a caller desynchronise the table
 permanently with no way to detect it.
+
+### Scheduling a fixture
+
+Admins can create a fixture between active clubs in the same current division,
+then set, change or clear its kickoff through the Matches workspace. A fixture
+may remain unscheduled until its date is confirmed. Kickoff values are stored
+as `DATETIME` wall-clock values and the admin UI treats them as
+`Asia/Kuala_Lumpur` (UTC+8); unscheduled, overdue and today's unplayed fixtures
+are surfaced in separate priority groups.
 
 ## Testing
 

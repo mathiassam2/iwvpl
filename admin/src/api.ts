@@ -70,7 +70,7 @@ export interface Standing {
 
 export interface Match {
   id: number
-  kickoff: string
+  kickoff: string | null
   status: string
   home_score: number | null
   away_score: number | null
@@ -103,10 +103,22 @@ export interface Club {
 export const getStandings = () =>
   request<{ standings: Standing[] }>('/api/standings').then((r) => r.standings)
 
-export const getMatches = (limit = 50) =>
+export const getMatches = (limit = 200) =>
   request<{ matches: Match[] }>(`/api/matches?limit=${limit}`).then((r) => r.matches)
 
 export const getClubs = () => request<{ clubs: Club[] }>('/api/clubs').then((r) => r.clubs)
+
+export const scheduleMatch = (matchId: number, kickoff: string | null) =>
+  request<{ ok: true; kickoff: string | null }>(`/api/admin/matches/${matchId}/schedule`, {
+    method: 'PATCH',
+    body: JSON.stringify({ kickoff }),
+  })
+
+export const createMatch = (homeSlug: string, awaySlug: string, kickoff: string | null) =>
+  request<{ match: Match }>('/api/admin/matches', {
+    method: 'POST',
+    body: JSON.stringify({ homeSlug, awaySlug, kickoff }),
+  }).then((r) => r.match)
 
 /** Clubs awaiting an admin decision, with the manager who applied. */
 export interface PendingClub {

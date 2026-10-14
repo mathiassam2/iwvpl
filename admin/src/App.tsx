@@ -1,15 +1,17 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import {
   ApiError,
   addPlayer,
   assignDivision,
   decideClub,
+  createMatch,
   getClubs,
   getDivisions,
   getMatches,
   getPendingClubs,
   getStandings,
   removePlayer,
+  scheduleMatch,
   setResult,
   updateClub,
   withdrawResult,
@@ -20,7 +22,8 @@ import {
   type Standing,
 } from './api'
 
-type Tab = 'standings' | 'results' | 'clubs' | 'applications'
+type Tab = 'standings' | 'results' | 'clubs'
+type ClubSection = 'clubs' | 'applications'
 
 interface Notice {
   kind: 'ok' | 'error' | 'info'
@@ -30,16 +33,20 @@ interface Notice {
 export default function App() {
   const [tab, setTab] = useState<Tab>(() => {
     const saved = window.localStorage.getItem('iwvpl-admin-tab')
-    return saved === 'standings' || saved === 'results' || saved === 'clubs' || saved === 'applications'
-      ? saved
+    return saved === 'standings' || saved === 'clubs' || saved === 'applications'
+      ? saved === 'applications' ? 'clubs' : saved
       : 'results'
+  })
+  const [clubSection, setClubSection] = useState<ClubSection>(() => {
+    const savedTab = window.localStorage.getItem('iwvpl-admin-tab')
+    const savedSection = window.localStorage.getItem('iwvpl-admin-club-section')
+    return savedTab === 'applications' || savedSection === 'applications' ? 'applications' : 'clubs'
   })
   const [notice, setNotice] = useState<Notice | null>(null)
   const pageTitle: Record<Tab, string> = {
     results: 'Match centre',
     standings: 'League table',
     clubs: 'Club management',
-    applications: 'Club applications',
   }
 
   const report = useCallback((kind: Notice['kind'], text: string) => setNotice({ kind, text }), [])
@@ -47,6 +54,10 @@ export default function App() {
   useEffect(() => {
     window.localStorage.setItem('iwvpl-admin-tab', tab)
   }, [tab])
+
+  useEffect(() => {
+    window.localStorage.setItem('iwvpl-admin-club-section', clubSection)
+  }, [clubSection])
 
   // Any failure is reported through one channel so the views can simply throw
   // and the shell decides how to present it.
@@ -78,25 +89,21 @@ export default function App() {
         <aside className="sidebar">
           <p className="nav-label">WORKSPACE</p>
           <nav className="tabs" role="tablist" aria-label="Admin sections">
-            {(['results', 'standings', 'clubs', 'applications'] as Tab[]).map((t) => (
+            {(['results', 'standings', 'clubs'] as Tab[]).map((t) => (
               <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>
                 <span className="nav-icon" aria-hidden="true">
                   {t === 'results'
                     ? '◉'
                     : t === 'standings'
                       ? '▤'
-                      : t === 'clubs'
-                        ? '♙'
-                        : '✦'}
+                      : '♙'}
                 </span>
                 <span>
                   {t === 'results'
                     ? 'Matches'
                     : t === 'standings'
                       ? 'Standings'
-                      : t === 'clubs'
-                        ? 'Clubs'
-                        : 'Applications'}
+                      : 'Clubs'}
                 </span>
                 {t === tab && <span className="nav-arrow">›</span>}
               </button>
@@ -115,9 +122,11 @@ export default function App() {
                   ? 'Record match scores and keep the table up to date.'
                   : tab === 'standings'
                     ? 'Review the current league table and recent form.'
-                    : tab === 'applications'
-                      ? 'Approve or reject clubs created from the registration form.'
-                      : 'Update club details and manage player rosters.'}
+                    : tab === 'clubs' && clubSection === 'applications'
+                      ? 'Review and respond to clubs waiting for approval.'
+                      : tab === 'clubs'
+                        ? 'Update club details and manage player rosters.'
+                        : ''}
               </p>
             </div>
             <span className="live-indicator"><i /> LIVE DATA</span>
@@ -132,8 +141,14 @@ export default function App() {
 
           {tab === 'standings' && <Standings guard={guard} report={report} />}
           {tab === 'results' && <Results guard={guard} report={report} />}
-          {tab === 'clubs' && <Clubs guard={guard} report={report} />}
-          {tab === 'applications' && <Applications guard={guard} report={report} />}
+          {tab === 'clubs' && (
+            <Clubs
+              guard={guard}
+              report={report}
+              section={clubSection}
+              setSection={setClubSection}
+            />
+          )}
         </main>
       </div>
     </div>
@@ -237,6 +252,49 @@ function Standings({
 
 /* ----------------------------------------------------------------- results */
 
+const MATCH_TIME_ZONE = 'Asia/Kuala_Lumpur'
+
+function dateTimeInputValue(kickoff: string | null): string {
+  return kickoff ? kickoff.replace(' ', 'T').slice(0, 16) : ''
+}
+
+function matchKickoffTime(kickoff: string): number {
+  const [date, time] = kickoff.split(/[ T]/)
+  const [year, month, day] = date.split('-').map(Number)
+  const [hour, minute, second = '0'] = time.split(':')
+  return Date.UTC(year, month - 1, day, Number(hour) - 8, Number(minute), Number(second))
+}
+
+function kualaLumpurToday(now: number): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: MATCH_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now)
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? ''
+  return `${part('year')}-${part('month')}-${part('day')}`
+}
+
+function formatKickoff(kickoff: string | null): string {
+  if (!kickoff) return 'Needs scheduling'
+  return new Intl.DateTimeFormat([], {
+    timeZone: MATCH_TIME_ZONE,
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(matchKickoffTime(kickoff)))
+}
+
+type MatchUrgency = 'unscheduled' | 'overdue' | 'today' | 'upcoming' | 'completed'
+
+function matchUrgency(match: Match, now: number, today: string): MatchUrgency {
+  if (match.home_score !== null && match.away_score !== null) return 'completed'
+  if (!match.kickoff) return 'unscheduled'
+  if (matchKickoffTime(match.kickoff) <= now) return 'overdue'
+  if (match.kickoff.slice(0, 10) === today) return 'today'
+  return 'upcoming'
+}
+
 function Results({
   guard,
   report,
@@ -249,10 +307,19 @@ function Results({
   const [busy, setBusy] = useState<number | null>(null)
   const [filter, setFilter] = useState<'all' | 'pending' | 'completed'>('all')
   const [query, setQuery] = useState('')
+  const [clubs, setClubs] = useState<Club[]>([])
+  const [scheduleTarget, setScheduleTarget] = useState<number | 'new' | null>(null)
+  const [scheduleDrafts, setScheduleDrafts] = useState<Record<number, string>>({})
+  const [createHome, setCreateHome] = useState('')
+  const [createAway, setCreateAway] = useState('')
+  const [createKickoff, setCreateKickoff] = useState('')
+  const [now, setNow] = useState(Date.now())
+  const [scheduleBusy, setScheduleBusy] = useState(false)
 
   const load = useCallback(async () => {
-    const data = await guard(() => getMatches(50), 'Could not load matches')
+    const data = await guard(() => getMatches(200), 'Could not load matches')
     setMatches(data)
+    setScheduleDrafts(Object.fromEntries(data.map((match) => [match.id, dateTimeInputValue(match.kickoff)])))
     setDraft(
       Object.fromEntries(
         data.map((m) => [
@@ -270,7 +337,38 @@ function Results({
     load().catch(() => setMatches([]))
   }, [load])
 
+  useEffect(() => {
+    getClubs().then(setClubs).catch((err) => {
+      const message = err instanceof ApiError ? err.message : err instanceof Error ? err.message : String(err)
+      report('error', `Could not load clubs for match scheduling: ${message}`)
+    })
+  }, [report])
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 30_000)
+    return () => window.clearInterval(interval)
+  }, [])
+
+  useEffect(() => {
+    if (scheduleTarget === null) return
+    const oldBodyOverflow = document.body.style.overflow
+    const oldRootOverflow = document.documentElement.style.overflow
+    document.body.style.overflow = 'hidden'
+    document.documentElement.style.overflow = 'hidden'
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !scheduleBusy) setScheduleTarget(null)
+    }
+    window.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.body.style.overflow = oldBodyOverflow
+      document.documentElement.style.overflow = oldRootOverflow
+      window.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [scheduleBusy, scheduleTarget])
+
   if (matches === null) return <div className="loading">Loading matches…</div>
+
+  const today = kualaLumpurToday(now)
 
   const save = async (m: Match) => {
     const d = draft[m.id]
@@ -310,6 +408,78 @@ function Results({
     }
   }
 
+  const saveSchedule = async (match: Match) => {
+    const value = scheduleDrafts[match.id] ?? ''
+    setScheduleBusy(true)
+    try {
+      const result = await guard(
+        () => scheduleMatch(match.id, value || null),
+        `Could not update ${match.home_name} vs ${match.away_name}`,
+      )
+      setMatches((current) =>
+        current?.map((item) =>
+          item.id === match.id
+          ? {
+              ...item,
+              kickoff: result.kickoff,
+              status:
+                item.home_score !== null && item.away_score !== null
+                  ? 'finished'
+                  : result.kickoff
+                    ? 'scheduled'
+                    : 'unscheduled',
+            }
+          : item,
+        ) ?? null,
+      )
+      report('ok', result.kickoff ? 'Match schedule updated.' : 'Match moved to Needs scheduling.')
+      setScheduleTarget(null)
+    } catch {
+      /* already reported by guard */
+    } finally {
+      setScheduleBusy(false)
+    }
+  }
+
+  const saveNewMatch = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!createHome || !createAway) {
+      report('error', 'Choose a home club and an away club.')
+      return
+    }
+    if (createHome === createAway) {
+      report('error', 'Choose two different clubs.')
+      return
+    }
+    setScheduleBusy(true)
+    try {
+      const match = await guard(
+        () => createMatch(createHome, createAway, createKickoff || null),
+        'Could not create fixture',
+      )
+      setMatches((current) => [...(current ?? []), match])
+      setDraft((current) => ({ ...current, [match.id]: { home: '', away: '' } }))
+      setScheduleDrafts((current) => ({
+        ...current,
+        [match.id]: dateTimeInputValue(match.kickoff),
+      }))
+      report(
+        'ok',
+        match.kickoff
+          ? `${match.home_name} vs ${match.away_name} scheduled.`
+          : `${match.home_name} vs ${match.away_name} added to Needs scheduling.`,
+      )
+      setCreateHome('')
+      setCreateAway('')
+      setCreateKickoff('')
+      setScheduleTarget(null)
+    } catch {
+      /* already reported by guard */
+    } finally {
+      setScheduleBusy(false)
+    }
+  }
+
   const completedCount = matches.filter((m) => m.home_score !== null && m.away_score !== null).length
   const pendingCount = matches.length - completedCount
   const visibleMatches = matches.filter((m) => {
@@ -318,17 +488,42 @@ function Results({
     const matchesQuery = `${m.home_name} ${m.away_name}`.toLowerCase().includes(query.toLowerCase())
     return matchesFilter && matchesQuery
   })
+  const urgency = (match: Match) => matchUrgency(match, now, today)
+  const priorityGroups: { key: MatchUrgency; title: string; hint: string }[] = [
+    { key: 'unscheduled', title: 'Needs scheduling', hint: 'No kickoff date set' },
+    { key: 'overdue', title: 'Past kickoff', hint: 'Kickoff passed · result still missing' },
+    { key: 'today', title: 'Today', hint: 'Kickoff is today · Kuala Lumpur time' },
+  ]
+  const priorityMatches = priorityGroups.map((group) => ({
+    ...group,
+    matches: matches
+      .filter((match) => urgency(match) === group.key)
+      .sort((a, b) =>
+        group.key === 'unscheduled'
+          ? a.home_name.localeCompare(b.home_name)
+          : (a.kickoff ?? '').localeCompare(b.kickoff ?? ''),
+      ),
+  }))
+  const sortedVisibleMatches = [...visibleMatches].sort((a, b) => {
+    const order: MatchUrgency[] = ['unscheduled', 'overdue', 'today', 'upcoming', 'completed']
+    const difference = order.indexOf(urgency(a)) - order.indexOf(urgency(b))
+    return difference || (a.kickoff ?? '').localeCompare(b.kickoff ?? '')
+  })
+  const selectedClub = clubs.find((club) => club.slug === createHome)
+  const awayOptions = clubs.filter(
+    (club) => club.slug !== createHome && club.division_id === selectedClub?.division_id,
+  )
 
   return (
     <>
       <div className="stats-grid">
         <div className="stat-card">
-          <span className="stat-icon">▦</span><span className="stat-label">MATCHES LOADED</span>
-          <strong>{matches.length}</strong><small>Recent league fixtures</small>
+          <span className="stat-icon">▦</span>          <span className="stat-label">FIXTURES LOADED</span>
+          <strong>{matches.length}</strong><small>League fixtures in this view</small>
         </div>
         <div className="stat-card">
-          <span className="stat-icon pending-icon">◷</span><span className="stat-label">NEEDS A RESULT</span>
-          <strong>{pendingCount}</strong><small>Ready for score entry</small>
+          <span className="stat-icon pending-icon">◷</span><span className="stat-label">UNPLAYED FIXTURES</span>
+          <strong>{pendingCount}</strong><small>Scheduled or awaiting a date</small>
         </div>
         <div className="stat-card">
           <span className="stat-icon done-icon">✓</span><span className="stat-label">COMPLETED</span>
@@ -336,21 +531,92 @@ function Results({
         </div>
       </div>
 
-      <section className="match-section" aria-label="Match results">
+      <section className="match-section" aria-label="Match schedule and results">
         <div className="match-toolbar">
           <div>
-            <h2>Fixtures</h2>
-            <p>Choose a fixture, enter the final score, and save.</p>
+            <h2>Match schedule &amp; results</h2>
+            <p>Schedule fixtures, then enter results when they have been played.</p>
           </div>
-          <button className="btn reload-btn" onClick={() => load().catch(() => {})} aria-label="Reload matches">
-            ↻ <span>Refresh</span>
-          </button>
+          <div className="match-toolbar-actions">
+            <button
+              className="btn primary"
+              onClick={() => {
+                setCreateHome('')
+                setCreateAway('')
+                setCreateKickoff('')
+                setScheduleTarget('new')
+              }}
+            >
+              <span aria-hidden="true">＋</span> New fixture
+            </button>
+            <button
+              className="btn reload-btn"
+              onClick={() => load().catch(() => {})}
+              aria-label="Reload matches"
+            >
+              ↻ <span>Refresh</span>
+            </button>
+          </div>
+        </div>
+        <div className="match-priority" aria-label="Schedule priorities">
+          <div className="match-priority-heading">
+            <div>
+              <span className="eyebrow">SCHEDULE PRIORITIES</span>
+              <p>Fixtures needing attention · Kuala Lumpur time (UTC+8)</p>
+            </div>
+            <span className="priority-total">
+              {priorityMatches.reduce((total, group) => total + group.matches.length, 0)} to review
+            </span>
+          </div>
+          {priorityMatches.every((group) => group.matches.length === 0) ? (
+            <div className="priority-clear">
+              <span aria-hidden="true">✓</span>
+              <span><strong>All caught up</strong><small>No unscheduled, overdue, or today fixtures.</small></span>
+            </div>
+          ) : (
+            <div className="priority-groups">
+              {priorityMatches.filter((group) => group.matches.length > 0).map((group) => (
+                <section className={`priority-group urgency-${group.key}`} key={group.key}>
+                  <header>
+                    <div>
+                      <h3>{group.title}</h3>
+                      <p>{group.hint}</p>
+                    </div>
+                    <span className="priority-count">{group.matches.length}</span>
+                  </header>
+                  <div className="priority-fixtures">
+                    {group.matches.slice(0, 4).map((match) => (
+                      <div className="priority-fixture" key={match.id}>
+                        <div className="priority-fixture-teams">
+                          <strong>{match.home_name}</strong><span>vs</span><strong>{match.away_name}</strong>
+                        </div>
+                        <time>
+                          {match.kickoff ? formatKickoff(match.kickoff) : 'Date & time not set'}
+                        </time>
+                        <button
+                          className="priority-action"
+                          onClick={() => setScheduleTarget(match.id)}
+                        >
+                          {match.kickoff ? 'Edit time' : 'Set schedule'} <span aria-hidden="true">›</span>
+                        </button>
+                      </div>
+                    ))}
+                    {group.matches.length > 4 && (
+                      <p className="priority-more">
+                        +{group.matches.length - 4} more in the fixture list below
+                      </p>
+                    )}
+                  </div>
+                </section>
+              ))}
+            </div>
+          )}
         </div>
         <div className="match-controls">
           <div className="filter-pills" role="group" aria-label="Filter fixtures">
             {(['all', 'pending', 'completed'] as const).map((f) => (
               <button key={f} className={filter === f ? 'selected' : ''} onClick={() => setFilter(f)}>
-                {f === 'pending' ? `To enter (${pendingCount})` : f === 'completed' ? `Completed (${completedCount})` : 'All fixtures'}
+                {f === 'pending' ? `Unplayed (${pendingCount})` : f === 'completed' ? `Completed (${completedCount})` : 'All fixtures'}
               </button>
             ))}
           </div>
@@ -367,18 +633,30 @@ function Results({
           </div>
         ) : (
           <div className="match-list">
-            {visibleMatches.map((m) => {
+            {sortedVisibleMatches.map((m) => {
               const played = m.home_score !== null && m.away_score !== null
               const d = draft[m.id] ?? { home: '', away: '' }
               return (
                 <article className="match-card" key={m.id}>
                   <div className="match-card-top">
-                    <span className="kickoff">
-                      {new Date(m.kickoff).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+                    <span className={`kickoff ${!m.kickoff ? 'kickoff-unscheduled' : ''}`}>
+                      {formatKickoff(m.kickoff)}
                     </span>
-                    <span className={`match-status ${played ? 'is-complete' : 'is-pending'}`}>
-                      <i />{played ? 'RESULT SAVED' : 'AWAITING RESULT'}
+                    <span className={`match-status ${played ? 'is-complete' : `is-${urgency(m)}`}`}>
+                      <i />
+                      {played
+                        ? 'RESULT SAVED'
+                        : urgency(m) === 'unscheduled'
+                          ? 'NEEDS SCHEDULE'
+                          : urgency(m) === 'overdue'
+                            ? 'OVERDUE'
+                            : urgency(m) === 'today'
+                              ? 'TODAY'
+                              : 'AWAITING RESULT'}
                     </span>
+                    <button className="schedule-edit-link" onClick={() => setScheduleTarget(m.id)}>
+                      {m.kickoff ? 'Edit schedule' : 'Set schedule'}
+                    </button>
                   </div>
                   <div className="match-entry">
                     <div className="match-team home-team">
@@ -424,8 +702,171 @@ function Results({
       <p className="footnote">
         Saving a result reverses any previous contribution to both clubs before applying the new
         one, so repeated corrections do not drift. <strong>Withdraw</strong> removes the match
-        from the table entirely.
+        from the standings table while keeping the fixture available.
       </p>
+      {scheduleTarget !== null && (
+        <div
+          className="squad-modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !scheduleBusy) setScheduleTarget(null)
+          }}
+        >
+          {scheduleTarget === 'new' ? (
+            <form
+              className="squad-modal fixture-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="fixture-modal-title"
+              onSubmit={(event) => void saveNewMatch(event)}
+            >
+              <header>
+                <div>
+                  <p className="eyebrow">FIXTURE SETUP</p>
+                  <h2 id="fixture-modal-title">Create a fixture</h2>
+                  <p className="club-edit-subtitle">Choose two clubs in the same current division.</p>
+                </div>
+                <button
+                  type="button"
+                  className="icon-btn"
+                  aria-label="Close fixture setup"
+                  disabled={scheduleBusy}
+                  onClick={() => setScheduleTarget(null)}
+                >
+                  ×
+                </button>
+              </header>
+              <div className="club-edit-content">
+                <div className="club-edit-fields">
+                  <label>
+                    <span>Home club</span>
+                    <select
+                      className="text"
+                      required
+                      value={createHome}
+                      onChange={(event) => {
+                        setCreateHome(event.target.value)
+                        setCreateAway('')
+                      }}
+                    >
+                      <option value="">Choose home club</option>
+                      {clubs.filter((club) => club.division_id !== null).map((club) => (
+                        <option key={club.slug} value={club.slug}>{club.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    <span>Away club</span>
+                    <select
+                      className="text"
+                      required
+                      disabled={!createHome}
+                      value={createAway}
+                      onChange={(event) => setCreateAway(event.target.value)}
+                    >
+                      <option value="">Choose away club</option>
+                      {awayOptions.map((club) => (
+                        <option key={club.slug} value={club.slug}>{club.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    <span>Kickoff date &amp; time <small>(Kuala Lumpur, UTC+8)</small></span>
+                    <input
+                      className="text"
+                      type="datetime-local"
+                      value={createKickoff}
+                      onChange={(event) => setCreateKickoff(event.target.value)}
+                    />
+                  </label>
+                </div>
+                <p className="fixture-note">
+                  You can leave kickoff blank and schedule the fixture later. It will appear in
+                  <strong> Needs scheduling</strong>.
+                </p>
+              </div>
+              <footer className="club-edit-footer">
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={scheduleBusy}
+                  onClick={() => setScheduleTarget(null)}
+                >
+                  Cancel
+                </button>
+                <button className="btn primary" disabled={scheduleBusy || !createHome || !createAway}>
+                  {scheduleBusy ? 'Creating…' : 'Create fixture'}
+                </button>
+              </footer>
+            </form>
+          ) : (
+            (() => {
+              const match = matches.find((item) => item.id === scheduleTarget)
+              if (!match) return null
+              return (
+                <form
+                  className="squad-modal fixture-modal"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="schedule-modal-title"
+                  onSubmit={(event) => {
+                    event.preventDefault()
+                    void saveSchedule(match)
+                  }}
+                >
+                  <header>
+                    <div>
+                      <p className="eyebrow">FIXTURE SCHEDULE</p>
+                      <h2 id="schedule-modal-title">{match.home_name} <span>vs</span> {match.away_name}</h2>
+                      <p className="club-edit-subtitle">Times are entered in Kuala Lumpur time (UTC+8).</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      aria-label="Close schedule editor"
+                      disabled={scheduleBusy}
+                      onClick={() => setScheduleTarget(null)}
+                    >
+                      ×
+                    </button>
+                  </header>
+                  <div className="club-edit-content">
+                    <label className="fixture-date-field">
+                      <span>Kickoff date &amp; time</span>
+                      <input
+                        className="text"
+                        type="datetime-local"
+                        value={scheduleDrafts[match.id] ?? ''}
+                        onChange={(event) =>
+                          setScheduleDrafts((current) => ({
+                            ...current,
+                            [match.id]: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <p className="fixture-note">
+                      Clear the date to move this fixture to <strong>Needs scheduling</strong>.
+                    </p>
+                  </div>
+                  <footer className="club-edit-footer">
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={scheduleBusy}
+                      onClick={() => setScheduleTarget(null)}
+                    >
+                      Cancel
+                    </button>
+                    <button className="btn primary" disabled={scheduleBusy}>
+                      {scheduleBusy ? 'Saving…' : 'Save schedule'}
+                    </button>
+                  </footer>
+                </form>
+              )
+            })()
+          )}
+        </div>
+      )}
     </>
   )
 }
@@ -556,9 +997,13 @@ function Applications({
 function Clubs({
   guard,
   report,
+  section,
+  setSection,
 }: {
   guard: <T>(fn: () => Promise<T>, what: string) => Promise<T>
   report: (kind: Notice['kind'], text: string) => void
+  section: ClubSection
+  setSection: (section: ClubSection) => void
 }) {
   const [clubs, setClubs] = useState<Club[] | null>(null)
   const [codes, setCodes] = useState<Record<string, string>>({})
@@ -768,6 +1213,26 @@ function Clubs({
 
   return (
     <>
+      <div className="club-subnav" role="tablist" aria-label="Club workspace">
+        <button
+          role="tab"
+          aria-selected={section === 'clubs'}
+          onClick={() => setSection('clubs')}
+        >
+          Clubs <span>{clubs.length}</span>
+        </button>
+        <button
+          role="tab"
+          aria-selected={section === 'applications'}
+          onClick={() => setSection('applications')}
+        >
+          Applications
+        </button>
+      </div>
+      {section === 'applications' ? (
+        <Applications guard={guard} report={report} />
+      ) : (
+        <>
       <div className="card">
         <header>
           <h2>Clubs</h2>
@@ -1033,6 +1498,8 @@ function Clubs({
             )}
           </section>
         </div>
+      )}
+        </>
       )}
     </>
   )

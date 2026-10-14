@@ -49,7 +49,177 @@ function optionalString(value: unknown, max = 512): string | null {
   return s
 }
 
+function parseKickoff(value: unknown): string | null {
+  if (value === null || value === undefined || value === '') return null
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) {
+    throw Object.assign(new Error('kickoff must be a local date and time or null.'), { status: 400 })
+  }
+
+  const [date, time] = value.split('T')
+  const [year, month, day] = date.split('-').map(Number)
+  const [hour, minute] = time.split(':').map(Number)
+  const valid = new Date(Date.UTC(year, month - 1, day, hour, minute))
+  if (
+    valid.getUTCFullYear() !== year ||
+    valid.getUTCMonth() !== month - 1 ||
+    valid.getUTCDate() !== day ||
+    valid.getUTCHours() !== hour ||
+    valid.getUTCMinutes() !== minute
+  ) {
+    throw Object.assign(new Error('kickoff is not a valid date and time.'), { status: 400 })
+  }
+  return `${date} ${time}:00`
+}
+
 /* --------------------------------------------------------------- results */
+
+admin.post(
+  '/matches',
+  handler(async (req, res) => {
+    const homeSlug = requiredString(req.body?.homeSlug, 'homeSlug', 140)
+    const awaySlug = requiredString(req.body?.awaySlug, 'awaySlug', 140)
+    if (homeSlug === awaySlug) {
+      return res.status(400).json({ error: 'Choose two different clubs.' })
+    }
+    const kickoff = parseKickoff(req.body?.kickoff)
+
+    const result = await withTransaction(async (conn) => {
+      const findClub = async (slug: string) => {
+        const [rows] = await conn.query(
+          `SELECT c.id, c.name, d.id AS division_id, s.id AS season_id
+             FROM clubs c
+             JOIN division_clubs dc ON dc.club_id = c.id
+             JOIN divisions d ON d.id = dc.division_id
+             JOIN seasons s ON s.id = d.season_id AND s.is_current = TRUE
+            WHERE c.slug = ? AND c.status = 'active'
+            ORDER BY dc.id DESC LIMIT 1`,
+          [slug],
+        )
+        return (rows as Array<{
+          id: number
+          name: string
+          division_id: number
+          season_id: number
+        }>)[0]
+      }
+      const [home, away] = await Promise.all([findClub(homeSlug), findClub(awaySlug)])
+      if (!home || !away) {
+        return { error: 'Both clubs must be active and entered in the current season.' as const, status: 400 }
+      }
+      if (home.division_id !== away.division_id || home.season_id !== away.season_id) {
+        return { error: 'Choose two clubs from the same current division.' as const, status: 400 }
+      }
+
+      const [standings] = await conn.query(
+        `SELECT club_id FROM standings_snapshot
+          WHERE season_id = ? AND division_id = ? AND club_id IN (?, ?)`,
+        [home.season_id, home.division_id, home.id, away.id],
+      )
+      if ((standings as unknown[]).length !== 2) {
+        return {
+          error: 'Both clubs need a current standings row before they can be scheduled.' as const,
+          status: 409,
+        }
+      }
+
+      const [duplicate] = await conn.query(
+        `SELECT id FROM matches
+          WHERE season_id = ? AND home_club_id = ? AND away_club_id = ? AND kickoff <=> ?
+          LIMIT 1`,
+        [home.season_id, home.id, away.id, kickoff],
+      )
+      if ((duplicate as unknown[]).length > 0) {
+        return { error: 'This fixture already exists with that kickoff time.' as const, status: 409 }
+      }
+
+      const [inserted] = await conn.execute(
+        `INSERT INTO matches
+           (division_id, season_id, home_club_id, away_club_id, kickoff, status,
+            home_score, away_score, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, NOW(), NOW())`,
+        [
+          home.division_id,
+          home.season_id,
+          home.id,
+          away.id,
+          kickoff,
+          kickoff === null ? 'unscheduled' : 'scheduled',
+        ],
+      )
+      return { id: (inserted as any).insertId }
+    })
+
+    if ('error' in result) return res.status(result.status).json({ error: result.error })
+    const match = await queryOne(
+      `SELECT m.id, m.kickoff, m.status, m.home_score, m.away_score,
+              home.name AS home_name, home.slug AS home_slug, home.short_code AS home_code,
+              home.logo_local AS home_logo,
+              away.name AS away_name, away.slug AS away_slug, away.short_code AS away_code,
+              away.logo_local AS away_logo
+         FROM matches m
+         JOIN clubs home ON home.id = m.home_club_id
+         JOIN clubs away ON away.id = m.away_club_id
+        WHERE m.id = ?`,
+      [result.id],
+    )
+    if (!match) throw new Error('Created fixture could not be loaded.')
+    res.status(201).json({ match })
+  }),
+)
+
+admin.patch(
+  '/matches/:id/schedule',
+  handler(async (req, res) => {
+    const id = Number.parseInt(req.params.id, 10)
+    if (!Number.isInteger(id)) {
+      return res.status(400).json({ error: 'Match id must be an integer.' })
+    }
+    if (!Object.prototype.hasOwnProperty.call(req.body ?? {}, 'kickoff')) {
+      return res.status(400).json({ error: 'kickoff must be supplied (use null to unschedule).' })
+    }
+    const kickoff = parseKickoff(req.body.kickoff)
+    const result = await withTransaction(async (conn) => {
+      const [rows] = await conn.query(
+        'SELECT id, season_id, home_club_id, away_club_id, home_score, away_score FROM matches WHERE id = ? FOR UPDATE',
+        [id],
+      )
+      const match = (rows as Array<{
+        id: number
+        season_id: number
+        home_club_id: number
+        away_club_id: number
+        home_score: number | null
+        away_score: number | null
+      }>)[0]
+      if (!match) return { error: 'Match not found.' as const, status: 404 }
+
+      const [duplicates] = await conn.query(
+        `SELECT id FROM matches
+          WHERE id <> ? AND season_id = ? AND home_club_id = ? AND away_club_id = ? AND kickoff <=> ?
+          LIMIT 1`,
+        [id, match.season_id, match.home_club_id, match.away_club_id, kickoff],
+      )
+      if ((duplicates as unknown[]).length > 0) {
+        return { error: 'Another fixture already has that kickoff time.' as const, status: 409 }
+      }
+
+      const status =
+        match.home_score !== null && match.away_score !== null
+          ? 'finished'
+          : kickoff === null
+            ? 'unscheduled'
+            : 'scheduled'
+      await conn.execute(
+        'UPDATE matches SET kickoff = ?, status = ?, updated_at = NOW() WHERE id = ?',
+        [kickoff, status, id],
+      )
+      return { ok: true as const, kickoff }
+    })
+
+    if ('error' in result) return res.status(result.status).json({ error: result.error })
+    res.json(result)
+  }),
+)
 
 /**
  * Record a scoreline.
@@ -148,7 +318,8 @@ admin.delete(
       })
 
       await conn.execute(
-        `UPDATE matches SET home_score = NULL, away_score = NULL, status = 'scheduled', updated_at = NOW()
+        `UPDATE matches SET home_score = NULL, away_score = NULL,
+                status = IF(kickoff IS NULL, 'unscheduled', 'scheduled'), updated_at = NOW()
           WHERE id = ?`,
         [id],
       )

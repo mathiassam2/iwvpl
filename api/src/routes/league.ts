@@ -79,10 +79,11 @@ league.get(
     const clubs = await queryAll(
       `SELECT c.id, c.name, c.slug, c.short_code, c.flag, c.logo_url, c.logo_local, c.status,
               (SELECT COUNT(*) FROM players p WHERE p.club_id = c.id) AS players,
-              /* The division the club is currently entered in. Membership is
-                 per-season, so the most recent row is the current one. The
-                 admin app reads this to preselect the division dropdown. */
+              /* The division the club is entered in for the current season.
+                 Membership is per-season; older season rows are not current. */
               (SELECT dc.division_id FROM division_clubs dc
+                JOIN divisions d ON d.id = dc.division_id
+                JOIN seasons s ON s.id = d.season_id AND s.is_current = TRUE
                 WHERE dc.club_id = c.id ORDER BY dc.id DESC LIMIT 1) AS division_id
          FROM clubs c ${where}
         ORDER BY c.name`,
@@ -141,7 +142,7 @@ league.get(
          JOIN clubs home ON home.id = m.home_club_id
          JOIN clubs away ON away.id = m.away_club_id
         WHERE (? IS NULL OR m.status = ?)
-        ORDER BY m.kickoff DESC, m.id DESC
+        ORDER BY (m.kickoff IS NULL) DESC, m.kickoff DESC, m.id DESC
         LIMIT ? OFFSET ?`,
       [status, status, limit, offset],
     )
