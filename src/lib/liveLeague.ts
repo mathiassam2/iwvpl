@@ -44,6 +44,7 @@ interface ApiStanding {
   logo_local: string | null
   flag: string | null
   division_name: string
+  sort_order: number
   promotion_count: number | null
   relegation_count: number | null
 }
@@ -51,6 +52,16 @@ interface ApiStanding {
 const apiBase = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '')
 
 export const liveLeagueEnabled = Boolean(apiBase) || import.meta.env.BASE_URL === '/'
+
+export function orderedStandingDivisions(
+  divisions: Record<string, StandingDivision>,
+): Array<[string, StandingDivision]> {
+  return Object.entries(divisions).sort(
+    ([, a], [, b]) =>
+      (a.sortOrder ?? Number.MAX_SAFE_INTEGER) -
+      (b.sortOrder ?? Number.MAX_SAFE_INTEGER),
+  )
+}
 
 async function get<T>(path: string, signal: AbortSignal): Promise<T> {
   const response = await fetch(`${apiBase}${path}`, { cache: 'no-store', signal })
@@ -109,6 +120,7 @@ export async function getLiveStandings(
     get<{
       divisions: Array<{
         name: string
+        sort_order: number
         promotion_count: number | null
         relegation_count: number | null
       }>
@@ -129,6 +141,7 @@ export async function getLiveStandings(
       {
         columns: [],
         rows: [],
+        sortOrder: division.sort_order,
         promotionCount: division.promotion_count,
         relegationCount: division.relegation_count,
         promotionRange: null,
@@ -141,6 +154,7 @@ export async function getLiveStandings(
     const division = divisions[row.division_name] ?? (divisions[row.division_name] = {
       columns: [],
       rows: [],
+      sortOrder: row.sort_order,
       promotionCount: row.promotion_count,
       relegationCount: row.relegation_count,
       promotionRange: null,

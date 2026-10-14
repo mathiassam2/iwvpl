@@ -16,7 +16,12 @@ import { SITE, siteData } from '@/data'
 import { matchIndexOf } from '@/lib/match'
 import { asset } from '@/lib/assets'
 import { CLUB_PLACEHOLDER, cx, stripFlag, totalGoals } from '@/lib/format'
-import { getLiveResults, getLiveStandings, liveLeagueEnabled } from '@/lib/liveLeague'
+import {
+  getLiveResults,
+  getLiveStandings,
+  liveLeagueEnabled,
+  orderedStandingDivisions,
+} from '@/lib/liveLeague'
 import type { Standing, StandingDivision } from '@/types/site'
 
 
@@ -161,7 +166,29 @@ function TypedHeadline({ chars, caret }: { chars: number; caret: boolean }) {
 }
 
 export function Hero() {
-  const top = siteData.standings[0]
+  const [liveStandings, setLiveStandings] = useState<Record<string, StandingDivision> | null>(null)
+  const [leadersError, setLeadersError] = useState('')
+
+  useEffect(() => {
+    if (!liveLeagueEnabled) return
+    const controller = new AbortController()
+    getLiveStandings(controller.signal)
+      .then(setLiveStandings)
+      .catch((cause: unknown) => {
+        if (!controller.signal.aborted) {
+          setLeadersError(cause instanceof Error ? cause.message : 'Could not load live standings.')
+        }
+      })
+    return () => controller.abort()
+  }, [])
+
+  const staticFeatured = orderedStandingDivisions(siteData.standingsByDivision)[0]
+  const featured = orderedStandingDivisions(liveStandings ?? siteData.standingsByDivision)[0]
+  const featuredLeague = featured?.[0] ?? staticFeatured?.[0] ?? ''
+  const leaderRows = liveStandings
+    ? featured?.[1].rows ?? []
+    : staticFeatured?.[1].rows ?? siteData.standings
+  const top = leaderRows[0]
 
   const [index, setIndex] = useState(0)
   const regionRef = useRef<HTMLElement>(null)
@@ -436,12 +463,12 @@ export function Hero() {
           <div {...leadersA}>
             <Card className="overflow-hidden p-0">
               <div className="flex items-center justify-between gap-4 border-b border-[var(--border)] bg-gradient-to-r from-[var(--accent-tint)] to-transparent px-5 py-4">
-                <div>
+                <div className="min-w-0">
                   <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--accent-text)]">
                     Current leaders
                   </p>
-                  <p className="mt-1 font-display text-base font-bold text-[var(--text-strong)]">
-                    Top of the table
+                  <p className="mt-1 truncate font-display text-base font-bold text-[var(--text-strong)]">
+                    {featuredLeague || 'Top of the table'}
                   </p>
                 </div>
                 <Link
@@ -486,11 +513,21 @@ export function Hero() {
                 </Link>
               )}
 
+              {leadersError && (
+                <p
+                  role="status"
+                  title={leadersError}
+                  className="border-t border-[var(--border)] px-5 py-2 text-xs text-[var(--text-faint)]"
+                >
+                  Live league leaders are unavailable; showing cached standings.
+                </p>
+              )}
+
               {/* No `row-hover` on these five: they sit directly under the hero artwork, and
                     the wash flickered as the pointer crossed the rows against the
                     moving background. They stay links - only the fill is gone. */}
               <div className="divide-y divide-[var(--border)] border-t border-[var(--border)]">
-                {siteData.standings.slice(1, 6).map((r) => (
+                {leaderRows.slice(1, 6).map((r) => (
                   <Link
                     key={r.team}
                     to="/standings"
@@ -703,6 +740,7 @@ const HOME_TABLE_ROWS = 10
 export function StandingsPreview() {
   const [liveRows, setLiveRows] = useState<Standing[] | null>(null)
   const [liveDivision, setLiveDivision] = useState<StandingDivision | null>(null)
+  const [liveDivisionName, setLiveDivisionName] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [reload, setReload] = useState(0)
 
@@ -713,7 +751,8 @@ export function StandingsPreview() {
 
     getLiveStandings(controller.signal)
       .then((divisions) => {
-        const division = divisions['Premier League'] ?? null
+        const [name, division] = orderedStandingDivisions(divisions)[0] ?? []
+        setLiveDivisionName(name ?? null)
         setLiveDivision(division)
         setLiveRows(division?.rows ?? [])
       })
@@ -730,6 +769,10 @@ export function StandingsPreview() {
   const rows = liveLeagueEnabled ? liveRows ?? [] : siteData.standings
   const shown = rows.slice(0, HOME_TABLE_ROWS)
   const hidden = rows.length - shown.length
+  const featuredName =
+    liveDivisionName ??
+    orderedStandingDivisions(siteData.standingsByDivision)[0]?.[0] ??
+    'IWVPL Pro Club League'
 
   return (
     <Section id="standings">
@@ -749,7 +792,7 @@ export function StandingsPreview() {
         )}
         <SectionHead
           eyebrow="League table"
-          title="IWVPL Pro Club League standings"
+          title={`${featuredName} standings`}
           lede={`${SITE.season} — the top ${shown.length} of ${rows.length} clubs, updated after each match.`}
           action={
             <ButtonLink to="/standings" variant="outline">

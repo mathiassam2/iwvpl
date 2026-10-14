@@ -234,6 +234,8 @@ Each club can belong to only one division in the current season. Reassigning a
 club replaces its current membership; its old standings snapshot is retained
 internally so results from existing fixtures can still be corrected, while
 public standings show the club only in its latest assigned division.
+Division order is managed per season in the admin. The first division is the
+highest tier and is returned first by the public divisions and standings APIs.
 
 ## Testing
 

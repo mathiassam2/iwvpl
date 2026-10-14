@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { StandingsTable, StatTile, type StandingSortKey } from '@/components/league'
 import { Container, Section, Tabs } from '@/components/ui'
 import { SITE, siteData } from '@/data'
-import { getLiveStandings, liveLeagueEnabled } from '@/lib/liveLeague'
+import { getLiveStandings, liveLeagueEnabled, orderedStandingDivisions } from '@/lib/liveLeague'
 import type { StandingDivision } from '@/types/site'
 
 export default function StandingsPage() {
@@ -11,8 +11,9 @@ export default function StandingsPage() {
   const [loading, setLoading] = useState(liveLeagueEnabled)
   const [error, setError] = useState('')
   const [reload, setReload] = useState(0)
-  const initialDivisions = Object.keys(siteData.standingsByDivision)
+  const initialDivisions = orderedStandingDivisions(siteData.standingsByDivision).map(([name]) => name)
   const [div, setDiv] = useState(initialDivisions[0] ?? '')
+  const hasChosenDivision = useRef(false)
   const [sort, setSort] = useState<{ key: StandingSortKey; desc: boolean }>({
     key: 'pos',
     desc: false,
@@ -27,8 +28,10 @@ export default function StandingsPage() {
     getLiveStandings(controller.signal)
       .then((standings) => {
         setLiveStandings(standings)
-        const divisions = Object.keys(standings)
-        setDiv((current) => divisions.includes(current) ? current : divisions[0] ?? '')
+        const divisions = orderedStandingDivisions(standings).map(([name]) => name)
+        setDiv((current) =>
+          hasChosenDivision.current && divisions.includes(current) ? current : divisions[0] ?? '',
+        )
       })
       .catch((cause: unknown) => {
         if (!controller.signal.aborted) {
@@ -42,7 +45,9 @@ export default function StandingsPage() {
     return () => controller.abort()
   }, [reload])
 
-  const divisions = liveStandings ? Object.keys(liveStandings) : initialDivisions
+  const divisions = liveStandings
+    ? orderedStandingDivisions(liveStandings).map(([name]) => name)
+    : initialDivisions
   const division = liveStandings
     ? liveStandings[div]
     : siteData.standingsByDivision[div]
@@ -105,7 +110,10 @@ export default function StandingsPage() {
                   count: liveStandings?.[d]?.rows.length ?? siteData.standingsByDivision[d]?.rows.length,
                 }))}
                 active={div}
-                onChange={setDiv}
+                onChange={(value) => {
+                  hasChosenDivision.current = true
+                  setDiv(value)
+                }}
                 idPrefix="div"
               />
             </div>

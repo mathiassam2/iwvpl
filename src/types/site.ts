@@ -57,6 +57,7 @@ export interface Standing {
 export interface StandingDivision {
   columns: string[]
   rows: Standing[]
+  sortOrder?: number
   promotionCount?: number | null
   relegationCount?: number | null
   promotionRange?: { from: number; to: number } | null

@@ -77,7 +77,7 @@ league.get(
     if (!season) return res.status(404).json({ error: 'No current season' })
 
     const divisions = await queryAll(
-      'SELECT id, name, slug FROM divisions WHERE season_id = ? ORDER BY id',
+      'SELECT id, name, slug, sort_order FROM divisions WHERE season_id = ? ORDER BY sort_order, id',
       [season.id],
     )
     res.json({ ...season, divisions })
@@ -283,7 +283,7 @@ league.get(
               s.goals_for, s.goals_against, s.goal_difference, s.points, s.form,
               c.id AS club_id, c.name, c.slug, c.short_code, c.logo_local, c.flag,
               d.name AS division_name, d.slug AS division_slug,
-              d.promotion_count, d.relegation_count
+              d.promotion_count, d.relegation_count, d.sort_order
          FROM standings_snapshot s
          JOIN clubs c ON c.id = s.club_id
          JOIN divisions d ON d.id = s.division_id
@@ -300,7 +300,7 @@ league.get(
                AND newer_division.season_id = d.season_id
                AND newer_membership.id > current_membership.id
           )
-        ORDER BY d.id, s.position`,
+        ORDER BY d.sort_order, d.id, s.position`,
       [
         typeof req.query.division === 'string' ? req.query.division : null,
         typeof req.query.division === 'string' ? req.query.division : null,
@@ -365,11 +365,11 @@ league.get(
   handler(async (_req, res) => {
     const rows = await queryAll(
       `SELECT d.id, d.name, d.slug, s.id AS season_id, s.name AS season,
-              d.promotion_count, d.relegation_count
+              d.sort_order, d.promotion_count, d.relegation_count
          FROM divisions d
          JOIN seasons s ON s.id = d.season_id
         WHERE s.is_current = TRUE
-        ORDER BY d.name`,
+        ORDER BY d.sort_order, d.id`,
     )
     res.json({ divisions: rows })
   }),

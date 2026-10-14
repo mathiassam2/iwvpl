@@ -602,14 +602,20 @@ admin.post(
         if ((existing as unknown[]).length === 0) break
         slug = `${baseSlug}-${season.year}-${suffix++}`
       }
+      const [orderRows] = await conn.query(
+        'SELECT COALESCE(MAX(sort_order), -1) + 1 AS sort_order FROM divisions WHERE season_id = ?',
+        [season.id],
+      )
+      const sortOrder = Number((orderRows as Array<{ sort_order: number }>)[0]?.sort_order ?? 0)
       const [inserted] = await conn.execute(
         `INSERT INTO divisions
-           (season_id, name, slug, promotion_count, relegation_count, created_at)
-         VALUES (?, ?, ?, ?, ?, NOW())`,
+           (season_id, name, slug, sort_order, promotion_count, relegation_count, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, NOW())`,
         [
           season.id,
           name,
           slug,
+          sortOrder,
           movement.promotion_count,
           movement.relegation_count,
         ],
@@ -620,12 +626,61 @@ admin.post(
         name,
         slug,
         season_id: season.id,
+        sort_order: sortOrder,
         season: season.name,
         ...movement,
       }
     })
     if (!division) return res.status(404).json({ error: 'There is no current season.' })
     res.status(201).json({ division })
+  }),
+)
+
+admin.put(
+  '/divisions/order',
+  handler(async (req, res) => {
+    const divisionIds: unknown = req.body?.divisionIds
+    if (
+      !Array.isArray(divisionIds) ||
+      divisionIds.some((id) => !Number.isSafeInteger(id) || id < 1) ||
+      new Set(divisionIds).size !== divisionIds.length
+    ) {
+      return res.status(400).json({ error: 'divisionIds must be unique positive integer IDs.' })
+    }
+
+    const reordered = await withTransaction(async (conn) => {
+      const [seasonRows] = await conn.query(
+        'SELECT id FROM seasons WHERE is_current = TRUE LIMIT 1 FOR UPDATE',
+      )
+      const season = (seasonRows as Array<{ id: number }>)[0]
+      if (!season) return null
+
+      const [divisionRows] = await conn.query(
+        'SELECT id FROM divisions WHERE season_id = ? ORDER BY sort_order, id FOR UPDATE',
+        [season.id],
+      )
+      const currentIds = (divisionRows as Array<{ id: number }>).map((division) => division.id)
+      if (
+        divisionIds.length !== currentIds.length ||
+        !currentIds.every((id) => divisionIds.includes(id))
+      ) {
+        return false
+      }
+
+      for (const [sortOrder, id] of divisionIds.entries()) {
+        await conn.execute(
+          'UPDATE divisions SET sort_order = ? WHERE id = ? AND season_id = ?',
+          [sortOrder, id, season.id],
+        )
+      }
+      return true
+    })
+
+    if (reordered === null) return res.status(404).json({ error: 'There is no current season.' })
+    if (!reordered) {
+      return res.status(400).json({ error: 'divisionIds must include every current-season division.' })
+    }
+    res.json({ ok: true })
   }),
 )
 
@@ -640,7 +695,7 @@ admin.put(
     const movement = parseDivisionMovement(req.body)
     const division = await withTransaction(async (conn) => {
       const [divisionRows] = await conn.query(
-          `SELECT d.id, d.name, d.slug, d.season_id, s.name AS season, s.year
+          `SELECT d.id, d.name, d.slug, d.season_id, d.sort_order, s.name AS season, s.year
            FROM divisions d
            JOIN seasons s ON s.id = d.season_id AND s.is_current = TRUE
           WHERE d.id = ? FOR UPDATE`,
@@ -651,6 +706,7 @@ admin.put(
           name: string
           slug: string
           season_id: number
+          sort_order: number
           season: string
           year: number
       }>)[0]
@@ -697,6 +753,7 @@ admin.put(
         name,
         slug,
         season_id: current.season_id,
+        sort_order: current.sort_order,
         season: current.season,
         ...movement,
       }

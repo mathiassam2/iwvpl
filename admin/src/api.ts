@@ -176,6 +176,7 @@ export interface Division {
   name: string
   slug: string
   season: string
+  sort_order: number
   promotion_count: number | null
   relegation_count: number | null
 }
@@ -183,7 +184,7 @@ export interface Division {
 export const getDivisions = () =>
   request<{ divisions: Division[] }>('/api/divisions').then((r) => r.divisions)
 
-export type DivisionInput = Omit<Division, 'id' | 'slug' | 'season'>
+export type DivisionInput = Omit<Division, 'id' | 'slug' | 'season' | 'sort_order'>
 
 export const createDivision = (division: DivisionInput) =>
   request<{ division: Division }>('/api/admin/divisions', {
@@ -196,6 +197,12 @@ export const updateDivision = (id: number, division: DivisionInput) =>
     method: 'PUT',
     body: JSON.stringify(division),
   }).then((r) => r.division)
+
+export const updateDivisionOrder = (divisionIds: number[]) =>
+  request<{ ok: true }>('/api/admin/divisions/order', {
+    method: 'PUT',
+    body: JSON.stringify({ divisionIds }),
+  })
 
 /**
  * Put a club into a division.

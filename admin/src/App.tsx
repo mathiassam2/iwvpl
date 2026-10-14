@@ -17,6 +17,7 @@ import {
   setResult,
   updateClub,
   updateDivision,
+  updateDivisionOrder,
   withdrawResult,
   type Club,
   type Division,
@@ -1126,6 +1127,7 @@ function Divisions({
   const [promotionCount, setPromotionCount] = useState('0')
   const [relegationCount, setRelegationCount] = useState('0')
   const [busy, setBusy] = useState(false)
+  const [reordering, setReordering] = useState(false)
 
   const load = useCallback(async () => {
     const data = await guard(getDivisions, 'Could not load divisions')
@@ -1165,9 +1167,9 @@ function Divisions({
       setDivisions((current) => {
         const rows = current ?? []
         return editId === 'new'
-          ? [...rows, division].sort((a, b) => a.name.localeCompare(b.name))
+          ? [...rows, division].sort((a, b) => a.sort_order - b.sort_order || a.id - b.id)
           : rows.map((item) => item.id === division.id ? division : item)
-            .sort((a, b) => a.name.localeCompare(b.name))
+            .sort((a, b) => a.sort_order - b.sort_order || a.id - b.id)
       })
       onDivisionSaved(division)
       report('ok', `${division.name} saved.`)
@@ -1176,6 +1178,29 @@ function Divisions({
       /* already reported */
     } finally {
       setBusy(false)
+    }
+  }
+
+  const moveDivision = async (index: number, direction: -1 | 1) => {
+    const nextIndex = index + direction
+    if (nextIndex < 0 || nextIndex >= divisions.length || reordering || editing !== null) return
+
+    const reordered = [...divisions]
+    const [movedDivision] = reordered.splice(index, 1)
+    reordered.splice(nextIndex, 0, movedDivision)
+    setReordering(true)
+    try {
+      await guard(
+        () => updateDivisionOrder(reordered.map((division) => division.id)),
+        'Could not change league order',
+      )
+      const savedOrder = reordered.map((division, sort_order) => ({ ...division, sort_order }))
+      setDivisions(savedOrder)
+      report('ok', 'League order saved.')
+    } catch {
+      /* already reported */
+    } finally {
+      setReordering(false)
     }
   }
 
@@ -1244,9 +1269,15 @@ function Divisions({
         <header>
           <div>
             <h2>Divisions</h2>
-            <p className="hint">{divisions[0]?.season ?? 'Current season'} · choose how many clubs move</p>
+            <p className="hint">
+              {divisions[0]?.season ?? 'Current season'} · highest league first on standings and home
+            </p>
           </div>
-          <button className="btn primary sm" onClick={() => edit(null)} disabled={editing !== null}>
+          <button
+            className="btn primary sm"
+            onClick={() => edit(null)}
+            disabled={editing !== null || reordering}
+          >
             <span aria-hidden="true">＋</span> Add division
           </button>
         </header>
@@ -1255,18 +1286,47 @@ function Divisions({
           <p className="empty">There are no divisions in the current season yet. Add the first one to get started.</p>
         ) : (
           <div className="division-admin-list">
-            {divisions.map((division) => (
+            {divisions.map((division, index) => (
               <article className="division-admin-item" key={division.id}>
                 {editing === division.id ? form : (
                   <>
                     <div className="division-admin-heading">
-                      <div>
-                        <h3>{division.name}</h3>
-                        <span className="hint">{division.season}</span>
+                      <div className="division-admin-title">
+                        <span className="division-admin-rank" aria-label={`League priority ${index + 1}`}>
+                          {index + 1}
+                        </span>
+                        <div>
+                          <h3>{division.name}</h3>
+                          <span className="hint">{division.season}</span>
+                        </div>
                       </div>
-                      <button className="btn sm" onClick={() => edit(division)} disabled={editing !== null}>
-                        Edit division
-                      </button>
+                      <div className="division-admin-actions">
+                        <div className="division-reorder-controls" aria-label={`Reorder ${division.name}`}>
+                          <button
+                            className="icon-btn"
+                            type="button"
+                            aria-label={`Move ${division.name} higher`}
+                            title="Move higher"
+                            disabled={index === 0 || editing !== null || reordering}
+                            onClick={() => void moveDivision(index, -1)}
+                          >
+                            ↑
+                          </button>
+                          <button
+                            className="icon-btn"
+                            type="button"
+                            aria-label={`Move ${division.name} lower`}
+                            title="Move lower"
+                            disabled={index === divisions.length - 1 || editing !== null || reordering}
+                            onClick={() => void moveDivision(index, 1)}
+                          >
+                            ↓
+                          </button>
+                        </div>
+                        <button className="btn sm" onClick={() => edit(division)} disabled={editing !== null || reordering}>
+                          Edit division
+                        </button>
+                      </div>
                     </div>
                     <div className="division-range-summary">
                       <p><span>Promotion</span><strong>
@@ -1564,8 +1624,10 @@ function Clubs({
               current.some((division) => division.id === savedDivision.id)
                 ? current.map((division) =>
                     division.id === savedDivision.id ? savedDivision : division,
-                  )
-                : [...current, savedDivision].sort((a, b) => a.name.localeCompare(b.name)),
+                  ).sort((a, b) => a.sort_order - b.sort_order || a.id - b.id)
+                : [...current, savedDivision].sort(
+                    (a, b) => a.sort_order - b.sort_order || a.id - b.id,
+                  ),
             )
           }}
         />

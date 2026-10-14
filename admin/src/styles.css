@@ -414,6 +414,16 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .division-admin-item { padding: 16px; border-bottom: 1px solid var(--border); }
 .division-admin-item:last-child { border-bottom: 0; }
 .division-admin-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.division-admin-title { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.division-admin-title > div { min-width: 0; overflow-wrap: anywhere; }
+.division-admin-rank {
+  display: grid; place-items: center; flex: none; width: 30px; height: 30px;
+  border: 1px solid var(--border); border-radius: 9px; color: var(--accent);
+  background: var(--bg); font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums;
+}
+.division-admin-actions, .division-reorder-controls { display: flex; align-items: center; gap: 5px; }
+.division-reorder-controls { padding-right: 8px; border-right: 1px solid var(--border); }
+.division-reorder-controls .icon-btn { border-color: var(--border); }
 .division-admin-heading h3 { margin: 0; color: var(--text); font-size: 14px; }
 .division-admin-heading .hint { display: block; margin-top: 3px; }
 .division-range-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
@@ -535,6 +545,10 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .club-league-group .club-league-heading h2 { overflow-wrap: anywhere; }
   .club-league-empty { padding: 16px 12px; }
   .division-admin-item { padding: 13px; }
+  .division-admin-heading { flex-wrap: wrap; align-items: flex-start; }
+  .division-admin-actions { gap: 4px; margin-left: auto; }
+  .division-reorder-controls { gap: 2px; padding-right: 5px; }
+  .division-reorder-controls .icon-btn { width: 29px; height: 29px; }
   .division-range-summary { grid-template-columns: 1fr; gap: 7px; margin-top: 11px; }
   .division-editor { padding: 13px; }
   .division-admin-item .division-editor { margin: 13px -13px -13px; }
