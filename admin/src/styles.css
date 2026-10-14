@@ -203,9 +203,12 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .club { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .club img { width: 22px; height: 22px; border-radius: 4px; object-fit: contain; flex: none; }
 .club .name { overflow: hidden; color: var(--text); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.club-management-table { min-width: 980px; }
-.club-management-table .club-row td { height: 58px; padding-block: 8px; }
-.club-management-table .club-row.is-editing { background: var(--accent-soft); }
+.club-management-table { min-width: 820px; }
+.club-management-table .club-row { cursor: pointer; transition: background .15s ease; }
+.club-management-table .club-row td { height: 60px; padding-block: 8px; }
+.club-management-table .club-row:hover,
+.club-management-table .club-row:focus-visible { background: var(--surface-hover); }
+.club-management-table .club-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .table-select {
   min-height: 36px; max-width: 100%; padding: 6px 23px 6px 8px; border: 1px solid transparent;
   border-radius: 7px; appearance: none; color: var(--text); background-color: transparent;
@@ -248,6 +251,43 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   width: min(100%, 460px); max-height: min(80vh, 680px); overflow: auto;
   border: 1px solid var(--border-strong); border-radius: 14px; background: var(--surface);
   box-shadow: 0 24px 80px rgb(0 0 0 / 45%);
+}
+.club-edit-modal { width: min(100%, 540px); overflow-x: hidden; }
+.club-edit-heading { display: flex; align-items: center; gap: 13px; min-width: 0; }
+.club-edit-heading > img {
+  width: 46px; height: 46px; flex: none; padding: 5px; border: 1px solid var(--border);
+  border-radius: 12px; object-fit: contain; background: var(--bg);
+}
+.club-edit-heading > div { min-width: 0; }
+.club-edit-modal h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.club-edit-subtitle { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
+.club-edit-content { display: grid; gap: 23px; padding: 22px 20px; }
+.club-edit-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+.club-edit-fields label { display: grid; gap: 7px; color: var(--muted); font-size: 11px; font-weight: 700; }
+.club-edit-fields label:first-child { grid-column: 1 / -1; }
+.club-edit-fields .text { width: 100%; min-height: 42px; }
+.club-edit-fields select.text { cursor: pointer; }
+.club-edit-roster {
+  display: grid; gap: 13px; padding: 16px; border: 1px solid var(--border);
+  border-radius: 10px; background: var(--bg);
+}
+.club-edit-roster h3 { margin: 0; color: var(--text); font-size: 13px; }
+.club-edit-roster p { margin: 3px 0 0; color: var(--faint); font-size: 11px; }
+.club-edit-add { display: flex; gap: 8px; }
+.club-edit-add .text { width: 100%; min-width: 0; }
+.club-edit-footer {
+  display: flex; justify-content: flex-end; gap: 8px; padding: 14px 20px;
+  border-top: 1px solid var(--border); background: var(--surface);
+}
+@media (max-width: 480px) {
+  .squad-modal-backdrop { padding: 12px; }
+  .club-edit-content { padding: 18px 15px; }
+  .club-edit-fields { grid-template-columns: 1fr; }
+  .club-edit-fields label:first-child { grid-column: auto; }
+  .club-edit-add { flex-wrap: wrap; }
+  .club-edit-add .btn { width: 100%; }
+  .club-edit-footer { padding-right: 15px; padding-left: 15px; }
+  .club-edit-footer .btn { flex: 1; }
 }
 .squad-modal > header {
   position: sticky; top: 0; display: flex; align-items: center; justify-content: space-between;
