@@ -22,8 +22,10 @@ import { Badge, Button, ButtonLink, Card, Container, Section, SectionHead } from
 import { SITE, siteData } from '@/data'
 import { useAuth } from '@/lib/auth'
 import { useCart } from '@/lib/cart'
+import { useSeasonName } from '@/lib/season'
 
 export default function EntriesPage() {
+  const seasonName = useSeasonName()
   const { add, has, openPanel } = useCart()
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -34,7 +36,7 @@ export default function EntriesPage() {
   return (
     <div className="page-enter">
       <PageHeader
-        eyebrow={`${SITE.season} entries`}
+        eyebrow={`${seasonName} entries`}
         title="Choose your entry pass"
         lede={`${SITE.teamsRegistered} of ${SITE.teamCap} team slots filled at ${SITE.registrationFee} per team. Your purchase does not finalise registration — allow 24 to 48 hours for the admin team to process it.`}
       />

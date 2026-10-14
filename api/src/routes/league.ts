@@ -69,10 +69,22 @@ league.get(
 /* ------------------------------------------------------------------ season */
 
 league.get(
+  '/seasons',
+  handler(async (_req, res) => {
+    const seasons = await queryAll(
+      `SELECT id, name, year, is_current
+         FROM seasons
+        ORDER BY is_current DESC, year DESC, id DESC`,
+    )
+    res.json({ seasons })
+  }),
+)
+
+league.get(
   '/seasons/current',
   handler(async (_req, res) => {
-    const season = await queryOne<{ id: number; name: string; year: number }>(
-      'SELECT id, name, year FROM seasons WHERE is_current = TRUE LIMIT 1',
+    const season = await queryOne<{ id: number; name: string; year: number; is_current: number }>(
+      'SELECT id, name, year, is_current FROM seasons WHERE is_current = TRUE LIMIT 1',
     )
     if (!season) return res.status(404).json({ error: 'No current season' })
 
@@ -277,6 +289,24 @@ league.get(
 league.get(
   '/standings',
   handler(async (req, res) => {
+    const requestedSeasonId = req.query.seasonId
+    let season: { id: number; name: string; year: number; is_current: number } | null | undefined
+    if (requestedSeasonId === undefined) {
+      season = await queryOne(
+        'SELECT id, name, year, is_current FROM seasons WHERE is_current = TRUE LIMIT 1',
+      )
+    } else {
+      const seasonId = Number(requestedSeasonId)
+      if (!Number.isSafeInteger(seasonId) || seasonId < 1) {
+        return res.status(400).json({ error: 'seasonId must be a positive integer.' })
+      }
+      season = await queryOne(
+        'SELECT id, name, year, is_current FROM seasons WHERE id = ?',
+        [seasonId],
+      )
+    }
+    if (!season) return res.status(404).json({ error: 'Season not found.' })
+
     const rows = await queryAll(
       `SELECT ROW_NUMBER() OVER (PARTITION BY d.id ORDER BY s.position) AS position,
               s.played, s.won, s.drawn, s.lost,
@@ -287,11 +317,12 @@ league.get(
          FROM standings_snapshot s
          JOIN clubs c ON c.id = s.club_id
          JOIN divisions d ON d.id = s.division_id
-         JOIN seasons current_season ON current_season.id = d.season_id AND current_season.is_current = TRUE
+         JOIN seasons selected_season ON selected_season.id = d.season_id
          JOIN division_clubs current_membership
            ON current_membership.club_id = s.club_id
           AND current_membership.division_id = s.division_id
-        WHERE (? IS NULL OR d.slug = ?)
+        WHERE d.season_id = ?
+          AND (? IS NULL OR d.slug = ?)
           AND NOT EXISTS (
             SELECT 1
               FROM division_clubs newer_membership
@@ -302,11 +333,12 @@ league.get(
           )
         ORDER BY d.sort_order, d.id, s.position`,
       [
+        season.id,
         typeof req.query.division === 'string' ? req.query.division : null,
         typeof req.query.division === 'string' ? req.query.division : null,
       ],
     )
-    res.json({ standings: rows })
+    res.json({ season, standings: rows })
   }),
 )
 
@@ -363,13 +395,30 @@ league.get(
 league.get(
   '/divisions',
   handler(async (_req, res) => {
+    const requestedSeasonId = _req.query.seasonId
+    let seasonId: number
+    if (requestedSeasonId === undefined) {
+      const season = await queryOne<{ id: number }>(
+        'SELECT id FROM seasons WHERE is_current = TRUE LIMIT 1',
+      )
+      if (!season) return res.json({ divisions: [] })
+      seasonId = season.id
+    } else {
+      seasonId = Number(requestedSeasonId)
+      if (!Number.isSafeInteger(seasonId) || seasonId < 1) {
+        return res.status(400).json({ error: 'seasonId must be a positive integer.' })
+      }
+      const season = await queryOne<{ id: number }>('SELECT id FROM seasons WHERE id = ?', [seasonId])
+      if (!season) return res.status(404).json({ error: 'Season not found.' })
+    }
     const rows = await queryAll(
       `SELECT d.id, d.name, d.slug, s.id AS season_id, s.name AS season,
               d.sort_order, d.promotion_count, d.relegation_count
          FROM divisions d
          JOIN seasons s ON s.id = d.season_id
-        WHERE s.is_current = TRUE
+        WHERE s.id = ?
         ORDER BY d.sort_order, d.id`,
+      [seasonId],
     )
     res.json({ divisions: rows })
   }),

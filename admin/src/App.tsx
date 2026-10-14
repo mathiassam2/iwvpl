@@ -4,9 +4,12 @@ import {
   addPlayer,
   assignDivision,
   decideClub,
+  deleteMatch,
   createDivision,
+  createSeason,
   createMatch,
   getClubs,
+  getAdminSeasons,
   getDivisions,
   getMatches,
   getMatchPriorities,
@@ -15,11 +18,14 @@ import {
   removePlayer,
   scheduleMatch,
   setResult,
+  setCurrentSeason,
   updateClub,
   updateDivision,
   updateDivisionOrder,
+  updateSeason,
   withdrawResult,
   type Club,
+  type AdminSeason,
   type Division,
   type Match,
   type PendingClub,
@@ -490,6 +496,23 @@ function Results({
     }
   }
 
+  const removeFixture = async (m: Match, played: boolean) => {
+    const impact = played ? ' Its result will be removed from the standings.' : ''
+    if (!window.confirm(`Permanently delete ${m.home_name} vs ${m.away_name}?${impact} This cannot be undone.`)) {
+      return
+    }
+    setBusy(m.id)
+    try {
+      await guard(() => deleteMatch(m.id), `Could not delete ${m.home_name} vs ${m.away_name}`)
+      report('ok', `Fixture deleted: ${m.home_name} vs ${m.away_name}.`)
+      await load()
+    } catch {
+      /* already reported by guard */
+    } finally {
+      setBusy(null)
+    }
+  }
+
   const saveSchedule = async (match: Match) => {
     const value = scheduleDrafts[match.id] ?? ''
     setScheduleBusy(true)
@@ -777,6 +800,9 @@ function Results({
                     {played && <span className="saved-score">Current: {m.home_score} – {m.away_score}</span>}
                     <div>
                       {played && <button className="btn danger" disabled={busy === m.id} onClick={() => withdraw(m)}>Withdraw</button>}
+                      <button className="btn danger" disabled={busy === m.id} onClick={() => removeFixture(m, played)}>
+                        Delete fixture
+                      </button>
                       <button className="btn primary save-btn" disabled={busy === m.id} onClick={() => save(m)}>
                         {busy === m.id ? 'Saving…' : played ? 'Update result' : 'Save result'}
                       </button>
@@ -816,8 +842,9 @@ function Results({
 
       <p className="footnote">
         Saving a result reverses any previous contribution to both clubs before applying the new
-        one, so repeated corrections do not drift. <strong>Withdraw</strong> removes the match
-        from the standings table while keeping the fixture available.
+        one, so repeated corrections do not drift. <strong>Withdraw</strong> removes a result from
+        the standings while keeping the fixture; <strong>Delete fixture</strong> permanently
+        removes the match.
       </p>
       {scheduleTarget !== null && (
         <div
@@ -1116,29 +1143,125 @@ function Divisions({
   guard,
   report,
   onDivisionSaved,
+  onCurrentSeasonChanged,
+  onSeasonChanged,
 }: {
   guard: <T>(fn: () => Promise<T>, what: string) => Promise<T>
   report: (kind: Notice['kind'], text: string) => void
   onDivisionSaved: (division: Division) => void
+  onCurrentSeasonChanged: (divisions: Division[]) => void
+  onSeasonChanged: () => void
 }) {
   const [divisions, setDivisions] = useState<Division[] | null>(null)
+  const [seasons, setSeasons] = useState<AdminSeason[] | null>(null)
   const [editing, setEditing] = useState<number | 'new' | null>(null)
+  const [editingSeasonId, setEditingSeasonId] = useState<number | null>(null)
+  const [seasonName, setSeasonName] = useState('')
+  const [showNewSeason, setShowNewSeason] = useState(false)
+  const [newSeasonName, setNewSeasonName] = useState('')
+  const [newSeasonYear, setNewSeasonYear] = useState(String(new Date().getFullYear()))
   const [name, setName] = useState('')
   const [promotionCount, setPromotionCount] = useState('0')
   const [relegationCount, setRelegationCount] = useState('0')
   const [busy, setBusy] = useState(false)
   const [reordering, setReordering] = useState(false)
+  const [seasonBusy, setSeasonBusy] = useState(false)
 
   const load = useCallback(async () => {
-    const data = await guard(getDivisions, 'Could not load divisions')
-    setDivisions(data)
+    const [divisionData, seasonData] = await Promise.all([
+      guard(getDivisions, 'Could not load divisions'),
+      guard(getAdminSeasons, 'Could not load seasons'),
+    ])
+    setDivisions(divisionData)
+    setSeasons(seasonData)
   }, [guard])
 
   useEffect(() => {
     load().catch(() => setDivisions([]))
   }, [load])
 
-  if (divisions === null) return <div className="loading">Loading divisions…</div>
+  if (divisions === null || seasons === null) return <div className="loading">Loading divisions…</div>
+
+  const currentSeason = seasons.find((season) => Boolean(season.is_current))
+
+  const saveSeasonName = async (event: FormEvent<HTMLFormElement>, season: AdminSeason) => {
+    event.preventDefault()
+    setSeasonBusy(true)
+    try {
+      const updated = await guard(
+        () => updateSeason(season.id, seasonName.trim()),
+        'Could not update season name',
+      )
+      setSeasons((current) =>
+        (current ?? []).map((item) => item.id === updated.id ? updated : item),
+      )
+      if (Boolean(updated.is_current)) {
+        const updatedDivisions = divisions.map((division) => ({ ...division, season: updated.name }))
+        setDivisions(updatedDivisions)
+        onCurrentSeasonChanged(updatedDivisions)
+        onSeasonChanged()
+      }
+      setEditingSeasonId(null)
+      report('ok', `${updated.name} saved.`)
+    } catch {
+      /* already reported */
+    } finally {
+      setSeasonBusy(false)
+    }
+  }
+
+  const activateSeason = async (season: AdminSeason) => {
+    setSeasonBusy(true)
+    try {
+      const activated = await guard(
+        () => setCurrentSeason(season.id),
+        'Could not activate season',
+      )
+      const currentDivisions = await guard(getDivisions, 'Could not load the selected season divisions')
+      setSeasons((current) =>
+        (current ?? []).map((item) => ({ ...item, is_current: item.id === activated.id })),
+      )
+      setDivisions(currentDivisions)
+      onCurrentSeasonChanged(currentDivisions)
+      onSeasonChanged()
+      setEditing(null)
+      setEditingSeasonId(null)
+      report('ok', `${activated.name} is now the current season.`)
+    } catch {
+      /* already reported */
+    } finally {
+      setSeasonBusy(false)
+    }
+  }
+
+  const addSeason = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setSeasonBusy(true)
+    try {
+      const created = await guard(
+        () => createSeason(newSeasonName.trim(), Number(newSeasonYear)),
+        'Could not create season',
+      )
+      const copiedDivisions = created.divisions.map((division) => ({
+        ...division,
+        season: created.season.name,
+      }))
+      setSeasons((current) => [
+        ...(current ?? []).map((season) => ({ ...season, is_current: false })),
+        created.season,
+      ].sort((a, b) => Number(Boolean(b.is_current)) - Number(Boolean(a.is_current)) || b.year - a.year))
+      setDivisions(copiedDivisions)
+      onCurrentSeasonChanged(copiedDivisions)
+      onSeasonChanged()
+      setNewSeasonName('')
+      setShowNewSeason(false)
+      report('ok', `${created.season.name} created and activated with copied divisions and club entries.`)
+    } catch {
+      /* already reported */
+    } finally {
+      setSeasonBusy(false)
+    }
+  }
 
   const edit = (division: Division | null) => {
     setEditing(division?.id ?? 'new')
@@ -1265,18 +1388,149 @@ function Divisions({
 
   return (
     <div className="division-management">
+      <div className="card season-management">
+        <header>
+          <div>
+            <h2>Season management</h2>
+            <p className="hint">Rename seasons, preserve past tables, or switch the active season.</p>
+          </div>
+          <button
+            className="btn primary sm"
+            type="button"
+            disabled={seasonBusy}
+            onClick={() => {
+              const year = Math.max(new Date().getFullYear(), ...seasons.map((season) => season.year))
+              setNewSeasonYear(String(year))
+              setNewSeasonName(`${year} Season 1`)
+              setShowNewSeason((shown) => !shown)
+            }}
+          >
+            ＋ New season
+          </button>
+        </header>
+        {showNewSeason && (
+          <form className="season-create-form" onSubmit={(event) => void addSeason(event)}>
+            <label>
+              <span>Season name</span>
+              <input
+                className="text"
+                value={newSeasonName}
+                onChange={(event) => setNewSeasonName(event.target.value)}
+                maxLength={64}
+                required
+                autoFocus
+              />
+            </label>
+            <label>
+              <span>Season year</span>
+              <input
+                className="text"
+                type="number"
+                min="2000"
+                max="9999"
+                value={newSeasonYear}
+                onChange={(event) => setNewSeasonYear(event.target.value)}
+                required
+              />
+            </label>
+            <p className="season-copy-note">
+              This will become current. Divisions and club entries will be copied from the current season;
+              fixtures and results start fresh.
+            </p>
+            <div className="division-editor-actions">
+              <button
+                className="btn"
+                type="button"
+                disabled={seasonBusy}
+                onClick={() => setShowNewSeason(false)}
+              >
+                Cancel
+              </button>
+              <button className="btn primary" type="submit" disabled={seasonBusy}>
+                {seasonBusy ? 'Creating…' : 'Create and activate'}
+              </button>
+            </div>
+          </form>
+        )}
+        <div className="season-admin-list">
+          {seasons.map((season) => (
+            <article className="season-admin-item" key={season.id}>
+              {editingSeasonId === season.id ? (
+                <form
+                  className="season-name-editor"
+                  onSubmit={(event) => void saveSeasonName(event, season)}
+                >
+                  <label>
+                    <span>Season name</span>
+                    <input
+                      className="text"
+                      value={seasonName}
+                      onChange={(event) => setSeasonName(event.target.value)}
+                      maxLength={64}
+                      required
+                      autoFocus
+                    />
+                  </label>
+                  <button className="btn sm primary" type="submit" disabled={seasonBusy}>
+                    Save name
+                  </button>
+                  <button
+                    className="btn sm"
+                    type="button"
+                    disabled={seasonBusy}
+                    onClick={() => setEditingSeasonId(null)}
+                  >
+                    Cancel
+                  </button>
+                </form>
+              ) : (
+                <>
+                  <div className="season-admin-name">
+                    <strong>{season.name}</strong>
+                    {Boolean(season.is_current) && <span className="season-current-badge">Current</span>}
+                  </div>
+                  <div className="season-admin-actions">
+                    <button
+                      className="btn sm"
+                      type="button"
+                      disabled={seasonBusy}
+                      onClick={() => {
+                        setSeasonName(season.name)
+                        setEditingSeasonId(season.id)
+                      }}
+                    >
+                      Rename
+                    </button>
+                    {!Boolean(season.is_current) && (
+                      <button
+                        className="btn sm"
+                        type="button"
+                        disabled={seasonBusy}
+                        onClick={() => void activateSeason(season)}
+                      >
+                        Make current
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </article>
+          ))}
+        </div>
+      </div>
+
       <div className="card">
         <header>
           <div>
             <h2>Divisions</h2>
             <p className="hint">
-              {divisions[0]?.season ?? 'Current season'} · highest league first on standings and home
+              {currentSeason?.name ?? divisions[0]?.season ?? 'Current season'} · highest league first on standings and home
             </p>
           </div>
           <button
             className="btn primary sm"
             onClick={() => edit(null)}
-            disabled={editing !== null || reordering}
+            disabled={editing !== null || reordering || seasonBusy}
           >
             <span aria-hidden="true">＋</span> Add division
           </button>
@@ -1629,6 +1883,13 @@ function Clubs({
                     (a, b) => a.sort_order - b.sort_order || a.id - b.id,
                   ),
             )
+          }}
+          onCurrentSeasonChanged={setDivisions}
+          onSeasonChanged={() => {
+            void load().catch((cause: unknown) => {
+              const message = cause instanceof Error ? cause.message : String(cause)
+              report('error', `Could not refresh clubs for the selected season: ${message}`)
+            })
           }}
         />
       ) : (

@@ -49,6 +49,18 @@ interface ApiStanding {
   relegation_count: number | null
 }
 
+export interface LeagueSeason {
+  id: number
+  name: string
+  year: number
+  is_current: boolean | number
+}
+
+export interface LiveStandings {
+  season: LeagueSeason
+  divisions: Record<string, StandingDivision>
+}
+
 const apiBase = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '')
 
 export const liveLeagueEnabled = Boolean(apiBase) || import.meta.env.BASE_URL === '/'
@@ -69,6 +81,15 @@ async function get<T>(path: string, signal: AbortSignal): Promise<T> {
     throw new Error(`Live league data request failed (${response.status}).`)
   }
   return (await response.json()) as T
+}
+
+export async function getLiveSeason(signal: AbortSignal): Promise<LeagueSeason> {
+  return get<LeagueSeason>('/api/seasons/current', signal)
+}
+
+export async function getLiveSeasons(signal: AbortSignal): Promise<LeagueSeason[]> {
+  const response = await get<{ seasons: LeagueSeason[] }>('/api/seasons', signal)
+  return response.seasons
 }
 
 function toMatch(match: ApiMatch): Match {
@@ -114,18 +135,23 @@ export async function getLiveResults(signal: AbortSignal): Promise<Match[]> {
 
 export async function getLiveStandings(
   signal: AbortSignal,
-): Promise<Record<string, StandingDivision>> {
-  const [response, divisionResponse] = await Promise.all([
-    get<{ standings: ApiStanding[] }>('/api/standings', signal),
-    get<{
-      divisions: Array<{
-        name: string
-        sort_order: number
-        promotion_count: number | null
-        relegation_count: number | null
-      }>
-    }>('/api/divisions', signal),
-  ])
+  seasonId?: number,
+): Promise<LiveStandings> {
+  const response = await get<{ season: LeagueSeason; standings: ApiStanding[] }>(
+    `/api/standings${seasonId == null ? '' : `?seasonId=${seasonId}`}`,
+    signal,
+  )
+  const divisionResponse = await get<{
+    divisions: Array<{
+      name: string
+      sort_order: number
+      promotion_count: number | null
+      relegation_count: number | null
+    }>
+  }>(
+    `/api/divisions?seasonId=${response.season.id}`,
+    signal,
+  )
   const movementByDivision = new Map(
     divisionResponse.divisions.map((division) => [
       division.name,
@@ -198,7 +224,7 @@ export async function getLiveStandings(
       : { from: Math.max(1, teamCount - movement.relegation + 1), to: teamCount }
   }
 
-  return divisions
+  return { season: response.season, divisions }
 }
 
 /* ------------------------------------------------------------------ clubs */

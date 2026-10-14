@@ -3,6 +3,7 @@ import { Container, Eyebrow, Reveal } from '@/components/ui'
 import { SITE, siteData } from '@/data'
 import { asset } from '@/lib/assets'
 import { communityFlag, cx } from '@/lib/format'
+import { useSeasonName } from '@/lib/season'
 
 const ESSENTIAL = [
   { label: 'About Us', href: '/about' },
@@ -29,6 +30,7 @@ const LEAGUES = [
 
 export function Footer() {
   const year = new Date().getFullYear()
+  const seasonName = useSeasonName()
 
   return (
     <footer className="relative border-t border-[var(--border)] bg-[var(--bg-deep)] text-[var(--text)]">
@@ -44,7 +46,7 @@ export function Footer() {
                 Ready to step onto the <span className="text-gradient">virtual pitch?</span>
               </h2>
               <p className="mt-4 text-base leading-relaxed text-[var(--text-muted)]">
-                {SITE.teamsRegistered} of {SITE.teamCap} team slots filled for {SITE.season}.
+                {SITE.teamsRegistered} of {SITE.teamCap} team slots filled for {seasonName}.
                 Registration is {SITE.registrationFee} per team.
               </p>
             </div>

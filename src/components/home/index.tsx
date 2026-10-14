@@ -22,6 +22,7 @@ import {
   liveLeagueEnabled,
   orderedStandingDivisions,
 } from '@/lib/liveLeague'
+import { useSeasonName } from '@/lib/season'
 import type { Standing, StandingDivision } from '@/types/site'
 
 
@@ -166,8 +167,12 @@ function TypedHeadline({ chars, caret }: { chars: number; caret: boolean }) {
 }
 
 export function Hero() {
-  const [liveStandings, setLiveStandings] = useState<Record<string, StandingDivision> | null>(null)
+  const [liveStandings, setLiveStandings] = useState<{
+    season: { name: string }
+    divisions: Record<string, StandingDivision>
+  } | null>(null)
   const [leadersError, setLeadersError] = useState('')
+  const seasonName = useSeasonName()
 
   useEffect(() => {
     if (!liveLeagueEnabled) return
@@ -183,12 +188,15 @@ export function Hero() {
   }, [])
 
   const staticFeatured = orderedStandingDivisions(siteData.standingsByDivision)[0]
-  const featured = orderedStandingDivisions(liveStandings ?? siteData.standingsByDivision)[0]
+  const featured = orderedStandingDivisions(
+    liveStandings?.divisions ?? siteData.standingsByDivision,
+  )[0]
   const featuredLeague = featured?.[0] ?? staticFeatured?.[0] ?? ''
   const leaderRows = liveStandings
     ? featured?.[1].rows ?? []
     : staticFeatured?.[1].rows ?? siteData.standings
   const top = leaderRows[0]
+  const featuredSeason = liveStandings?.season.name ?? seasonName
 
   const [index, setIndex] = useState(0)
   const regionRef = useRef<HTMLElement>(null)
@@ -465,7 +473,7 @@ export function Hero() {
               <div className="flex items-center justify-between gap-4 border-b border-[var(--border)] bg-gradient-to-r from-[var(--accent-tint)] to-transparent px-5 py-4">
                 <div className="min-w-0">
                   <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--accent-text)]">
-                    Current leaders
+                    {featuredSeason} · Current leaders
                   </p>
                   <p className="mt-1 truncate font-display text-base font-bold text-[var(--text-strong)]">
                     {featuredLeague || 'Top of the table'}
@@ -741,8 +749,10 @@ export function StandingsPreview() {
   const [liveRows, setLiveRows] = useState<Standing[] | null>(null)
   const [liveDivision, setLiveDivision] = useState<StandingDivision | null>(null)
   const [liveDivisionName, setLiveDivisionName] = useState<string | null>(null)
+  const [liveSeasonName, setLiveSeasonName] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [reload, setReload] = useState(0)
+  const seasonName = useSeasonName()
 
   useEffect(() => {
     if (!liveLeagueEnabled) return
@@ -750,8 +760,9 @@ export function StandingsPreview() {
     setError('')
 
     getLiveStandings(controller.signal)
-      .then((divisions) => {
-        const [name, division] = orderedStandingDivisions(divisions)[0] ?? []
+      .then((standings) => {
+        const [name, division] = orderedStandingDivisions(standings.divisions)[0] ?? []
+        setLiveSeasonName(standings.season.name)
         setLiveDivisionName(name ?? null)
         setLiveDivision(division)
         setLiveRows(division?.rows ?? [])
@@ -773,6 +784,7 @@ export function StandingsPreview() {
     liveDivisionName ??
     orderedStandingDivisions(siteData.standingsByDivision)[0]?.[0] ??
     'IWVPL Pro Club League'
+  const featuredSeasonName = liveSeasonName ?? seasonName
 
   return (
     <Section id="standings">
@@ -793,7 +805,7 @@ export function StandingsPreview() {
         <SectionHead
           eyebrow="League table"
           title={`${featuredName} standings`}
-          lede={`${SITE.season} — the top ${shown.length} of ${rows.length} clubs, updated after each match.`}
+          lede={`${featuredSeasonName} — the top ${shown.length} of ${rows.length} clubs, updated after each match.`}
           action={
             <ButtonLink to="/standings" variant="outline">
               View full table
@@ -1040,6 +1052,7 @@ export function NewsThumb({ post }: { post: { featuredLocal: string; categories:
 export function JoinCta() {
   const left = SITE.teamCap - SITE.teamsRegistered
   const pct = Math.round((SITE.teamsRegistered / SITE.teamCap) * 100)
+  const seasonName = useSeasonName()
   return (
     <Section tone="deep">
       <Container size="wide">
@@ -1058,7 +1071,7 @@ export function JoinCta() {
                 <span className="text-gradient">Claim your slot.</span>
               </h2>
               <p className="mt-5 text-base leading-relaxed text-[var(--text-muted)]">
-                {SITE.teamsRegistered} of {SITE.teamCap} clubs registered. {SITE.season} ·{' '}
+                {SITE.teamsRegistered} of {SITE.teamCap} clubs registered. {seasonName} ·{' '}
                 {SITE.registrationFee} per team.
               </p>
             </div>

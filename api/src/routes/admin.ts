@@ -356,6 +356,54 @@ admin.delete(
   }),
 )
 
+admin.delete(
+  '/matches/:id',
+  handler(async (req, res) => {
+    const id = Number.parseInt(req.params.id, 10)
+    if (!Number.isInteger(id) || id < 1) {
+      return res.status(400).json({ error: 'Match id must be a positive integer.' })
+    }
+
+    const result = await withTransaction(async (conn) => {
+      const [rows] = await conn.query(
+        `SELECT id, season_id, division_id, home_club_id, away_club_id, home_score, away_score
+           FROM matches WHERE id = ? FOR UPDATE`,
+        [id],
+      )
+      const match = (rows as Array<{
+        id: number
+        season_id: number
+        division_id: number
+        home_club_id: number
+        away_club_id: number
+        home_score: number | null
+        away_score: number | null
+      }>)[0]
+      if (!match) return { error: 'Match not found.' as const, status: 404 }
+      if ((match.home_score === null) !== (match.away_score === null)) {
+        return { error: 'That match has an incomplete result and cannot be deleted safely.' as const, status: 409 }
+      }
+
+      if (match.home_score !== null && match.away_score !== null) {
+        await clearResult(conn, { seasonId: match.season_id, divisionId: match.division_id }, {
+          homeClubId: match.home_club_id,
+          awayClubId: match.away_club_id,
+          homeScore: match.home_score,
+          awayScore: match.away_score,
+        })
+      }
+
+      await conn.execute('DELETE FROM match_events WHERE match_id = ?', [id])
+      await conn.execute('DELETE FROM match_stats WHERE match_id = ?', [id])
+      await conn.execute('DELETE FROM matches WHERE id = ?', [id])
+      return { ok: true as const }
+    })
+
+    if ('error' in result) return res.status(result.status).json({ error: result.error })
+    res.json({ ok: true, matchId: id })
+  }),
+)
+
 /* ----------------------------------------------------------------- clubs */
 
 admin.patch(
@@ -571,6 +619,195 @@ admin.post(
 
 
 /* ------------------------------------------------------ division management */
+
+admin.get(
+  '/seasons',
+  handler(async (_req, res) => {
+    const seasons = await queryAll(
+      `SELECT id, name, year, is_current
+         FROM seasons
+        ORDER BY is_current DESC, year DESC, id DESC`,
+    )
+    res.json({ seasons })
+  }),
+)
+
+admin.put(
+  '/seasons/:id',
+  handler(async (req, res) => {
+    const id = Number.parseInt(req.params.id, 10)
+    if (!Number.isSafeInteger(id) || id < 1) {
+      return res.status(400).json({ error: 'Season id must be a positive integer.' })
+    }
+    const name = requiredString(req.body?.name, 'name', 64)
+    const season = await withTransaction(async (conn) => {
+      const [seasonRows] = await conn.query(
+        'SELECT id, name, year, is_current FROM seasons WHERE id = ? FOR UPDATE',
+        [id],
+      )
+      const current = (seasonRows as Array<{
+        id: number
+        name: string
+        year: number
+        is_current: number
+      }>)[0]
+      if (!current) return null
+
+      const [duplicates] = await conn.query(
+        'SELECT id FROM seasons WHERE LOWER(name) = LOWER(?) AND id <> ? LIMIT 1',
+        [name, id],
+      )
+      if ((duplicates as unknown[]).length > 0) {
+        throw Object.assign(new Error('A season with that name already exists.'), { status: 409 })
+      }
+
+      await conn.execute('UPDATE seasons SET name = ? WHERE id = ?', [name, id])
+      return { ...current, name }
+    })
+    if (!season) return res.status(404).json({ error: 'Season not found.' })
+    res.json({ season })
+  }),
+)
+
+admin.put(
+  '/seasons/:id/current',
+  handler(async (req, res) => {
+    const id = Number.parseInt(req.params.id, 10)
+    if (!Number.isSafeInteger(id) || id < 1) {
+      return res.status(400).json({ error: 'Season id must be a positive integer.' })
+    }
+
+    const activated = await withTransaction(async (conn) => {
+      const [currentRows] = await conn.query(
+        'SELECT id FROM seasons WHERE is_current = TRUE LIMIT 1 FOR UPDATE',
+      )
+      const [targetRows] = await conn.query(
+        'SELECT id, name, year FROM seasons WHERE id = ? FOR UPDATE',
+        [id],
+      )
+      const target = (targetRows as Array<{ id: number; name: string; year: number }>)[0]
+      if (!target) return null
+      const current = (currentRows as Array<{ id: number }>)[0]
+      if (current?.id !== target.id) {
+        await conn.execute('UPDATE seasons SET is_current = FALSE WHERE is_current = TRUE')
+        await conn.execute('UPDATE seasons SET is_current = TRUE WHERE id = ?', [target.id])
+      }
+      return { ...target, is_current: 1 }
+    })
+    if (!activated) return res.status(404).json({ error: 'Season not found.' })
+    res.json({ season: activated })
+  }),
+)
+
+admin.post(
+  '/seasons',
+  handler(async (req, res) => {
+    const name = requiredString(req.body?.name, 'name', 64)
+    const year = Number(req.body?.year)
+    if (!Number.isSafeInteger(year) || year < 2000 || year > 9999) {
+      return res.status(400).json({ error: 'year must be a whole number between 2000 and 9999.' })
+    }
+
+    const created = await withTransaction(async (conn) => {
+      const [currentRows] = await conn.query(
+        'SELECT id FROM seasons WHERE is_current = TRUE LIMIT 1 FOR UPDATE',
+      )
+      const sourceSeason = (currentRows as Array<{ id: number }>)[0]
+      const [duplicates] = await conn.query(
+        'SELECT id FROM seasons WHERE LOWER(name) = LOWER(?) LIMIT 1',
+        [name],
+      )
+      if ((duplicates as unknown[]).length > 0) {
+        throw Object.assign(new Error('A season with that name already exists.'), { status: 409 })
+      }
+
+      const [inserted] = await conn.execute(
+        'INSERT INTO seasons (name, year, is_current, created_at) VALUES (?, ?, FALSE, NOW())',
+        [name, year],
+      )
+      const id = (inserted as { insertId: number }).insertId
+      const copiedDivisions: Array<{
+        id: number
+        name: string
+        slug: string
+        sort_order: number
+        promotion_count: number | null
+        relegation_count: number | null
+      }> = []
+
+      if (sourceSeason) {
+        const [divisionRows] = await conn.query(
+          `SELECT id, name, slug, sort_order, promotion_count, relegation_count
+             FROM divisions
+            WHERE season_id = ?
+            ORDER BY sort_order, id`,
+          [sourceSeason.id],
+        )
+        for (const division of divisionRows as Array<{
+          id: number
+          name: string
+          slug: string
+          sort_order: number
+          promotion_count: number | null
+          relegation_count: number | null
+        }>) {
+          const suffix = `-s${id}`
+          const slug = `${division.slug.slice(0, 80 - suffix.length)}${suffix}`
+          const [newDivisionResult] = await conn.execute(
+            `INSERT INTO divisions
+               (season_id, name, slug, sort_order, promotion_count, relegation_count, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+            [
+              id,
+              division.name,
+              slug,
+              division.sort_order,
+              division.promotion_count,
+              division.relegation_count,
+            ],
+          )
+          const newDivisionId = (newDivisionResult as { insertId: number }).insertId
+          await conn.execute(
+            `INSERT INTO division_clubs (division_id, club_id, code_at_registration, created_at)
+             SELECT ?, club_id, code_at_registration, NOW()
+               FROM division_clubs
+              WHERE division_id = ?`,
+            [newDivisionId, division.id],
+          )
+          await conn.execute(
+            `INSERT INTO standings_snapshot
+               (season_id, division_id, club_id, position, played, won, drawn, lost,
+                goals_for, goals_against, goal_difference, points, form, updated_at)
+             SELECT ?, ?, dc.club_id,
+                    ROW_NUMBER() OVER (ORDER BY COALESCE(ss.position, 65535), dc.id),
+                    0, 0, 0, 0, 0, 0, 0, 0, '', NOW()
+               FROM division_clubs dc
+               LEFT JOIN standings_snapshot ss
+                 ON ss.season_id = ? AND ss.division_id = dc.division_id AND ss.club_id = dc.club_id
+              WHERE dc.division_id = ?`,
+            [id, newDivisionId, sourceSeason.id, division.id],
+          )
+          copiedDivisions.push({
+            id: newDivisionId,
+            name: division.name,
+            slug,
+            sort_order: division.sort_order,
+            promotion_count: division.promotion_count,
+            relegation_count: division.relegation_count,
+          })
+        }
+
+        await conn.execute('UPDATE seasons SET is_current = FALSE WHERE is_current = TRUE')
+      }
+      await conn.execute('UPDATE seasons SET is_current = TRUE WHERE id = ?', [id])
+      return {
+        season: { id, name, year, is_current: 1 },
+        divisions: copiedDivisions,
+      }
+    })
+    res.status(201).json(created)
+  }),
+)
 
 admin.post(
   '/divisions',

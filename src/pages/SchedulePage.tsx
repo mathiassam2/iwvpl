@@ -5,8 +5,10 @@ import { ButtonLink, Container, EmptyState, Section, SectionHead, Tabs } from '@
 import { SITE, siteData } from '@/data'
 import { groupByDate } from '@/lib/format'
 import { matchIndexOf } from '@/lib/match'
+import { useSeasonName } from '@/lib/season'
 
 export default function SchedulePage() {
+  const seasonName = useSeasonName()
   const [scope, setScope] = useState<'upcoming' | 'all'>('all')
 
   const upcoming = useMemo(
@@ -22,7 +24,7 @@ export default function SchedulePage() {
       <PageHeader
         eyebrow="Fixtures"
         title="Match Schedule"
-        lede={`Kick-off times are published in SGT (UTC+8). All fixtures for ${SITE.season}.`}
+        lede={`Kick-off times are published in SGT (UTC+8). All fixtures for ${seasonName}.`}
       />
 
       <Section>
@@ -30,7 +32,7 @@ export default function SchedulePage() {
           <div className="mb-8 grid gap-4 sm:grid-cols-3">
             <StatTile label="Fixtures listed" value={siteData.results.length} hint="This season" />
             <StatTile label="Awaiting kick-off" value={upcoming.length} hint="Not yet played" />
-            <StatTile label="Season" value={SITE.season.replace(' Season 1', '')} hint={SITE.season} />
+            <StatTile label="Season" value={seasonName.replace(/ Season \d+$/, '')} hint={seasonName} />
           </div>
 
           <SectionHead eyebrow="Calendar" title="All fixtures" />

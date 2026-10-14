@@ -6,6 +6,7 @@ import { SITE, siteData } from '@/data'
 import type { ClubStatus } from '@/types/site'
 import { stripFlag } from '@/lib/format'
 import { getLiveClubs, liveLeagueEnabled } from '@/lib/liveLeague'
+import { useSeasonName } from '@/lib/season'
 import type { Club } from '@/types/site'
 
 type Filter = 'all' | ClubStatus
@@ -18,6 +19,7 @@ const FILTERS: Array<{ id: Filter; label: string }> = [
 ]
 
 export default function ClubsPage() {
+  const seasonName = useSeasonName()
   const [filter, setFilter] = useState<Filter>('all')
   const [q, setQ] = useState('')
 
@@ -70,7 +72,7 @@ export default function ClubsPage() {
       <PageHeader
         eyebrow="Participants"
         title="Clubs"
-        lede={`Every club registered with ${SITE.name} for ${SITE.season}, with roster sizes and registration status.`}
+        lede={`Every club registered with ${SITE.name} for ${seasonName}, with roster sizes and registration status.`}
       />
 
       <Section>

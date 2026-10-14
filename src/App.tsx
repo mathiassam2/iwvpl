@@ -5,6 +5,7 @@ import HomePage from '@/pages/HomePage'
 import { useParallax } from '@/hooks/useParallax'
 import { AuthProvider } from '@/lib/auth'
 import { CartProvider } from '@/lib/cart'
+import { SeasonProvider } from '@/lib/season'
 
 const StandingsPage = lazy(() => import('@/pages/StandingsPage'))
 const ResultsPage = lazy(() => import('@/pages/ResultsPage'))
@@ -74,6 +75,7 @@ export default function App() {
           shell so the header can read the session on first paint. */}
       <AuthProvider>
         <CartProvider>
+          <SeasonProvider>
           <AppShell>
           <ParallaxDriver />
           <ScrollToTop />
@@ -110,6 +112,7 @@ export default function App() {
           </Routes>
           </Suspense>
         </AppShell>
+        </SeasonProvider>
         </CartProvider>
       </AuthProvider>
     </HashRouter>

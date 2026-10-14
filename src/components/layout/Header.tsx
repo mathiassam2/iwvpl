@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
 import { ButtonLink } from '@/components/ui'
-import { SITE } from '@/data'
 import { asset } from '@/lib/assets'
 import { useAuth } from '@/lib/auth'
 import { useCart } from '@/lib/cart'
 import { cx } from '@/lib/format'
 import { setInert } from '@/lib/inert'
+import { useSeasonName } from '@/lib/season'
 import { CartPanel } from '@/pages/CartPage'
 import AccountMenu from '@/components/layout/AccountMenu'
 
@@ -58,6 +58,7 @@ export function Logo({ className }: { className?: string }) {
  *    and the accessibility tree.
  */
 function LeagueMenu() {
+  const seasonName = useSeasonName()
   const [open, setOpen] = useState(false)
   const closeTimer = useRef<number | undefined>(undefined)
   const groupRef = useRef<HTMLDivElement>(null)
@@ -148,7 +149,7 @@ function LeagueMenu() {
         >
           <div className="border-b border-[var(--glass-border)] bg-white/[0.04] px-5 py-4">
             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--accent-text)]">
-              {SITE.season}
+              {seasonName}
             </p>
             <p className="mt-1 text-sm text-[var(--text-muted)]">
               IWVPL Pro Club League — follow every division.

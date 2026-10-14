@@ -3,9 +3,11 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { LeaderboardTable } from '@/components/league'
 import { LeaderboardPodium } from '@/components/league/LeaderboardPodium'
 import { Container, Section, Tabs } from '@/components/ui'
-import { SITE, siteData } from '@/data'
+import { siteData } from '@/data'
+import { useSeasonName } from '@/lib/season'
 
 export default function LeaderboardPage() {
+  const seasonName = useSeasonName()
   const [active, setActive] = useState(siteData.leaderboards[0]?.title ?? '')
   const board = siteData.leaderboards.find((b) => b.title === active) ?? siteData.leaderboards[0]
 
@@ -14,7 +16,7 @@ export default function LeaderboardPage() {
       <PageHeader
         eyebrow="Individual honours"
         title="Leaderboard"
-        lede={`Top performers across the ${SITE.season} IWVPL Pro Club League — goals, assists and goalkeeping.`}
+        lede={`Top performers across the ${seasonName} IWVPL Pro Club League — goals, assists and goalkeeping.`}
       />
 
       <Section>
@@ -52,7 +54,7 @@ export default function LeaderboardPage() {
 
           <p className="mt-6 text-xs leading-relaxed text-[var(--text-faint)]">
             Statistics are compiled from match reports submitted by team managers during{' '}
-            {SITE.season}.
+            {seasonName}.
           </p>
         </Container>
       </Section>

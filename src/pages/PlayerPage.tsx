@@ -12,7 +12,6 @@ import {
 } from '@/components/ui'
 import { HeaderWash } from '@/components/layout/HeaderWash'
 import { StatTile } from '@/components/league'
-import { SITE } from '@/data'
 import {
   AVATAR_PLACEHOLDER,
   CLUB_PLACEHOLDER,
@@ -23,6 +22,7 @@ import {
 } from '@/lib/format'
 import { findPlayerBySlug, playerHref, type PlayerProfile } from '@/lib/players'
 import { getLivePlayer, liveLeagueEnabled } from '@/lib/liveLeague'
+import { useSeasonName } from '@/lib/season'
 
 /** "2026-10-08 13:33" -> "8 Oct 2026" */
 function moveDate(d: string): string {
@@ -39,6 +39,7 @@ function moveMonth(d: string): string {
 }
 
 export default function PlayerPage() {
+  const seasonName = useSeasonName()
   const { slug = '' } = useParams()
   const [tab, setTab] = useState('overview')
 
@@ -351,7 +352,7 @@ export default function PlayerPage() {
                       </li>
                       <li className="flex items-center justify-between gap-3 px-5 py-3 text-sm">
                         <span className="text-[var(--text-muted)]">Season</span>
-                        <span className="font-bold text-[var(--text-strong)]">{SITE.season}</span>
+                        <span className="font-bold text-[var(--text-strong)]">{seasonName}</span>
                       </li>
                     </ul>
                   </Card>

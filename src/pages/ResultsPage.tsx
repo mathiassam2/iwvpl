@@ -6,8 +6,10 @@ import { SITE, siteData } from '@/data'
 import { groupByDate, stripFlag, totalGoals } from '@/lib/format'
 import { getLiveResults, liveLeagueEnabled } from '@/lib/liveLeague'
 import { matchIndexOf } from '@/lib/match'
+import { useSeasonName } from '@/lib/season'
 
 export default function ResultsPage() {
+  const seasonName = useSeasonName()
   const [team, setTeam] = useState('all')
   const [liveResults, setLiveResults] = useState<typeof siteData.results>([])
   const [loading, setLoading] = useState(liveLeagueEnabled)
@@ -61,7 +63,7 @@ export default function ResultsPage() {
       <PageHeader
         eyebrow="Match centre"
         title="Match Results"
-        lede={`Every completed fixture reported across the ${SITE.season} IWVPL Pro Club League.`}
+        lede={`Every completed fixture reported across the ${seasonName} IWVPL Pro Club League.`}
       />
 
       <Section>

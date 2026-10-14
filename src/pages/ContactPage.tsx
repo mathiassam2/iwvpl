@@ -4,6 +4,7 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { Button, Card, Container, Section, Select } from '@/components/ui'
 import { SITE } from '@/data'
 import { cx } from '@/lib/format'
+import { useSeasonName } from '@/lib/season'
 
 interface Fields {
   name: string
@@ -53,6 +54,7 @@ const inputCls =
   'transition-colors focus:border-[var(--accent-ring)]'
 
 export default function ContactPage() {
+  const seasonName = useSeasonName()
   const [values, setValues] = useState<Fields>({
     name: '',
     email: '',
@@ -131,7 +133,7 @@ export default function ContactPage() {
                     Current season
                   </dt>
                   <dd className="mt-1.5 text-[15px] font-semibold text-[var(--text-strong)]">
-                    {SITE.season}
+                    {seasonName}
                   </dd>
                 </div>
               </dl>

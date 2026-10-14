@@ -181,8 +181,35 @@ export interface Division {
   relegation_count: number | null
 }
 
+export interface AdminSeason {
+  id: number
+  name: string
+  year: number
+  is_current: boolean | number
+}
+
 export const getDivisions = () =>
   request<{ divisions: Division[] }>('/api/divisions').then((r) => r.divisions)
+
+export const getAdminSeasons = () =>
+  request<{ seasons: AdminSeason[] }>('/api/admin/seasons').then((r) => r.seasons)
+
+export const updateSeason = (id: number, name: string) =>
+  request<{ season: AdminSeason }>(`/api/admin/seasons/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify({ name }),
+  }).then((r) => r.season)
+
+export const setCurrentSeason = (id: number) =>
+  request<{ season: AdminSeason }>(`/api/admin/seasons/${id}/current`, {
+    method: 'PUT',
+  }).then((r) => r.season)
+
+export const createSeason = (name: string, year: number) =>
+  request<{ season: AdminSeason; divisions: Array<Omit<Division, 'season'>> }>('/api/admin/seasons', {
+    method: 'POST',
+    body: JSON.stringify({ name, year }),
+  })
 
 export type DivisionInput = Omit<Division, 'id' | 'slug' | 'season' | 'sort_order'>
 
@@ -225,6 +252,9 @@ export const setResult = (matchId: number, homeScore: number, awayScore: number)
 
 export const withdrawResult = (matchId: number) =>
   request<{ ok: true }>(`/api/admin/matches/${matchId}/result`, { method: 'DELETE' })
+
+export const deleteMatch = (matchId: number) =>
+  request<{ ok: true; matchId: number }>(`/api/admin/matches/${matchId}`, { method: 'DELETE' })
 
 export const updateClub = (slug: string, patch: Partial<Pick<Club, 'name' | 'shortCode' | 'status'>> & { shortCode?: string | null }) =>
   request<{ ok: true }>(`/api/admin/clubs/${slug}`, {

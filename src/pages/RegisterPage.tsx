@@ -7,6 +7,7 @@ import { ApiError, register } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { useCart } from '@/lib/cart'
 import { cx, stripFlag } from '@/lib/format'
+import { useSeasonName } from '@/lib/season'
 
 interface Fields {
   /* Which kind of account this form creates. A manager entry creates a club;
@@ -105,6 +106,7 @@ const REGION_OPTIONS = [
 ]
 
 export default function RegisterPage() {
+  const seasonName = useSeasonName()
   const [values, setValues] = useState<Fields>(EMPTY)
   const [errors, setErrors] = useState<Errors>({})
   const [touched, setTouched] = useState(false)
@@ -198,7 +200,7 @@ export default function RegisterPage() {
           <>
             <p>
               An IWVPL Pro Club entry is valid for one (1) complete team entry and gives your club
-              full access to the {SITE.season} tournament and league matches, including official
+              full access to the {seasonName} tournament and league matches, including official
               roster submission rights, match schedule access and prize pool eligibility.
             </p>
             <p>

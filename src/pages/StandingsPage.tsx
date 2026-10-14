@@ -3,11 +3,22 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { StandingsTable, StatTile, type StandingSortKey } from '@/components/league'
 import { Container, Section, Tabs } from '@/components/ui'
 import { SITE, siteData } from '@/data'
-import { getLiveStandings, liveLeagueEnabled, orderedStandingDivisions } from '@/lib/liveLeague'
+import {
+  getLiveSeasons,
+  getLiveStandings,
+  liveLeagueEnabled,
+  orderedStandingDivisions,
+  type LeagueSeason,
+} from '@/lib/liveLeague'
 import type { StandingDivision } from '@/types/site'
 
 export default function StandingsPage() {
-  const [liveStandings, setLiveStandings] = useState<Record<string, StandingDivision> | null>(null)
+  const [liveStandings, setLiveStandings] = useState<{
+    season: LeagueSeason
+    divisions: Record<string, StandingDivision>
+  } | null>(null)
+  const [seasons, setSeasons] = useState<LeagueSeason[]>([])
+  const [seasonId, setSeasonId] = useState<number | null>(null)
   const [loading, setLoading] = useState(liveLeagueEnabled)
   const [error, setError] = useState('')
   const [reload, setReload] = useState(0)
@@ -25,10 +36,37 @@ export default function StandingsPage() {
     setLoading(true)
     setError('')
 
-    getLiveStandings(controller.signal)
+    getLiveSeasons(controller.signal)
+      .then((availableSeasons) => {
+        setSeasons(availableSeasons)
+        setSeasonId((current) =>
+          current != null && availableSeasons.some((season) => season.id === current)
+            ? current
+            : availableSeasons.find((season) => Boolean(season.is_current))?.id ??
+                availableSeasons[0]?.id ??
+                null,
+        )
+      })
+      .catch((cause: unknown) => {
+        if (!controller.signal.aborted) {
+          setError(cause instanceof Error ? cause.message : 'Could not load available seasons.')
+          setLoading(false)
+        }
+      })
+
+    return () => controller.abort()
+  }, [reload])
+
+  useEffect(() => {
+    if (!liveLeagueEnabled || seasonId === null) return
+    const controller = new AbortController()
+    setLoading(true)
+    setError('')
+
+    getLiveStandings(controller.signal, seasonId)
       .then((standings) => {
         setLiveStandings(standings)
-        const divisions = orderedStandingDivisions(standings).map(([name]) => name)
+        const divisions = orderedStandingDivisions(standings.divisions).map(([name]) => name)
         setDiv((current) =>
           hasChosenDivision.current && divisions.includes(current) ? current : divisions[0] ?? '',
         )
@@ -43,17 +81,18 @@ export default function StandingsPage() {
       })
 
     return () => controller.abort()
-  }, [reload])
+  }, [reload, seasonId])
 
   const divisions = liveStandings
-    ? orderedStandingDivisions(liveStandings).map(([name]) => name)
+    ? orderedStandingDivisions(liveStandings.divisions).map(([name]) => name)
     : initialDivisions
   const division = liveStandings
-    ? liveStandings[div]
+    ? liveStandings.divisions[div]
     : siteData.standingsByDivision[div]
   const rows = liveStandings
     ? division?.rows ?? []
     : siteData.standingsByDivision[div]?.rows ?? []
+  const selectedSeason = seasons.find((season) => season.id === seasonId)
 
   const sorted = useMemo(() => {
     const copy = [...rows]
@@ -77,7 +116,7 @@ export default function StandingsPage() {
       <PageHeader
         eyebrow="League table"
         title="Standings"
-        lede={`${SITE.season} — IWVPL Pro Club League. Select any column heading to re-sort the table.`}
+        lede={`${selectedSeason?.name ?? SITE.season} — IWVPL Pro Club League. Select any column heading to re-sort the table.`}
       />
 
       {/* Tight top padding. The table is the reason anyone opens this page, and
@@ -85,6 +124,25 @@ export default function StandingsPage() {
           started below the fold on a laptop. Summary moved underneath it. */}
       <Section className="!py-10 sm:!py-12">
         <Container size="wide">
+          {liveLeagueEnabled && seasons.length > 0 && (
+            <label className="mb-6 flex max-w-sm flex-col gap-2 text-sm font-semibold text-[var(--text-muted)]">
+              Standings season
+              <select
+                className="rounded-lg border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-2.5 text-[var(--text-strong)]"
+                value={seasonId ?? ''}
+                onChange={(event) => {
+                  hasChosenDivision.current = false
+                  setSeasonId(Number(event.target.value))
+                }}
+              >
+                {seasons.map((season) => (
+                  <option key={season.id} value={season.id}>
+                    {season.name}{season.is_current ? ' · Current' : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           {loading && (
             <p role="status" className="mb-4 text-sm text-[var(--text-muted)]">
               Loading live standings…
@@ -107,7 +165,7 @@ export default function StandingsPage() {
                 tabs={divisions.map((d) => ({
                   id: d,
                   label: d,
-                  count: liveStandings?.[d]?.rows.length ?? siteData.standingsByDivision[d]?.rows.length,
+                  count: liveStandings?.divisions[d]?.rows.length ?? siteData.standingsByDivision[d]?.rows.length,
                 }))}
                 active={div}
                 onChange={(value) => {
