@@ -2160,7 +2160,9 @@ function Clubs({
   const configuredDivisionIds = new Set(divisions.map((division) => String(division.id)))
   const standingsByClub = new Map(standings.map((standing) => [standing.club_id, standing]))
   const movementCompletedClubIds = new Set(
-    (seasonMovements ?? []).map((movement) => movement.club_id),
+    (seasonMovements ?? [])
+      .filter((movement) => movement.movement_type !== 'transfer')
+      .map((movement) => movement.club_id),
   )
   const completedMovementsByDivision = new Map<
     number,
