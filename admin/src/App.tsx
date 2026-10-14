@@ -358,8 +358,10 @@ function Results({
   const [page, setPage] = useState(0)
   const [clubs, setClubs] = useState<Club[]>([])
   const [fixtureClubs, setFixtureClubs] = useState<Club[]>([])
+  const [fixtureDivisions, setFixtureDivisions] = useState<Division[]>([])
   const [fixtureSeasons, setFixtureSeasons] = useState<AdminSeason[]>([])
   const [createSeasonId, setCreateSeasonId] = useState('')
+  const [createDivisionId, setCreateDivisionId] = useState('')
   const [scheduleTarget, setScheduleTarget] = useState<number | 'new' | null>(null)
   const [scheduleDrafts, setScheduleDrafts] = useState<Record<number, string>>({})
   const [createHome, setCreateHome] = useState('')
@@ -369,6 +371,7 @@ function Results({
   const [scheduleBusy, setScheduleBusy] = useState(false)
   const requestId = useRef(0)
   const fixtureClubRequestId = useRef(0)
+  const fixtureDivisionRequestId = useRef(0)
 
   const load = useCallback(async () => {
     const currentRequest = ++requestId.current
@@ -452,17 +455,30 @@ function Results({
   }, [guard])
 
   useEffect(() => {
+    const currentRequest = ++fixtureClubRequestId.current
+    const currentDivisionRequest = ++fixtureDivisionRequestId.current
+    setFixtureClubs([])
+    setFixtureDivisions([])
     if (!createSeasonId) {
-      setFixtureClubs([])
       return
     }
-    const currentRequest = ++fixtureClubRequestId.current
     guard(() => getClubs(Number(createSeasonId)), 'Could not load clubs for the selected season')
       .then((seasonClubs) => {
         if (currentRequest === fixtureClubRequestId.current) setFixtureClubs(seasonClubs)
       })
       .catch(() => {
         if (currentRequest === fixtureClubRequestId.current) setFixtureClubs([])
+      })
+    guard(() => getDivisions(Number(createSeasonId)), 'Could not load divisions for the selected season')
+      .then((seasonDivisions) => {
+        if (currentDivisionRequest === fixtureDivisionRequestId.current) {
+          setFixtureDivisions(seasonDivisions)
+        }
+      })
+      .catch(() => {
+        if (currentDivisionRequest === fixtureDivisionRequestId.current) {
+          setFixtureDivisions([])
+        }
       })
   }, [createSeasonId, guard])
 
@@ -583,6 +599,10 @@ function Results({
 
   const saveNewMatch = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (!createDivisionId) {
+      report('error', 'Choose a division.')
+      return
+    }
     if (!createHome || !createAway) {
       report('error', 'Choose a home club and an away club.')
       return
@@ -615,6 +635,7 @@ function Results({
       )
       setCreateHome('')
       setCreateAway('')
+      setCreateDivisionId('')
       setCreateKickoff('')
       setCreateSeasonId((current) =>
         String(fixtureSeasons.find((season) => Boolean(season.is_current))?.id ?? current),
@@ -649,9 +670,12 @@ function Results({
   const pageCount = Math.max(1, Math.ceil(totalMatches / 20))
   const firstMatch = totalMatches === 0 ? 0 : page * 20 + 1
   const lastMatch = Math.min((page + 1) * 20, totalMatches)
-  const selectedClub = fixtureClubs.find((club) => club.slug === createHome)
-  const awayOptions = fixtureClubs.filter(
-    (club) => club.slug !== createHome && club.division_id === selectedClub?.division_id,
+  const selectedDivisionId = createDivisionId ? Number(createDivisionId) : null
+  const divisionClubs = fixtureClubs.filter(
+    (club) => club.division_id === selectedDivisionId,
+  )
+  const awayOptions = divisionClubs.filter(
+    (club) => club.slug !== createHome,
   )
 
   return (
@@ -920,7 +944,7 @@ function Results({
                   <h2 id="fixture-modal-title">Create a fixture</h2>
                   <p className="club-edit-subtitle">
                     {createSeasonId
-                      ? `Choose two clubs in the same division for ${fixtureSeasons.find((season) => String(season.id) === createSeasonId)?.name ?? 'the selected season'}.`
+                      ? `Choose a division, then select two clubs from ${fixtureSeasons.find((season) => String(season.id) === createSeasonId)?.name ?? 'the selected season'}.`
                       : 'Choose a season to load its clubs and divisions.'}
                   </p>
                 </div>
@@ -948,6 +972,29 @@ function Results({
                       }))}
                       onChange={(value) => {
                         setCreateSeasonId(value)
+                        setCreateDivisionId('')
+                        setFixtureClubs([])
+                        setFixtureDivisions([])
+                        setCreateHome('')
+                        setCreateAway('')
+                      }}
+                    />
+                  </label>
+                  <label>
+                    <span>Division</span>
+                    <CustomSelect
+                      ariaLabel="Fixture division"
+                      value={createDivisionId}
+                      disabled={!createSeasonId || fixtureDivisions.length === 0}
+                      options={[
+                        { value: '', label: 'Choose division' },
+                        ...fixtureDivisions.map((division) => ({
+                          value: String(division.id),
+                          label: division.name,
+                        })),
+                      ]}
+                      onChange={(value) => {
+                        setCreateDivisionId(value)
                         setCreateHome('')
                         setCreateAway('')
                       }}
@@ -958,10 +1005,10 @@ function Results({
                     <CustomSelect
                       ariaLabel="Home club"
                       value={createHome}
-                      disabled={!createSeasonId}
+                      disabled={!createDivisionId}
                       options={[
                         { value: '', label: 'Choose home club' },
-                        ...fixtureClubs.filter((club) => club.division_id !== null).map((club) => ({
+                        ...divisionClubs.map((club) => ({
                           value: club.slug,
                           label: club.name,
                         })),
@@ -1011,7 +1058,7 @@ function Results({
                 </button>
                 <button
                   className="btn primary"
-                  disabled={scheduleBusy || !createSeasonId || !createHome || !createAway}
+                  disabled={scheduleBusy || !createSeasonId || !createDivisionId || !createHome || !createAway}
                 >
                   {scheduleBusy ? 'Creating…' : 'Create fixture'}
                 </button>

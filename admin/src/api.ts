@@ -197,8 +197,10 @@ export interface AdminSeason {
   featured_division_id: number | null
 }
 
-export const getDivisions = () =>
-  request<{ divisions: Division[] }>('/api/divisions').then((r) => r.divisions)
+export const getDivisions = (seasonId?: number) =>
+  request<{ divisions: Division[] }>(
+    `/api/divisions${seasonId == null ? '' : `?seasonId=${seasonId}`}`,
+  ).then((r) => r.divisions)
 
 export const getAdminSeasons = () =>
   request<{ seasons: AdminSeason[] }>('/api/admin/seasons').then((r) => r.seasons)
