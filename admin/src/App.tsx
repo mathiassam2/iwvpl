@@ -14,6 +14,7 @@ import {
   assignDivision,
   decideClub,
   deleteMatch,
+  deleteMatches,
   createDivision,
   createSeason,
   createMatch,
@@ -509,6 +510,12 @@ function formatKickoff(kickoff: string | null): string {
 
 type MatchUrgency = 'unscheduled' | 'overdue' | 'today' | 'upcoming' | 'completed'
 
+/** Fixtures per page in the Needs scheduling panel. */
+const PRIORITY_PAGE_SIZE = 10
+
+/** The four views of the fixture list, shown as tabs rather than stacked. */
+type MatchTab = 'priority' | 'all' | 'pending' | 'completed'
+
 function matchUrgency(match: Match, now: number, today: string): MatchUrgency {
   if (match.home_score !== null && match.away_score !== null) return 'completed'
   if (!match.kickoff) return 'unscheduled'
@@ -613,6 +620,12 @@ function Results({
 }) {
   const [matches, setMatches] = useState<Match[] | null>(null)
   const [priorityData, setPriorityData] = useState<Match[]>([])
+  const [priorityTotal, setPriorityTotal] = useState(0)
+  const [priorityQuery, setPriorityQuery] = useState('')
+  const [prioritySearch, setPrioritySearch] = useState('')
+  const [priorityPage, setPriorityPage] = useState(0)
+  const [prioritySelected, setPrioritySelected] = useState<Set<number>>(() => new Set())
+  const [priorityBusy, setPriorityBusy] = useState(false)
   const [totalMatches, setTotalMatches] = useState(0)
   const [pendingCount, setPendingCount] = useState(0)
   const [completedCount, setCompletedCount] = useState(0)
@@ -620,6 +633,16 @@ function Results({
   const [draft, setDraft] = useState<Record<number, { home: string; away: string }>>({})
   const [busy, setBusy] = useState<number | null>(null)
   const [filter, setFilter] = useState<'all' | 'pending' | 'completed'>('all')
+  /**
+   * Which of the four views of the fixture list is on screen.
+   *
+   * They used to stack: the urgent panel sat on top of the full list, so
+   * dating fixtures meant scrolling past everything else first, and both
+   * answered different questions — "what still needs a date" against "where is
+   * this fixture in the season". One at a time, with its own search and
+   * paging, is what each of them is actually for.
+   */
+  const [matchTab, setMatchTab] = useState<MatchTab>('priority')
   const [query, setQuery] = useState('')
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(0)
@@ -665,7 +688,15 @@ function Results({
           }),
           'Could not load matches',
         ),
-        guard(() => getMatchPriorities(), 'Could not load schedule priorities'),
+        guard(
+          () =>
+            getMatchPriorities({
+              limit: PRIORITY_PAGE_SIZE,
+              offset: priorityPage * PRIORITY_PAGE_SIZE,
+              search: prioritySearch,
+            }),
+          'Could not load schedule priorities',
+        ),
       ])
       if (currentRequest !== requestId.current) return
       const lastPage = Math.max(0, Math.ceil(data.total / 20) - 1)
@@ -673,9 +704,15 @@ function Results({
         setPage(lastPage)
         return
       }
-      const loadedMatches = [...data.matches, ...priorities]
+      const lastPriorityPage = Math.max(0, Math.ceil(priorities.total / PRIORITY_PAGE_SIZE) - 1)
+      if (priorityPage > lastPriorityPage) {
+        setPriorityPage(lastPriorityPage)
+        return
+      }
+      const loadedMatches = [...data.matches, ...priorities.matches]
       setMatches(data.matches)
-      setPriorityData(priorities)
+      setPriorityData(priorities.matches)
+      setPriorityTotal(priorities.total)
       setTotalMatches(data.total)
       setPendingCount(data.pending)
       setCompletedCount(data.completed)
@@ -698,7 +735,7 @@ function Results({
     } finally {
       if (currentRequest === requestId.current) setLoadingMatches(false)
     }
-  }, [filter, guard, page, search, sort])
+  }, [filter, guard, page, priorityPage, prioritySearch, search, sort])
 
   useEffect(() => {
     load().catch(() => setMatches((current) => current ?? []))
@@ -711,6 +748,21 @@ function Results({
     }, 250)
     return () => window.clearTimeout(timeout)
   }, [query])
+
+  // The panel has its own search box rather than sharing the list's, because
+  // the two answer different questions: one is "where is this fixture in the
+  // season", the other is "which of these still need a date". Typing in one
+  // should not silently filter the other.
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setPrioritySearch(priorityQuery.trim())
+      setPriorityPage(0)
+      // A selection that is not on screen any more would delete the wrong rows
+      // if it survived the filter.
+      setPrioritySelected(new Set())
+    }, 250)
+    return () => window.clearTimeout(timeout)
+  }, [priorityQuery])
 
   useEffect(() => {
     guard(getAdminSeasons, 'Could not load seasons for fixture creation')
@@ -832,6 +884,51 @@ function Results({
     } finally {
       setBusy(null)
     }
+  }
+
+  /**
+   * Delete the fixtures ticked in the Needs scheduling panel.
+   *
+   * Confirmed before it runs and all-or-nothing on the server, because this is
+   * the one bulk action here with no undo: the fixtures are gone and nothing
+   * on the page can bring them back.
+   */
+  const deleteSelectedPriorities = async () => {
+    const ids = [...prioritySelected]
+    if (ids.length === 0 || priorityBusy) return
+    const chosen = priorityData.filter((match) => prioritySelected.has(match.id))
+    const label =
+      ids.length === 1
+        ? `this fixture:\n${chosen[0].home_name} vs ${chosen[0].away_name}`
+        : `${ids.length} fixtures`
+    if (!window.confirm(`Delete ${label}?\n\nThis cannot be undone.`)) return
+    setPriorityBusy(true)
+    try {
+      const result = await guard(
+        () => deleteMatches(ids),
+        'Could not delete the selected fixtures',
+      )
+      report('ok', `Deleted ${result.deleted} fixture${result.deleted === 1 ? '' : 's'}.`)
+      setPrioritySelected(new Set())
+      await load()
+    } catch {
+      /* already reported */
+    } finally {
+      setPriorityBusy(false)
+    }
+  }
+
+  const togglePriority = (id: number, on: boolean) => {
+    setPrioritySelected((current) => {
+      const next = new Set(current)
+      if (on) next.add(id)
+      else next.delete(id)
+      return next
+    })
+  }
+
+  const toggleAllPriorities = (on: boolean) => {
+    setPrioritySelected(on ? new Set(priorityData.map((match) => match.id)) : new Set())
   }
 
   const saveSchedule = async (match: Match) => {
@@ -975,6 +1072,8 @@ function Results({
 
   const urgency = (match: Match) => matchUrgency(match, now, today)
   const visibleMatches = matches
+  const priorityPageCount = Math.max(1, Math.ceil(priorityTotal / PRIORITY_PAGE_SIZE))
+
   const priorityGroups: { key: MatchUrgency; title: string; hint: string }[] = [
     { key: 'unscheduled', title: 'Needs scheduling', hint: 'No kickoff date set' },
     { key: 'overdue', title: 'Past kickoff', hint: 'Kickoff passed · result still missing' },
@@ -1058,23 +1157,115 @@ function Results({
             </button>
           </div>
         </div>
+        <div className="match-tabs" role="tablist" aria-label="Fixture views">
+          {([
+            { key: 'priority' as const, label: 'Needs scheduling', count: priorityTotal },
+            { key: 'pending' as const, label: 'Unplayed', count: pendingCount },
+            { key: 'completed' as const, label: 'Completed', count: completedCount },
+            { key: 'all' as const, label: 'All fixtures', count: totalMatches },
+          ] as const).map((tab) => (
+            <button
+              key={tab.key}
+              role="tab"
+              aria-selected={matchTab === tab.key}
+              className={matchTab === tab.key ? 'selected' : ''}
+              onClick={() => {
+                setMatchTab(tab.key)
+                setPage(0)
+                if (tab.key !== 'priority') setFilter(tab.key)
+              }}
+            >
+              {tab.label}
+              <span className="match-tab-count">{tab.count}</span>
+            </button>
+          ))}
+        </div>
+
+        {matchTab === 'priority' ? (
         <div className="match-priority" aria-label="Schedule priorities">
           <div className="match-priority-heading">
             <div>
               <span className="eyebrow">SCHEDULE PRIORITIES</span>
               <p>Fixtures needing attention · Kuala Lumpur time (UTC+8)</p>
             </div>
-            <span className="priority-total">
-              {priorityMatches.reduce((total, group) => total + group.matches.length, 0)} to review
-            </span>
+            <div className="priority-tools">
+              <div className="search-box priority-search-box">
+                <span aria-hidden="true">⌕</span>
+                <input
+                  type="search"
+                  placeholder="Both teams"
+                  aria-label="Search fixtures needing attention by team"
+                  value={priorityQuery}
+                  onChange={(event) => setPriorityQuery(event.target.value)}
+                />
+              </div>
+            </div>
           </div>
-          {priorityMatches.every((group) => group.matches.length === 0) ? (
+          {prioritySelected.size > 0 && (
+            <div className="priority-bulk">
+              <span>
+                <strong>{prioritySelected.size}</strong> selected
+              </span>
+              <button
+                className="btn sm"
+                type="button"
+                onClick={() => setPrioritySelected(new Set())}
+                disabled={priorityBusy}
+              >
+                Clear
+              </button>
+              <button
+                className="btn sm danger"
+                type="button"
+                onClick={() => void deleteSelectedPriorities()}
+                disabled={priorityBusy}
+                aria-busy={priorityBusy}
+              >
+                {priorityBusy ? (
+                  <>
+                    <span className="spinner" aria-hidden="true" />
+                    Deleting…
+                  </>
+                ) : (
+                  'Delete selected'
+                )}
+              </button>
+            </div>
+          )}
+          {priorityTotal === 0 ? (
             <div className="priority-clear">
               <span aria-hidden="true">✓</span>
-              <span><strong>All caught up</strong><small>No unscheduled, overdue, or today fixtures.</small></span>
+              <span>
+                <strong>{priorityQuery.trim() ? 'Nothing matches that search' : 'All caught up'}</strong>
+                <small>
+                  {priorityQuery.trim()
+                    ? 'No fixtures needing attention mention either team.'
+                    : 'No unscheduled, overdue, or today fixtures.'}
+                </small>
+              </span>
             </div>
           ) : (
             <div className="priority-groups">
+              <div className="priority-select-line">
+                <label className="priority-select-all">
+                  <input
+                    type="checkbox"
+                    checked={priorityData.length > 0 && prioritySelected.size === priorityData.length}
+                    ref={(node) => {
+                      if (node) {
+                        node.indeterminate =
+                          prioritySelected.size > 0 && prioritySelected.size < priorityData.length
+                      }
+                    }}
+                    onChange={(event) => toggleAllPriorities(event.target.checked)}
+                    aria-label="Select every fixture on this page"
+                  />
+                  <span>Select all on this page</span>
+                </label>
+                <span className="priority-count-line">
+                  {priorityTotal} {priorityTotal === 1 ? 'fixture' : 'fixtures'} to review
+                </span>
+              </div>
               {priorityMatches.filter((group) => group.matches.length > 0).map((group) => (
                 <section className={`priority-group urgency-${group.key}`} key={group.key}>
                   <header>
@@ -1089,9 +1280,22 @@ function Results({
                       {group.matches.length} {group.matches.length === 1 ? 'fixture' : 'fixtures'}
                     </span>
                   </header>
-                  <div className="priority-fixtures">
+                  <div className="priority-fixtures" key={group.key}>
                     {group.matches.map((match) => (
-                      <div className="priority-fixture" key={match.id}>
+                      <div
+                        className={`priority-fixture${
+                          prioritySelected.has(match.id) ? ' selected' : ''
+                        }`}
+                        key={match.id}
+                      >
+                        <div className="priority-fixture-select">
+                          <input
+                            type="checkbox"
+                            checked={prioritySelected.has(match.id)}
+                            onChange={(event) => togglePriority(match.id, event.target.checked)}
+                            aria-label={`Select ${match.home_name} vs ${match.away_name}`}
+                          />
+                        </div>
                         <div className="priority-fixture-teams">
                           <strong>{match.home_name}</strong><span>vs</span><strong>{match.away_name}</strong>
                         </div>
@@ -1120,21 +1324,42 @@ function Results({
                   </div>
                 </section>
               ))}
+              {priorityPageCount > 1 && (
+                <nav className="priority-pagination" aria-label="Needs scheduling pages">
+                  <button
+                    className="btn sm"
+                    onClick={() => setPriorityPage((p) => Math.max(0, p - 1))}
+                    disabled={priorityPage === 0 || loadingMatches}
+                  >
+                    Previous
+                  </button>
+                  <span className="pagination-page">
+                    Page {priorityPage + 1} of {priorityPageCount}
+                  </span>
+                  <button
+                    className="btn sm"
+                    onClick={() =>
+                      setPriorityPage((p) => Math.min(priorityPageCount - 1, p + 1))
+                    }
+                    disabled={priorityPage >= priorityPageCount - 1 || loadingMatches}
+                  >
+                    Next
+                  </button>
+                </nav>
+              )}
             </div>
           )}
         </div>
+        ) : (
+        <>
         <div className="match-controls">
-          <div className="filter-pills" role="group" aria-label="Filter fixtures">
-            {(['all', 'pending', 'completed'] as const).map((f) => (
-              <button
-                key={f}
-                className={filter === f ? 'selected' : ''}
-                onClick={() => { setFilter(f); setPage(0) }}
-              >
-                {f === 'pending' ? `Unplayed (${pendingCount})` : f === 'completed' ? `Completed (${completedCount})` : 'All fixtures'}
-              </button>
-            ))}
-          </div>
+          <span className="match-controls-label">
+            {matchTab === 'pending'
+              ? `${pendingCount} unplayed`
+              : matchTab === 'completed'
+                ? `${completedCount} with a result`
+                : `${totalMatches} in this season`}
+          </span>
           <div className="match-controls-right">
             <label className="match-sort-control">
               <span>Order</span>
@@ -1171,9 +1396,9 @@ function Results({
             <span>
               {query
                 ? 'Try another club name or clear your search.'
-                : priorityMatches[0].matches.length > 0 && filter !== 'completed'
-                  ? 'Fixtures needing a date are shown in the schedule priorities above.'
-                  : 'Switch filters to see other fixtures.'}
+                : priorityTotal > 0 && filter !== 'completed'
+                  ? 'Fixtures still needing a date are on the Needs scheduling tab.'
+                  : 'Nothing here yet.'}
             </span>
           </div>
         ) : (
@@ -1269,6 +1494,8 @@ function Results({
               </button>
             </div>
           </nav>
+        )}
+        </>
         )}
       </section>
 

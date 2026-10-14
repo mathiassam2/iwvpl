@@ -160,8 +160,43 @@ export const getMatches = ({
   return request<MatchPage>(`/api/matches?${params}`)
 }
 
-export const getMatchPriorities = () =>
-  request<{ matches: Match[] }>('/api/matches/priorities').then((r) => r.matches)
+/**
+ * The fixtures needing attention: undated, overdue, or today.
+ *
+ * Paged like the main list rather than returned whole. An admin laying out a
+ * season can have hundreds of undated fixtures, and loading all of them to show
+ * the first twenty is the thing this avoids. Search matches either club.
+ */
+export const getMatchPriorities = ({
+  limit,
+  offset,
+  search,
+}: {
+  limit?: number
+  offset?: number
+  search?: string
+}) => {
+  const params = new URLSearchParams()
+  if (limit != null) params.set('limit', String(limit))
+  if (offset != null) params.set('offset', String(offset))
+  if (search) params.set('search', search)
+  const query = params.toString()
+  return request<{ matches: Match[]; total: number; limit: number; offset: number }>(
+    `/api/matches/priorities${query ? `?${query}` : ''}`,
+  )
+}
+
+/**
+ * Delete several fixtures at once.
+ *
+ * All or nothing: the server refuses the whole set rather than removing part of
+ * it, so there is no half-done state to reason about afterwards.
+ */
+export const deleteMatches = (matchIds: number[]) =>
+  request<{ ok: true; deleted: number }>('/api/admin/matches/delete', {
+    method: 'POST',
+    body: JSON.stringify({ matchIds }),
+  })
 
 export const getClubs = (seasonId?: number) =>
   request<{ clubs: Club[] }>(

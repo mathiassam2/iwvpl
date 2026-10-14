@@ -160,6 +160,80 @@ button { -webkit-tap-highlight-color: transparent; }
 .priority-fixture time { color: var(--muted); font-size: 11px; white-space: nowrap; }
 .priority-fixture-actions { display: flex; align-items: center; justify-content: flex-end; gap: 7px; }
 .priority-action, .priority-delete { min-height: 34px; padding-inline: 10px; font-size: 10px; }
+
+/* --------------------------------------------------- fixture list tabs */
+.match-tabs {
+  display: flex; flex-wrap: wrap; gap: 5px; padding: 12px 18px 0;
+  border-bottom: 1px solid var(--border);
+}
+.match-tabs button {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 38px; padding: 0 14px;
+  border: 1px solid transparent; border-bottom: 0; border-radius: 9px 9px 0 0;
+  color: var(--muted); background: transparent; font-size: 12px; font-weight: 700; cursor: pointer;
+  transition: color .15s ease, background .15s ease;
+}
+.match-tabs button:hover { color: var(--text); background: var(--surface-hover); }
+.match-tabs button.selected {
+  color: var(--text); background: var(--surface-raised);
+  border-color: var(--border); margin-bottom: -1px; padding-bottom: 1px;
+}
+.match-tab-count {
+  display: inline-grid; place-items: center; min-width: 20px; height: 19px; padding: 0 6px;
+  border-radius: 99px; color: var(--muted); background: var(--surface);
+  font-size: 10px; font-weight: 800; font-variant-numeric: tabular-nums;
+}
+.match-tabs button.selected .match-tab-count { color: var(--accent); background: var(--accent-soft); }
+.match-controls-label { color: var(--muted); font-size: 11px; font-weight: 700; }
+
+.match-section > .match-priority,
+.match-section > .match-controls,
+.match-section > .match-list,
+.match-section > .match-empty,
+.match-section > .match-pagination { border-top: 0; }
+
+/* Needs scheduling: its own search, selection and paging. */
+.priority-tools { display: flex; align-items: center; gap: 10px; }
+.priority-select-line {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: 8px 14px; margin-bottom: 8px;
+}
+.priority-count-line { color: var(--faint); font-size: 10px; font-weight: 700; }
+.priority-select-all {
+  display: flex; align-items: center; gap: 8px;
+  color: var(--muted); font-size: 10px; font-weight: 700; cursor: pointer;
+}
+.priority-select-all input,
+.priority-fixture-select input {
+  width: 17px; height: 17px; accent-color: var(--accent); cursor: pointer;
+}
+
+/* Two classes so it beats the single-class `.search-box` rule wherever that
+   sits in this file. A percentage width here resolves against the
+   shrink-to-fit wrapper, which collapsed the box to its own magnifier. */
+.search-box.priority-tools { flex: 0 0 auto; }
+.search-box.priority-search-box { width: 250px; flex: 0 0 auto; }
+.priority-fixture { grid-template-columns: auto minmax(0, 1fr) minmax(170px, auto) auto; }
+/* Pulled out to the group's edges and padded back in, so the highlight reads
+   as one continuous bar instead of stopping short of both ends. The group
+   clips it to the rounded corner. */
+.priority-fixture.selected {
+  margin-inline: -17px;
+  padding-inline: 17px;
+  background: var(--accent-soft);
+}
+.priority-fixture-select { display: grid; place-items: center; padding-right: 2px; }
+.priority-bulk {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+  margin: 0 0 12px; padding: 9px 12px; border: 1px solid rgb(200 255 61 / 26%);
+  border-radius: 10px; background: var(--accent-soft); color: var(--muted); font-size: 11px;
+}
+.priority-bulk strong { color: var(--text); font-size: 13px; }
+.priority-bulk .btn { margin-left: auto; }
+.priority-bulk .btn + .btn { margin-left: 0; }
+.priority-pagination {
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  padding: 12px 0 2px; color: var(--muted); font-size: 11px;
+}
 .priority-action { color: var(--text); }
 .priority-action:hover { border-color: var(--border-strong); background: var(--surface-hover); }
 

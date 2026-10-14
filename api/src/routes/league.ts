@@ -282,8 +282,36 @@ league.get(
 
 league.get(
   '/matches/priorities',
-  handler(async (_req, res) => {
+  handler(async (req, res) => {
     const { date, datetime } = kualaLumpurClock()
+
+    const limit = intParam(req.query.limit, 25, 1, 200)
+    const offset = intParam(req.query.offset, 0, 0, 100000)
+    const search = typeof req.query.search === 'string' ? req.query.search.trim() : ''
+
+    // Searched on the admin side, which is the only consumer, but kept here so
+    // the panel never has to pull the whole list to filter it in the browser.
+    // Both ends of the fixture are searched: an admin looking up a club wants
+    // its games whether it is listed home or away, and half the results is a
+    // worse answer than none.
+    const searchClause = search
+      ? `AND (home.name LIKE ? OR away.name LIKE ? OR home.short_code LIKE ? OR away.short_code LIKE ?)`
+      : ''
+    const searchParams = search
+      ? [`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`]
+      : []
+
+    const [{ total }] = await queryAll<{ total: number }>(
+      `SELECT COUNT(*) AS total
+         FROM matches m
+         JOIN clubs home ON home.id = m.home_club_id
+         JOIN clubs away ON away.id = m.away_club_id
+        WHERE (m.home_score IS NULL OR m.away_score IS NULL)
+          AND (m.kickoff IS NULL OR m.kickoff <= ? OR (DATE(m.kickoff) = ? AND m.kickoff > ?))
+          ${searchClause}`,
+      [datetime, date, datetime, ...searchParams],
+    )
+
     const rows = await queryAll(
       `SELECT m.id, m.kickoff, m.status, m.home_score, m.away_score, m.source_url,
               m.venue, m.stream_url,
@@ -296,10 +324,12 @@ league.get(
          JOIN clubs away ON away.id = m.away_club_id
         WHERE (m.home_score IS NULL OR m.away_score IS NULL)
           AND (m.kickoff IS NULL OR m.kickoff <= ? OR (DATE(m.kickoff) = ? AND m.kickoff > ?))
-        ORDER BY (m.kickoff IS NULL) DESC, m.kickoff ASC, m.id ASC`,
-      [datetime, date, datetime],
+          ${searchClause}
+        ORDER BY (m.kickoff IS NULL) DESC, m.kickoff ASC, m.id ASC
+        LIMIT ? OFFSET ?`,
+      [datetime, date, datetime, ...searchParams, limit, offset],
     )
-    res.json({ matches: rows })
+    res.json({ matches: rows, total: Number(total ?? 0), limit, offset })
   }),
 )
 

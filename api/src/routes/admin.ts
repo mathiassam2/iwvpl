@@ -601,6 +601,94 @@ admin.delete(
   }),
 )
 
+/**
+ * Delete several fixtures at once.
+ *
+ * The bulk form of DELETE /matches/:id and carries the same guards: a match
+ * with one score but not the other cannot be removed safely, and a played match
+ * has its contribution taken back out of the standings first so the table does
+ * not keep a result nobody can see any more.
+ *
+ * All of it or none of it. A partial delete from the admin's point of view is
+ * worse than a refusal — they asked for a set of fixtures gone and would have no
+ * way to tell which half went.
+ */
+admin.post(
+  '/matches/delete',
+  handler(async (req, res) => {
+    const ids = req.body?.matchIds
+    if (
+      !Array.isArray(ids) ||
+      ids.length === 0 ||
+      ids.some((id) => !Number.isSafeInteger(id) || id < 1)
+    ) {
+      return res
+        .status(400)
+        .json({ error: 'matchIds must be a non-empty array of match IDs.' })
+    }
+    if (ids.length > 500) {
+      return res.status(400).json({ error: 'Delete at most 500 fixtures at a time.' })
+    }
+
+    const result = await withTransaction(async (conn) => {
+      const [rows] = await conn.query(
+        `SELECT id, season_id, division_id, home_club_id, away_club_id, home_score, away_score
+           FROM matches WHERE id IN (?) FOR UPDATE`,
+        [ids],
+      )
+      const matches = rows as Array<{
+        id: number
+        season_id: number
+        division_id: number
+        home_club_id: number
+        away_club_id: number
+        home_score: number | null
+        away_score: number | null
+      }>
+
+      const missing = ids.filter((id) => !matches.some((match) => match.id === id))
+      if (missing.length > 0) {
+        return {
+          error: `Some of those fixtures no longer exist (${missing.length}). Refresh and try again.` as const,
+          status: 409,
+        }
+      }
+
+      for (const match of matches) {
+        if ((match.home_score === null) !== (match.away_score === null)) {
+          return {
+            error: 'One of those fixtures has an incomplete result and cannot be deleted safely. Delete it on its own to see which.' as const,
+            status: 409,
+          }
+        }
+      }
+
+      for (const match of matches) {
+        if (match.home_score !== null && match.away_score !== null) {
+          await clearResult(
+            conn,
+            { seasonId: match.season_id, divisionId: match.division_id },
+            {
+              homeClubId: match.home_club_id,
+              awayClubId: match.away_club_id,
+              homeScore: match.home_score,
+              awayScore: match.away_score,
+            },
+          )
+        }
+      }
+
+      await conn.query('DELETE FROM match_events WHERE match_id IN (?)', [ids])
+      await conn.query('DELETE FROM match_stats WHERE match_id IN (?)', [ids])
+      await conn.query('DELETE FROM matches WHERE id IN (?)', [ids])
+      return { ok: true as const, deleted: matches.length }
+    })
+
+    if ('error' in result) return res.status(result.status).json({ error: result.error })
+    res.json({ ok: true, deleted: result.deleted })
+  }),
+)
+
 /* ----------------------------------------------------------------- clubs */
 
 admin.patch(
