@@ -190,6 +190,11 @@ league.get(
       )
       if (!season) return res.status(404).json({ error: 'Season not found.' })
     }
+    const requestedClubSlug = req.query.clubSlug
+    const clubSlug =
+      typeof requestedClubSlug === 'string' && requestedClubSlug.trim()
+        ? requestedClubSlug.trim().slice(0, 140)
+        : null
     const latestFirst = req.query.sort === 'latest'
     const result = req.query.result === 'pending' || req.query.result === 'completed'
       ? req.query.result
@@ -204,6 +209,7 @@ league.get(
     const searchFilter = search ? '(home.name LIKE ? OR away.name LIKE ?)' : '1 = 1'
     const where = `(? IS NULL OR m.status = ?)
       AND (? IS NULL OR m.season_id = ?)
+      AND (? IS NULL OR home.slug = ? OR away.slug = ?)
       AND ${scoreFilter}
       AND NOT ((m.home_score IS NULL OR m.away_score IS NULL) AND m.kickoff IS NULL)
       AND ${searchFilter}`
@@ -212,6 +218,9 @@ league.get(
       status,
       seasonId,
       seasonId,
+      clubSlug,
+      clubSlug,
+      clubSlug,
       ...(search ? [searchPattern, searchPattern] : []),
     ]
     const { date, datetime } = kualaLumpurClock()

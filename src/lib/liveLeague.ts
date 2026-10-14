@@ -57,6 +57,17 @@ export interface LeagueSeason {
   featured_division_id: number | null
 }
 
+export interface LeagueClub {
+  id: number
+  name: string
+  slug: string
+}
+
+export interface LiveMatchPage {
+  matches: Match[]
+  total: number
+}
+
 export interface LiveStandings {
   season: LeagueSeason
   divisions: Record<string, StandingDivision>
@@ -103,6 +114,17 @@ export async function getLiveSeasons(signal: AbortSignal): Promise<LeagueSeason[
   return response.seasons
 }
 
+export async function getLiveSeasonClubs(
+  signal: AbortSignal,
+  seasonId: number,
+): Promise<LeagueClub[]> {
+  const response = await get<{ clubs: LeagueClub[] }>(
+    `/api/clubs?seasonId=${seasonId}`,
+    signal,
+  )
+  return response.clubs
+}
+
 function toMatch(match: ApiMatch): Match {
   const [datePart, timePart = ''] = match.kickoff.split(' ')
   const date = new Date(`${datePart}T00:00:00`)
@@ -140,17 +162,44 @@ export async function getLiveResults(
   signal: AbortSignal,
   seasonId?: number,
 ): Promise<Match[]> {
+  const page = await getLiveResultsPage(signal, {
+    seasonId,
+    limit: 200,
+    offset: 0,
+  })
+  return page.matches
+}
+
+export async function getLiveResultsPage(
+  signal: AbortSignal,
+  {
+    seasonId,
+    clubSlug,
+    limit,
+    offset,
+  }: {
+    seasonId?: number
+    clubSlug?: string
+    limit: number
+    offset: number
+  },
+): Promise<LiveMatchPage> {
   const params = new URLSearchParams({
-    limit: '200',
+    limit: String(limit),
+    offset: String(offset),
     status: 'finished',
     sort: 'latest',
   })
   if (seasonId != null) params.set('seasonId', String(seasonId))
-  const response = await get<{ matches: ApiMatch[] }>(
+  if (clubSlug) params.set('clubSlug', clubSlug)
+  const response = await get<{ matches: ApiMatch[]; total: number }>(
     `/api/matches?${params}`,
     signal,
   )
-  return response.matches.map(toMatch)
+  return {
+    matches: response.matches.map(toMatch),
+    total: response.total,
+  }
 }
 
 export async function getLiveStandings(

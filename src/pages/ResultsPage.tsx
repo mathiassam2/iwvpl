@@ -5,9 +5,11 @@ import { Container, EmptyState, Section, Select } from '@/components/ui'
 import { SITE, siteData } from '@/data'
 import { groupByDate, stripFlag, totalGoals } from '@/lib/format'
 import {
-  getLiveResults,
+  getLiveResultsPage,
+  getLiveSeasonClubs,
   getLiveSeasons,
   liveLeagueEnabled,
+  type LeagueClub,
   type LeagueSeason,
 } from '@/lib/liveLeague'
 import { matchIndexOf } from '@/lib/match'
@@ -16,9 +18,12 @@ import { useSeasonName } from '@/lib/season'
 export default function ResultsPage() {
   const seasonName = useSeasonName()
   const [team, setTeam] = useState('all')
+  const [seasonClubs, setSeasonClubs] = useState<LeagueClub[]>([])
   const [liveResults, setLiveResults] = useState<typeof siteData.results>([])
+  const [liveResultTotal, setLiveResultTotal] = useState(0)
   const [seasons, setSeasons] = useState<LeagueSeason[]>([])
   const [seasonId, setSeasonId] = useState<number | null>(null)
+  const [page, setPage] = useState(0)
   const [loading, setLoading] = useState(liveLeagueEnabled)
   const [error, setError] = useState('')
   const [reload, setReload] = useState(0)
@@ -54,12 +59,37 @@ export default function ResultsPage() {
   useEffect(() => {
     if (!liveLeagueEnabled || seasonId === null) return
     const controller = new AbortController()
+    setSeasonClubs([])
+    setTeam('all')
+
+    getLiveSeasonClubs(controller.signal, seasonId)
+      .then(setSeasonClubs)
+      .catch((cause: unknown) => {
+        if (!controller.signal.aborted) {
+          setError(cause instanceof Error ? cause.message : 'Could not load season clubs.')
+        }
+      })
+
+    return () => controller.abort()
+  }, [seasonId])
+
+  useEffect(() => {
+    if (!liveLeagueEnabled || seasonId === null) return
+    const controller = new AbortController()
     setLoading(true)
     setError('')
     setLiveResults([])
 
-    getLiveResults(controller.signal, seasonId)
-      .then(setLiveResults)
+    getLiveResultsPage(controller.signal, {
+      seasonId,
+      clubSlug: team === 'all' ? undefined : team,
+      limit: 20,
+      offset: page * 20,
+    })
+      .then(({ matches, total }) => {
+        setLiveResults(matches)
+        setLiveResultTotal(total)
+      })
       .catch((cause: unknown) => {
         if (!controller.signal.aborted) {
           setError(cause instanceof Error ? cause.message : 'Could not load live results.')
@@ -70,30 +100,45 @@ export default function ResultsPage() {
       })
 
     return () => controller.abort()
-  }, [reload, seasonId])
+  }, [reload, seasonId, team, page])
 
-  const results = liveLeagueEnabled ? liveResults : siteData.results
+  const results = liveLeagueEnabled
+    ? liveResults
+    : [...siteData.results].sort(
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+      )
   const selectedSeason = seasons.find((season) => season.id === seasonId)
 
   const teams = useMemo(() => {
+    if (liveLeagueEnabled) {
+      return seasonClubs.map((club) => ({ value: club.slug, label: club.name }))
+    }
     const names = new Set<string>()
     results.forEach((m) => {
       names.add(stripFlag(m.home))
       names.add(stripFlag(m.away))
     })
-    return [...names].sort((a, b) => a.localeCompare(b))
-  }, [results])
+    return [...names]
+      .sort((a, b) => a.localeCompare(b))
+      .map((name) => ({ value: name, label: name }))
+  }, [results, seasonClubs])
 
-  const filtered = useMemo(
-    () =>
-      team === 'all' ? results : results.filter((m) => stripFlag(m.home) === team || stripFlag(m.away) === team),
-    [results, team],
-  )
+  const filtered = useMemo(() => {
+    if (liveLeagueEnabled || team === 'all') return results
+    return results.filter((m) => stripFlag(m.home) === team || stripFlag(m.away) === team)
+  }, [results, team])
 
-  const grouped = useMemo(() => groupByDate(filtered), [filtered])
+  const totalMatches = liveLeagueEnabled ? liveResultTotal : filtered.length
+  const pageCount = Math.max(1, Math.ceil(totalMatches / 20))
+  const firstMatch = totalMatches === 0 ? 0 : page * 20 + 1
+  const lastMatch = Math.min((page + 1) * 20, totalMatches)
+  const visibleMatches = liveLeagueEnabled
+    ? filtered
+    : filtered.slice(page * 20, (page + 1) * 20)
+  const grouped = useMemo(() => groupByDate(visibleMatches), [visibleMatches])
 
-  const wins = filtered.filter((m) => Number(m.hs) > Number(m.as)).length
-  const draws = filtered.filter((m) => Number(m.hs) === Number(m.as)).length
+  const wins = visibleMatches.filter((m) => Number(m.hs) > Number(m.as)).length
+  const draws = visibleMatches.filter((m) => Number(m.hs) === Number(m.as)).length
 
   return (
     <div className="page-enter">
@@ -135,24 +180,29 @@ export default function ResultsPage() {
                 }))}
                 onChange={(value) => {
                   setTeam('all')
+                  setPage(0)
                   setSeasonId(Number(value))
                 }}
               />
             </label>
           )}
           <div className="mb-8 grid gap-4 sm:grid-cols-4">
-            <StatTile label="Fixtures" value={filtered.length} hint="Reported" />
+            <StatTile
+              label="Fixtures"
+              value={totalMatches}
+              hint={totalMatches > 20 ? `Showing ${firstMatch}–${lastMatch}` : 'Reported'}
+            />
             <StatTile
               label="Home wins"
               value={wins}
-              hint={`${((wins / Math.max(filtered.length, 1)) * 100).toFixed(0)}%`}
+              hint="On this page"
             />
             <StatTile
               label="Draws"
               value={draws}
-              hint={`${((draws / Math.max(filtered.length, 1)) * 100).toFixed(0)}%`}
+              hint="On this page"
             />
-            <StatTile label="Goals" value={totalGoals(filtered)} hint="Combined" />
+            <StatTile label="Goals" value={totalGoals(visibleMatches)} hint="On this page" />
           </div>
 
           {/* filter */}
@@ -166,16 +216,22 @@ export default function ResultsPage() {
             <Select
               id="team-filter"
               value={team}
-              onChange={setTeam}
+              onChange={(value) => {
+                setTeam(value)
+                setPage(0)
+              }}
               options={[
                 { value: 'all', label: 'All clubs' },
-                ...teams.map((t) => ({ value: t, label: t })),
+                ...teams,
               ]}
               className="sm:w-72"
             />
             {team !== 'all' && (
               <button
-                onClick={() => setTeam('all')}
+                onClick={() => {
+                  setTeam('all')
+                  setPage(0)
+                }}
                 className="shrink-0 text-xs font-semibold text-[var(--accent-text)] transition-opacity hover:opacity-70"
               >
                 Clear filter
@@ -215,6 +271,36 @@ export default function ResultsPage() {
                 </section>
               ))}
             </div>
+          )}
+          {totalMatches > 20 && (
+            <nav
+              className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border)] pt-5"
+              aria-label="Match results pagination"
+            >
+              <p className="text-xs text-[var(--text-faint)]">
+                Showing <strong className="text-[var(--text-muted)]">{firstMatch}–{lastMatch}</strong>
+                {' '}of <strong className="text-[var(--text-muted)]">{totalMatches}</strong> matches
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  className="rounded-button border border-[var(--border)] px-3 py-2 text-xs font-semibold text-[var(--text-muted)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-45"
+                  disabled={page === 0 || loading}
+                  onClick={() => setPage((current) => Math.max(0, current - 1))}
+                >
+                  Previous
+                </button>
+                <span className="px-2 text-xs tabular-nums text-[var(--text-muted)]">
+                  Page {page + 1} of {pageCount}
+                </span>
+                <button
+                  className="rounded-button border border-[var(--border)] px-3 py-2 text-xs font-semibold text-[var(--text-muted)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-45"
+                  disabled={page >= pageCount - 1 || loading}
+                  onClick={() => setPage((current) => Math.min(pageCount - 1, current + 1))}
+                >
+                  Next
+                </button>
+              </div>
+            </nav>
           )}
 
           <p className="mt-10 max-w-3xl text-xs leading-relaxed text-[var(--text-faint)]">
