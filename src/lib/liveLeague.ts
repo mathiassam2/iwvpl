@@ -136,9 +136,18 @@ function toMatch(match: ApiMatch): Match {
   }
 }
 
-export async function getLiveResults(signal: AbortSignal): Promise<Match[]> {
+export async function getLiveResults(
+  signal: AbortSignal,
+  seasonId?: number,
+): Promise<Match[]> {
+  const params = new URLSearchParams({
+    limit: '200',
+    status: 'finished',
+    sort: 'latest',
+  })
+  if (seasonId != null) params.set('seasonId', String(seasonId))
   const response = await get<{ matches: ApiMatch[] }>(
-    '/api/matches?limit=200&status=finished',
+    `/api/matches?${params}`,
     signal,
   )
   return response.matches.map(toMatch)

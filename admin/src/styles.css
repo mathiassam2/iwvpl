@@ -246,6 +246,9 @@ button { -webkit-tap-highlight-color: transparent; }
 .fixture-modal .club-edit-fields label { min-width: 0; }
 .fixture-modal .club-edit-fields label:first-child { grid-column: 1 / -1; }
 .fixture-modal .club-edit-fields label:last-child { grid-column: 1 / -1; }
+.fixture-clubs-pair { display: grid; grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px; }
+.fixture-clubs-pair label { display: grid; min-width: 0; gap: 7px; color: var(--muted); font-size: 11px; font-weight: 700; }
+.fixture-clubs-pair .custom-select { width: 100%; min-width: 0; }
 .fixture-modal .club-edit-fields .custom-select { width: 100%; min-width: 0; }
 .fixture-modal .club-edit-fields label > span small { color: var(--faint); font-size: 10px; font-weight: 500; }
 

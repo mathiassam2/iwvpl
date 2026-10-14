@@ -4,7 +4,12 @@ import { MatchRow, StatTile } from '@/components/league'
 import { Container, EmptyState, Section, Select } from '@/components/ui'
 import { SITE, siteData } from '@/data'
 import { groupByDate, stripFlag, totalGoals } from '@/lib/format'
-import { getLiveResults, liveLeagueEnabled } from '@/lib/liveLeague'
+import {
+  getLiveResults,
+  getLiveSeasons,
+  liveLeagueEnabled,
+  type LeagueSeason,
+} from '@/lib/liveLeague'
 import { matchIndexOf } from '@/lib/match'
 import { useSeasonName } from '@/lib/season'
 
@@ -12,6 +17,8 @@ export default function ResultsPage() {
   const seasonName = useSeasonName()
   const [team, setTeam] = useState('all')
   const [liveResults, setLiveResults] = useState<typeof siteData.results>([])
+  const [seasons, setSeasons] = useState<LeagueSeason[]>([])
+  const [seasonId, setSeasonId] = useState<number | null>(null)
   const [loading, setLoading] = useState(liveLeagueEnabled)
   const [error, setError] = useState('')
   const [reload, setReload] = useState(0)
@@ -22,7 +29,36 @@ export default function ResultsPage() {
     setLoading(true)
     setError('')
 
-    getLiveResults(controller.signal)
+    getLiveSeasons(controller.signal)
+      .then((availableSeasons) => {
+        setSeasons(availableSeasons)
+        if (availableSeasons.length === 0) setLoading(false)
+        setSeasonId((current) =>
+          current != null && availableSeasons.some((season) => season.id === current)
+            ? current
+            : availableSeasons.find((season) => Boolean(season.is_current))?.id ??
+                availableSeasons[0]?.id ??
+                null,
+        )
+      })
+      .catch((cause: unknown) => {
+        if (!controller.signal.aborted) {
+          setError(cause instanceof Error ? cause.message : 'Could not load available seasons.')
+          setLoading(false)
+        }
+      })
+
+    return () => controller.abort()
+  }, [reload])
+
+  useEffect(() => {
+    if (!liveLeagueEnabled || seasonId === null) return
+    const controller = new AbortController()
+    setLoading(true)
+    setError('')
+    setLiveResults([])
+
+    getLiveResults(controller.signal, seasonId)
       .then(setLiveResults)
       .catch((cause: unknown) => {
         if (!controller.signal.aborted) {
@@ -34,9 +70,10 @@ export default function ResultsPage() {
       })
 
     return () => controller.abort()
-  }, [reload])
+  }, [reload, seasonId])
 
   const results = liveLeagueEnabled ? liveResults : siteData.results
+  const selectedSeason = seasons.find((season) => season.id === seasonId)
 
   const teams = useMemo(() => {
     const names = new Set<string>()
@@ -63,7 +100,7 @@ export default function ResultsPage() {
       <PageHeader
         eyebrow="Match centre"
         title="Match Results"
-        lede={`Every completed fixture reported across the ${seasonName} IWVPL Pro Club League.`}
+        lede={`Every completed fixture reported across the ${selectedSeason?.name ?? seasonName} IWVPL Pro Club League, with the latest matches first.`}
       />
 
       <Section>
@@ -86,6 +123,23 @@ export default function ResultsPage() {
           )}
           {!loading && !error && (
             <>
+          {liveLeagueEnabled && seasons.length > 0 && (
+            <label className="mb-6 flex max-w-sm flex-col gap-2 text-sm font-semibold text-[var(--text-muted)]">
+              Match season
+              <Select
+                ariaLabel="Match season"
+                value={String(seasonId ?? '')}
+                options={seasons.map((season) => ({
+                  value: String(season.id),
+                  label: `${season.name}${season.is_current ? ' · Current' : ''}`,
+                }))}
+                onChange={(value) => {
+                  setTeam('all')
+                  setSeasonId(Number(value))
+                }}
+              />
+            </label>
+          )}
           <div className="mb-8 grid gap-4 sm:grid-cols-4">
             <StatTile label="Fixtures" value={filtered.length} hint="Reported" />
             <StatTile
@@ -132,7 +186,7 @@ export default function ResultsPage() {
           {grouped.length === 0 ? (
             <EmptyState
               title="No results found"
-              hint="Try selecting a different club from the filter above."
+              hint="Try another season or club filter."
             />
           ) : (
             <div className="space-y-8">

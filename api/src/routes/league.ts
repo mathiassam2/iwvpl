@@ -177,6 +177,20 @@ league.get(
     const limit = intParam(req.query.limit, 50, 1, 200)
     const offset = intParam(req.query.offset, 0, 0, 100000)
     const status = typeof req.query.status === 'string' ? req.query.status : null
+    const requestedSeasonId = req.query.seasonId
+    let seasonId: number | null = null
+    if (requestedSeasonId !== undefined) {
+      seasonId = Number(requestedSeasonId)
+      if (!Number.isSafeInteger(seasonId) || seasonId < 1) {
+        return res.status(400).json({ error: 'seasonId must be a positive integer.' })
+      }
+      const season = await queryOne<{ id: number }>(
+        'SELECT id FROM seasons WHERE id = ?',
+        [seasonId],
+      )
+      if (!season) return res.status(404).json({ error: 'Season not found.' })
+    }
+    const latestFirst = req.query.sort === 'latest'
     const result = req.query.result === 'pending' || req.query.result === 'completed'
       ? req.query.result
       : 'all'
@@ -189,11 +203,31 @@ league.get(
         : '1 = 1'
     const searchFilter = search ? '(home.name LIKE ? OR away.name LIKE ?)' : '1 = 1'
     const where = `(? IS NULL OR m.status = ?)
+      AND (? IS NULL OR m.season_id = ?)
       AND ${scoreFilter}
       AND NOT ((m.home_score IS NULL OR m.away_score IS NULL) AND m.kickoff IS NULL)
       AND ${searchFilter}`
-    const whereParams = [status, status, ...(search ? [searchPattern, searchPattern] : [])]
+    const whereParams = [
+      status,
+      status,
+      seasonId,
+      seasonId,
+      ...(search ? [searchPattern, searchPattern] : []),
+    ]
     const { date, datetime } = kualaLumpurClock()
+    const ordering = latestFirst
+      ? 'ORDER BY m.kickoff DESC, m.id DESC'
+      : `ORDER BY
+            CASE
+              WHEN (m.home_score IS NULL OR m.away_score IS NULL) AND m.kickoff IS NULL THEN 0
+              WHEN m.home_score IS NOT NULL AND m.away_score IS NOT NULL THEN 4
+              WHEN m.kickoff <= ? THEN 1
+              WHEN DATE(m.kickoff) = ? THEN 2
+              ELSE 3
+            END,
+            CASE WHEN m.kickoff <= ? OR DATE(m.kickoff) = ? THEN m.kickoff END ASC,
+            m.kickoff DESC, m.id DESC`
+    const orderingParams = latestFirst ? [] : [datetime, date, datetime, date]
 
     const [rows, count, summary] = await Promise.all([
       queryAll(
@@ -207,18 +241,9 @@ league.get(
            JOIN clubs home ON home.id = m.home_club_id
            JOIN clubs away ON away.id = m.away_club_id
           WHERE ${where}
-          ORDER BY
-            CASE
-              WHEN (m.home_score IS NULL OR m.away_score IS NULL) AND m.kickoff IS NULL THEN 0
-              WHEN m.home_score IS NOT NULL AND m.away_score IS NOT NULL THEN 4
-              WHEN m.kickoff <= ? THEN 1
-              WHEN DATE(m.kickoff) = ? THEN 2
-              ELSE 3
-            END,
-            CASE WHEN m.kickoff <= ? OR DATE(m.kickoff) = ? THEN m.kickoff END ASC,
-            m.kickoff DESC, m.id DESC
+          ${ordering}
           LIMIT ? OFFSET ?`,
-        [...whereParams, datetime, date, datetime, date, limit, offset],
+        [...whereParams, ...orderingParams, limit, offset],
       ),
       queryOne<{ total: number }>(
         `SELECT COUNT(*) AS total

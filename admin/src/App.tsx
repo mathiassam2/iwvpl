@@ -1000,38 +1000,40 @@ function Results({
                       }}
                     />
                   </label>
-                  <label>
-                    <span>Home club</span>
-                    <CustomSelect
-                      ariaLabel="Home club"
-                      value={createHome}
-                      disabled={!createDivisionId}
-                      options={[
-                        { value: '', label: 'Choose home club' },
-                        ...divisionClubs.map((club) => ({
-                          value: club.slug,
-                          label: club.name,
-                        })),
-                      ]}
-                      onChange={(value) => {
-                        setCreateHome(value)
-                        setCreateAway('')
-                      }}
-                    />
-                  </label>
-                  <label>
-                    <span>Away club</span>
-                    <CustomSelect
-                      ariaLabel="Away club"
-                      disabled={!createHome || awayOptions.length === 0}
-                      value={createAway}
-                      options={[
-                        { value: '', label: 'Choose away club' },
-                        ...awayOptions.map((club) => ({ value: club.slug, label: club.name })),
-                      ]}
-                      onChange={setCreateAway}
-                    />
-                  </label>
+                  <div className="fixture-clubs-pair">
+                    <label>
+                      <span>Home club</span>
+                      <CustomSelect
+                        ariaLabel="Home club"
+                        value={createHome}
+                        disabled={!createDivisionId}
+                        options={[
+                          { value: '', label: 'Choose home club' },
+                          ...divisionClubs.map((club) => ({
+                            value: club.slug,
+                            label: club.name,
+                          })),
+                        ]}
+                        onChange={(value) => {
+                          setCreateHome(value)
+                          setCreateAway('')
+                        }}
+                      />
+                    </label>
+                    <label>
+                      <span>Away club</span>
+                      <CustomSelect
+                        ariaLabel="Away club"
+                        disabled={!createHome || awayOptions.length === 0}
+                        value={createAway}
+                        options={[
+                          { value: '', label: 'Choose away club' },
+                          ...awayOptions.map((club) => ({ value: club.slug, label: club.name })),
+                        ]}
+                        onChange={setCreateAway}
+                      />
+                    </label>
+                  </div>
                   <label>
                     <span>Kickoff date &amp; time <small>(Kuala Lumpur, UTC+8)</small></span>
                     <input
