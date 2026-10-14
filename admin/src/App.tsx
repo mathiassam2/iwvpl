@@ -17,6 +17,7 @@ import {
   getPendingClubs,
   getSeasonDivisionMovements,
   getStandings,
+  moveClub,
   recordSeasonDivisionMovement,
   resetSeasonDivisionMovements,
   removePlayer,
@@ -30,9 +31,11 @@ import {
   updateSeason,
   withdrawResult,
   type Club,
+  type ClubMovementType,
   type AdminSeason,
   type Division,
   type Match,
+  type MatchSort,
   type PendingClub,
   type SeasonDivisionMovement,
   type Standing,
@@ -451,6 +454,13 @@ function Results({
   const [query, setQuery] = useState('')
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(0)
+  const [sort, setSort] = useState<MatchSort>(() => {
+    // Most recently kicked-off fixture first. The urgent work has its own panel
+    // above the list, so the list itself reads as a timeline.
+    return window.localStorage.getItem('iwvpl-admin-match-sort') === 'priority'
+      ? 'priority'
+      : 'latest'
+  })
   const [clubs, setClubs] = useState<Club[]>([])
   const [fixtureClubs, setFixtureClubs] = useState<Club[]>([])
   const [fixtureDivisions, setFixtureDivisions] = useState<Division[]>([])
@@ -479,6 +489,7 @@ function Results({
             offset: page * 20,
             result: filter,
             search,
+            sort,
           }),
           'Could not load matches',
         ),
@@ -515,7 +526,7 @@ function Results({
     } finally {
       if (currentRequest === requestId.current) setLoadingMatches(false)
     }
-  }, [filter, guard, page, search])
+  }, [filter, guard, page, search, sort])
 
   useEffect(() => {
     load().catch(() => setMatches((current) => current ?? []))
@@ -894,15 +905,34 @@ function Results({
               </button>
             ))}
           </div>
-          <label className="search-box">
-            <span aria-hidden="true">⌕</span>
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Find a club…"
-              aria-label="Find a club"
-            />
-          </label>
+          <div className="match-controls-right">
+            <label className="match-sort-control">
+              <span>Order</span>
+              <CustomSelect
+                ariaLabel="Order fixtures"
+                value={sort}
+                onChange={(value) => {
+                  if (value !== 'latest' && value !== 'priority') return
+                  setSort(value)
+                  setPage(0)
+                  window.localStorage.setItem('iwvpl-admin-match-sort', value)
+                }}
+                options={[
+                  { value: 'latest', label: 'Latest first' },
+                  { value: 'priority', label: 'Needs attention' },
+                ]}
+              />
+            </label>
+            <label className="search-box">
+              <span aria-hidden="true">⌕</span>
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Find a club…"
+                aria-label="Find a club"
+              />
+            </label>
+          </div>
         </div>
 
         {visibleMatches.length === 0 ? (
@@ -1928,6 +1958,17 @@ function Clubs({
     type: 'promotion' | 'relegation'
   } | null>(null)
   const [backfillClubSlug, setBackfillClubSlug] = useState('')
+  // Which movement the club editor is waiting on confirmation for, and the one
+  // it has actually sent. Both are per club so a failed move cannot leave the
+  // confirm strip open on a different club.
+  const [confirmingMovement, setConfirmingMovement] = useState<{
+    slug: string
+    type: ClubMovementType
+  } | null>(null)
+  const [movingClub, setMovingClub] = useState<{
+    slug: string
+    type: ClubMovementType
+  } | null>(null)
   const activeClub = clubs?.find((club) => club.slug === editing) ?? null
 
   const load = useCallback(async () => {
@@ -2011,7 +2052,9 @@ function Clubs({
       )
 
       // Division is a separate call: it has to create the club's standings row,
-      // which is not something the club PATCH knows how to do.
+      // which is not something the club PATCH knows how to do. It is recorded as
+      // a plain move, so it never spends a promotion or relegation slot — see
+      // `move` below for that.
       if (chosen && chosen !== (c.division_id ? String(c.division_id) : '')) {
         const res = await guard(
           () => assignDivision(c.slug, Number(chosen)),
@@ -2034,16 +2077,58 @@ function Clubs({
         ])
         setStandings(updatedStandings)
         setSeasonMovements(updatedMovements)
-        report('ok', `Saved ${c.name} and entered it into ${res.divisionName}.`)
+        report('ok', `Saved ${c.name} and entered it into ${res.divisionName}. No movement slot used.`)
       } else {
         report('ok', `Saved ${c.name}.`)
       }
 
       setEditing(null)
+      setConfirmingMovement(null)
     } catch {
       /* already reported */
     } finally {
       setBusy(null)
+    }
+  }
+
+  /**
+   * Promote or relegate the club one rung of the ladder.
+   *
+   * Deliberately does not touch `codes` or `statuses`: the editor stays open
+   * so several clubs can be moved in a row, and an unsaved short code would be
+   * silently discarded by a full save. It does resync the league draft to the
+   * league the club is actually in, otherwise the dropdown would sit there
+   * offering to make a move that already happened.
+   */
+  const move = async (c: Club, type: ClubMovementType) => {
+    setMovingClub({ slug: c.slug, type })
+    try {
+      const result = await guard(
+        () => moveClub(c.slug, type),
+        `Could not ${type === 'promotion' ? 'promote' : 'relegate'} ${c.name}`,
+      )
+      setClubs((current) =>
+        current?.map((club) =>
+          club.slug === c.slug ? { ...club, division_id: result.divisionId } : club,
+        ) ?? null,
+      )
+      setDivisionOf((current) => ({ ...current, [c.slug]: String(result.divisionId) }))
+      setSeasonMovements(null)
+      const [updatedStandings, updatedMovements] = await Promise.all([
+        guard(getStandings, 'Could not refresh standings after the movement'),
+        guard(getSeasonDivisionMovements, 'Could not refresh movement history after the movement'),
+      ])
+      setStandings(updatedStandings)
+      setSeasonMovements(updatedMovements)
+      setConfirmingMovement(null)
+      report(
+        'ok',
+        `${type === 'promotion' ? 'Promoted' : 'Relegated'} ${c.name} from ${result.sourceDivisionName} to ${result.divisionName}.`,
+      )
+    } catch {
+      /* already reported */
+    } finally {
+      setMovingClub(null)
     }
   }
 
@@ -2052,6 +2137,7 @@ function Clubs({
     setStatuses((s) => ({ ...s, [c.slug]: c.status }))
     setDivisionOf((s) => ({ ...s, [c.slug]: c.division_id ? String(c.division_id) : '' }))
     setNewPlayer((s) => ({ ...s, [c.slug]: '' }))
+    setConfirmingMovement(null)
     setEditing(c.slug)
   }
 
@@ -2060,6 +2146,7 @@ function Clubs({
     setStatuses((s) => ({ ...s, [c.slug]: c.status }))
     setDivisionOf((s) => ({ ...s, [c.slug]: c.division_id ? String(c.division_id) : '' }))
     setNewPlayer((s) => ({ ...s, [c.slug]: '' }))
+    setConfirmingMovement(null)
     setEditing(null)
   }
 
@@ -2378,6 +2465,70 @@ function Clubs({
   const projectedRelegationCount = [...projectedMoves.values()].filter(
     (move) => move.type === 'relegation',
   ).length
+
+  /**
+   * What the club editor's movement buttons would do, for one club.
+   *
+   * Both halves are resolved here so the buttons and the API cannot disagree:
+   * the destination is the neighbouring division in league order, which is what
+   * the server walks, and the blocking reason is stated instead of left for the
+   * admin to work out from a disabled button.
+   */
+  const movementPlan = (club: Club) => {
+    const ladder = orderedDivisions
+    const source = ladder.find((division) => division.id === club.division_id) ?? null
+    const index = source ? ladder.indexOf(source) : -1
+
+    const describe = (type: ClubMovementType) => {
+      if (!source) {
+        return {
+          type,
+          destination: null,
+          quota: 0,
+          completed: 0,
+          reason: 'Set this club’s league above before moving it up or down.',
+        }
+      }
+      const destination =
+        type === 'promotion'
+          ? (index > 0 ? ladder[index - 1] : null)
+          : (index >= 0 && index < ladder.length - 1 ? ladder[index + 1] : null)
+      if (!destination) {
+        return {
+          type,
+          destination: null,
+          quota: 0,
+          completed: 0,
+          reason: `${source.name} is the ${
+            type === 'promotion' ? 'highest' : 'lowest'
+          } league; there is nothing ${type === 'promotion' ? 'above' : 'below'} it.`,
+        }
+      }
+      const quota = type === 'promotion' ? promotionTargetFor(source) : relegationTargetFor(source)
+      const completed = type === 'promotion' ? promotionCompletedFor(source) : relegationCompletedFor(source)
+      if (quota < 1) {
+        return {
+          type,
+          destination,
+          quota,
+          completed,
+          reason: `No ${type} slots are configured for ${source.name}. Set a number under Clubs › Divisions.`,
+        }
+      }
+      if (completed >= quota) {
+        return {
+          type,
+          destination,
+          quota,
+          completed,
+          reason: `All ${quota} ${type} slot${quota === 1 ? '' : 's'} for ${source.name} are used (${completed}/${quota}). Raise the limit under Clubs › Divisions, or use the league picker above to move without using a slot.`,
+        }
+      }
+      return { type, destination, quota, completed, reason: null }
+    }
+
+    return { source, promotion: describe('promotion'), relegation: describe('relegation') }
+  }
   const clubGroups = [
     ...divisions.map((division) => ({
       id: String(division.id),
@@ -2912,28 +3063,140 @@ function Clubs({
                     ]}
                   />
                 </label>
-                <label>
-                  <span>League</span>
-                  <CustomSelect
-                    ariaLabel={`League for ${activeClub.name}`}
-                    value={divisionOf[activeClub.slug] ?? ''}
-                    disabled={statuses[activeClub.slug] !== 'active'}
-                    onChange={(value) =>
-                      setDivisionOf((current) => ({
-                        ...current,
-                        [activeClub.slug]: value,
-                      }))
-                    }
-                    options={[
-                      { value: '', label: 'Not entered' },
-                      ...divisions.map((division) => ({
-                        value: String(division.id),
-                        label: division.name,
-                      })),
-                    ]}
-                  />
-                </label>
               </div>
+              {(() => {
+                const plan = movementPlan(activeClub)
+                const confirming = confirmingMovement?.slug === activeClub.slug ? confirmingMovement : null
+                const movingThis = movingClub?.slug === activeClub.slug ? movingClub : null
+                const inactive = statuses[activeClub.slug] !== 'active'
+                return (
+                  <>
+                    <section className="club-edit-section" aria-labelledby="club-league-title">
+                      <div className="club-edit-section-heading">
+                        <h3 id="club-league-title">League</h3>
+                        <p>
+                          Put the club in any league you like. This is a plain move and never uses a
+                          promotion or relegation slot, so the season&rsquo;s numbers stay untouched.
+                        </p>
+                      </div>
+                      <div className="club-edit-fields">
+                        <label>
+                          <span>League</span>
+                          <CustomSelect
+                            ariaLabel={`League for ${activeClub.name}`}
+                            value={divisionOf[activeClub.slug] ?? ''}
+                            disabled={inactive}
+                            onChange={(value) =>
+                              setDivisionOf((current) => ({
+                                ...current,
+                                [activeClub.slug]: value,
+                              }))
+                            }
+                            options={[
+                              { value: '', label: 'Not entered' },
+                              ...divisions.map((division) => ({
+                                value: String(division.id),
+                                label: division.name,
+                              })),
+                            ]}
+                          />
+                        </label>
+                      </div>
+                      <p className="club-edit-current">
+                        Currently in <strong>{plan.source?.name ?? 'no league'}</strong>. Saving sends
+                        the club straight to whatever is picked above.
+                      </p>
+                    </section>
+                    <section className="club-edit-section" aria-labelledby="club-movement-title">
+                      <div className="club-edit-section-heading">
+                        <h3 id="club-movement-title">Promotion &amp; relegation</h3>
+                        <p>
+                          Send the club one league up or down the ladder. Unlike the picker above this
+                          spends one of the current league&rsquo;s slots for the season, which is what
+                          fills the coloured zones on the league list.
+                        </p>
+                      </div>
+                      {inactive && (
+                        <p className="club-edit-blocked" role="status">
+                          Set the club&rsquo;s status to Active before moving it between leagues.
+                        </p>
+                      )}
+                      <div className="club-movement-options">
+                        {[plan.promotion, plan.relegation].map((option) => {
+                          const isConfirming = confirming?.type === option.type
+                          const blocked = inactive || !option.destination || option.reason !== null
+                          const summary =
+                            option.reason ??
+                            (option.destination
+                              ? `Moves to ${option.destination.name} \u00b7 uses slot ${option.completed + 1} of ${option.quota} for ${plan.source?.name ?? 'this league'}.`
+                              : '')
+                          return (
+                            <div className={`club-movement-option ${option.type}`} key={option.type}>
+                              <div className="club-movement-option-copy">
+                                <span className="club-movement-arrow" aria-hidden="true">
+                                  {option.type === 'promotion' ? '\u25b2' : '\u25bc'}
+                                </span>
+                                <div>
+                                  <strong>
+                                    {option.type === 'promotion' ? 'Promote' : 'Relegate'}
+                                  </strong>
+                                  <span>{summary}</span>
+                                </div>
+                              </div>
+                              {isConfirming ? (
+                                <div className="club-movement-confirm" role="group" aria-label={`Confirm ${option.type} for ${activeClub.name}`}>
+                                  <p>
+                                    Move <strong>{activeClub.name}</strong> from{' '}
+                                    <strong>{plan.source?.name}</strong> to{' '}
+                                    <strong>{option.destination?.name}</strong>? It starts the new
+                                    league on 0 points.
+                                  </p>
+                                  <div className="club-movement-confirm-actions">
+                                    <button
+                                      type="button"
+                                      className="btn sm"
+                                      disabled={movingThis !== null}
+                                      onClick={() => setConfirmingMovement(null)}
+                                    >
+                                      Cancel
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className={`btn sm primary ${option.type}`}
+                                      disabled={movingThis !== null}
+                                      onClick={() => void move(activeClub, option.type)}
+                                    >
+                                      {movingThis?.type === option.type
+                                        ? option.type === 'promotion'
+                                          ? 'Promoting\u2026'
+                                          : 'Relegating\u2026'
+                                        : option.type === 'promotion'
+                                          ? 'Confirm promotion'
+                                          : 'Confirm relegation'}
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className={`btn sm ${option.type}`}
+                                  disabled={blocked || movingThis !== null}
+                                  title={inactive ? undefined : (option.reason ?? undefined)}
+                                  onClick={() =>
+                                    setConfirmingMovement({ slug: activeClub.slug, type: option.type })
+                                  }
+                                >
+                                  {option.type === 'promotion' ? 'Promote \u2191' : 'Relegate \u2193'}
+                                </button>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </section>
+                  </>
+                )
+              })()}
               <section className="club-edit-roster" aria-labelledby="add-player-title">
                 <div>
                   <h3 id="add-player-title">Add a player</h3>

@@ -73,6 +73,30 @@ function parseDivisionMovement(body: Record<string, unknown> | undefined): Divis
   }
 }
 
+/** How a club left its previous league. */
+type MovementType = 'promotion' | 'relegation' | 'transfer'
+/** The two kinds that spend a slot out of a league's season quota. */
+type RankedMovementType = Exclude<MovementType, 'transfer'>
+
+/**
+ * How many clubs a league may send up or down this season.
+ *
+ * A league configured to promote but not to relegate still sends one club down:
+ * a tier that never loses anyone cannot have a relegation zone on the public
+ * table, and the slot would otherwise sit unused forever. `parseMovementCount`
+ * folds 0 into NULL, so "greater than zero" here means "configured at all".
+ *
+ * Every place that decides whether a slot is free has to answer this the same
+ * way, or the league list and the club editor will disagree about how many
+ * moves are left.
+ */
+function movementQuota(division: DivisionMovement, type: RankedMovementType): number {
+  if (type === 'promotion') return division.promotion_count ?? 0
+  const configured = division.relegation_count ?? 0
+  if (configured > 0) return configured
+  return (division.promotion_count ?? 0) > 0 ? 1 : 0
+}
+
 function parseKickoff(value: unknown): string | null {
   if (value === null || value === undefined || value === '') return null
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) {
@@ -1216,15 +1240,7 @@ admin.post(
         return { status: 400, error: 'The selected leagues have no promotion or relegation order.' }
       }
 
-      const configuredRelegationCount = source.relegation_count ?? 0
-      const targetCount =
-        movementType === 'promotion'
-          ? source.promotion_count ?? 0
-          : configuredRelegationCount > 0
-            ? configuredRelegationCount
-            : (source.promotion_count ?? 0) > 0
-              ? 1
-              : 0
+      const targetCount = movementQuota(source, movementType)
       if (targetCount < 1) {
         return { status: 400, error: `No ${movementType} slots are configured for this league.` }
       }
@@ -1276,18 +1292,123 @@ admin.post(
   }),
 )
 
+/** A division, plus the season-wide slots it is configured to spend. */
+type SeasonDivision = DivisionMovement & {
+  id: number
+  name: string
+  season_id: number
+  sort_order: number
+}
+
 /**
- * Put a club into a division.
+ * Put a club into a division, recording how it got there.
  *
  * Creates the standings_snapshot row as well as the membership. Membership
  * alone would leave the club in `division_clubs` and absent from every table:
  * the standings page reads standings_snapshot, and applyResult only ever
- * *adjusts* a row that already exists there — it cannot conjure one. So a club
+ * adjusts a row that already exists there, it cannot conjure one. So a club
  * that joined without this step would be invisible until it happened to play,
  * and a result entered against it would have nothing to apply to.
  *
  * Position is the bottom of the table. A newly admitted club has played
  * nothing, so any position but last would be a claim it had not earned.
+ *
+ * Runs on a caller-supplied connection so a quota check and the write it guards
+ * cannot be interleaved by a second admin tab.
+ *
+ * movementType is supplied by the caller and is never inferred here. Dropping a
+ * club into a league by hand and deciding that it has been promoted are
+ * different intentions, and only the endpoint knows which one was meant.
+ */
+async function applyDivisionMove(
+  conn: any,
+  input: { clubId: number; destination: SeasonDivision; movementType: MovementType },
+): Promise<void> {
+  const { clubId, destination, movementType } = input
+  const seasonId = destination.season_id
+
+  const [membershipRows] = await conn.query(
+    `SELECT d.id AS division_id
+       FROM division_clubs dc
+       JOIN divisions d ON d.id = dc.division_id
+      WHERE dc.club_id = ? AND d.season_id = ?
+      ORDER BY dc.id DESC
+      FOR UPDATE`,
+    [clubId, seasonId],
+  )
+  const previousMembership = (
+    membershipRows as Array<{ division_id: number }>
+  )[0]
+
+  await conn.execute(
+    `DELETE FROM division_clubs
+      WHERE club_id = ?
+      AND division_id IN (SELECT id FROM divisions WHERE season_id = ?)
+      AND division_id <> ?`,
+    [clubId, seasonId, destination.id],
+  )
+
+  if (previousMembership && Number(previousMembership.division_id) !== destination.id) {
+    // A move is only true for as long as the club is still sitting where it was
+    // sent. Once it goes somewhere else the old row would keep counting against
+    // a league it is no longer leaving, so clear anything whose recorded
+    // destination is not the one being moved to now.
+    await conn.execute(
+      `DELETE FROM season_division_movements
+        WHERE season_id = ? AND club_id = ? AND destination_division_id <> ?`,
+      [seasonId, clubId, destination.id],
+    )
+    await conn.execute(
+      `INSERT INTO season_division_movements
+         (season_id, club_id, source_division_id, destination_division_id,
+          movement_type, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, NOW(), NOW())
+       ON DUPLICATE KEY UPDATE
+         destination_division_id = VALUES(destination_division_id),
+         movement_type = VALUES(movement_type),
+         updated_at = VALUES(updated_at)`,
+      [seasonId, clubId, Number(previousMembership.division_id), destination.id, movementType],
+    )
+  }
+
+  await conn.execute(
+    `INSERT INTO division_clubs
+       (division_id, club_id, code_at_registration, created_at)
+     VALUES (?, ?, (SELECT short_code FROM clubs WHERE id = ?), NOW())
+     ON DUPLICATE KEY UPDATE
+       code_at_registration = VALUES(code_at_registration)`,
+    [destination.id, clubId, clubId],
+  )
+
+  const [existing] = await conn.query(
+    'SELECT id FROM standings_snapshot WHERE season_id = ? AND division_id = ? AND club_id = ?',
+    [seasonId, destination.id, clubId],
+  )
+  if ((existing as unknown[]).length > 0) return
+
+  const [bottom] = await conn.query(
+    'SELECT COALESCE(MAX(position), 0) + 1 AS pos FROM standings_snapshot WHERE season_id = ? AND division_id = ?',
+    [seasonId, destination.id],
+  )
+  const position = Number((bottom as any[])[0]?.pos ?? 1)
+
+  await conn.execute(
+    `INSERT INTO standings_snapshot
+       (season_id, division_id, club_id, position, played, won, drawn, lost,
+        goals_for, goals_against, goal_difference, points, form, updated_at)
+     VALUES (?, ?, ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, '', NOW())`,
+    [seasonId, destination.id, clubId, position],
+  )
+}
+
+/**
+ * Put a club into a league by hand.
+ *
+ * This is a plain move and never spends one of the source league's season
+ * slots, whatever direction it goes in. Sending a club up or down the ladder is
+ * a separate endpoint so the two intentions stay distinct: choosing a league
+ * from a dropdown and declaring an outcome are different decisions, and neither
+ * should quietly cost the other.
  */
 admin.post(
   '/clubs/:slug/division',
@@ -1304,13 +1425,8 @@ admin.post(
     )
     if (!club) return res.status(404).json({ error: 'Club not found.' })
 
-    const division = await queryOne<{
-      id: number
-      name: string
-      season_id: number
-      sort_order: number
-    }>(
-      `SELECT d.id, d.name, d.season_id, d.sort_order
+    const division = await queryOne<SeasonDivision>(
+      `SELECT d.id, d.name, d.season_id, d.sort_order, d.promotion_count, d.relegation_count
          FROM divisions d
          JOIN seasons s ON s.id = d.season_id AND s.is_current = TRUE
         WHERE d.id = ?`,
@@ -1318,101 +1434,17 @@ admin.post(
     )
     if (!division) return res.status(404).json({ error: 'Division not found.' })
 
-    const changedDivision = await withTransaction(async (conn) => {
-      const [clubRows] = await conn.query(
-        'SELECT id FROM clubs WHERE id = ? FOR UPDATE',
-        [club.id],
-      )
-      const lockedClub = (clubRows as Array<{ id: number }>)[0]
-      if (!lockedClub) return null
-
-      const [membershipRows] = await conn.query(
-        `SELECT d.id AS division_id, d.sort_order
-           FROM division_clubs dc
-           JOIN divisions d ON d.id = dc.division_id
-          WHERE dc.club_id = ? AND d.season_id = ?
-          ORDER BY dc.id DESC
-          FOR UPDATE`,
-        [lockedClub.id, division.season_id],
-      )
-      const previousMemberships = membershipRows as Array<{
-        division_id: number
-        sort_order: number
-      }>
-      const previousMembership = previousMemberships[0]
-
-      await conn.execute(
-        `DELETE FROM division_clubs
-          WHERE club_id = ?
-          AND division_id IN (SELECT id FROM divisions WHERE season_id = ?)
-          AND division_id <> ?`,
-        [lockedClub.id, division.season_id, division.id],
-      )
-
-      if (previousMembership && Number(previousMembership.division_id) !== division.id) {
-        const sourceDivisionId = Number(previousMembership.division_id)
-        const movementType =
-          division.sort_order > Number(previousMembership.sort_order)
-            ? 'relegation'
-            : division.sort_order < Number(previousMembership.sort_order)
-              ? 'promotion'
-              : 'transfer'
-
-        await conn.execute(
-          `DELETE FROM season_division_movements
-            WHERE season_id = ? AND club_id = ? AND source_division_id = ?`,
-          [division.season_id, lockedClub.id, division.id],
-        )
-        await conn.execute(
-          `INSERT INTO season_division_movements
-             (season_id, club_id, source_division_id, destination_division_id,
-              movement_type, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, NOW(), NOW())
-           ON DUPLICATE KEY UPDATE
-             destination_division_id = VALUES(destination_division_id),
-             movement_type = VALUES(movement_type),
-             updated_at = VALUES(updated_at)`,
-          [
-            division.season_id,
-            lockedClub.id,
-            sourceDivisionId,
-            division.id,
-            movementType,
-          ],
-        )
-      }
-
-      await conn.execute(
-        `INSERT INTO division_clubs
-           (division_id, club_id, code_at_registration, created_at)
-         VALUES (?, ?, (SELECT short_code FROM clubs WHERE id = ?), NOW())
-         ON DUPLICATE KEY UPDATE
-           code_at_registration = VALUES(code_at_registration)`,
-        [division.id, lockedClub.id, lockedClub.id],
-      )
-
-      const [existing] = await conn.query(
-        'SELECT id FROM standings_snapshot WHERE season_id = ? AND division_id = ? AND club_id = ?',
-        [division.season_id, division.id, lockedClub.id],
-      )
-      if ((existing as unknown[]).length > 0) return true
-
-      const [bottom] = await conn.query(
-        'SELECT COALESCE(MAX(position), 0) + 1 AS pos FROM standings_snapshot WHERE season_id = ? AND division_id = ?',
-        [division.season_id, division.id],
-      )
-      const position = Number((bottom as any[])[0]?.pos ?? 1)
-
-      await conn.execute(
-        `INSERT INTO standings_snapshot
-           (season_id, division_id, club_id, position, played, won, drawn, lost,
-            goals_for, goals_against, goal_difference, points, form, updated_at)
-         VALUES (?, ?, ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, '', NOW())`,
-        [division.season_id, division.id, lockedClub.id, position],
-      )
+    const moved = await withTransaction(async (conn) => {
+      const [clubRows] = await conn.query('SELECT id FROM clubs WHERE id = ? FOR UPDATE', [club.id])
+      if (!((clubRows as unknown[])[0])) return false
+      await applyDivisionMove(conn, {
+        clubId: club.id,
+        destination: division,
+        movementType: 'transfer',
+      })
       return true
     })
-    if (changedDivision === null) return res.status(404).json({ error: 'Club not found.' })
+    if (!moved) return res.status(404).json({ error: 'Club not found.' })
 
     await notifyClubManagers(
       club.id,
@@ -1425,6 +1457,154 @@ admin.post(
       ok: true,
       divisionId: division.id,
       divisionName: division.name,
+    })
+  }),
+)
+
+/**
+ * Promote or relegate a club one rung of the ladder.
+ *
+ * The destination is resolved here rather than sent by the client, so the two
+ * can never disagree: a promotion is the division directly above the club's
+ * own, by sort order. The client only states which way it is going.
+ *
+ * Unlike a plain league change this spends a slot out of the source league's
+ * season quota, and refuses to go when none is left.
+ */
+admin.post(
+  '/clubs/:slug/movement',
+  handler(async (req, res) => {
+    const slug = requiredString(req.params.slug, 'slug', 140)
+    const requested = String(req.body?.movementType ?? '')
+    if (requested !== 'promotion' && requested !== 'relegation') {
+      return res
+        .status(400)
+        .json({ error: 'movementType must be either promotion or relegation.' })
+    }
+    const movementType = requested
+
+    const club = await queryOne<{ id: number; name: string }>(
+      'SELECT id, name FROM clubs WHERE slug = ?',
+      [slug],
+    )
+    if (!club) return res.status(404).json({ error: 'Club not found.' })
+
+    const outcome = await withTransaction(async (conn) => {
+      const [clubRows] = await conn.query(
+        'SELECT id, name FROM clubs WHERE id = ? FOR UPDATE',
+        [club.id],
+      )
+      if (!((clubRows as unknown[])[0])) return { status: 404 as const, error: 'Club not found.' }
+
+      // One ordered ladder for the whole current season. Ordinality comes from
+      // this array rather than arithmetic on sort_order, because nothing
+      // guarantees sort_order values are consecutive.
+      const [ladderRows] = await conn.query(
+        `SELECT d.id, d.name, d.season_id, d.sort_order,
+                d.promotion_count, d.relegation_count
+           FROM divisions d
+           JOIN seasons s ON s.id = d.season_id AND s.is_current = TRUE
+          ORDER BY d.sort_order, d.id
+          FOR UPDATE`,
+      )
+      const ladder = ladderRows as SeasonDivision[]
+      if (ladder.length === 0) return { status: 404 as const, error: 'No leagues in the current season.' }
+
+      const [membershipRows] = await conn.query(
+        `SELECT d.id AS division_id
+           FROM division_clubs dc
+           JOIN divisions d ON d.id = dc.division_id
+          WHERE dc.club_id = ? AND d.season_id = ?
+          ORDER BY dc.id DESC
+          FOR UPDATE`,
+        [club.id, ladder[0].season_id],
+      )
+      const current = (membershipRows as Array<{ division_id: number }>)[0]
+      if (!current) {
+        return {
+          status: 400 as const,
+          error: "Set this club's league before promoting or relegating it.",
+        }
+      }
+
+      const index = ladder.findIndex((division) => Number(division.id) === Number(current.division_id))
+      if (index < 0) {
+        return {
+          status: 400 as const,
+          error: 'This club is not in a league of the current season.',
+        }
+      }
+
+      const source = ladder[index]
+      const destination = movementType === 'promotion' ? ladder[index - 1] : ladder[index + 1]
+      if (!destination) {
+        return {
+          status: 400 as const,
+          error:
+            movementType === 'promotion'
+              ? `${source.name} is the highest league; there is nothing above it.`
+              : `${source.name} is the lowest league; there is nothing below it.`,
+        }
+      }
+
+      const quota = movementQuota(source, movementType)
+      if (quota < 1) {
+        return {
+          status: 400 as const,
+          error: `No ${movementType} slots are configured for ${source.name}.`,
+        }
+      }
+
+      // A slot counts as spent only while the club is still sitting where it
+      // was sent. Sending it somewhere else afterwards releases the slot, which
+      // is what the league list shows and what applyDivisionMove keeps true.
+      const [countRows] = await conn.query(
+        `SELECT COUNT(*) AS completed
+           FROM season_division_movements m
+           JOIN division_clubs dc
+             ON dc.club_id = m.club_id
+            AND dc.division_id = m.destination_division_id
+           JOIN divisions d
+             ON d.id = dc.division_id
+            AND d.season_id = m.season_id
+          WHERE m.season_id = ? AND m.source_division_id = ? AND m.movement_type = ?`,
+        [source.season_id, source.id, movementType],
+      )
+      const completed = Number((countRows as Array<{ completed: number }>)[0]?.completed ?? 0)
+      if (completed >= quota) {
+        return {
+          status: 409 as const,
+          error: `All ${quota} ${movementType} slot${quota === 1 ? '' : 's'} for ${source.name} ${
+            quota === 1 ? 'is' : 'are'
+          } already used.`,
+        }
+      }
+
+      await applyDivisionMove(conn, { clubId: club.id, destination, movementType })
+
+      return { status: 200 as const, source, destination }
+    })
+
+    if (outcome.status !== 200) {
+      return res.status(outcome.status).json({ error: outcome.error })
+    }
+
+    await notifyClubManagers(
+      club.id,
+      'club_division',
+      `${club.name} ${outcome.destination.name}`,
+      movementType === 'promotion'
+        ? `${club.name} has been promoted to ${outcome.destination.name}.`
+        : `${club.name} has been relegated to ${outcome.destination.name}.`,
+    )
+
+    res.json({
+      ok: true,
+      movementType,
+      sourceDivisionId: outcome.source.id,
+      sourceDivisionName: outcome.source.name,
+      divisionId: outcome.destination.id,
+      divisionName: outcome.destination.name,
     })
   }),
 )

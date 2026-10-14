@@ -128,16 +128,27 @@ export interface MatchPage {
   offset: number
 }
 
+export type MatchSort = 'priority' | 'latest'
+
+/**
+ * The fixture list, page by page.
+ *
+ * `priority` is the server's default: what needs a date first, then overdue,
+ * then today, then the rest, with played games last. `latest` is plain
+ * kickoff order, newest first, with undated fixtures at the bottom.
+ */
 export const getMatches = ({
   limit,
   offset,
   result,
   search,
+  sort,
 }: {
   limit: number
   offset: number
   result: 'all' | 'pending' | 'completed'
   search: string
+  sort?: MatchSort
 }) => {
   const params = new URLSearchParams({
     limit: String(limit),
@@ -145,6 +156,7 @@ export const getMatches = ({
     result,
     search,
   })
+  if (sort === 'latest') params.set('sort', 'latest')
   return request<MatchPage>(`/api/matches?${params}`)
 }
 
@@ -282,6 +294,9 @@ export const updateDivisionOrder = (divisionIds: number[]) =>
 /**
  * Put a club into a division.
  *
+ * A plain move. It does not spend a promotion or relegation slot, whatever
+ * direction the club travels: `moveClub` below is the only thing that does.
+ *
  * Also creates its standings row, so it appears in the league table
  * immediately rather than waiting to play a match that cannot be scheduled
  * without a table to enter.
@@ -294,6 +309,28 @@ export const assignDivision = (slug: string, divisionId: number) =>
       body: JSON.stringify({ divisionId }),
     },
   )
+
+export type ClubMovementType = 'promotion' | 'relegation'
+
+/**
+ * Promote or relegate a club one rung of the ladder.
+ *
+ * Only the direction is sent. The server works out the destination league from
+ * the club's own position, so the two can never disagree, and it refuses the
+ * move when the source league has no slots left this season.
+ */
+export const moveClub = (slug: string, movementType: ClubMovementType) =>
+  request<{
+    ok: true
+    movementType: ClubMovementType
+    sourceDivisionId: number
+    sourceDivisionName: string
+    divisionId: number
+    divisionName: string
+  }>(`/api/admin/clubs/${slug}/movement`, {
+    method: 'POST',
+    body: JSON.stringify({ movementType }),
+  })
 
 export const setResult = (matchId: number, homeScore: number, awayScore: number) =>
   request<{ ok: true }>(`/api/admin/matches/${matchId}/result`, {
