@@ -15,6 +15,7 @@ import {
   decideClub,
   deleteMatch,
   deleteMatches,
+  deleteUnscheduledMatches,
   createDivision,
   createSeason,
   createMatch,
@@ -626,6 +627,7 @@ function Results({
   const [priorityPage, setPriorityPage] = useState(0)
   const [prioritySelected, setPrioritySelected] = useState<Set<number>>(() => new Set())
   const [priorityBusy, setPriorityBusy] = useState(false)
+  const [deleteAllBusy, setDeleteAllBusy] = useState(false)
   const [totalMatches, setTotalMatches] = useState(0)
   const [allTotal, setAllTotal] = useState(0)
   const [pendingCount, setPendingCount] = useState(0)
@@ -920,6 +922,41 @@ function Results({
     }
   }
 
+  /**
+   * Delete every undated fixture at once.
+   *
+   * The counterpart to auto-scheduling: generate writes a whole season's
+   * fixtures with no dates, and if the shape is wrong this takes the lot back
+   * rather than leaving it to be picked through one at a time. Confirmed with
+   * the real count first, since it crosses every season and has no undo.
+   */
+  const deleteAllUnscheduled = async () => {
+    if (priorityTotal === 0 || deleteAllBusy) return
+    const ok = window.confirm(
+      `Delete all ${priorityTotal} fixture${priorityTotal === 1 ? '' : 's'} with no date?\n\n` +
+        'This affects every season and cannot be undone.',
+    )
+    if (!ok) return
+    setDeleteAllBusy(true)
+    try {
+      const result = await guard(
+        () => deleteUnscheduledMatches(),
+        'Could not delete the undated fixtures',
+      )
+      report(
+        'ok',
+        `Deleted ${result.deleted} fixture${result.deleted === 1 ? '' : 's'}.`,
+      )
+      setPrioritySelected(new Set())
+      setPriorityQuery('')
+      await load()
+    } catch {
+      /* already reported */
+    } finally {
+      setDeleteAllBusy(false)
+    }
+  }
+
   const togglePriority = (id: number, on: boolean) => {
     setPrioritySelected((current) => {
       const next = new Set(current)
@@ -982,8 +1019,8 @@ function Results({
       return
     }
     const rounds = Number(generateRounds)
-    if (!Number.isSafeInteger(rounds) || rounds < 1 || rounds > 20) {
-      report('error', 'Enter a whole number of rounds between 1 and 20.')
+    if (rounds !== 1 && rounds !== 2) {
+      report('error', 'Choose one round or two rounds.')
       return
     }
     setGenerateBusy(true)
@@ -1201,6 +1238,22 @@ function Results({
                   onChange={(event) => setPriorityQuery(event.target.value)}
                 />
               </div>
+              <button
+                className="btn sm danger priority-delete-all"
+                type="button"
+                disabled={deleteAllBusy || priorityTotal === 0}
+                aria-busy={deleteAllBusy}
+                onClick={() => void deleteAllUnscheduled()}
+              >
+                {deleteAllBusy ? (
+                  <>
+                    <span className="spinner" aria-hidden="true" />
+                    Deleting…
+                  </>
+                ) : (
+                  'Delete all undated'
+                )}
+              </button>
             </div>
           </div>
           {prioritySelected.size > 0 && (
@@ -1587,18 +1640,39 @@ function Results({
                 <div className="generate-section-heading">
                   <h3>Rounds</h3>
                 </div>
-                <input
-                  className="text generate-rounds"
-                  type="number"
-                  min="1"
-                  max="20"
-                  value={generateRounds}
-                  onChange={(event) => setGenerateRounds(event.target.value)}
-                  aria-label="Rounds per league"
-                />
+                <div className="generate-rounds" role="radiogroup" aria-label="Rounds per league">
+                  {(['1', '2'] as const).map((value) => (
+                    <button
+                      key={value}
+                      type="button"
+                      role="radio"
+                      aria-checked={generateRounds === value}
+                      className={`generate-round${generateRounds === value ? ' selected' : ''}`}
+                      onClick={() => setGenerateRounds(value)}
+                    >
+                      <strong>{value} round{value === '1' ? '' : 's'}</strong>
+                      <small>
+                        {value === '1'
+                          ? 'Every club plays every other once.'
+                          : 'Every pairing plays home and away.'}
+                      </small>
+                    </button>
+                  ))}
+                </div>
                 <p className="generate-help">
-                  One round plays every club once. Two rounds plays every pairing home and away,
-                  which is the usual league format.
+                  {(() => {
+                    // Counted from the season's club list, not `divisionClubs`:
+                    // that is scoped to the single-fixture dialog's league
+                    // picker and says nothing about the leagues ticked here.
+                    const sizes = [...generateLeagues]
+                      .map((id) => fixtureClubs.filter((club) => club.division_id === Number(id)).length)
+                      .filter((n) => n >= 2)
+                    if (sizes.length === 0) {
+                      return 'Choose at least one league with two or more clubs.'
+                    }
+                    const pairs = sizes.reduce((sum, n) => sum + (n * (n - 1)) / 2, 0)
+                    return `${sizes.length} league${sizes.length === 1 ? '' : 's'} · will create ${pairs * Number(generateRounds)} fixtures, all with no date so they land in Needs scheduling.`
+                  })()}
                 </p>
               </div>
             </div>

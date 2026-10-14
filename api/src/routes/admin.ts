@@ -275,8 +275,13 @@ admin.post(
     }
 
     const rounds = Number(req.body?.rounds)
-    if (!Number.isSafeInteger(rounds) || rounds < 1 || rounds > 20) {
-      return res.status(400).json({ error: 'rounds must be a whole number between 1 and 20.' })
+    // Capped at 2 on purpose. A round robin is one complete set of pairings;
+    // repeating it a third time would produce the same fixtures again, and
+    // generating genuinely different third and fourth rounds is a real
+    // scheduling problem rather than a loop. One leg and home-and-away are the
+    // two formats a league actually plays.
+    if (!Number.isSafeInteger(rounds) || rounds < 1 || rounds > 2) {
+      return res.status(400).json({ error: 'rounds must be 1 (single round robin) or 2 (home and away).' })
     }
 
     const result = await withTransaction(async (conn) => {
@@ -292,11 +297,22 @@ admin.post(
             )`,
         [seasonId, seasonId, [divisionIds]],
       )
-      const played = new Set(
+      // Two sets, because "have these two clubs met" and "does this exact
+      // fixture exist" are different questions and conflating them is what made
+      // rounds=2 silently behave as rounds=1.
+      //
+      // existingFixtures is oriented — home:away — so a league already holding
+      // A-home-to-B does not block generating B-home-to-A, which is the whole
+      // point of a second leg. metPairs is order-independent, so the first leg
+      // is skipped when the pairing exists in either direction.
+      const existingFixtures = new Set(
+        (existingMatches as Array<{ home_club_id: number; away_club_id: number }>).map(
+          (m) => fixtureKey(m.home_club_id, m.away_club_id),
+        ),
+      )
+      const metPairs = new Set(
         (existingMatches as Array<{ home_club_id: number; away_club_id: number }>).map((m) =>
-          // Both orientations count as already played: a league that already
-          // has A home to B has that leg, whichever end this generator lands on.
-          roundRobinPairKey(Math.min(m.home_club_id, m.away_club_id), Math.max(m.home_club_id, m.away_club_id)),
+          pairKey(m.home_club_id, m.away_club_id),
         ),
       )
 
@@ -324,15 +340,17 @@ admin.post(
 
         const singleRound = roundRobinLegs(clubIds)
         for (let leg = 0; leg < rounds; leg += 1) {
-          for (const [home, away] of singleRound) {
+          for (const [a, b] of singleRound) {
             // Swap ends on later legs so nobody plays every home match.
-            const isHome = leg % 2 === 0 ? true : false
-            const [homeId, awayId] = isHome ? [home, away] : [away, home]
-            const key = roundRobinPairKey(Math.min(home, away), Math.max(home, away))
-            const alreadyThere = played.has(key)
-            // A second leg needs the opposite orientation to be new.
-            const reverseThere = played.has(roundRobinPairKey(awayId, homeId))
-            if (alreadyThere || reverseThere) {
+            const [homeId, awayId] = leg % 2 === 0 ? [a, b] : [b, a]
+            const exact = fixtureKey(homeId, awayId)
+            const pairAlreadyPlayed = metPairs.has(pairKey(homeId, awayId))
+            // The first leg skips if the pairing exists either way round; later
+            // legs only skip on the exact same fixture, which is what lets the
+            // return leg through.
+            const duplicate =
+              existingFixtures.has(exact) || (leg === 0 && pairAlreadyPlayed)
+            if (duplicate) {
               skipped += 1
               continue
             }
@@ -343,8 +361,8 @@ admin.post(
                VALUES (?, ?, ?, ?, NULL, 'unscheduled', NULL, NULL, NOW(), NOW())`,
               [divisionId, seasonId, homeId, awayId],
             )
-            played.add(key)
-            played.add(roundRobinPairKey(awayId, homeId))
+            existingFixtures.add(exact)
+            metPairs.add(pairKey(homeId, awayId))
             created.push(0)
           }
         }
@@ -357,8 +375,13 @@ admin.post(
   }),
 )
 
-/** Order-independent key for "these two clubs have met". */
-function roundRobinPairKey(a: number, b: number): string {
+/** Oriented identity of one fixture: A at home to B. */
+function fixtureKey(home: number, away: number): string {
+  return `${home}:${away}`
+}
+
+/** Order-independent identity of a pairing: "these two have met". */
+function pairKey(a: number, b: number): string {
   return `${Math.min(a, b)}:${Math.max(a, b)}`
 }
 
@@ -550,6 +573,66 @@ admin.delete(
 
     if ('error' in result) return res.status(result.status).json({ error: result.error })
     res.json({ ok: true, matchId: id })
+  }),
+)
+
+/**
+ * Delete every fixture that has no kickoff date.
+ *
+ * The undo for a season laid out from scratch: the auto-scheduler writes
+ * fixtures with a NULL date so they arrive in Needs scheduling, and if the
+ * shape is wrong the whole batch has to go rather than be picked through.
+ *
+ * Registered before /matches/:id on purpose — that route would otherwise
+ * swallow this path and 400 on the non-numeric segment.
+ *
+ * Refuses if any of them somehow carries a result. An undated fixture cannot
+ * have been played, so this should never fire; it is here so that if it ever
+ * could, the refusal is loud instead of a silent loss of a result.
+ */
+admin.delete(
+  '/matches/unscheduled',
+  handler(async (_req, res) => {
+    const result = await withTransaction(async (conn) => {
+      const [rows] = await conn.query(
+        `SELECT m.id, home.name AS home_name, away.name AS away_name,
+                m.home_score, m.away_score
+           FROM matches m
+           JOIN clubs home ON home.id = m.home_club_id
+           JOIN clubs away ON away.id = m.away_club_id
+          WHERE m.kickoff IS NULL
+          FOR UPDATE`,
+      )
+      const undated = rows as Array<{
+        id: number
+        home_name: string
+        away_name: string
+        home_score: number | null
+        away_score: number | null
+      }>
+
+      const played = undated.filter((m) => m.home_score !== null || m.away_score !== null)
+      if (played.length > 0) {
+        return {
+          status: 409 as const,
+          error: `${played.length} of those fixtures have a result recorded against them, so nothing was deleted. Delete those on their own first: ${played
+            .slice(0, 3)
+            .map((m) => `${m.home_name} vs ${m.away_name}`)
+            .join(', ')}${played.length > 3 ? ', …' : ''}.`,
+        }
+      }
+
+      if (undated.length === 0) return { status: 200 as const, deleted: 0, total: 0 }
+
+      const ids = undated.map((m) => m.id)
+      await conn.query('DELETE FROM match_events WHERE match_id IN (?)', [ids])
+      await conn.query('DELETE FROM match_stats WHERE match_id IN (?)', [ids])
+      await conn.query('DELETE FROM matches WHERE id IN (?)', [ids])
+      return { status: 201 as const, deleted: ids.length, total: ids.length }
+    })
+
+    if ('error' in result) return res.status(result.status).json({ error: result.error })
+    res.status(result.status === 201 ? 200 : 200).json({ ok: true, deleted: result.deleted })
   }),
 )
 

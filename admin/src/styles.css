@@ -212,6 +212,7 @@ button { -webkit-tap-highlight-color: transparent; }
    shrink-to-fit wrapper, which collapsed the box to its own magnifier. */
 .search-box.priority-tools { flex: 0 0 auto; }
 .search-box.priority-search-box { width: 250px; flex: 0 0 auto; }
+.priority-delete-all { min-height: 36px; white-space: nowrap; }
 .priority-fixture { grid-template-columns: auto minmax(0, 1fr) minmax(170px, auto) auto; }
 /* Pulled out to the group's edges and padded back in, so the highlight reads
    as one continuous bar instead of stopping short of both ends. The group
@@ -724,7 +725,17 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .generate-league:hover { border-color: var(--border-strong); color: var(--text); }
 .generate-league:has(input:checked) { border-color: rgb(200 255 61 / 38%); color: var(--text); background: var(--accent-soft); }
 .generate-league input { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
-.generate-rounds { width: 100%; min-height: 42px; }
+.generate-rounds { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.generate-round {
+  display: grid; gap: 4px; padding: 11px 13px; text-align: left; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 9px; background: var(--bg);
+  transition: border-color .15s, background .15s;
+}
+.generate-round:hover { border-color: var(--border-strong); }
+.generate-round strong { color: var(--text); font-size: 12px; font-weight: 700; }
+.generate-round small { color: var(--muted); font-size: 10px; line-height: 1.45; }
+.generate-round.selected { border-color: rgb(200 255 61 / 38%); background: var(--accent-soft); }
+.generate-round.selected small { color: var(--muted); }
 .generate-help { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
 
 /* --------------------------------------------------- season rollover confirm */

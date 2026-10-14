@@ -201,6 +201,17 @@ export const deleteMatches = (matchIds: number[]) =>
     body: JSON.stringify({ matchIds }),
   })
 
+/**
+ * Delete every fixture that has no kickoff date, across every season.
+ *
+ * The undo for laying a season out from scratch. Refuses outright if any of
+ * them carries a result, rather than quietly taking a scoreline with it.
+ */
+export const deleteUnscheduledMatches = () =>
+  request<{ ok: true; deleted: number }>('/api/admin/matches/unscheduled', {
+    method: 'DELETE',
+  })
+
 export const getClubs = (seasonId?: number) =>
   request<{ clubs: Club[] }>(
     `/api/clubs${seasonId == null ? '' : `?seasonId=${seasonId}`}`,
