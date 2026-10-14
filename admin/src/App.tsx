@@ -50,6 +50,9 @@ import {
 type Tab = 'standings' | 'results' | 'clubs'
 type ClubSection = 'clubs' | 'applications' | 'divisions'
 
+/** Which bulk action is running, so only that button shows its spinner. */
+type BulkAction = 'update' | ClubMovementType
+
 interface Notice {
   kind: 'ok' | 'error' | 'info'
   text: string
@@ -2232,7 +2235,10 @@ function Clubs({
   // Bulk selection is a set of slugs so it survives the resort that happens
   // after every action, and so one row can be toggled without rebuilding it.
   const [selectedSlugs, setSelectedSlugs] = useState<Set<string>>(() => new Set())
-  const [bulkBusy, setBulkBusy] = useState(false)
+  // Which bulk action is in flight, if any. One state rather than a boolean so
+  // each button can show its own spinner instead of every button claiming the
+  // work while a different one is actually running.
+  const [bulkAction, setBulkAction] = useState<BulkAction | null>(null)
   const [bulkLeague, setBulkLeague] = useState('')
   const [bulkStatus, setBulkStatus] = useState('')
   // Which movement the club editor is waiting on confirmation for, and the one
@@ -2286,7 +2292,6 @@ function Clubs({
         club.division_id ? String(club.division_id) : '',
       ])),
     )
-    setSelectedSlugs(new Set())
   }, [guard])
 
   useEffect(() => {
@@ -2302,6 +2307,10 @@ function Clubs({
 
   useEffect(() => {
     if (!seasonId) return
+    // Cleared here rather than inside loadSeason: a bulk update reloads the
+    // season and has to keep the selection, so that the admin can set the next
+    // field on the same clubs. Only a change of season drops it.
+    setSelectedSlugs(new Set())
     setClubs(null)
     loadSeason(Number(seasonId)).catch(() => setClubs([]))
   }, [loadSeason, seasonId])
@@ -2712,6 +2721,8 @@ function Clubs({
 
   /* ------------------------------------------------------------- bulk edits */
 
+  const bulkBusy = bulkAction !== null
+
   const selectedClubs = clubs.filter((club) => selectedSlugs.has(club.slug))
   const selectedCount = selectedClubs.length
   const toggleSelected = (slug: string, on: boolean) => {
@@ -2735,6 +2746,24 @@ function Clubs({
   const clearSelection = () => setSelectedSlugs(new Set())
 
   /**
+   * What the bar has staged but not yet applied.
+   *
+   * Both fields can be set at once and are applied together by one press of
+   * Update, so this is what the hint line states back to the admin before
+   * anything is written.
+   */
+  const bulkHasPending = bulkLeague !== '' || bulkStatus !== ''
+  const bulkPendingLabels = [
+    bulkLeague !== '' &&
+      `move to ${
+        bulkLeague === 'unassigned'
+          ? 'Unassigned'
+          : (divisions.find((division) => String(division.id) === bulkLeague)?.name ?? 'a league')
+      }`,
+    bulkStatus !== '' && `status ${bulkStatus}`,
+  ].filter((label): label is string => Boolean(label))
+
+  /**
    * Whether a bulk promote/relegate can run, and why not when it cannot.
    *
    * A movement spends a season slot out of one league, so a bulk move has to
@@ -2744,7 +2773,7 @@ function Clubs({
    * to work out which half succeeded.
    */
   const bulkMoveBlock = (type: ClubMovementType): string | null => {
-    if (readOnly || bulkBusy) return 'This season is read-only.'
+    if (readOnly) return 'This season is read-only.'
     if (selectedCount === 0) return 'Select at least one club.'
     const sources = new Set(selectedClubs.map((club) => getDivisionId(club)))
     if (sources.size !== 1) {
@@ -2775,8 +2804,9 @@ function Clubs({
     targets: Club[],
     action: (club: Club) => Promise<void>,
     describeDone: string,
+    label: BulkAction,
   ) => {
-    setBulkBusy(true)
+    setBulkAction(label)
     const failed: string[] = []
     let done = 0
     try {
@@ -2799,38 +2829,47 @@ function Clubs({
           `${done} of ${targets.length} clubs updated. Failed: ${failed.join(', ')}.`,
         )
       }
-      if (failed.length === 0) clearSelection()
     } finally {
-      setBulkBusy(false)
+      setBulkAction(null)
     }
   }
 
-  const bulkAssignLeague = async () => {
-    if (bulkLeague === '') return
-    const target = bulkLeague === 'unassigned' ? null : Number(bulkLeague)
-    const name =
-      target === null
-        ? 'the unassigned list'
-        : (divisions.find((division) => division.id === target)?.name ?? 'the league')
+  /**
+   * Apply whatever is staged in the bar.
+   *
+   * League and status are staged rather than applied on selection: a dropdown
+   * that fires the moment you touch it is one stray click away from moving a
+   * dozen clubs, and there is no undo. Update is the deliberate press.
+   *
+   * Both fields are applied in one pass so a single toast covers the lot, and
+   * the selection survives so the next field can be set on the same clubs.
+   */
+  const applyBulkEdits = async () => {
+    if (bulkBusy || (!bulkLeague && !bulkStatus)) return
+    const league = bulkLeague
+    const status = bulkStatus
+    const target = league === '' || league === 'unassigned' ? null : Number(league)
+    const leagueName =
+      league === ''
+        ? ''
+        : target === null
+          ? 'unassigned'
+          : (divisions.find((division) => division.id === target)?.name ?? 'the league')
+    const changes = [leagueName && `league → ${leagueName}`, status && `status → ${status}`].filter(
+      Boolean,
+    )
     await runBulk(
       selectedClubs,
       async (club) => {
-        const current = getDivisionId(club)
-        if (current === (target === null ? '' : String(target))) return
-        await assignDivision(club.slug, target)
+        if (status) await updateClub(club.slug, { status }).then(() => undefined)
+        if (league !== '' && getDivisionId(club) !== (target === null ? '' : String(target))) {
+          await assignDivision(club.slug, target)
+        }
       },
-      `Moved ${selectedCount} club${selectedCount === 1 ? '' : 's'} to ${name}. No movement slots used.`,
+      `Updated ${selectedCount} club${selectedCount === 1 ? '' : 's'} (${changes.join(', ')}).`,
+      'update',
     )
     setBulkLeague('')
-  }
-
-  const bulkSetStatus = async () => {
-    if (bulkStatus === '') return
-    await runBulk(
-      selectedClubs,
-      (club) => updateClub(club.slug, { status: bulkStatus }).then(() => undefined),
-      `Set ${selectedCount} club${selectedCount === 1 ? '' : 's'} to ${bulkStatus}.`,
-    )
     setBulkStatus('')
   }
 
@@ -2845,6 +2884,7 @@ function Clubs({
       selectedClubs,
       (club) => moveClub(club.slug, type).then(() => undefined),
       `${type === 'promotion' ? 'Promoted' : 'Relegated'} ${selectedCount} club${selectedCount === 1 ? '' : 's'} into ${destination?.name ?? 'the next league'}.`,
+      type,
     )
   }
 
@@ -3156,18 +3196,14 @@ function Clubs({
                     value={bulkLeague}
                     disabled={bulkBusy}
                     options={[
-                      { value: '', label: 'Choose league…' },
+                      { value: '', label: 'No change' },
                       ...divisions.map((division) => ({
                         value: String(division.id),
                         label: division.name,
                       })),
                       { value: 'unassigned', label: 'Unassigned' },
                     ]}
-                    onChange={(value) => {
-                      setBulkLeague(value)
-                      if (value === '') return
-                      void bulkAssignLeague()
-                    }}
+                    onChange={setBulkLeague}
                   />
                 </label>
                 <label className="bulk-bar-field">
@@ -3177,40 +3213,71 @@ function Clubs({
                     value={bulkStatus}
                     disabled={bulkBusy}
                     options={[
-                      { value: '', label: 'Choose status…' },
+                      { value: '', label: 'No change' },
                       { value: 'active', label: 'Active' },
                       { value: 'pending', label: 'Pending' },
                       { value: 'withdrawn', label: 'Withdrawn' },
                     ]}
-                    onChange={(value) => {
-                      setBulkStatus(value)
-                      if (value === '') return
-                      void bulkSetStatus()
-                    }}
+                    onChange={setBulkStatus}
                   />
                 </label>
+                <button
+                  className="btn primary sm bulk-bar-update"
+                  type="button"
+                  disabled={bulkBusy || !bulkHasPending}
+                  aria-busy={bulkAction === 'update'}
+                  onClick={() => void applyBulkEdits()}
+                >
+                  {bulkAction === 'update' ? (
+                    <>
+                      <span className="spinner" aria-hidden="true" />
+                      Updating…
+                    </>
+                  ) : (
+                    'Update'
+                  )}
+                </button>
                 <span className="bulk-bar-divider" aria-hidden="true" />
                 <button
                   className="btn sm promotion"
                   type="button"
                   disabled={bulkBusy}
+                  aria-busy={bulkAction === 'promotion'}
                   title={bulkMoveBlock('promotion') ?? undefined}
                   onClick={() => void bulkMove('promotion')}
                 >
-                  Promote ↑
+                  {bulkAction === 'promotion' ? (
+                    <>
+                      <span className="spinner" aria-hidden="true" />
+                      Promoting…
+                    </>
+                  ) : (
+                    'Promote ↑'
+                  )}
                 </button>
                 <button
                   className="btn sm relegation"
                   type="button"
                   disabled={bulkBusy}
+                  aria-busy={bulkAction === 'relegation'}
                   title={bulkMoveBlock('relegation') ?? undefined}
                   onClick={() => void bulkMove('relegation')}
                 >
-                  Relegate ↓
+                  {bulkAction === 'relegation' ? (
+                    <>
+                      <span className="spinner" aria-hidden="true" />
+                      Relegating…
+                    </>
+                  ) : (
+                    'Relegate ↓'
+                  )}
                 </button>
               </div>
               <p className="bulk-bar-hint" role="status">
-                {bulkMoveBlock('promotion') ?? 'Promote or relegate sends every selected club one league.'}
+                {bulkHasPending
+                  ? `Update will apply to ${selectedCount} club${selectedCount === 1 ? '' : 's'}: ${bulkPendingLabels.join(', ')}.`
+                  : (bulkMoveBlock('promotion') ??
+                    'Pick a league or status above, then press Update. Or move the selection up or down the ladder.')}
               </p>
               <button
                 className="bulk-bar-clear"
