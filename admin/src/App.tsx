@@ -559,6 +559,10 @@ function Clubs({
   const [players, setPlayers] = useState<Record<string, string[]>>({})
   const [newPlayer, setNewPlayer] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState<string | null>(null)
+  const [editing, setEditing] = useState<string | null>(null)
+  const [squadSlug, setSquadSlug] = useState<string | null>(null)
+  const [squadLoading, setSquadLoading] = useState(false)
+  const [squadError, setSquadError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     const data = await guard(getClubs, 'Could not load clubs')
@@ -590,11 +594,20 @@ function Clubs({
   }, [load])
 
   const loadPlayers = async (slug: string) => {
-    const res = await fetch(`/api/clubs/${slug}`)
-    if (!res.ok) return
-    const body = await res.json()
-    setPlayers((s) => ({ ...s, [slug]: body.players.map((p: any) => p.gamertag) }))
+    const res = await fetch(`/api/clubs/${encodeURIComponent(slug)}`)
+    if (!res.ok) throw new Error(`Request failed (${res.status})`)
+    const body: { players: { gamertag: string }[] } = await res.json()
+    setPlayers((s) => ({ ...s, [slug]: body.players.map((p) => p.gamertag) }))
   }
+
+  useEffect(() => {
+    if (!squadSlug) return
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSquadSlug(null)
+    }
+    window.addEventListener('keydown', closeOnEscape)
+    return () => window.removeEventListener('keydown', closeOnEscape)
+  }, [squadSlug])
 
   if (clubs === null) return <div className="loading">Loading clubs…</div>
 
@@ -617,10 +630,42 @@ function Clubs({
       }
 
       await load()
+      setEditing(null)
     } catch {
       /* already reported */
     } finally {
       setBusy(null)
+    }
+  }
+
+  const edit = (c: Club) => {
+    setCodes((s) => ({ ...s, [c.slug]: c.short_code ?? '' }))
+    setStatuses((s) => ({ ...s, [c.slug]: c.status }))
+    setDivisionOf((s) => ({ ...s, [c.slug]: c.division_id ? String(c.division_id) : '' }))
+    setNewPlayer((s) => ({ ...s, [c.slug]: '' }))
+    setEditing(c.slug)
+  }
+
+  const cancelEdit = (c: Club) => {
+    setCodes((s) => ({ ...s, [c.slug]: c.short_code ?? '' }))
+    setStatuses((s) => ({ ...s, [c.slug]: c.status }))
+    setDivisionOf((s) => ({ ...s, [c.slug]: c.division_id ? String(c.division_id) : '' }))
+    setNewPlayer((s) => ({ ...s, [c.slug]: '' }))
+    setEditing(null)
+  }
+
+  const viewSquad = async (c: Club) => {
+    setSquadSlug(c.slug)
+    setSquadError(null)
+    if (players[c.slug]) return
+
+    setSquadLoading(true)
+    try {
+      await guard(() => loadPlayers(c.slug), `Could not load ${c.name}'s squad`)
+    } catch (err) {
+      setSquadError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSquadLoading(false)
     }
   }
 
@@ -635,7 +680,12 @@ function Clubs({
       await addPlayer(c.slug, tag)
       report('ok', `${tag} added to ${c.name}.`)
       setNewPlayer((s) => ({ ...s, [c.slug]: '' }))
-      await loadPlayers(c.slug)
+      setClubs((current) =>
+        current?.map((club) =>
+          club.slug === c.slug ? { ...club, players: club.players + 1 } : club,
+        ) ?? null,
+      )
+      await guard(() => loadPlayers(c.slug), `Could not refresh ${c.name}'s squad`)
     } catch {
       /* already reported */
     } finally {
@@ -648,7 +698,12 @@ function Clubs({
     try {
       await removePlayer(c.slug, gamertag)
       report('ok', `${gamertag} released by ${c.name}.`)
-      await loadPlayers(c.slug)
+      setClubs((current) =>
+        current?.map((club) =>
+          club.slug === c.slug ? { ...club, players: Math.max(0, club.players - 1) } : club,
+        ) ?? null,
+      )
+      await guard(() => loadPlayers(c.slug), `Could not refresh ${c.name}'s squad`)
     } catch {
       /* already reported */
     } finally {
@@ -663,7 +718,7 @@ function Clubs({
           <h2>Clubs</h2>
           <span className="hint">{clubs.length} registered</span>
         </header>
-        <table>
+        <table className="club-management-table">
           <thead>
             <tr>
               <th>Club</th>
@@ -676,7 +731,7 @@ function Clubs({
           </thead>
           <tbody>
             {clubs.map((c) => (
-              <tr key={c.slug}>
+              <tr key={c.slug} className={editing === c.slug ? 'club-row is-editing' : 'club-row'}>
                 <td>
                   <div className="club">
                     {c.logo_local && <img src={c.logo_local} alt="" />}
@@ -685,88 +740,111 @@ function Clubs({
                   </div>
                 </td>
                 <td>
-                  <input
-                    className="text"
-                    style={{ width: 72 }}
-                    aria-label={`Short code for ${c.name}`}
-                    value={codes[c.slug] ?? ''}
-                    onChange={(e) => setCodes((s) => ({ ...s, [c.slug]: e.target.value }))}
-                  />
-                </td>
-                <td>
-                  <select
-                    className="text"
-                    aria-label={`Status for ${c.name}`}
-                    value={statuses[c.slug] ?? 'active'}
-                    onChange={(e) => setStatuses((s) => ({ ...s, [c.slug]: e.target.value }))}
-                  >
-                    <option value="active">Active</option>
-                    <option value="pending">Pending</option>
-                    <option value="withdrawn">Withdrawn</option>
-                  </select>
-                </td>
-                <td>
-                  <select
-                    className="text"
-                    aria-label={`Division for ${c.name}`}
-                    value={divisionOf[c.slug] ?? ''}
-                    disabled={c.status !== 'active'}
-                    onChange={(e) =>
-                      setDivisionOf((s) => ({ ...s, [c.slug]: e.target.value }))
-                    }
-                  >
-                    <option value="">Not entered</option>
-                    {divisions.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.name}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-                <td>
-                  {players[c.slug] ? (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, maxWidth: 260 }}>
-                      {players[c.slug].map((p) => (
-                        <button
-                          key={p}
-                          className="btn sm"
-                          title="Release this player"
-                          onClick={() => drop(c, p)}
-                        >
-                          {p} ×
-                        </button>
-                      ))}
-                    </div>
+                  {editing === c.slug ? (
+                    <input
+                      className="text"
+                      style={{ width: 72 }}
+                      aria-label={`Short code for ${c.name}`}
+                      value={codes[c.slug] ?? ''}
+                      onChange={(e) => setCodes((s) => ({ ...s, [c.slug]: e.target.value }))}
+                    />
                   ) : (
-                    <button className="btn sm" onClick={() => loadPlayers(c.slug)}>
-                      View squad
-                    </button>
+                    <span className="hint">{c.short_code || '—'}</span>
                   )}
                 </td>
                 <td>
+                  {editing === c.slug ? (
+                    <select
+                      className="table-select"
+                      aria-label={`Status for ${c.name}`}
+                      value={statuses[c.slug] ?? 'active'}
+                      onChange={(e) => setStatuses((s) => ({ ...s, [c.slug]: e.target.value }))}
+                    >
+                      <option value="active">Active</option>
+                      <option value="pending">Pending</option>
+                      <option value="withdrawn">Withdrawn</option>
+                    </select>
+                  ) : (
+                    <span>{c.status}</span>
+                  )}
+                </td>
+                <td>
+                  {editing === c.slug ? (
+                    <select
+                      className="table-select"
+                      aria-label={`Division for ${c.name}`}
+                      value={divisionOf[c.slug] ?? ''}
+                      disabled={c.status !== 'active'}
+                      onChange={(e) =>
+                        setDivisionOf((s) => ({ ...s, [c.slug]: e.target.value }))
+                      }
+                    >
+                      <option value="">Not entered</option>
+                      {divisions.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span>
+                      {divisions.find((d) => String(d.id) === (divisionOf[c.slug] ?? ''))?.name ??
+                        'Not entered'}
+                    </span>
+                  )}
+                </td>
+                <td>
+                  <button className="squad-link" onClick={() => void viewSquad(c)}>
+                    View Squad <span className="squad-count">{c.players}</span>
+                  </button>
+                </td>
+                <td>
                   <div className="row-actions">
-                    <input
-                      className="text"
-                      style={{ width: 130 }}
-                      placeholder="gamertag"
-                      aria-label={`Add a player to ${c.name}`}
-                      value={newPlayer[c.slug] ?? ''}
-                      onChange={(e) => setNewPlayer((s) => ({ ...s, [c.slug]: e.target.value }))}
-                    />
-                    <button
-                      className="btn sm"
-                      disabled={busy === c.slug}
-                      onClick={() => add(c)}
-                    >
-                      Add
-                    </button>
-                    <button
-                      className="btn primary sm"
-                      disabled={busy === c.slug}
-                      onClick={() => save(c)}
-                    >
-                      Save
-                    </button>
+                    {editing === c.slug ? (
+                      <>
+                        <input
+                          className="text"
+                          style={{ width: 130 }}
+                          placeholder="Add gamertag"
+                          aria-label={`Add a player to ${c.name}`}
+                          value={newPlayer[c.slug] ?? ''}
+                          onChange={(e) =>
+                            setNewPlayer((s) => ({ ...s, [c.slug]: e.target.value }))
+                          }
+                        />
+                        <button
+                          className="btn sm"
+                          disabled={busy === c.slug}
+                          onClick={() => void add(c)}
+                        >
+                          Add
+                        </button>
+                        <button
+                          className="btn primary sm"
+                          disabled={busy === c.slug}
+                          onClick={() => void save(c)}
+                        >
+                          Save
+                        </button>
+                        <button
+                          className="btn sm"
+                          disabled={busy === c.slug}
+                          onClick={() => cancelEdit(c)}
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        className="icon-btn"
+                        aria-label={`Edit ${c.name}`}
+                        title={`Edit ${c.name}`}
+                        disabled={editing !== null}
+                        onClick={() => edit(c)}
+                      >
+                        <span aria-hidden="true">✎</span>
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -781,6 +859,62 @@ function Clubs({
         Gamertags are matched case-insensitively — registering a name that already exists is
         rejected rather than creating a duplicate player.
       </p>
+      {squadSlug && (
+        <div
+          className="squad-modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setSquadSlug(null)
+          }}
+        >
+          <section
+            className="squad-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="squad-modal-title"
+          >
+            <header>
+              <div>
+                <p className="eyebrow">CLUB SQUAD</p>
+                <h2 id="squad-modal-title">
+                  {clubs.find((c) => c.slug === squadSlug)?.name ?? 'Squad'}
+                </h2>
+              </div>
+              <button
+                className="icon-btn"
+                aria-label="Close squad"
+                onClick={() => setSquadSlug(null)}
+              >
+                ×
+              </button>
+            </header>
+            {squadLoading ? (
+              <p className="squad-modal-message">Loading squad…</p>
+            ) : squadError ? (
+              <p className="squad-modal-message error">{squadError}</p>
+            ) : players[squadSlug]?.length ? (
+              <div className="squad-list">
+                {players[squadSlug].map((gamertag) => (
+                  <div className="squad-player" key={gamertag}>
+                    <span>{gamertag}</span>
+                    <button
+                      className="btn sm danger"
+                      disabled={busy === squadSlug}
+                      onClick={() => {
+                        const club = clubs.find((c) => c.slug === squadSlug)
+                        if (club) void drop(club, gamertag)
+                      }}
+                    >
+                      Release
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="squad-modal-message">No players signed to this club yet.</p>
+            )}
+          </section>
+        </div>
+      )}
     </>
   )
 }

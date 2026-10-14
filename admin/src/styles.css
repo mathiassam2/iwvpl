@@ -203,6 +203,66 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .club { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .club img { width: 22px; height: 22px; border-radius: 4px; object-fit: contain; flex: none; }
 .club .name { overflow: hidden; color: var(--text); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.club-management-table { min-width: 980px; }
+.club-management-table .club-row td { height: 58px; padding-block: 8px; }
+.club-management-table .club-row.is-editing { background: var(--accent-soft); }
+.table-select {
+  min-height: 36px; max-width: 100%; padding: 6px 23px 6px 8px; border: 1px solid transparent;
+  border-radius: 7px; appearance: none; color: var(--text); background-color: transparent;
+  font-size: 13px; cursor: pointer;
+}
+.table-select:hover, .table-select:focus {
+  border-color: var(--border-strong);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 11px) 50%, calc(100% - 7px) 50%;
+  background-size: 4px 4px;
+  background-repeat: no-repeat;
+}
+.table-select:focus { border-color: var(--accent); outline: 2px solid rgb(200 255 61 / 10%); }
+.table-select:disabled { color: var(--faint); cursor: not-allowed; }
+.squad-link {
+  display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 0;
+  border: 0; color: var(--muted); background: transparent; font-size: 12px; font-weight: 650;
+  cursor: pointer;
+}
+.squad-link:hover { color: var(--text); }
+.squad-count {
+  display: inline-grid; place-items: center; min-width: 22px; height: 20px; padding: 0 6px;
+  border: 1px solid var(--border); border-radius: 99px; color: var(--faint); font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.icon-btn {
+  display: inline-grid; place-items: center; flex: none; width: 32px; height: 32px;
+  border: 1px solid transparent; border-radius: 7px; color: var(--muted); background: transparent;
+  font-size: 17px; cursor: pointer;
+}
+.icon-btn:hover:not(:disabled) { border-color: var(--border); color: var(--text); background: var(--surface-hover); }
+.icon-btn:disabled { opacity: .4; cursor: not-allowed; }
+.squad-modal-backdrop {
+  position: fixed; z-index: 30; inset: 0; display: grid; place-items: center; padding: 20px;
+  background: rgb(0 0 0 / 68%); backdrop-filter: blur(5px);
+}
+.squad-modal {
+  width: min(100%, 460px); max-height: min(80vh, 680px); overflow: auto;
+  border: 1px solid var(--border-strong); border-radius: 14px; background: var(--surface);
+  box-shadow: 0 24px 80px rgb(0 0 0 / 45%);
+}
+.squad-modal > header {
+  position: sticky; top: 0; display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; padding: 17px 19px; border-bottom: 1px solid var(--border); background: var(--surface);
+}
+.squad-modal .eyebrow { margin-bottom: 4px; }
+.squad-modal h2 { margin: 0; color: var(--text); font-size: 19px; }
+.squad-list { padding: 6px 19px 12px; }
+.squad-player {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  min-height: 46px; border-bottom: 1px solid var(--border);
+}
+.squad-player:last-child { border-bottom: 0; }
+.squad-modal-message { padding: 24px 19px; color: var(--muted); }
+.squad-modal-message.error { color: var(--danger); }
 .flag { flex: none; font-size: 15px; }
 .form-strip { display: flex; gap: 2px; }
 .form-strip span { display: grid; place-items: center; width: 19px; height: 19px; border-radius: 4px; font-size: 10px; font-weight: 700; }
