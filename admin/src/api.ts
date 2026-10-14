@@ -186,6 +186,7 @@ export interface AdminSeason {
   name: string
   year: number
   is_current: boolean | number
+  featured_division_id: number | null
 }
 
 export const getDivisions = () =>
@@ -203,6 +204,12 @@ export const updateSeason = (id: number, name: string) =>
 export const setCurrentSeason = (id: number) =>
   request<{ season: AdminSeason }>(`/api/admin/seasons/${id}/current`, {
     method: 'PUT',
+  }).then((r) => r.season)
+
+export const setFeaturedDivision = (seasonId: number, divisionId: number | null) =>
+  request<{ season: AdminSeason }>(`/api/admin/seasons/${seasonId}/featured-division`, {
+    method: 'PUT',
+    body: JSON.stringify({ divisionId }),
   }).then((r) => r.season)
 
 export const createSeason = (name: string, year: number) =>

@@ -19,8 +19,10 @@ import { CLUB_PLACEHOLDER, cx, stripFlag, totalGoals } from '@/lib/format'
 import {
   getLiveResults,
   getLiveStandings,
+  featuredStandingDivision,
   liveLeagueEnabled,
   orderedStandingDivisions,
+  type LiveStandings,
 } from '@/lib/liveLeague'
 import { useSeasonName } from '@/lib/season'
 import type { Standing, StandingDivision } from '@/types/site'
@@ -167,10 +169,7 @@ function TypedHeadline({ chars, caret }: { chars: number; caret: boolean }) {
 }
 
 export function Hero() {
-  const [liveStandings, setLiveStandings] = useState<{
-    season: { name: string }
-    divisions: Record<string, StandingDivision>
-  } | null>(null)
+  const [liveStandings, setLiveStandings] = useState<LiveStandings | null>(null)
   const [leadersError, setLeadersError] = useState('')
   const seasonName = useSeasonName()
 
@@ -188,9 +187,9 @@ export function Hero() {
   }, [])
 
   const staticFeatured = orderedStandingDivisions(siteData.standingsByDivision)[0]
-  const featured = orderedStandingDivisions(
-    liveStandings?.divisions ?? siteData.standingsByDivision,
-  )[0]
+  const featured = liveStandings
+    ? featuredStandingDivision(liveStandings)
+    : staticFeatured
   const featuredLeague = featured?.[0] ?? staticFeatured?.[0] ?? ''
   const leaderRows = liveStandings
     ? featured?.[1].rows ?? []
@@ -761,10 +760,10 @@ export function StandingsPreview() {
 
     getLiveStandings(controller.signal)
       .then((standings) => {
-        const [name, division] = orderedStandingDivisions(standings.divisions)[0] ?? []
+        const [name, division] = featuredStandingDivision(standings) ?? []
         setLiveSeasonName(standings.season.name)
         setLiveDivisionName(name ?? null)
-        setLiveDivision(division)
+        setLiveDivision(division ?? null)
         setLiveRows(division?.rows ?? [])
       })
       .catch((cause: unknown) => {

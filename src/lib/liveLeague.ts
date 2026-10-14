@@ -54,6 +54,7 @@ export interface LeagueSeason {
   name: string
   year: number
   is_current: boolean | number
+  featured_division_id: number | null
 }
 
 export interface LiveStandings {
@@ -72,6 +73,16 @@ export function orderedStandingDivisions(
     ([, a], [, b]) =>
       (a.sortOrder ?? Number.MAX_SAFE_INTEGER) -
       (b.sortOrder ?? Number.MAX_SAFE_INTEGER),
+  )
+}
+
+export function featuredStandingDivision(
+  standings: LiveStandings,
+): [string, StandingDivision] | undefined {
+  return (
+    Object.entries(standings.divisions).find(
+      ([, division]) => division.id === standings.season.featured_division_id,
+    ) ?? orderedStandingDivisions(standings.divisions)[0]
   )
 }
 
@@ -143,6 +154,7 @@ export async function getLiveStandings(
   )
   const divisionResponse = await get<{
     divisions: Array<{
+      id: number
       name: string
       sort_order: number
       promotion_count: number | null
@@ -167,6 +179,7 @@ export async function getLiveStandings(
       {
         columns: [],
         rows: [],
+        id: division.id,
         sortOrder: division.sort_order,
         promotionCount: division.promotion_count,
         relegationCount: division.relegation_count,

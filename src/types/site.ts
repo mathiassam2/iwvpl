@@ -55,6 +55,7 @@ export interface Standing {
 }
 
 export interface StandingDivision {
+  id?: number
   columns: string[]
   rows: Standing[]
   sortOrder?: number

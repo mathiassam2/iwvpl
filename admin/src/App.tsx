@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { CustomSelect } from './CustomSelect'
 import {
   ApiError,
   addPlayer,
@@ -19,6 +20,7 @@ import {
   scheduleMatch,
   setResult,
   setCurrentSeason,
+  setFeaturedDivision,
   updateClub,
   updateDivision,
   updateDivisionOrder,
@@ -881,35 +883,34 @@ function Results({
                 <div className="club-edit-fields">
                   <label>
                     <span>Home club</span>
-                    <select
-                      className="text"
-                      required
+                    <CustomSelect
+                      ariaLabel="Home club"
                       value={createHome}
-                      onChange={(event) => {
-                        setCreateHome(event.target.value)
+                      options={[
+                        { value: '', label: 'Choose home club' },
+                        ...clubs.filter((club) => club.division_id !== null).map((club) => ({
+                          value: club.slug,
+                          label: club.name,
+                        })),
+                      ]}
+                      onChange={(value) => {
+                        setCreateHome(value)
                         setCreateAway('')
                       }}
-                    >
-                      <option value="">Choose home club</option>
-                      {clubs.filter((club) => club.division_id !== null).map((club) => (
-                        <option key={club.slug} value={club.slug}>{club.name}</option>
-                      ))}
-                    </select>
+                    />
                   </label>
                   <label>
                     <span>Away club</span>
-                    <select
-                      className="text"
-                      required
+                    <CustomSelect
+                      ariaLabel="Away club"
                       disabled={!createHome}
                       value={createAway}
-                      onChange={(event) => setCreateAway(event.target.value)}
-                    >
-                      <option value="">Choose away club</option>
-                      {awayOptions.map((club) => (
-                        <option key={club.slug} value={club.slug}>{club.name}</option>
-                      ))}
-                    </select>
+                      options={[
+                        { value: '', label: 'Choose away club' },
+                        ...awayOptions.map((club) => ({ value: club.slug, label: club.name })),
+                      ]}
+                      onChange={setCreateAway}
+                    />
                   </label>
                   <label>
                     <span>Kickoff date &amp; time <small>(Kuala Lumpur, UTC+8)</small></span>
@@ -1166,6 +1167,8 @@ function Divisions({
   const [busy, setBusy] = useState(false)
   const [reordering, setReordering] = useState(false)
   const [seasonBusy, setSeasonBusy] = useState(false)
+  const [featuredBusy, setFeaturedBusy] = useState(false)
+  const [featuredDivisionId, setFeaturedDivisionId] = useState('')
 
   const load = useCallback(async () => {
     const [divisionData, seasonData] = await Promise.all([
@@ -1174,6 +1177,9 @@ function Divisions({
     ])
     setDivisions(divisionData)
     setSeasons(seasonData)
+    setFeaturedDivisionId(
+      String(seasonData.find((season) => Boolean(season.is_current))?.featured_division_id ?? ''),
+    )
   }, [guard])
 
   useEffect(() => {
@@ -1183,6 +1189,33 @@ function Divisions({
   if (divisions === null || seasons === null) return <div className="loading">Loading divisions…</div>
 
   const currentSeason = seasons.find((season) => Boolean(season.is_current))
+
+  const chooseFeaturedDivision = async (value: string) => {
+    if (!currentSeason) return
+    setFeaturedBusy(true)
+    try {
+      const updated = await guard(
+        () => setFeaturedDivision(currentSeason.id, value ? Number(value) : null),
+        'Could not update the featured league',
+      )
+      setFeaturedDivisionId(String(updated.featured_division_id ?? ''))
+      setSeasons((current) =>
+        (current ?? []).map((season) =>
+          season.id === updated.id ? { ...season, featured_division_id: updated.featured_division_id } : season,
+        ),
+      )
+      report(
+        'ok',
+        updated.featured_division_id == null
+          ? 'The homepage will feature the highest-ranked league.'
+          : 'Featured league updated for the homepage.',
+      )
+    } catch {
+      /* already reported */
+    } finally {
+      setFeaturedBusy(false)
+    }
+  }
 
   const saveSeasonName = async (event: FormEvent<HTMLFormElement>, season: AdminSeason) => {
     event.preventDefault()
@@ -1222,6 +1255,7 @@ function Divisions({
         (current ?? []).map((item) => ({ ...item, is_current: item.id === activated.id })),
       )
       setDivisions(currentDivisions)
+      setFeaturedDivisionId(String(activated.featured_division_id ?? ''))
       onCurrentSeasonChanged(currentDivisions)
       onSeasonChanged()
       setEditing(null)
@@ -1251,6 +1285,7 @@ function Divisions({
         created.season,
       ].sort((a, b) => Number(Boolean(b.is_current)) - Number(Boolean(a.is_current)) || b.year - a.year))
       setDivisions(copiedDivisions)
+      setFeaturedDivisionId(String(created.season.featured_division_id ?? ''))
       onCurrentSeasonChanged(copiedDivisions)
       onSeasonChanged()
       setNewSeasonName('')
@@ -1348,32 +1383,42 @@ function Divisions({
           <legend>Promotion</legend>
           <label>
             <span>Promote top</span>
-            <select className="text" value={promotionCount}
-              onChange={(event) => setPromotionCount(event.target.value)}>
-              <option value="0">No movement</option>
-              {Number(promotionCount) > 20 && (
-                <option value={promotionCount}>{promotionCount} clubs</option>
-              )}
-              {Array.from({ length: 20 }, (_, index) => index + 1).map((count) => (
-                <option key={count} value={count}>{count} {count === 1 ? 'club' : 'clubs'}</option>
-              ))}
-            </select>
+            <CustomSelect
+              ariaLabel="Promote top"
+              value={promotionCount}
+              onChange={setPromotionCount}
+              options={[
+                { value: '0', label: 'No movement' },
+                ...(Number(promotionCount) > 20
+                  ? [{ value: promotionCount, label: `${promotionCount} clubs` }]
+                  : []),
+                ...Array.from({ length: 20 }, (_, index) => index + 1).map((count) => ({
+                  value: String(count),
+                  label: `${count} ${count === 1 ? 'club' : 'clubs'}`,
+                })),
+              ]}
+            />
           </label>
         </fieldset>
         <fieldset>
           <legend>Relegation</legend>
           <label>
             <span>Relegate bottom</span>
-            <select className="text" value={relegationCount}
-              onChange={(event) => setRelegationCount(event.target.value)}>
-              <option value="0">No movement</option>
-              {Number(relegationCount) > 20 && (
-                <option value={relegationCount}>{relegationCount} clubs</option>
-              )}
-              {Array.from({ length: 20 }, (_, index) => index + 1).map((count) => (
-                <option key={count} value={count}>{count} {count === 1 ? 'club' : 'clubs'}</option>
-              ))}
-            </select>
+            <CustomSelect
+              ariaLabel="Relegate bottom"
+              value={relegationCount}
+              onChange={setRelegationCount}
+              options={[
+                { value: '0', label: 'No movement' },
+                ...(Number(relegationCount) > 20
+                  ? [{ value: relegationCount, label: `${relegationCount} clubs` }]
+                  : []),
+                ...Array.from({ length: 20 }, (_, index) => index + 1).map((count) => ({
+                  value: String(count),
+                  label: `${count} ${count === 1 ? 'club' : 'clubs'}`,
+                })),
+              ]}
+            />
           </label>
         </fieldset>
       </div>
@@ -1402,6 +1447,7 @@ function Divisions({
               const year = Math.max(new Date().getFullYear(), ...seasons.map((season) => season.year))
               setNewSeasonYear(String(year))
               setNewSeasonName(`${year} Season 1`)
+              setEditingSeasonId(null)
               setShowNewSeason((shown) => !shown)
             }}
           >
@@ -1496,6 +1542,7 @@ function Divisions({
                       disabled={seasonBusy}
                       onClick={() => {
                         setSeasonName(season.name)
+                        setShowNewSeason(false)
                         setEditingSeasonId(season.id)
                       }}
                     >
@@ -1524,7 +1571,7 @@ function Divisions({
           <div>
             <h2>Divisions</h2>
             <p className="hint">
-              {currentSeason?.name ?? divisions[0]?.season ?? 'Current season'} · highest league first on standings and home
+              {currentSeason?.name ?? divisions[0]?.season ?? 'Current season'} · set the standings order and homepage feature independently
             </p>
           </div>
           <button
@@ -1535,6 +1582,27 @@ function Divisions({
             <span aria-hidden="true">＋</span> Add division
           </button>
         </header>
+        <div className="featured-league-setting">
+          <div>
+            <strong>Homepage featured league</strong>
+            <p>
+              Choose the league shown in the homepage leaders panel. This does not change league order on the standings page.
+            </p>
+          </div>
+          <CustomSelect
+            ariaLabel="Homepage featured league"
+            value={featuredDivisionId}
+            disabled={!currentSeason || divisions.length === 0 || featuredBusy}
+            options={[
+              { value: '', label: 'Use highest-ranked league' },
+              ...divisions.map((division) => ({
+                value: String(division.id),
+                label: division.name,
+              })),
+            ]}
+            onChange={(value) => void chooseFeaturedDivision(value)}
+          />
+        </div>
         {editing === 'new' && form}
         {divisions.length === 0 && editing !== 'new' ? (
           <p className="empty">There are no divisions in the current season yet. Add the first one to get started.</p>
@@ -2036,41 +2104,42 @@ function Clubs({
                 </label>
                 <label>
                   <span>Status</span>
-                  <select
-                    className="text"
+                  <CustomSelect
+                    ariaLabel={`Status for ${activeClub.name}`}
                     value={statuses[activeClub.slug] ?? activeClub.status}
-                    onChange={(event) =>
+                    onChange={(value) =>
                       setStatuses((current) => ({
                         ...current,
-                        [activeClub.slug]: event.target.value,
+                        [activeClub.slug]: value,
                       }))
                     }
-                  >
-                    <option value="active">Active</option>
-                    <option value="pending">Pending</option>
-                    <option value="withdrawn">Withdrawn</option>
-                  </select>
+                    options={[
+                      { value: 'active', label: 'Active' },
+                      { value: 'pending', label: 'Pending' },
+                      { value: 'withdrawn', label: 'Withdrawn' },
+                    ]}
+                  />
                 </label>
                 <label>
                   <span>League</span>
-                  <select
-                    className="text"
+                  <CustomSelect
+                    ariaLabel={`League for ${activeClub.name}`}
                     value={divisionOf[activeClub.slug] ?? ''}
                     disabled={statuses[activeClub.slug] !== 'active'}
-                    onChange={(event) =>
+                    onChange={(value) =>
                       setDivisionOf((current) => ({
                         ...current,
-                        [activeClub.slug]: event.target.value,
+                        [activeClub.slug]: value,
                       }))
                     }
-                  >
-                    <option value="">Not entered</option>
-                    {divisions.map((division) => (
-                      <option key={division.id} value={division.id}>
-                        {division.name}
-                      </option>
-                    ))}
-                  </select>
+                    options={[
+                      { value: '', label: 'Not entered' },
+                      ...divisions.map((division) => ({
+                        value: String(division.id),
+                        label: division.name,
+                      })),
+                    ]}
+                  />
                 </label>
               </div>
               <section className="club-edit-roster" aria-labelledby="add-player-title">

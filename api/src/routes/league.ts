@@ -72,7 +72,7 @@ league.get(
   '/seasons',
   handler(async (_req, res) => {
     const seasons = await queryAll(
-      `SELECT id, name, year, is_current
+      `SELECT id, name, year, is_current, featured_division_id
          FROM seasons
         ORDER BY is_current DESC, year DESC, id DESC`,
     )
@@ -83,8 +83,14 @@ league.get(
 league.get(
   '/seasons/current',
   handler(async (_req, res) => {
-    const season = await queryOne<{ id: number; name: string; year: number; is_current: number }>(
-      'SELECT id, name, year, is_current FROM seasons WHERE is_current = TRUE LIMIT 1',
+    const season = await queryOne<{
+      id: number
+      name: string
+      year: number
+      is_current: number
+      featured_division_id: number | null
+    }>(
+      'SELECT id, name, year, is_current, featured_division_id FROM seasons WHERE is_current = TRUE LIMIT 1',
     )
     if (!season) return res.status(404).json({ error: 'No current season' })
 
@@ -290,10 +296,16 @@ league.get(
   '/standings',
   handler(async (req, res) => {
     const requestedSeasonId = req.query.seasonId
-    let season: { id: number; name: string; year: number; is_current: number } | null | undefined
+    let season: {
+      id: number
+      name: string
+      year: number
+      is_current: number
+      featured_division_id: number | null
+    } | null | undefined
     if (requestedSeasonId === undefined) {
       season = await queryOne(
-        'SELECT id, name, year, is_current FROM seasons WHERE is_current = TRUE LIMIT 1',
+        'SELECT id, name, year, is_current, featured_division_id FROM seasons WHERE is_current = TRUE LIMIT 1',
       )
     } else {
       const seasonId = Number(requestedSeasonId)
@@ -301,7 +313,7 @@ league.get(
         return res.status(400).json({ error: 'seasonId must be a positive integer.' })
       }
       season = await queryOne(
-        'SELECT id, name, year, is_current FROM seasons WHERE id = ?',
+        'SELECT id, name, year, is_current, featured_division_id FROM seasons WHERE id = ?',
         [seasonId],
       )
     }

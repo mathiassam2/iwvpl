@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { StandingsTable, StatTile, type StandingSortKey } from '@/components/league'
-import { Container, Section, Tabs } from '@/components/ui'
+import { Container, Section, Select, Tabs } from '@/components/ui'
 import { SITE, siteData } from '@/data'
 import {
   getLiveSeasons,
@@ -127,20 +127,18 @@ export default function StandingsPage() {
           {liveLeagueEnabled && seasons.length > 0 && (
             <label className="mb-6 flex max-w-sm flex-col gap-2 text-sm font-semibold text-[var(--text-muted)]">
               Standings season
-              <select
-                className="rounded-lg border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-2.5 text-[var(--text-strong)]"
-                value={seasonId ?? ''}
-                onChange={(event) => {
+              <Select
+                ariaLabel="Standings season"
+                value={String(seasonId ?? '')}
+                options={seasons.map((season) => ({
+                  value: String(season.id),
+                  label: `${season.name}${season.is_current ? ' · Current' : ''}`,
+                }))}
+                onChange={(value) => {
                   hasChosenDivision.current = false
-                  setSeasonId(Number(event.target.value))
+                  setSeasonId(Number(value))
                 }}
-              >
-                {seasons.map((season) => (
-                  <option key={season.id} value={season.id}>
-                    {season.name}{season.is_current ? ' · Current' : ''}
-                  </option>
-                ))}
-              </select>
+              />
             </label>
           )}
           {loading && (
