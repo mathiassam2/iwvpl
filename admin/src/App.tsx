@@ -1,7 +1,6 @@
 import {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
   type Dispatch,
@@ -2454,8 +2453,13 @@ function Clubs({
   const [bulkAction, setBulkAction] = useState<BulkAction | null>(null)
   const [bulkLeague, setBulkLeague] = useState('')
   const [bulkStatus, setBulkStatus] = useState('')
-  // Direction of the single Relocate button, and the plan it is confirming.
-  const [bulkDirectionOverride, setBulkDirectionOverride] = useState<ClubMovementType | null>(null)
+  // Season rollover. The dialog is open across a re-render while it is up, so
+  // this state has to live above the loading return below.
+  const [seasonBusy, setSeasonBusy] = useState(false)
+  const [seasonCompleteOpen, setSeasonCompleteOpen] = useState(false)
+  const [nextSeasonName, setNextSeasonName] = useState('')
+  const [nextSeasonYear, setNextSeasonYear] = useState('')
+  // The plan the rollover confirm dialog is showing, null when none is queued.
   const [confirmRelocate, setConfirmRelocate] = useState<{
     source: Division
     neighbour: Division
@@ -2471,8 +2475,10 @@ function Clubs({
     const year = Math.max(new Date().getFullYear(), ...seasons.map((season) => season.year)) + 1
     setNextSeasonYear(String(year))
     setNextSeasonName(`${year} Season 1`)
-    const plan = selectedCount > 0 && !bulkMoveBlock(bulkDirection) ? planBulkRelocate(bulkDirection) : null
+    const plan =
+      selectedCount > 0 && !bulkMoveBlock(bulkDirection) ? planBulkRelocate(bulkDirection) : null
     setConfirmRelocate(plan)
+    setSeasonCompleteOpen(true)
   }
   // Which movement the club editor is waiting on confirmation for, and the one
   // it has actually sent. Both are per club so a failed move cannot leave the
@@ -2585,6 +2591,10 @@ function Clubs({
     }
   }, [editing, squadSlug])
 
+  // Every hook must be above this line. Returning early with hooks still to be
+  // called makes React throw "Rendered more hooks than during the previous
+  // render" the moment clubs arrives and the data branch renders — which
+  // unmounts the page and shows nothing at all, not a visible error.
   if (clubs === null) return <div className="loading">Loading clubs…</div>
 
   const save = async (c: Club) => {
@@ -2989,32 +2999,23 @@ function Clubs({
   const bulkHasPending = bulkLeague !== '' || bulkStatus !== ''
 
   /**
-   * Which way the Relocate button will go.
+   * Which way the rollover will move the selection.
    *
-   * Guessed from where the selection sits in its league — clubs in the
-   * promotion zone are obviously going up — and overridable with the direction
-   * control. Re-guessed whenever the selection changes, so a leftover override
-   * from a previous pick can never point the next one the wrong way.
+   * Read off the selection rather than chosen: clubs sitting in the promotion
+   * zone are obviously going up, and the rest are obviously coming down. A
+   * plain computation, not a memo — it walks a handful of clubs, and a hook
+   * here would sit below the loading return and tear the page down the moment
+   * the data arrived.
    */
-  const selectionKey = [...selectedSlugs].sort().join(',')
-  const inferredDirection: ClubMovementType = useMemo(() => {
-    if (selectedClubs.length === 0) return 'relegation'
-    const allPromotion = selectedClubs.every((club) => clubMovement(club).promotion)
-    return allPromotion ? 'promotion' : 'relegation'
-  }, [selectedClubs])
-  const bulkDirection = bulkDirectionOverride ?? inferredDirection
-  useEffect(() => {
-    setBulkDirectionOverride(null)
-  }, [selectionKey])
+  const bulkDirection: ClubMovementType =
+    selectedClubs.length > 0 && selectedClubs.every((club) => clubMovement(club).promotion)
+      ? 'promotion'
+      : 'relegation'
 
   /** The season to return to: the most recently created one that is not current. */
   const previousSeason =
     [...seasons].filter((season) => !Boolean(season.is_current)).sort((a, b) => b.id - a.id)[0] ??
     null
-  const [seasonBusy, setSeasonBusy] = useState(false)
-  const [seasonCompleteOpen, setSeasonCompleteOpen] = useState(false)
-  const [nextSeasonName, setNextSeasonName] = useState('')
-  const [nextSeasonYear, setNextSeasonYear] = useState('')
   const createdSeasonName = previousSeason?.name ?? 'The newer season'
   const bulkPendingLabels = [
     bulkLeague !== '' &&
