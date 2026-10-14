@@ -117,7 +117,9 @@ button { -webkit-tap-highlight-color: transparent; }
 .btn:hover:not(:disabled) { color: var(--text); background: var(--surface-hover); }
 .btn:disabled { opacity: .48; cursor: not-allowed; }
 .btn.primary { border-color: var(--accent); color: #121609; background: var(--accent); }
-.btn.primary:hover:not(:disabled) { background: #d8ff82; }
+/* Keep the dark label on hover: the generic `.btn:hover` rule outweighs
+   `.btn.primary` on specificity, which would put white text on the lime fill. */
+.btn.primary:hover:not(:disabled) { color: #121609; background: #d8ff82; }
 .btn.danger { color: var(--danger); border-color: rgb(255 136 136 / 32%); }
 .btn.danger:hover:not(:disabled) { background: rgb(255 136 136 / 9%); }
 .btn.sm { min-height: 30px; padding: 0 9px; font-size: 11px; }
@@ -459,7 +461,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .btn.primary.relegation {
   border-color: var(--danger); color: #2a0d0d; background: var(--danger);
 }
-.btn.primary.relegation:hover:not(:disabled) { background: #ffa3a3; }
+.btn.primary.relegation:hover:not(:disabled) { color: #2a0d0d; background: #ffa3a3; }
 .club-edit-footer {
   display: flex; justify-content: flex-end; gap: 8px; padding: 14px 20px;
   border-top: 1px solid var(--border); background: var(--surface);
