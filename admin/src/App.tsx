@@ -482,13 +482,14 @@ function Results({
 
   const completedCount = matches.filter((m) => m.home_score !== null && m.away_score !== null).length
   const pendingCount = matches.length - completedCount
-  const visibleMatches = matches.filter((m) => {
+  const filteredMatches = matches.filter((m) => {
     const played = m.home_score !== null && m.away_score !== null
     const matchesFilter = filter === 'all' || (filter === 'completed' ? played : !played)
     const matchesQuery = `${m.home_name} ${m.away_name}`.toLowerCase().includes(query.toLowerCase())
     return matchesFilter && matchesQuery
   })
   const urgency = (match: Match) => matchUrgency(match, now, today)
+  const visibleMatches = filteredMatches.filter((match) => urgency(match) !== 'unscheduled')
   const priorityGroups: { key: MatchUrgency; title: string; hint: string }[] = [
     { key: 'unscheduled', title: 'Needs scheduling', hint: 'No kickoff date set' },
     { key: 'overdue', title: 'Past kickoff', hint: 'Kickoff passed · result still missing' },
@@ -628,8 +629,20 @@ function Results({
 
         {visibleMatches.length === 0 ? (
           <div className="empty match-empty">
-            <strong>{matches.length === 0 ? 'No matches found' : 'No fixtures match this view'}</strong>
-            <span>{query ? 'Try another club name or clear your search.' : 'Switch filters to see other fixtures.'}</span>
+            <strong>
+              {filteredMatches.length > 0
+                ? 'Fixtures needing a date are shown above'
+                : matches.length === 0
+                  ? 'No matches found'
+                  : 'No fixtures match this view'}
+            </strong>
+            <span>
+              {filteredMatches.length > 0
+                ? 'Set a kickoff date above to include them in the fixture list.'
+                : query
+                  ? 'Try another club name or clear your search.'
+                  : 'Switch filters to see other fixtures.'}
+            </span>
           </div>
         ) : (
           <div className="match-list">
