@@ -66,6 +66,7 @@ export interface Standing {
   logo_local: string | null
   flag: string | null
   division_name: string
+  division_slug: string
 }
 
 export interface Match {

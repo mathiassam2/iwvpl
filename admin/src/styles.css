@@ -284,6 +284,14 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   color: var(--muted); background: var(--surface); font-size: 10px; font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
+.club-zone-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--faint); font-size: 10px; }
+.movement-badge {
+  display: inline-flex; flex: none; align-items: center; min-height: 20px; padding: 2px 7px;
+  border: 1px solid transparent; border-radius: 99px; font-size: 9px; font-weight: 800;
+  letter-spacing: .025em; line-height: 1.2; white-space: nowrap;
+}
+.movement-badge.promotion { border-color: rgb(200 255 61 / 25%); color: var(--accent); background: var(--accent-soft); }
+.movement-badge.relegation { border-color: rgb(255 136 136 / 28%); color: #ffb2b2; background: rgb(255 136 136 / 9%); }
 .club-league-group > header { min-height: 54px; }
 .club-league-heading { display: flex; align-items: center; gap: 9px; min-width: 0; }
 .club-league-count {

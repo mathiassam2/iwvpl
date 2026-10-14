@@ -1903,6 +1903,7 @@ function Clubs({
   onPendingCountChange: (count: number) => void
 }) {
   const [clubs, setClubs] = useState<Club[] | null>(null)
+  const [standings, setStandings] = useState<Standing[]>([])
   const [codes, setCodes] = useState<Record<string, string>>({})
   const [statuses, setStatuses] = useState<Record<string, string>>({})
   const [divisions, setDivisions] = useState<Division[]>([])
@@ -1917,11 +1918,13 @@ function Clubs({
   const activeClub = clubs?.find((club) => club.slug === editing) ?? null
 
   const load = useCallback(async () => {
-    const [data, currentDivisions] = await Promise.all([
+    const [data, currentDivisions, currentStandings] = await Promise.all([
       guard(getClubs, 'Could not load clubs'),
       guard(getDivisions, 'Could not load leagues'),
+      guard(getStandings, 'Could not load current standings').catch(() => []),
     ])
     setClubs(data)
+    setStandings(currentStandings)
     setCodes(Object.fromEntries(data.map((c) => [c.slug, c.short_code ?? ''])))
     setStatuses(Object.fromEntries(data.map((c) => [c.slug, c.status])))
     setDivisions(currentDivisions)
@@ -2002,6 +2005,11 @@ function Clubs({
             club.slug === c.slug ? { ...club, division_id: Number(chosen) } : club,
           ) ?? null,
         )
+        const updatedStandings = await guard(
+          getStandings,
+          'Could not refresh standings after changing the league',
+        )
+        setStandings(updatedStandings)
         report('ok', `Saved ${c.name} and entered it into ${res.divisionName}.`)
       } else {
         report('ok', `Saved ${c.name}.`)
@@ -2102,6 +2110,32 @@ function Clubs({
 
   const getDivisionId = (club: Club) => String(club.division_id ?? '')
   const configuredDivisionIds = new Set(divisions.map((division) => String(division.id)))
+  const standingsByClub = new Map(standings.map((standing) => [standing.club_id, standing]))
+  const standingsCountByDivision = new Map<string, number>()
+  for (const standing of standings) {
+    standingsCountByDivision.set(
+      standing.division_slug,
+      (standingsCountByDivision.get(standing.division_slug) ?? 0) + 1,
+    )
+  }
+  const clubMovement = (club: Club) => {
+    const standing = standingsByClub.get(club.id)
+    const division = divisions.find((item) => item.id === club.division_id)
+    if (!standing || !division) return { promotion: false, relegation: false }
+    const divisionSize = standingsCountByDivision.get(division.slug) ?? 0
+    return {
+      promotion:
+        division.promotion_count != null &&
+        division.promotion_count > 0 &&
+        standing.position <= division.promotion_count,
+      relegation:
+        division.relegation_count != null &&
+        division.relegation_count > 0 &&
+        standing.position > divisionSize - division.relegation_count,
+    }
+  }
+  const hasPromotionZones = divisions.some((division) => (division.promotion_count ?? 0) > 0)
+  const hasRelegationZones = divisions.some((division) => (division.relegation_count ?? 0) > 0)
   const clubGroups = [
     ...divisions.map((division) => ({
       id: String(division.id),
@@ -2180,10 +2214,24 @@ function Clubs({
             <div className="club-league-overview">
               <div>
                 <h2>Clubs by league</h2>
-                <p>Browse each league separately, or find clubs that still need a league.</p>
+                <p>
+                  Browse by league. Promotion and relegation badges follow the current table;
+                  click a club row to change its league.
+                </p>
               </div>
               <span>{clubs.length} {clubs.length === 1 ? 'club' : 'clubs'}</span>
             </div>
+            {(hasPromotionZones || hasRelegationZones) && (
+              <div className="club-zone-legend" aria-label="Promotion and relegation zone key">
+                {hasPromotionZones && (
+                  <span className="movement-badge promotion">Promotion zone</span>
+                )}
+                {hasRelegationZones && (
+                  <span className="movement-badge relegation">Relegation zone</span>
+                )}
+                <span>Based on each club&rsquo;s position in the current season standings.</span>
+              </div>
+            )}
             {clubGroups.map((group) => (
               <section className="card club-league-group" key={group.id}>
                 <header>
@@ -2210,46 +2258,59 @@ function Clubs({
                       </tr>
                     </thead>
                     <tbody>
-                      {group.clubs.map((c) => (
-                        <tr
-                          key={c.slug}
-                          className="club-row"
-                          tabIndex={0}
-                          aria-label={`Edit ${c.name}. Press Enter to open.`}
-                          onClick={() => edit(c)}
-                          onKeyDown={(event) => {
-                            if (event.key === 'Enter' || event.key === ' ') {
-                              event.preventDefault()
-                              edit(c)
-                            }
-                          }}
-                        >
-                          <td>
-                            <div className="club">
-                              {c.logo_local && <img src={c.logo_local} alt="" />}
-                              {c.flag && <span className="flag">{c.flag}</span>}
-                              <span className="name">{c.name}</span>
-                            </div>
-                          </td>
-                          <td>
-                            <span className="hint">{c.short_code || '—'}</span>
-                          </td>
-                          <td>
-                            <span>{c.status}</span>
-                          </td>
-                          <td>
-                            <button
-                              className="squad-link"
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                void viewSquad(c)
-                              }}
-                            >
-                              View Squad <span className="squad-count">{c.players}</span>
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                      {group.clubs.map((c) => {
+                        const movement = clubMovement(c)
+                        const zoneLabels = [
+                          movement.promotion ? 'Promotion zone' : '',
+                          movement.relegation ? 'Relegation zone' : '',
+                        ].filter(Boolean)
+                        return (
+                          <tr
+                            key={c.slug}
+                            className="club-row"
+                            tabIndex={0}
+                            aria-label={`Edit ${c.name}${zoneLabels.length ? `. ${zoneLabels.join(' and ')}.` : ''} Press Enter to open.`}
+                            onClick={() => edit(c)}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault()
+                                edit(c)
+                              }
+                            }}
+                          >
+                            <td>
+                              <div className="club">
+                                {c.logo_local && <img src={c.logo_local} alt="" />}
+                                {c.flag && <span className="flag">{c.flag}</span>}
+                                <span className="name">{c.name}</span>
+                                {movement.promotion && (
+                                  <span className="movement-badge promotion">Promotion</span>
+                                )}
+                                {movement.relegation && (
+                                  <span className="movement-badge relegation">Relegation</span>
+                                )}
+                              </div>
+                            </td>
+                            <td>
+                              <span className="hint">{c.short_code || '—'}</span>
+                            </td>
+                            <td>
+                              <span>{c.status}</span>
+                            </td>
+                            <td>
+                              <button
+                                className="squad-link"
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  void viewSquad(c)
+                                }}
+                              >
+                                View Squad <span className="squad-count">{c.players}</span>
+                              </button>
+                            </td>
+                          </tr>
+                        )
+                      })}
                     </tbody>
                   </table>
                 )}
