@@ -2172,13 +2172,17 @@ function Divisions({
   const activeDivisions = divisions.filter((division) => Boolean(division.is_active))
 
   /**
-   * Whether this league is allowed to be paused.
+   * Whether this league's switch is locked.
    *
-   * Mirrors the server's rule — the season's last active league cannot be
-   * switched off — so the switch is disabled and explains itself through its
-   * title rather than refusing the request after a round trip.
+   * Only one state is unreachable: a season with no active league at all. The
+   * server refuses to pause the last one, so this mirrors that rule and explains
+   * it through the switch's title instead of failing after a round trip.
+   *
+   * Deliberately not "can this be paused". A paused league has to be switchable
+   * back on — it is the only way out of the paused state — so the lock applies
+   * to the active half of the switch and never the inactive half.
    */
-  const canPause = (division: Division) => Boolean(division.is_active) && activeDivisions.length > 1
+  const switchLocked = (division: Division) => Boolean(division.is_active) && activeDivisions.length <= 1
 
   /**
    * Pause a league, or bring it back.
@@ -2463,10 +2467,10 @@ function Divisions({
                         <label
                           className="division-active-toggle"
                           title={
-                            canPause(division)
-                              ? 'Pause this league'
+                            switchLocked(division)
+                              ? `${division.name} is the only active league this season. Add another one before pausing it.`
                               : division.is_active
-                                ? `${division.name} is the only active league this season. Add another one before pausing it.`
+                                ? 'Pause this league'
                                 : 'Make this league active again'
                           }
                         >
@@ -2474,7 +2478,7 @@ function Divisions({
                             type="checkbox"
                             role="switch"
                             checked={Boolean(division.is_active)}
-                            disabled={togglingId !== null || editing !== null || reordering || !canPause(division)}
+                            disabled={togglingId !== null || editing !== null || reordering || switchLocked(division)}
                             aria-label={`${division.is_active ? 'Pause' : 'Activate'} ${division.name}`}
                             onChange={() => void toggleActive(division)}
                           />
