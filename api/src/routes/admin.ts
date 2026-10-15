@@ -16,6 +16,16 @@ import { Router } from 'express'
 import { execute, queryAll, queryOne, withTransaction, type Params } from '../db.js'
 import { clearResult, setResult } from '../domain/applyResult.js'
 import { notify } from '../domain/auth.js'
+import {
+  applySeasonRollover,
+  loadRolloverContext,
+  loadSeasonFixtureStats,
+  planSeasonRollover,
+  previewSeasonRollover,
+  readCurrentSeasonRollover,
+  undoSeasonRollover,
+  type RolloverSetting,
+} from '../domain/rollover.js'
 import { clubSlug } from '../domain/slug.js'
 
 export const admin = Router()
@@ -73,29 +83,8 @@ function parseDivisionMovement(body: Record<string, unknown> | undefined): Divis
   }
 }
 
-/** How a club left its previous league. */
+/** How a club changed league. 'transfer' is a league chosen by hand. */
 type MovementType = 'promotion' | 'relegation' | 'transfer'
-/** The two kinds that spend a slot out of a league's season quota. */
-type RankedMovementType = Exclude<MovementType, 'transfer'>
-
-/**
- * How many clubs a league may send up or down this season.
- *
- * A league configured to promote but not to relegate still sends one club down:
- * a tier that never loses anyone cannot have a relegation zone on the public
- * table, and the slot would otherwise sit unused forever. `parseMovementCount`
- * folds 0 into NULL, so "greater than zero" here means "configured at all".
- *
- * Every place that decides whether a slot is free has to answer this the same
- * way, or the league list and the club editor will disagree about how many
- * moves are left.
- */
-function movementQuota(division: DivisionMovement, type: RankedMovementType): number {
-  if (type === 'promotion') return division.promotion_count ?? 0
-  const configured = division.relegation_count ?? 0
-  if (configured > 0) return configured
-  return (division.promotion_count ?? 0) > 0 ? 1 : 0
-}
 
 function parseKickoff(value: unknown): string | null {
   if (value === null || value === undefined || value === '') return null
@@ -1089,6 +1078,15 @@ admin.put(
   }),
 )
 
+/**
+ * Point the app at a different season.
+ *
+ * This switches which season is live; it does not undo a rollover. A completed
+ * season is taken back with POST /seasons/complete/undo, which removes the
+ * season the rollover opened instead of merely making the old one current
+ * again — flipping the flag alone would leave two seasons and the movement
+ * between them still applied.
+ */
 admin.put(
   '/seasons/:id/current',
   handler(async (req, res) => {
@@ -1465,160 +1463,23 @@ async function notifyClubManagers(
   if (owner) await notify(owner.id, kind, title, body, '/dashboard')
 }
 
+/**
+ * The rollover that opened the current season.
+ *
+ * Replaces the old mid-season movement read. Nothing moves during a season any
+ * more, so there is no in-progress movement to show; what there is instead is a
+ * record of the last time the ladder turned over, which is also what the undo
+ * button offers itself against.
+ */
 admin.get(
   '/season-movements',
   handler(async (_req, res) => {
-    const movements = await queryAll(
-      `SELECT m.club_id, m.source_division_id, m.destination_division_id, m.movement_type,
-              source_standing.position AS source_position
-         FROM season_division_movements m
-         JOIN seasons s ON s.id = m.season_id
-         LEFT JOIN standings_snapshot source_standing
-           ON source_standing.season_id = m.season_id
-          AND source_standing.division_id = m.source_division_id
-          AND source_standing.club_id = m.club_id
-        WHERE s.is_current = TRUE
-        ORDER BY m.source_division_id, m.club_id`,
-    )
-    res.json({ movements })
+    const rollover = await readCurrentSeasonRollover()
+    res.json({ rollover })
   }),
 )
 
-admin.delete(
-  '/season-movements',
-  handler(async (_req, res) => {
-    const cleared = await withTransaction(async (conn) => {
-      const [seasonRows] = await conn.query(
-        'SELECT id FROM seasons WHERE is_current = TRUE LIMIT 1 FOR UPDATE',
-      )
-      const season = (seasonRows as Array<{ id: number }>)[0]
-      if (!season) return null
-      const [result] = await conn.execute(
-        'DELETE FROM season_division_movements WHERE season_id = ?',
-        [season.id],
-      )
-      return (result as { affectedRows: number }).affectedRows
-    })
-    if (cleared === null) return res.status(404).json({ error: 'No current season.' })
-    res.json({ cleared })
-  }),
-)
-
-admin.post(
-  '/season-movements/backfill',
-  handler(async (req, res) => {
-    const slug = requiredString(req.body?.slug, 'slug', 140)
-    const sourceDivisionId = Number.parseInt(String(req.body?.sourceDivisionId), 10)
-    if (!Number.isSafeInteger(sourceDivisionId) || sourceDivisionId < 1) {
-      return res.status(400).json({ error: 'sourceDivisionId must be a positive integer.' })
-    }
-
-    const outcome = await withTransaction(async (conn) => {
-      const [clubRows] = await conn.query(
-        'SELECT id FROM clubs WHERE slug = ? FOR UPDATE',
-        [slug],
-      )
-      const club = (clubRows as Array<{ id: number }>)[0]
-      if (!club) return { status: 404, error: 'Club not found.' }
-
-      const [sourceRows] = await conn.query(
-        `SELECT d.id, d.season_id, d.sort_order, d.promotion_count, d.relegation_count
-           FROM divisions d
-           JOIN seasons s ON s.id = d.season_id AND s.is_current = TRUE
-          WHERE d.id = ?
-          FOR UPDATE`,
-        [sourceDivisionId],
-      )
-      const source = (
-        sourceRows as Array<{
-          id: number
-          season_id: number
-          sort_order: number
-          promotion_count: number | null
-          relegation_count: number | null
-        }>
-      )[0]
-      if (!source) return { status: 404, error: 'Source league not found in the current season.' }
-
-      const [membershipRows] = await conn.query(
-        `SELECT d.id AS division_id, d.sort_order
-           FROM division_clubs dc
-           JOIN divisions d ON d.id = dc.division_id
-          WHERE dc.club_id = ? AND d.season_id = ?
-          ORDER BY dc.id DESC
-          FOR UPDATE`,
-        [club.id, source.season_id],
-      )
-      const destination = (
-        membershipRows as Array<{ division_id: number; sort_order: number }>
-      )[0]
-      if (!destination || Number(destination.division_id) === source.id) {
-        return { status: 400, error: 'Choose a club already moved to another league.' }
-      }
-
-      const movementType =
-        Number(destination.sort_order) > Number(source.sort_order)
-          ? 'relegation'
-          : Number(destination.sort_order) < Number(source.sort_order)
-            ? 'promotion'
-            : 'transfer'
-      if (movementType === 'transfer') {
-        return { status: 400, error: 'The selected leagues have no promotion or relegation order.' }
-      }
-
-      const targetCount = movementQuota(source, movementType)
-      if (targetCount < 1) {
-        return { status: 400, error: `No ${movementType} slots are configured for this league.` }
-      }
-
-      const [existingRows] = await conn.query(
-        `SELECT 1 FROM season_division_movements
-          WHERE season_id = ? AND club_id = ? AND source_division_id = ?
-          LIMIT 1`,
-        [source.season_id, club.id, source.id],
-      )
-      if ((existingRows as unknown[]).length > 0) {
-        return { status: 409, error: 'This club already has a recorded move from this league.' }
-      }
-
-      const [countRows] = await conn.query(
-        `SELECT COUNT(*) AS completed
-           FROM season_division_movements
-          WHERE season_id = ? AND source_division_id = ? AND movement_type = ?`,
-        [source.season_id, source.id, movementType],
-      )
-      const completed = Number((countRows as Array<{ completed: number }>)[0]?.completed ?? 0)
-      if (completed >= targetCount) {
-        return { status: 409, error: `All ${movementType} slots are already complete.` }
-      }
-
-      await conn.execute(
-        `INSERT INTO season_division_movements
-           (season_id, club_id, source_division_id, destination_division_id,
-            movement_type, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, NOW(), NOW())`,
-        [source.season_id, club.id, source.id, destination.division_id, movementType],
-      )
-
-      return {
-        status: 200,
-        movement: {
-          club_id: Number(club.id),
-          source_division_id: source.id,
-          destination_division_id: Number(destination.division_id),
-          movement_type: movementType,
-        },
-      }
-    })
-
-    if (outcome.status !== 200) {
-      return res.status(outcome.status).json({ error: outcome.error })
-    }
-    res.json({ movement: outcome.movement })
-  }),
-)
-
-/** A division, plus the season-wide slots it is configured to spend. */
+/** A division, plus the movement counts that decide its end-of-season zones. */
 type SeasonDivision = DivisionMovement & {
   id: number
   name: string
@@ -1639,12 +1500,13 @@ type SeasonDivision = DivisionMovement & {
  * Position is the bottom of the table. A newly admitted club has played
  * nothing, so any position but last would be a claim it had not earned.
  *
- * Runs on a caller-supplied connection so a quota check and the write it guards
- * cannot be interleaved by a second admin tab.
+ * Runs on a caller-supplied connection so a second admin tab cannot interleave
+ * its read of the club's membership between the check and the write.
  *
- * movementType is supplied by the caller and is never inferred here. Dropping a
- * club into a league by hand and deciding that it has been promoted are
- * different intentions, and only the endpoint knows which one was meant.
+ * Only ever called with movementType 'transfer'. Promotion and relegation are
+ * decided by finishing the season, not by an admin moving a club by hand, so
+ * there is no longer any path here that could claim a club earned a rung of the
+ * ladder during play.
  */
 async function applyDivisionMove(
   conn: any,
@@ -1730,11 +1592,10 @@ async function applyDivisionMove(
 /**
  * Put a club into a league by hand, or take it out of one.
  *
- * This is a plain move and never spends one of the source league's season
- * slots, whatever direction it goes in. Sending a club up or down the ladder is
- * a separate endpoint so the two intentions stay distinct: choosing a league
- * from a dropdown and declaring an outcome are different decisions, and neither
- * should quietly cost the other.
+ * This is a plain move. It never promotes or relegates anything: where a club
+ * ends the season comes from its finishing position when the season is
+ * completed, so an admin correcting a league mid-season cannot hand out a rung
+ * of the ladder by accident.
  *
  * `divisionId: null` unassigns the club from the current season. Membership is
  * per-season and lives in `division_clubs`, so this drops that season's rows
@@ -1843,150 +1704,155 @@ admin.post(
   }),
 )
 
+/* ---------------------------------------------------------- season rollover */
+
 /**
- * Promote or relegate a club one rung of the ladder.
+ * The leagues taking part in the rollover.
  *
- * The destination is resolved here rather than sent by the client, so the two
- * can never disagree: a promotion is the division directly above the club's
- * own, by sort order. The client only states which way it is going.
+ * An absent list is an empty list rather than an error: finishing a season with
+ * no movement is a legitimate thing for an admin to mean, and the preview says
+ * so plainly instead of refusing.
+ */
+function parseSelectedDivisions(value: unknown): number[] {
+  if (value === undefined || value === null) return []
+  if (!Array.isArray(value)) {
+    throw Object.assign(new Error('divisionIds must be a list of league ids.'), { status: 400 })
+  }
+  const ids = value.map((entry) => Number(entry))
+  if (ids.some((id) => !Number.isSafeInteger(id) || id < 1)) {
+    throw Object.assign(new Error('divisionIds must be a list of league ids.'), { status: 400 })
+  }
+  return [...new Set(ids)]
+}
+
+/**
+ * Movement settings for the new season's leagues, as edited in the wizard.
  *
- * Unlike a plain league change this spends a slot out of the source league's
- * season quota, and refuses to go when none is left.
+ * These configure next season's zones. They do not change what moves now � that
+ * was already decided by the finished season's counts � so they are applied only
+ * after the movement has been worked out. Sending them in the same request as
+ * the league selection keeps the whole rollover one atomic call.
+ */
+function parseRolloverSettings(value: unknown): Record<number, RolloverSetting> {
+  if (value === undefined || value === null) return {}
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw Object.assign(
+      new Error('divisionSettings must be an object keyed by league id.'),
+      { status: 400 },
+    )
+  }
+  const settings: Record<number, RolloverSetting> = {}
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    const id = Number(key)
+    if (!Number.isSafeInteger(id) || id < 1) {
+      throw Object.assign(new Error('divisionSettings is keyed by league id.'), { status: 400 })
+    }
+    settings[id] = {
+      promotionCount: parseMovementCount(
+        (entry as Record<string, unknown> | null)?.promotion_count,
+        'promotion_count',
+      ),
+      relegationCount: parseMovementCount(
+        (entry as Record<string, unknown> | null)?.relegation_count,
+        'relegation_count',
+      ),
+    }
+  }
+  return settings
+}
+
+/**
+ * What completing the season would do, without doing any of it.
+ *
+ * Reads the same planner the commit runs, so what the admin approves on screen
+ * is what gets written rather than a second implementation of the same rules.
  */
 admin.post(
-  '/clubs/:slug/movement',
+  '/seasons/complete/preview',
   handler(async (req, res) => {
-    const slug = requiredString(req.params.slug, 'slug', 140)
-    const requested = String(req.body?.movementType ?? '')
-    if (requested !== 'promotion' && requested !== 'relegation') {
-      return res
-        .status(400)
-        .json({ error: 'movementType must be either promotion or relegation.' })
+    const divisionIds = parseSelectedDivisions(req.body?.divisionIds)
+    const plan = await previewSeasonRollover(divisionIds)
+    if (!plan) return res.status(404).json({ error: 'There is no current season.' })
+    res.json({ plan })
+  }),
+)
+
+/**
+ * End the season: move the clubs, then open the next one.
+ *
+ * One transaction, so a season cannot end with half its movement applied. The
+ * plan is rebuilt from a locked read inside it rather than trusting the preview
+ * the client is holding, because results entered since the preview was drawn
+ * could have changed who finishes where.
+ *
+ * The finished season keeps its standings and results. Clubs move into the new
+ * season, which is created here rather than by a separate call, so there is no
+ * window in which the ladder has turned over but there is no season for it.
+ */
+admin.post(
+  '/seasons/complete',
+  handler(async (req, res) => {
+    const divisionIds = parseSelectedDivisions(req.body?.divisionIds)
+    const name = requiredString(req.body?.name, 'name', 64)
+    const year = Number(req.body?.year)
+    if (!Number.isSafeInteger(year) || year < 2000 || year > 9999) {
+      return res.status(400).json({ error: 'year must be a whole number between 2000 and 9999.' })
     }
-    const movementType = requested
+    const settings = parseRolloverSettings(req.body?.divisionSettings)
 
-    const club = await queryOne<{ id: number; name: string }>(
-      'SELECT id, name FROM clubs WHERE slug = ?',
-      [slug],
-    )
-    if (!club) return res.status(404).json({ error: 'Club not found.' })
+    const result = await withTransaction(async (conn) => {
+      const context = await loadRolloverContext(conn, { lock: true })
+      if (!context) {
+        throw Object.assign(new Error('There is no current season.'), { status: 404 })
+      }
 
-    const outcome = await withTransaction(async (conn) => {
-      const [clubRows] = await conn.query(
-        'SELECT id, name FROM clubs WHERE id = ? FOR UPDATE',
-        [club.id],
+      const [duplicates] = await conn.query(
+        'SELECT id FROM seasons WHERE LOWER(name) = LOWER(?) LIMIT 1',
+        [name],
       )
-      if (!((clubRows as unknown[])[0])) return { status: 404 as const, error: 'Club not found.' }
-
-      // One ordered ladder for the whole current season. Ordinality comes from
-      // this array rather than arithmetic on sort_order, because nothing
-      // guarantees sort_order values are consecutive.
-      const [ladderRows] = await conn.query(
-        `SELECT d.id, d.name, d.season_id, d.sort_order,
-                d.promotion_count, d.relegation_count
-           FROM divisions d
-           JOIN seasons s ON s.id = d.season_id AND s.is_current = TRUE
-          ORDER BY d.sort_order, d.id
-          FOR UPDATE`,
-      )
-      const ladder = ladderRows as SeasonDivision[]
-      if (ladder.length === 0) return { status: 404 as const, error: 'No leagues in the current season.' }
-
-      const [membershipRows] = await conn.query(
-        `SELECT d.id AS division_id
-           FROM division_clubs dc
-           JOIN divisions d ON d.id = dc.division_id
-          WHERE dc.club_id = ? AND d.season_id = ?
-          ORDER BY dc.id DESC
-          FOR UPDATE`,
-        [club.id, ladder[0].season_id],
-      )
-      const current = (membershipRows as Array<{ division_id: number }>)[0]
-      if (!current) {
-        return {
-          status: 400 as const,
-          error: "Set this club's league before promoting or relegating it.",
-        }
+      if ((duplicates as unknown[]).length > 0) {
+        throw Object.assign(new Error('A season with that name already exists.'), { status: 409 })
       }
 
-      const index = ladder.findIndex((division) => Number(division.id) === Number(current.division_id))
-      if (index < 0) {
-        return {
-          status: 400 as const,
-          error: 'This club is not in a league of the current season.',
-        }
+      const known = new Set(context.divisions.map((division) => division.id))
+      const unknown = divisionIds.filter((id) => !known.has(id))
+      if (unknown.length > 0) {
+        throw Object.assign(
+          new Error(
+            `These leagues are not in ${context.season.name}: ${unknown.join(', ')}. Reload the page and try again.`,
+          ),
+          { status: 400 },
+        )
       }
 
-      const source = ladder[index]
-      const destination = movementType === 'promotion' ? ladder[index - 1] : ladder[index + 1]
-      if (!destination) {
-        return {
-          status: 400 as const,
-          error:
-            movementType === 'promotion'
-              ? `${source.name} is the highest league; there is nothing above it.`
-              : `${source.name} is the lowest league; there is nothing below it.`,
-        }
+      const stats = await loadSeasonFixtureStats(conn, context.season.id)
+      const plan = planSeasonRollover(context, divisionIds, stats)
+      if (plan.blocks.length > 0) {
+        throw Object.assign(new Error(plan.blocks[0]), { status: 409 })
       }
 
-      const quota = movementQuota(source, movementType)
-      if (quota < 1) {
-        return {
-          status: 400 as const,
-          error: `No ${movementType} slots are configured for ${source.name}.`,
-        }
-      }
-
-      // A slot counts as spent only while the club is still sitting where it
-      // was sent. Sending it somewhere else afterwards releases the slot, which
-      // is what the league list shows and what applyDivisionMove keeps true.
-      const [countRows] = await conn.query(
-        `SELECT COUNT(*) AS completed
-           FROM season_division_movements m
-           JOIN division_clubs dc
-             ON dc.club_id = m.club_id
-            AND dc.division_id = m.destination_division_id
-           JOIN divisions d
-             ON d.id = dc.division_id
-            AND d.season_id = m.season_id
-          WHERE m.season_id = ? AND m.source_division_id = ? AND m.movement_type = ?`,
-        [source.season_id, source.id, movementType],
-      )
-      const completed = Number((countRows as Array<{ completed: number }>)[0]?.completed ?? 0)
-      if (completed >= quota) {
-        return {
-          status: 409 as const,
-          error: `All ${quota} ${movementType} slot${quota === 1 ? '' : 's'} for ${source.name} ${
-            quota === 1 ? 'is' : 'are'
-          } already used.`,
-        }
-      }
-
-      await applyDivisionMove(conn, { clubId: club.id, destination, movementType })
-
-      return { status: 200 as const, source, destination }
+      return applySeasonRollover(conn, context, plan, { name, year, settings })
     })
 
-    if (outcome.status !== 200) {
-      return res.status(outcome.status).json({ error: outcome.error })
+    res.status(201).json(result)
+  }),
+)
+
+/**
+ * Take a rollover back.
+ *
+ * Removes the season it opened and restores the one it closed. The finished
+ * season was never rewritten, so there is nothing to restore inside it � which is
+ * what makes a full undo possible at all rather than a best-effort reversal.
+ */
+admin.post(
+  '/seasons/complete/undo',
+  handler(async (req, res) => {
+    const seasonId = Number.parseInt(String(req.body?.seasonId), 10)
+    if (!Number.isSafeInteger(seasonId) || seasonId < 1) {
+      return res.status(400).json({ error: 'seasonId must be a positive integer.' })
     }
-
-    await notifyClubManagers(
-      club.id,
-      'club_division',
-      `${club.name} ${outcome.destination.name}`,
-      movementType === 'promotion'
-        ? `${club.name} has been promoted to ${outcome.destination.name}.`
-        : `${club.name} has been relegated to ${outcome.destination.name}.`,
-    )
-
-    res.json({
-      ok: true,
-      movementType,
-      sourceDivisionId: outcome.source.id,
-      sourceDivisionName: outcome.source.name,
-      divisionId: outcome.destination.id,
-      divisionName: outcome.destination.name,
-    })
+    const result = await withTransaction((conn) => undoSeasonRollover(conn, seasonId))
+    res.json(result)
   }),
 )

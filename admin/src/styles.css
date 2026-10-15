@@ -738,20 +738,159 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .generate-round.selected small { color: var(--muted); }
 .generate-help { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
 
-/* --------------------------------------------------- season rollover confirm */
-.season-rollover-modal { width: min(100%, 560px); overflow-x: hidden; }
-.season-rollover-moves { display: grid; gap: 11px; }
-.season-rollover-leg {
+/* ------------------------------------------------------- season rollover wizard */
+.season-rollover-modal { width: min(100%, 720px); max-height: min(88vh, 860px); overflow-x: hidden; }
+.season-rollover-modal .club-edit-content { overflow-y: auto; }
+.rollover-summary-modal { width: min(100%, 620px); }
+
+/* Step indicator. The whole wizard is one decision split into three, so the
+   position in it is stated rather than left to be inferred from the content. */
+.rollover-steps {
+  display: flex; flex-wrap: wrap; gap: 6px; margin: 0;
+  padding: 14px 20px; border-bottom: 1px solid var(--border);
+  background: rgb(255 255 255 / 1.5%); list-style: none;
+}
+.rollover-steps li { flex: 1 1 150px; }
+.rollover-steps button {
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  padding: 8px 10px; border: 1px solid var(--border); border-radius: 9px;
+  background: var(--bg); color: var(--faint); font-size: 11px; font-weight: 700;
+  text-align: left;
+}
+.rollover-steps li.current button { border-color: var(--border-strong); color: var(--text); }
+.rollover-steps li.done button { color: var(--muted); }
+.rollover-steps button:disabled { cursor: default; opacity: 1; }
+.rollover-step-number {
+  display: grid; place-items: center; flex: 0 0 20px; width: 20px; height: 20px;
+  border-radius: 50%; background: var(--border); color: var(--muted);
+  font-size: 10px; font-variant-numeric: tabular-nums;
+}
+.rollover-steps li.current .rollover-step-number { background: var(--text); color: var(--bg); }
+.rollover-steps li.done .rollover-step-number { background: transparent; box-shadow: inset 0 0 0 1px var(--border-strong); color: var(--muted); }
+
+.rollover-step-intro { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.rollover-step-intro p { margin: 0; max-width: 52ch; color: var(--muted); font-size: 11px; line-height: 1.55; }
+.rollover-step-intro strong { color: var(--text); }
+.rollover-step-actions { display: flex; gap: 8px; }
+
+/* League picker. One row per league, showing what ticking it costs the rest. */
+.rollover-league-picker { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
+.rollover-league-picker > li {
+  border: 1px solid var(--border); border-radius: 10px; background: var(--bg);
+  transition: border-color .12s ease, background .12s ease;
+}
+.rollover-league-picker > li.selected { border-color: var(--border-strong); background: rgb(255 255 255 / 2.5%); }
+.rollover-league-picker label {
+  display: flex; align-items: center; gap: 12px; padding: 11px 13px; cursor: pointer;
+}
+.rollover-league-picker input { flex: 0 0 auto; }
+.rollover-league-picker label > div { display: grid; gap: 3px; flex: 1 1 auto; min-width: 0; }
+.rollover-league-picker strong { color: var(--text); font-size: 12px; }
+.rollover-league-meta { color: var(--faint); font-size: 10px; }
+.rollover-league-size { flex: 0 0 auto; font-size: 10px; font-weight: 700; }
+.rollover-size-same { color: var(--faint); }
+.rollover-size-changed { color: var(--warn, #f0c674); }
+
+/* Movement list: one block per direction per league, the clubs named in it. */
+.rollover-movement-list { display: grid; gap: 9px; margin: 0; padding: 0; list-style: none; }
+.rollover-movement-list > li {
   display: grid; gap: 7px; padding: 12px 13px;
   border: 1px solid var(--border); border-radius: 10px; background: var(--bg);
 }
-.season-rollover-leg strong { color: var(--text); font-size: 12px; }
-.season-rollover-leg ul { display: grid; gap: 3px; margin: 0; padding-left: 19px; color: var(--muted); font-size: 11px; }
-.season-rollover-note { color: var(--muted); font-size: 10px; line-height: 1.45; }
-.season-rollover-none {
+.rollover-movement-head { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
+.rollover-movement-head strong { color: var(--text); font-size: 12px; }
+.rollover-movement-list ul { display: grid; gap: 3px; margin: 0; padding: 0; list-style: none; }
+.rollover-movement-list ul li { display: flex; justify-content: space-between; gap: 12px; font-size: 11px; }
+.rollover-club-name { color: var(--muted); }
+.rollover-club-standing { color: var(--faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rollover-direction {
+  display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px;
+  font-size: 9px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap;
+}
+.rollover-direction.promotion { background: rgb(200 255 61 / 15%); color: #c8ff3d; }
+.rollover-direction.relegation { background: rgb(255 136 136 / 14%); color: #ff8888; }
+.rollover-none {
   margin: 0; padding: 13px; border: 1px dashed var(--border-strong); border-radius: 10px;
   color: var(--muted); font-size: 11px; line-height: 1.5;
 }
+.rollover-loading { margin: 0; color: var(--faint); font-size: 11px; }
+
+/* Advisories and refusals. Blocks are the only red thing in the wizard. */
+.rollover-notices {
+  display: grid; gap: 5px; margin: 0; padding: 11px 13px;
+  border: 1px solid rgb(240 198 116 / 30%); border-radius: 10px;
+  background: rgb(240 198 116 / 7%); color: var(--muted); font-size: 11px; line-height: 1.55;
+}
+.rollover-notices p { margin: 0; }
+.rollover-notices.blocking {
+  border-color: rgb(255 136 136 / 35%); background: rgb(255 136 136 / 8%); color: #ffb3b3;
+}
+.rollover-notices-title { color: var(--text); font-weight: 700; }
+
+/* One next-season table per league, side by side where there is room. */
+.rollover-tables {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(228px, 1fr)); gap: 10px;
+}
+.rollover-table-card {
+  display: grid; gap: 8px; align-content: start; padding: 12px 13px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--bg);
+}
+.rollover-table-card > header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; }
+.rollover-table-card h3 { margin: 0; color: var(--text); font-size: 12px; }
+.rollover-table-card table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.rollover-table-card th {
+  padding: 0 0 5px; border-bottom: 1px solid var(--border);
+  color: var(--faint); font-size: 9px; font-weight: 700; text-align: left;
+  letter-spacing: .05em; text-transform: uppercase;
+}
+.rollover-table-card th:not(:first-child), .rollover-table-card td:not(:first-child) { text-align: right; }
+.rollover-table-card td { padding: 4px 0; color: var(--muted); }
+.rollover-table-card tr.incoming td { color: var(--text); }
+.rollover-table-empty { margin: 0; color: var(--faint); font-size: 11px; }
+.rollover-table-zones { margin: 0; color: var(--faint); font-size: 10px; }
+.rollover-badge {
+  display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 999px;
+  background: rgb(200 255 61 / 14%); color: #c8ff3d; font-size: 9px; font-weight: 800;
+  letter-spacing: .05em; text-transform: uppercase;
+}
+
+/* Step three: name, year, and the next season's zone sizes. */
+.rollover-details {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(140px, 200px);
+  align-items: end; gap: 12px 16px;
+}
+.rollover-details label { display: grid; gap: 6px; color: var(--muted); font-size: 11px; font-weight: 700; }
+.rollover-details .text { width: 100%; min-height: 40px; }
+.rollover-settings { width: 100%; border-collapse: collapse; font-size: 11px; }
+.rollover-settings th {
+  padding: 0 0 6px; border-bottom: 1px solid var(--border);
+  color: var(--faint); font-size: 9px; font-weight: 700;
+  letter-spacing: .05em; text-transform: uppercase; text-align: left;
+}
+.rollover-settings tbody th { padding: 7px 0; color: var(--muted); font-size: 11px; text-transform: none; letter-spacing: 0; }
+.rollover-settings td { padding: 4px 0 4px 10px; }
+.rollover-settings .text { width: 100%; min-height: 34px; }
+
+/* Completion summary. */
+.rollover-summary-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.rollover-summary-list li {
+  display: flex; align-items: flex-start; gap: 11px; padding: 11px 13px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--bg);
+}
+.rollover-summary-list li > div { display: grid; gap: 3px; min-width: 0; }
+.rollover-summary-list strong { color: var(--text); font-size: 12px; }
+.rollover-summary-list span { color: var(--muted); font-size: 11px; line-height: 1.5; }
+
+/* Season management: what the last rollover did, and whether it can be undone. */
+.rollover-history {
+  display: grid; gap: 4px; padding: 12px 20px;
+  border-bottom: 1px solid var(--border); background: rgb(255 255 255 / 1.5%);
+}
+.rollover-history > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
+.rollover-history strong { color: var(--text); font-size: 12px; }
+.rollover-history span { color: var(--muted); font-size: 11px; }
+.rollover-history .hint { margin: 0; font-size: 10px; line-height: 1.5; }
+
 .season-management-caret { display: inline-block; font-size: 10px; transition: transform .15s ease; }
 .season-management.expanded .season-management-caret { transform: rotate(90deg); }
 .season-management-body[hidden] { display: none; }

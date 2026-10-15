@@ -99,12 +99,92 @@ export interface Club {
   players: number
 }
 
-export interface SeasonDivisionMovement {
-  club_id: number
-  source_division_id: number
-  destination_division_id: number
-  movement_type: 'promotion' | 'relegation' | 'transfer'
-  source_position: number | null
+/* ------------------------------------------------------------------ types */
+
+export type RolloverDirection = 'promotion' | 'relegation'
+
+/** A club as the rollover sees it: who it is, and where it finished. */
+export interface RolloverClub {
+  clubId: number
+  clubName: string
+  clubSlug: string
+  position: number | null
+  points: number | null
+  goalDifference: number | null
+}
+
+/** One league's movement in one direction, whether it runs or is skipped. */
+export interface RolloverLeg {
+  type: RolloverDirection
+  sourceDivisionId: number
+  sourceDivisionName: string
+  destinationDivisionId: number | null
+  destinationDivisionName: string | null
+  clubs: RolloverClub[]
+  skipped: boolean
+  skipReason: string | null
+}
+
+export interface RolloverDivisionPlan {
+  id: number
+  name: string
+  sortOrder: number
+  promotionCount: number | null
+  relegationCount: number | null
+  /** The league promotes but sets no relegation count, so one is assumed. */
+  relegationInferred: boolean
+  currentSize: number
+  nextSize: number
+  selected: boolean
+  outgoing: RolloverClub[]
+  incoming: RolloverClub[]
+  table: Array<RolloverClub & { incoming: boolean }>
+}
+
+/**
+ * What completing the season would do, as the server works it out.
+ *
+ * The wizard renders this rather than repeating the rules, so what the admin
+ * approves on screen is the same calculation the commit runs.
+ */
+export interface RolloverPlan {
+  seasonId: number
+  seasonName: string
+  seasonYear: number
+  selectedDivisionIds: number[]
+  legs: RolloverLeg[]
+  divisions: RolloverDivisionPlan[]
+  warnings: string[]
+  blocks: string[]
+  matchedResults: number
+  outstandingFixtures: number
+}
+
+export interface RolloverResult {
+  season: { id: number; name: string; year: number; is_current: number }
+  divisions: Array<{ id: number; name: string; clubCount: number }>
+  movements: Array<{
+    type: RolloverDirection
+    sourceDivisionName: string
+    destinationDivisionName: string
+    clubs: Array<{ clubId: number; clubName: string; position: number | null; points: number | null }>
+  }>
+  warnings: string[]
+}
+
+export interface RolloverRecord {
+  sourceSeason: { id: number; name: string; year: number }
+  season: { id: number; name: string; year: number }
+  completedAt: string
+  movements: Array<{
+    type: RolloverDirection
+    sourceDivisionName: string
+    destinationDivisionName: string
+    clubs: Array<{ clubId: number; clubName: string; position: number | null; points: number | null }>
+  }>
+  movedClubs: number
+  /** False once the new season has fixtures or results of its own. */
+  undoable: boolean
 }
 
 /* --------------------------------------------------------------- requests */
@@ -301,10 +381,68 @@ export const getDivisions = (seasonId?: number) =>
     `/api/divisions${seasonId == null ? '' : `?seasonId=${seasonId}`}`,
   ).then((r) => r.divisions)
 
-export const getSeasonDivisionMovements = () =>
-  request<{ movements: SeasonDivisionMovement[] }>('/api/admin/season-movements').then(
-    (r) => r.movements,
+/**
+ * The rollover that opened the current season, if there was one.
+ *
+ * Read from the server rather than remembered, so the undo button survives a
+ * page reload.
+ */
+export const getSeasonRollover = () =>
+  request<{ rollover: RolloverRecord | null }>('/api/admin/season-movements').then(
+    (r) => r.rollover,
   )
+
+/**
+ * What completing the season would do, without doing it.
+ *
+ * Sent on every change to the league selection so the wizard always shows the
+ * current answer rather than a stale one from when it was opened.
+ */
+export const previewSeasonRollover = (divisionIds: number[]) =>
+  request<{ plan: RolloverPlan }>('/api/admin/seasons/complete/preview', {
+    method: 'POST',
+    body: JSON.stringify({ divisionIds }),
+  }).then((r) => r.plan)
+
+/**
+ * End the season and open the next one.
+ *
+ * One call, so the movement and the new season land together or not at all.
+ * `divisionSettings` carries the promotion and relegation counts edited in the
+ * wizard; they configure the new season and do not change what moves now.
+ */
+export const completeSeason = ({
+  divisionIds,
+  name,
+  year,
+  divisionSettings,
+}: {
+  divisionIds: number[]
+  name: string
+  year: number
+  divisionSettings: Record<number, { promotion_count: number | null; relegation_count: number | null }>
+}) =>
+  request<RolloverResult>('/api/admin/seasons/complete', {
+    method: 'POST',
+    body: JSON.stringify({ divisionIds, name, year, divisionSettings }),
+  })
+
+/**
+ * Take a completed rollover back.
+ *
+ * Removes the season it opened and restores the one it closed. Refused once the
+ * new season has fixtures or results in it.
+ */
+export const undoSeasonRollover = (seasonId: number) =>
+  request<{
+    season: { id: number; name: string; year: number }
+    restoredSeason: { id: number; name: string; year: number }
+    removedMovements: number
+    removedNotifications: number
+  }>('/api/admin/seasons/complete/undo', {
+    method: 'POST',
+    body: JSON.stringify({ seasonId }),
+  })
 
 export const getAdminSeasons = () =>
   request<{ seasons: AdminSeason[] }>('/api/admin/seasons').then((r) => r.seasons)
@@ -355,8 +493,10 @@ export const updateDivisionOrder = (divisionIds: number[]) =>
 /**
  * Put a club into a division, or take it out of one with `null`.
  *
- * A plain move. It does not spend a promotion or relegation slot, whatever
- * direction the club travels: `moveClub` below is the only thing that does.
+ * A plain move. It never promotes or relegates anything: where a club ends the
+ * season comes from its finishing position when the season is completed, so an
+ * admin correcting a league mid-season cannot hand out a rung of the ladder by
+ * accident.
  *
  * Passing `null` unassigns the club from the current season. It drops this
  * season's membership and table row, so the club lands in the unassigned
@@ -374,28 +514,6 @@ export const assignDivision = (slug: string, divisionId: number | null) =>
       body: JSON.stringify({ divisionId }),
     },
   )
-
-export type ClubMovementType = 'promotion' | 'relegation'
-
-/**
- * Promote or relegate a club one rung of the ladder.
- *
- * Only the direction is sent. The server works out the destination league from
- * the club's own position, so the two can never disagree, and it refuses the
- * move when the source league has no slots left this season.
- */
-export const moveClub = (slug: string, movementType: ClubMovementType) =>
-  request<{
-    ok: true
-    movementType: ClubMovementType
-    sourceDivisionId: number
-    sourceDivisionName: string
-    divisionId: number
-    divisionName: string
-  }>(`/api/admin/clubs/${slug}/movement`, {
-    method: 'POST',
-    body: JSON.stringify({ movementType }),
-  })
 
 export const setResult = (matchId: number, homeScore: number, awayScore: number) =>
   request<{ ok: true }>(`/api/admin/matches/${matchId}/result`, {

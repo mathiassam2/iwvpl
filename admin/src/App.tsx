@@ -8,6 +8,7 @@ import {
   type SetStateAction,
 } from 'react'
 import { CustomSelect } from './CustomSelect'
+import { SeasonRollover } from './SeasonRollover'
 import {
   ApiError,
   addPlayer,
@@ -25,10 +26,9 @@ import {
   getMatches,
   getMatchPriorities,
   getPendingClubs,
-  getSeasonDivisionMovements,
+  getSeasonRollover,
   getStandings,
   generateFixtures,
-  moveClub,
   removePlayer,
   scheduleMatch,
   setResult,
@@ -40,13 +40,12 @@ import {
   updateSeason,
   withdrawResult,
   type Club,
-  type ClubMovementType,
   type AdminSeason,
   type Division,
   type Match,
   type MatchSort,
   type PendingClub,
-  type SeasonDivisionMovement,
+  type RolloverRecord,
   type Standing,
 } from './api'
 
@@ -54,7 +53,7 @@ type Tab = 'standings' | 'results' | 'clubs'
 type ClubSection = 'clubs' | 'applications' | 'divisions'
 
 /** Which bulk action is running, so only that button shows its spinner. */
-type BulkAction = 'update' | ClubMovementType
+type BulkAction = 'update'
 
 interface Notice {
   kind: 'ok' | 'error' | 'info'
@@ -2421,11 +2420,7 @@ function SeasonManagement({
   onSeasonChange,
   onCurrentSeasonChanged,
   onCompleteSeason,
-  onUndoSeason,
-  seasonBusy,
-  canUndo,
-  previousSeasonName,
-  rolloverHint,
+  lastRollover,
 }: {
   guard: <T>(fn: () => Promise<T>, what: string) => Promise<T>
   report: (kind: Notice['kind'], text: string) => void
@@ -2437,11 +2432,8 @@ function SeasonManagement({
   onSeasonChange: (seasonId: string) => void
   onCurrentSeasonChanged: (seasonId: number) => void
   onCompleteSeason: () => void
-  onUndoSeason: () => void
-  seasonBusy: boolean
-  canUndo: boolean
-  previousSeasonName: string | null
-  rolloverHint: string | null
+  /** The rollover that opened the season in view, if there was one. */
+  lastRollover: RolloverRecord | null
 }) {
   const [editingSeasonId, setEditingSeasonId] = useState<number | null>(null)
   const [seasonName, setSeasonName] = useState('')
@@ -2551,16 +2543,6 @@ function SeasonManagement({
           )}
         </div>
         <div className="season-management-actions">
-          {canUndo && (
-            <button
-              className="btn sm"
-              type="button"
-              disabled={seasonBusy}
-              onClick={onUndoSeason}
-            >
-              Undo · back to {previousSeasonName}
-            </button>
-          )}
           <button
             className="btn sm"
             type="button"
@@ -2576,8 +2558,7 @@ function SeasonManagement({
           <button
             className="btn primary sm season-complete-btn"
             type="button"
-            disabled={seasonBusy || readOnly}
-            title={rolloverHint ?? undefined}
+            disabled={busy || readOnly}
             onClick={onCompleteSeason}
           >
             Complete season
@@ -2585,7 +2566,7 @@ function SeasonManagement({
           <button
             className="btn primary sm"
             type="button"
-            disabled={seasonBusy}
+            disabled={busy}
             onClick={() => {
               const year = Math.max(new Date().getFullYear(), ...seasons.map((season) => season.year))
               setNewSeasonYear(String(year))
@@ -2600,6 +2581,27 @@ function SeasonManagement({
         </div>
       </header>
       <div className="season-management-body" id="season-management-body" hidden={!expanded}>
+      {!readOnly && lastRollover && (
+        <div className="rollover-history">
+          <div>
+            <strong>
+              {lastRollover.sourceSeason.name} → {lastRollover.season.name}
+            </strong>
+            <span>
+              {lastRollover.movedClubs === 0
+                ? 'Completed with no movement.'
+                : `${lastRollover.movedClubs} club${
+                    lastRollover.movedClubs === 1 ? '' : 's'
+                  } changed league.`}
+            </span>
+          </div>
+          <p className="hint">
+            {lastRollover.undoable
+              ? 'Nothing has been added to this season yet, so the rollover can still be taken back.'
+              : 'Fixtures or results have since been added, so the rollover can no longer be taken back.'}
+          </p>
+        </div>
+      )}
       {showNewSeason && (
         <form className="season-create-form" onSubmit={(event) => void addSeason(event)}>
           <label>
@@ -2732,7 +2734,9 @@ function Clubs({
 }) {
   const [clubs, setClubs] = useState<Club[] | null>(null)
   const [standings, setStandings] = useState<Standing[]>([])
-  const [seasonMovements, setSeasonMovements] = useState<SeasonDivisionMovement[] | null>(null)
+  // The rollover that opened the current season, if there was one. Null when the
+  // season was not started by a rollover, or when it could not be read.
+  const [lastRollover, setLastRollover] = useState<RolloverRecord | null>(null)
   const [seasons, setSeasons] = useState<AdminSeason[]>([])
   const [seasonId, setSeasonId] = useState('')
   const [codes, setCodes] = useState<Record<string, string>>({})
@@ -2758,42 +2762,7 @@ function Clubs({
   const [bulkStatus, setBulkStatus] = useState('')
   // Season rollover. The dialog is open across a re-render while it is up, so
   // this state has to live above the loading return below.
-  const [seasonBusy, setSeasonBusy] = useState(false)
-  const [seasonCompleteOpen, setSeasonCompleteOpen] = useState(false)
-  const [nextSeasonName, setNextSeasonName] = useState('')
-  const [nextSeasonYear, setNextSeasonYear] = useState('')
-  // The plan the rollover confirm dialog is showing, null when none is queued.
-  const [confirmRelocate, setConfirmRelocate] = useState<{
-    source: Division
-    neighbour: Division
-    neighbourType: ClubMovementType
-    type: ClubMovementType
-    inbound: Club[]
-  } | null>(null)
-  const closeCompleteSeason = () => {
-    setSeasonCompleteOpen(false)
-    setConfirmRelocate(null)
-  }
-  const openCompleteSeason = () => {
-    const year = Math.max(new Date().getFullYear(), ...seasons.map((season) => season.year)) + 1
-    setNextSeasonYear(String(year))
-    setNextSeasonName(`${year} Season 1`)
-    const plan =
-      selectedCount > 0 && !bulkMoveBlock(bulkDirection) ? planBulkRelocate(bulkDirection) : null
-    setConfirmRelocate(plan)
-    setSeasonCompleteOpen(true)
-  }
-  // Which movement the club editor is waiting on confirmation for, and the one
-  // it has actually sent. Both are per club so a failed move cannot leave the
-  // confirm strip open on a different club.
-  const [confirmingMovement, setConfirmingMovement] = useState<{
-    slug: string
-    type: ClubMovementType
-  } | null>(null)
-  const [movingClub, setMovingClub] = useState<{
-    slug: string
-    type: ClubMovementType
-  } | null>(null)
+  const [rolloverOpen, setRolloverOpen] = useState(false)
   const activeClub = clubs?.find((club) => club.slug === editing) ?? null
 
   const currentSeasonId = seasons.find((season) => Boolean(season.is_current))?.id ?? null
@@ -2802,9 +2771,6 @@ function Clubs({
   // history, so a past table stays exactly as the season finished rather than
   // being edited months later by someone who has forgotten what it was.
   const readOnly = currentSeasonId !== null && Number(seasonId) !== currentSeasonId
-  // Movement history is tracked per current season, so past seasons have none
-  // to show and the zone colours stay off.
-  const movementTracked = seasonMovements !== null && !readOnly
 
   /**
    * Load one season's clubs, leagues and table.
@@ -2814,17 +2780,15 @@ function Clubs({
    * season view meaningful instead of a second copy of the live data.
    */
   const loadSeason = useCallback(async (targetSeasonId: number) => {
-    const [data, currentDivisions, currentStandings, currentMovements] = await Promise.all([
+    const [data, currentDivisions, currentStandings, rollover] = await Promise.all([
       guard(() => getClubs(targetSeasonId), 'Could not load clubs'),
       guard(() => getDivisions(targetSeasonId), 'Could not load leagues'),
       guard(() => getStandings(targetSeasonId), 'Could not load standings').catch(() => []),
-      guard(getSeasonDivisionMovements, 'Could not load current-season movement history').catch(
-        () => null,
-      ),
+      guard(getSeasonRollover, 'Could not load the last season rollover').catch(() => null),
     ])
     setClubs(data)
     setStandings(currentStandings)
-    setSeasonMovements(currentMovements)
+    setLastRollover(rollover)
     setCodes(Object.fromEntries(data.map((c) => [c.slug, c.short_code ?? ''])))
     setStatuses(Object.fromEntries(data.map((c) => [c.slug, c.status])))
     setDivisions(currentDivisions)
@@ -2926,9 +2890,7 @@ function Clubs({
       )
 
       // Division is a separate call: it has to create the club's standings row,
-      // which is not something the club PATCH knows how to do. It is recorded as
-      // a plain move, so it never spends a promotion or relegation slot — see
-      // `move` below for that.
+      // which is not something the club PATCH knows how to do.
       //
       // Clearing the picker is a real change, not "leave it alone": choosing
       // Unassigned has to take the club out of its league and drop it into the
@@ -2948,20 +2910,15 @@ function Clubs({
             club.slug === c.slug ? { ...club, division_id: res.divisionId } : club,
           ) ?? null,
         )
-        setSeasonMovements(null)
-        const [updatedStandings, updatedMovements] = await Promise.all([
-          guard(() => getStandings(Number(seasonId)), 'Could not refresh standings after changing the league'),
-          guard(
-            getSeasonDivisionMovements,
-            'Could not refresh movement history after changing the league',
-          ),
-        ])
+        const updatedStandings = await guard(
+          () => getStandings(Number(seasonId)),
+          'Could not refresh standings after changing the league',
+        )
         setStandings(updatedStandings)
-        setSeasonMovements(updatedMovements)
         report(
           'ok',
           res.divisionName
-            ? `Saved ${c.name} and entered it into ${res.divisionName}. No movement slot used.`
+            ? `Saved ${c.name} and entered it into ${res.divisionName}.`
             : `Saved ${c.name} and removed it from its league. It is now unassigned.`,
         )
       } else {
@@ -2969,53 +2926,10 @@ function Clubs({
       }
 
       setEditing(null)
-      setConfirmingMovement(null)
     } catch {
       /* already reported */
     } finally {
       setBusy(null)
-    }
-  }
-
-  /**
-   * Promote or relegate the club one rung of the ladder.
-   *
-   * Deliberately does not touch `codes` or `statuses`: the editor stays open
-   * so several clubs can be moved in a row, and an unsaved short code would be
-   * silently discarded by a full save. It does resync the league draft to the
-   * league the club is actually in, otherwise the dropdown would sit there
-   * offering to make a move that already happened.
-   */
-  const move = async (c: Club, type: ClubMovementType) => {
-    if (readOnly) return
-    setMovingClub({ slug: c.slug, type })
-    try {
-      const result = await guard(
-        () => moveClub(c.slug, type),
-        `Could not ${type === 'promotion' ? 'promote' : 'relegate'} ${c.name}`,
-      )
-      setClubs((current) =>
-        current?.map((club) =>
-          club.slug === c.slug ? { ...club, division_id: result.divisionId } : club,
-        ) ?? null,
-      )
-      setDivisionOf((current) => ({ ...current, [c.slug]: String(result.divisionId) }))
-      setSeasonMovements(null)
-      const [updatedStandings, updatedMovements] = await Promise.all([
-        guard(getStandings, 'Could not refresh standings after the movement'),
-        guard(getSeasonDivisionMovements, 'Could not refresh movement history after the movement'),
-      ])
-      setStandings(updatedStandings)
-      setSeasonMovements(updatedMovements)
-      setConfirmingMovement(null)
-      report(
-        'ok',
-        `${type === 'promotion' ? 'Promoted' : 'Relegated'} ${c.name} from ${result.sourceDivisionName} to ${result.divisionName}.`,
-      )
-    } catch {
-      /* already reported */
-    } finally {
-      setMovingClub(null)
     }
   }
 
@@ -3024,7 +2938,6 @@ function Clubs({
     setStatuses((s) => ({ ...s, [c.slug]: c.status }))
     setDivisionOf((s) => ({ ...s, [c.slug]: c.division_id ? String(c.division_id) : '' }))
     setNewPlayer((s) => ({ ...s, [c.slug]: '' }))
-    setConfirmingMovement(null)
     setEditing(c.slug)
   }
 
@@ -3033,7 +2946,6 @@ function Clubs({
     setStatuses((s) => ({ ...s, [c.slug]: c.status }))
     setDivisionOf((s) => ({ ...s, [c.slug]: c.division_id ? String(c.division_id) : '' }))
     setNewPlayer((s) => ({ ...s, [c.slug]: '' }))
-    setConfirmingMovement(null)
     setEditing(null)
   }
 
@@ -3111,36 +3023,21 @@ function Clubs({
   const getDivisionId = (club: Club) => String(club.division_id ?? '')
   const configuredDivisionIds = new Set(divisions.map((division) => String(division.id)))
   const standingsByClub = new Map(standings.map((standing) => [standing.club_id, standing]))
-  const activeSeasonMovements = (seasonMovements ?? []).filter(
-    (movement) =>
-      clubs.some(
-        (club) =>
-          club.id === movement.club_id && club.division_id === movement.destination_division_id,
-      ),
-  )
-  const movementCompletedClubIds = new Set(
-    activeSeasonMovements
-      .filter((movement) => movement.movement_type !== 'transfer')
-      .map((movement) => movement.club_id),
-  )
-  const completedMovementsByDivision = new Map<
-    number,
-    { promotion: number; relegation: number }
-  >()
-  for (const movement of activeSeasonMovements) {
-    if (movement.movement_type === 'transfer') continue
-    const counts = completedMovementsByDivision.get(movement.source_division_id) ?? {
-      promotion: 0,
-      relegation: 0,
-    }
-    counts[movement.movement_type] += 1
-    completedMovementsByDivision.set(movement.source_division_id, counts)
-  }
-  const promotionCompletedFor = (division: Division) =>
-    completedMovementsByDivision.get(division.id)?.promotion ?? 0
+
+  /**
+   * How many clubs a league sends up and down at the end of the season.
+   *
+   * Straight from the league's configuration: nothing moves during the season,
+   * so there is no progress to subtract and no slots to run out of. The zone
+   * colours on this page are a preview of who is currently in line, not a record
+   * of movement that has happened.
+   *
+   * A league that promotes but sets no relegation count still sends one club
+   * down - a tier that never loses anyone cannot have a relegation zone on the
+   * standings page. This mirrors `movementQuota` in api/src/domain/rollover.ts,
+   * which is what actually decides the movement at the end of the season.
+   */
   const promotionTargetFor = (division: Division) => division.promotion_count ?? 0
-  const relegationCompletedFor = (division: Division) =>
-    completedMovementsByDivision.get(division.id)?.relegation ?? 0
   const relegationTargetFor = (division: Division) => {
     const configuredCount = division.relegation_count ?? 0
     return configuredCount > 0
@@ -3149,24 +3046,19 @@ function Clubs({
         ? 1
         : 0
   }
-  const promotionCountFor = (division: Division) =>
-    Math.max(0, promotionTargetFor(division) - promotionCompletedFor(division))
-  const relegationCountFor = (division: Division) =>
-    Math.max(0, relegationTargetFor(division) - relegationCompletedFor(division))
+
   /**
    * Each club's rank inside its own league, and how big that league is.
    *
    * Ranked from the league's club list rather than from standings rows alone.
    * A club can be entered in a league without a standings_snapshot row behind
-   * it yet, and the previous code read that as "no position at all" — those
-   * clubs still sort to the bottom of the list, so they looked like the
-   * relegation zone while never being coloured for it. Ranking the list keeps
-   * position and league size describing the same set of clubs, so the bottom
-   * N is always the bottom N of what the admin is actually looking at.
+   * it yet, and reading that as "no position at all" would put those clubs in
+   * the relegation zone by accident. Ranking the list keeps position and league
+   * size describing the same set of clubs, so the bottom N is always the bottom
+   * N of what the admin is actually looking at.
    */
   const leagueRankByClubId = new Map<number, number>()
   const leagueSizeByDivisionId = new Map<number, number>()
-  const rankedClubsByDivisionId = new Map<number, Club[]>()
   for (const division of divisions) {
     const members = clubs.filter((club) => club.division_id === division.id)
     leagueSizeByDivisionId.set(division.id, members.length)
@@ -3177,94 +3069,25 @@ function Clubs({
       return a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true })
     })
     ranked.forEach((club, index) => leagueRankByClubId.set(club.id, index + 1))
-    rankedClubsByDivisionId.set(division.id, ranked)
   }
 
-  const clubMovement = (club: Club) => {
-    if (!movementTracked) return { promotion: false, relegation: false }
-    if (movementCompletedClubIds.has(club.id)) return { promotion: false, relegation: false }
+  /** Which end of the table a club is in, as things stand right now. */
+  const clubZone = (club: Club) => {
+    if (readOnly) return { promotion: false, relegation: false }
     const division = divisions.find((item) => item.id === club.division_id)
     const position = leagueRankByClubId.get(club.id)
     if (!division || position === undefined) return { promotion: false, relegation: false }
     const divisionSize = leagueSizeByDivisionId.get(division.id) ?? 0
-    const promotionCount = promotionCountFor(division)
-    const relegationCount = relegationCountFor(division)
+    const promotionCount = promotionTargetFor(division)
+    const relegationCount = relegationTargetFor(division)
     const promotion = promotionCount > 0 && position <= promotionCount
     return {
       promotion,
       relegation: !promotion && relegationCount > 0 && position > divisionSize - relegationCount,
     }
   }
-  const hasPromotionZones =
-    movementTracked && divisions.some((division) => promotionCountFor(division) > 0)
-  const hasRelegationZones =
-    movementTracked && divisions.some((division) => relegationCountFor(division) > 0)
-  const orderedDivisions = [...divisions].sort(
-    (a, b) => a.sort_order - b.sort_order || a.id - b.id,
-  )
-  /**
-   * What the club editor's movement buttons would do, for one club.
-   *
-   * Both halves are resolved here so the buttons and the API cannot disagree:
-   * the destination is the neighbouring division in league order, which is what
-   * the server walks, and the blocking reason is stated instead of left for the
-   * admin to work out from a disabled button.
-   */
-  const movementPlan = (club: Club) => {
-    const ladder = orderedDivisions
-    const source = ladder.find((division) => division.id === club.division_id) ?? null
-    const index = source ? ladder.indexOf(source) : -1
-
-    const describe = (type: ClubMovementType) => {
-      if (!source) {
-        return {
-          type,
-          destination: null,
-          quota: 0,
-          completed: 0,
-          reason: 'Set this club’s league above before moving it up or down.',
-        }
-      }
-      const destination =
-        type === 'promotion'
-          ? (index > 0 ? ladder[index - 1] : null)
-          : (index >= 0 && index < ladder.length - 1 ? ladder[index + 1] : null)
-      if (!destination) {
-        return {
-          type,
-          destination: null,
-          quota: 0,
-          completed: 0,
-          reason: `${source.name} is the ${
-            type === 'promotion' ? 'highest' : 'lowest'
-          } league; there is nothing ${type === 'promotion' ? 'above' : 'below'} it.`,
-        }
-      }
-      const quota = type === 'promotion' ? promotionTargetFor(source) : relegationTargetFor(source)
-      const completed = type === 'promotion' ? promotionCompletedFor(source) : relegationCompletedFor(source)
-      if (quota < 1) {
-        return {
-          type,
-          destination,
-          quota,
-          completed,
-          reason: `No ${type} slots are configured for ${source.name}. Set a number under Clubs › Divisions.`,
-        }
-      }
-      if (completed >= quota) {
-        return {
-          type,
-          destination,
-          quota,
-          completed,
-          reason: `All ${quota} ${type} slot${quota === 1 ? '' : 's'} for ${source.name} are used (${completed}/${quota}). Raise the limit under Clubs › Divisions, or use the league picker above to move without using a slot.`,
-        }
-      }
-      return { type, destination, quota, completed, reason: null }
-    }
-
-    return { source, promotion: describe('promotion'), relegation: describe('relegation') }
-  }
+  const hasPromotionZones = divisions.some((division) => promotionTargetFor(division) > 0)
+  const hasRelegationZones = divisions.some((division) => relegationTargetFor(division) > 0)
 
   /* ------------------------------------------------------------- bulk edits */
 
@@ -3301,25 +3124,6 @@ function Clubs({
    */
   const bulkHasPending = bulkLeague !== '' || bulkStatus !== ''
 
-  /**
-   * Which way the rollover will move the selection.
-   *
-   * Read off the selection rather than chosen: clubs sitting in the promotion
-   * zone are obviously going up, and the rest are obviously coming down. A
-   * plain computation, not a memo — it walks a handful of clubs, and a hook
-   * here would sit below the loading return and tear the page down the moment
-   * the data arrived.
-   */
-  const bulkDirection: ClubMovementType =
-    selectedClubs.length > 0 && selectedClubs.every((club) => clubMovement(club).promotion)
-      ? 'promotion'
-      : 'relegation'
-
-  /** The season to return to: the most recently created one that is not current. */
-  const previousSeason =
-    [...seasons].filter((season) => !Boolean(season.is_current)).sort((a, b) => b.id - a.id)[0] ??
-    null
-  const createdSeasonName = previousSeason?.name ?? 'The newer season'
   const bulkPendingLabels = [
     bulkLeague !== '' &&
       `move to ${
@@ -3329,95 +3133,6 @@ function Clubs({
       }`,
     bulkStatus !== '' && `status ${bulkStatus}`,
   ].filter((label): label is string => Boolean(label))
-
-  /**
-   * Whether a bulk promote/relegate can run, and why not when it cannot.
-   *
-   * A movement spends a season slot out of one league, so a bulk move has to
-   * come from a single league and fit inside what that league has left. The
-   * server enforces both of these per call regardless; this is here so the bar
-   * says so up front instead of stalling halfway through and leaving the admin
-   * to work out which half succeeded.
-   */
-  const planBulkRelocate = (
-    type: ClubMovementType,
-  ): {
-    source: Division
-    neighbour: Division
-    type: ClubMovementType
-    neighbourType: ClubMovementType
-    inbound: Club[]
-  } | null => {
-    if (selectedCount === 0) return null
-    const sources = new Set(selectedClubs.map((club) => getDivisionId(club)))
-    if (sources.size !== 1) return null
-    const source = orderedDivisions.find((division) => String(division.id) === [...sources][0])
-    if (!source) return null
-    const index = orderedDivisions.indexOf(source)
-    const neighbour =
-      type === 'promotion' ? orderedDivisions[index - 1] : orderedDivisions[index + 1]
-    if (!neighbour) return null
-    // The club going the other way. Relegating out of a league leaves the one
-    // below it a club too many, so the counterpart is taken from that league's
-    // promotion zone — the clubs its own rules already nominate.
-    const neighbourType: ClubMovementType = type === 'promotion' ? 'relegation' : 'promotion'
-    const ranked = rankedClubsByDivisionId.get(neighbour.id) ?? []
-    const inbound =
-      neighbourType === 'promotion' ? ranked.slice(0, selectedCount) : ranked.slice(-selectedCount)
-    return { source, neighbour, type, neighbourType, inbound }
-  }
-
-  /**
-   * Whether a bulk relocate can run, and why not when it cannot.
-   *
-   * A relocation moves twice: the selected clubs travel one way, and an equal
-   * number come back the other so both leagues keep the size their rules say
-   * they should have. That second half is spending slots too, so both quotas
-   * are checked before anything is sent.
-   */
-  const bulkMoveBlock = (type: ClubMovementType): string | null => {
-    if (readOnly) return 'This season is read-only.'
-    if (selectedCount === 0) return 'Select at least one club.'
-    const sources = new Set(selectedClubs.map((club) => getDivisionId(club)))
-    if (sources.size !== 1) {
-      return 'Select clubs from one league only — a move spends that league’s slots.'
-    }
-    const source = orderedDivisions.find((division) => String(division.id) === [...sources][0])
-    if (!source) return 'Those clubs are not in a league yet. Set their league first.'
-    const outboundPlan = movementPlan(selectedClubs[0])[type]
-    if (!outboundPlan.destination) {
-      return `${source.name} is the ${type === 'promotion' ? 'highest' : 'lowest'} league; there is nothing ${type === 'promotion' ? 'above' : 'below'} it to swap with.`
-    }
-    const plan = planBulkRelocate(type)
-    if (!plan) {
-      return `${source.name} has no neighbouring league to take the place in return.`
-    }
-    if (plan.inbound.length < selectedCount) {
-      return `${plan.neighbour.name} can only send ${plan.inbound.length} club${plan.inbound.length === 1 ? '' : 's'} the other way, so the leagues would not stay the same size.`
-    }
-    const outboundRemaining = Math.max(0, outboundPlan.quota - outboundPlan.completed)
-    if (outboundRemaining < selectedCount) {
-      return `Only ${outboundRemaining} ${type} slot${outboundRemaining === 1 ? '' : 's'} left for ${source.name}, but ${selectedCount} club${selectedCount === 1 ? '' : 's'} are selected.`
-    }
-    const inboundPlan = movementPlan(plan.inbound[0])[plan.neighbourType]
-    const inboundRemaining = Math.max(0, inboundPlan.quota - inboundPlan.completed)
-    if (inboundRemaining < selectedCount) {
-      return `${plan.neighbour.name} has ${inboundRemaining} ${plan.neighbourType} slot${inboundRemaining === 1 ? '' : 's'} left, so it can only send ${inboundRemaining} club${inboundRemaining === 1 ? '' : 's'} back.`
-    }
-    return null
-  }
-
-  /**
-   * Why Complete season cannot run as things stand, if it cannot.
-   *
-   * Stated on the button rather than left to a failed confirm: a selection
-   * spread across two leagues, or one bigger than the slots left, is a problem
-   * the admin can see before committing.
-   */
-  const rolloverHint: string | null =
-    selectedCount > 0
-      ? bulkMoveBlock(bulkDirection)
-      : null
 
   /**
    * Run one action over the selection and report it as a single outcome.
@@ -3504,110 +3219,15 @@ function Clubs({
     setBulkStatus('')
   }
 
-  /**
-   * Finish the season: apply the queued movement, then start the next one.
-   *
-   * One action because the order matters and neither half is useful alone. A
-   * new season is copied from the leagues as they stand, so any promotion or
-   * relegation has to be committed first or the new season would start from
-   * the standings the movement was meant to replace.
-   */
-  const completeSeason = async (name: string, year: number) => {
-    const plan = planBulkRelocate(bulkDirection)
-    const blocked = plan ? bulkMoveBlock(bulkDirection) : selectedCount > 0
-      ? bulkMoveBlock(bulkDirection)
-      : null
-    if (blocked) {
-      report('error', blocked)
-      return
-    }
-    setSeasonBusy(true)
-    try {
-      const failed: string[] = []
-      if (plan) {
-        for (const club of selectedClubs) {
-          try {
-            await moveClub(club.slug, plan.type).then(() => undefined)
-          } catch {
-            failed.push(club.name)
-          }
-        }
-        for (const club of plan.inbound) {
-          try {
-            await moveClub(club.slug, plan.neighbourType).then(() => undefined)
-          } catch {
-            failed.push(club.name)
-          }
-        }
-      }
-      const created = await guard(() => createSeason(name, year), 'Could not start the new season')
-      setSeasons((current) =>
-        [
-          ...current.map((season) => ({ ...season, is_current: false })),
-          created.season,
-        ].sort(
-          (a, b) => Number(Boolean(b.is_current)) - Number(Boolean(a.is_current)) || b.year - a.year,
-        ),
-      )
-      clearSelection()
-      closeCompleteSeason()
-      setSeasonId(String(created.season.id))
-      report(
-        failed.length === 0 ? 'ok' : 'error',
-        failed.length === 0
-          ? `${created.season.name} started. ${created.divisions.length} league${
-              created.divisions.length === 1 ? '' : 's'
-            } carried over with the new league places.`
-          : `${created.season.name} started, but these clubs did not move: ${failed.join(', ')}.`,
-      )
-    } catch {
-      /* already reported */
-    } finally {
-      setSeasonBusy(false)
-    }
-  }
-
-  /**
-   * Undo a rollover by putting the previous season back in charge.
-   *
-   * Seasons are retained rather than replaced, so this only moves the
-   * is_current flag. The season that was rolled into is still there and can be
-   * re-activated from the list, which makes this safe to offer.
-   */
-  const undoSeasonRollover = async () => {
-    if (!previousSeason) return
-    setSeasonBusy(true)
-    try {
-      const restored = await guard(
-        () => setCurrentSeason(previousSeason.id),
-        'Could not switch back to the previous season',
-      )
-      setSeasons((current) =>
-        current.map((season) => ({
-          ...season,
-          is_current: season.id === restored.id,
-        })),
-      )
-      clearSelection()
-      setSeasonId(String(restored.id))
-      report('ok', `${restored.name} is current again. ${createdSeasonName} is still on record.`)
-    } catch {
-      /* already reported */
-    } finally {
-      setSeasonBusy(false)
-    }
-  }
 
   const clubGroups = [
     ...divisions.map((division) => ({
       id: String(division.id),
       divisionId: division.id,
       name: division.name,
-      movementProgress: {
-        promotionTarget: promotionTargetFor(division),
-        promotionCompleted: promotionCompletedFor(division),
-        relegationTarget: relegationTargetFor(division),
-        relegationCompleted: relegationCompletedFor(division),
+      movement: {
+        promotion: promotionTargetFor(division),
+        relegation: relegationTargetFor(division),
       },
       clubs: clubs
         .filter((club) => getDivisionId(club) === String(division.id))
@@ -3625,7 +3245,7 @@ function Clubs({
       id: 'unassigned',
       divisionId: null,
       name: 'Unassigned',
-      movementProgress: null,
+      movement: null,
       clubs: clubs
         .filter((club) => !configuredDivisionIds.has(getDivisionId(club)))
         .sort((a, b) =>
@@ -3690,21 +3310,15 @@ function Clubs({
               if (!nextSeasonId || nextSeasonId === seasonId) return
               setEditing(null)
               setSquadSlug(null)
-              setConfirmingMovement(null)
               setSeasonId(nextSeasonId)
             }}
             onCurrentSeasonChanged={(nextSeasonId) => {
               setEditing(null)
               setSquadSlug(null)
-              setConfirmingMovement(null)
               setSeasonId(String(nextSeasonId))
             }}
-            onCompleteSeason={openCompleteSeason}
-            onUndoSeason={() => void undoSeasonRollover()}
-            seasonBusy={seasonBusy}
-            canUndo={previousSeason !== null}
-            previousSeasonName={previousSeason?.name ?? null}
-            rolloverHint={rolloverHint}
+            onCompleteSeason={() => setRolloverOpen(true)}
+            lastRollover={lastRollover}
           />
           {readOnly && (
             <p className="season-readonly-banner" role="status">
@@ -3748,16 +3362,10 @@ function Clubs({
                   <span className="club-zone-key relegation">Relegation</span>
                 )}
                 <span>
-                  Colors mark remaining movement slots. Reassigning a club completes its move this
-                  season; new seasons start fresh.
+                  Colours show who is in the movement zone on the current table. Nothing moves until
+                  the season is completed, and then it happens automatically.
                 </span>
               </div>
-            )}
-            {seasonMovements === null && !readOnly && (
-              <p className="club-movement-warning" role="status">
-                Movement progress could not be loaded, so zone colors are hidden. Refresh the page
-                before making league changes.
-              </p>
             )}
             {clubGroups.map((group) => {
               const groupAllSelected =
@@ -3788,20 +3396,14 @@ function Clubs({
                   </div>
                   <div className="club-league-meta">
                     <span className="hint">{group.clubs.length === 1 ? 'club' : 'clubs'}</span>
-                    {movementTracked &&
-                      group.movementProgress &&
-                      group.movementProgress.promotionTarget > 0 && (
+                    {group.movement && group.movement.promotion > 0 && (
                       <span className="club-movement-progress">
-                        {group.movementProgress.promotionCompleted}/
-                        {group.movementProgress.promotionTarget} promoted
+                        Top {group.movement.promotion} promoted
                       </span>
                     )}
-                    {movementTracked &&
-                      group.movementProgress &&
-                      group.movementProgress.relegationTarget > 0 && (
+                    {group.movement && group.movement.relegation > 0 && (
                       <span className="club-movement-progress">
-                        {group.movementProgress.relegationCompleted}/
-                        {group.movementProgress.relegationTarget} relegated
+                        Bottom {group.movement.relegation} relegated
                       </span>
                     )}
                   </div>
@@ -3825,7 +3427,7 @@ function Clubs({
                     </thead>
                     <tbody>
                       {group.clubs.map((c) => {
-                        const movement = clubMovement(c)
+                        const movement = clubZone(c)
                         const zoneLabels = [
                           movement.promotion ? 'Promotion zone' : '',
                           movement.relegation ? 'Relegation zone' : '',
@@ -3988,124 +3590,28 @@ function Clubs({
             Gamertags are matched case-insensitively — registering a name that already exists is
             rejected rather than creating a duplicate player.
           </p>
-          {seasonCompleteOpen && (
-            <div
-              className="squad-modal-backdrop"
-              onMouseDown={(event) => {
-                if (event.target === event.currentTarget && !seasonBusy) closeCompleteSeason()
-              }}
-            >
-              <form
-                className="squad-modal season-rollover-modal"
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="season-rollover-title"
-                onSubmit={(event) => {
-                  event.preventDefault()
-                  void completeSeason(nextSeasonName.trim(), Number(nextSeasonYear))
-                }}
-              >
-                <header>
-                  <div>
-                    <p className="eyebrow">END OF SEASON</p>
-                    <h2 id="season-rollover-title">Complete {selectedSeason?.name}</h2>
-                    <p className="club-edit-subtitle">
-                      One action: the movement below is committed first, then the new season
-                      starts from the leagues as they stand afterwards.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    className="icon-btn"
-                    aria-label="Close"
-                    disabled={seasonBusy}
-                    onClick={closeCompleteSeason}
-                  >
-                    ×
-                  </button>
-                </header>
-                <div className="club-edit-content">
-                  <div className="season-rollover-moves">
-                    {confirmRelocate ? (
-                      <>
-                        <div className="season-rollover-leg">
-                          <strong>
-                            {confirmRelocate.source.name} → {confirmRelocate.neighbour.name}
-                          </strong>
-                          <ul>
-                            {selectedClubs.map((club) => (
-                              <li key={club.slug}>{club.name}</li>
-                            ))}
-                          </ul>
-                        </div>
-                        <div className="season-rollover-leg">
-                          <strong>
-                            {confirmRelocate.neighbour.name} → {confirmRelocate.source.name}
-                          </strong>
-                          <ul>
-                            {confirmRelocate.inbound.map((club) => (
-                              <li key={club.slug}>{club.name}</li>
-                            ))}
-                          </ul>
-                          <span className="season-rollover-note">
-                            Taken automatically so both leagues keep the size their movement rules
-                            say they should have.
-                          </span>
-                        </div>
-                      </>
-                    ) : (
-                      <p className="season-rollover-none">
-                        No clubs selected, so nothing will move. The new season starts from the
-                        leagues exactly as they are now.
-                      </p>
-                    )}
-                  </div>
-                  <div className="season-create-form">
-                    <label>
-                      <span>New season name</span>
-                      <input
-                        className="text"
-                        value={nextSeasonName}
-                        onChange={(event) => setNextSeasonName(event.target.value)}
-                        maxLength={64}
-                        required
-                        autoFocus
-                      />
-                    </label>
-                    <label>
-                      <span>Season year</span>
-                      <input
-                        className="text"
-                        type="number"
-                        min="2000"
-                        max="9999"
-                        value={nextSeasonYear}
-                        onChange={(event) => setNextSeasonYear(event.target.value)}
-                        required
-                      />
-                    </label>
-                  </div>
-                </div>
-                <footer className="club-edit-footer">
-                  <p className="fixture-summary">
-                    Past seasons are kept, so this can be undone by switching the current season
-                    back — nothing is deleted.
-                  </p>
-                  <button
-                    type="button"
-                    className="btn"
-                    disabled={seasonBusy}
-                    onClick={closeCompleteSeason}
-                  >
-                    Cancel
-                  </button>
-                  <button className="btn primary" type="submit" disabled={seasonBusy}>
-                    {seasonBusy ? 'Starting…' : 'Confirm and start new season'}
-                  </button>
-                </footer>
-              </form>
-            </div>
-          )}
+          <SeasonRollover
+            open={rolloverOpen}
+            onClose={() => setRolloverOpen(false)}
+            onCompleted={(newSeasonId) => {
+              guard(getAdminSeasons, 'Could not reload seasons')
+                .then(setSeasons)
+                .catch(() => undefined)
+              setSeasonId(String(newSeasonId))
+              clearSelection()
+              refresh().catch(() => undefined)
+            }}
+            onUndone={(restoredId) => {
+              guard(getAdminSeasons, 'Could not reload seasons')
+                .then(setSeasons)
+                .catch(() => undefined)
+              setSeasonId(String(restoredId))
+              setRolloverOpen(false)
+              refresh().catch(() => undefined)
+            }}
+            guard={guard}
+            report={report}
+          />
           {activeClub && (
             <div
               className="squad-modal-backdrop"
@@ -4179,18 +3685,17 @@ function Clubs({
                 </label>
               </div>
               {(() => {
-                const plan = movementPlan(activeClub)
-                const confirming = confirmingMovement?.slug === activeClub.slug ? confirmingMovement : null
-                const movingThis = movingClub?.slug === activeClub.slug ? movingClub : null
                 const inactive = statuses[activeClub.slug] !== 'active'
+                const clubDivision = divisions.find((item) => item.id === activeClub.division_id)
                 return (
                   <>
                     <section className="club-edit-section" aria-labelledby="club-league-title">
                       <div className="club-edit-section-heading">
                         <h3 id="club-league-title">League</h3>
                         <p>
-                          Put the club in any league you like. This is a plain move and never uses a
-                          promotion or relegation slot, so the season&rsquo;s numbers stay untouched.
+                          Put the club in any league you like. This is a plain correction and never
+                          promotes or relegates anyone: where a club finishes the season is decided
+                          by its position on the table when the season is completed.
                         </p>
                       </div>
                       <div className="club-edit-fields">
@@ -4217,96 +3722,9 @@ function Clubs({
                         </label>
                       </div>
                       <p className="club-edit-current">
-                        Currently in <strong>{plan.source?.name ?? 'no league'}</strong>. Saving sends
-                        the club straight to whatever is picked above.
+                        Currently in <strong>{clubDivision?.name ?? 'no league'}</strong>. Saving
+                        sends the club straight to whatever is picked above.
                       </p>
-                    </section>
-                    <section className="club-edit-section" aria-labelledby="club-movement-title">
-                      <div className="club-edit-section-heading">
-                        <h3 id="club-movement-title">Promotion &amp; relegation</h3>
-                        <p>
-                          Send the club one league up or down the ladder. Unlike the picker above this
-                          spends one of the current league&rsquo;s slots for the season, which is what
-                          fills the coloured zones on the league list.
-                        </p>
-                      </div>
-                      {inactive && (
-                        <p className="club-edit-blocked" role="status">
-                          Set the club&rsquo;s status to Active before moving it between leagues.
-                        </p>
-                      )}
-                      <div className="club-movement-options">
-                        {[plan.promotion, plan.relegation].map((option) => {
-                          const isConfirming = confirming?.type === option.type
-                          const blocked = inactive || !option.destination || option.reason !== null
-                          const summary =
-                            option.reason ??
-                            (option.destination
-                              ? `Moves to ${option.destination.name} \u00b7 uses slot ${option.completed + 1} of ${option.quota} for ${plan.source?.name ?? 'this league'}.`
-                              : '')
-                          return (
-                            <div className={`club-movement-option ${option.type}`} key={option.type}>
-                              <div className="club-movement-option-copy">
-                                <span className="club-movement-arrow" aria-hidden="true">
-                                  {option.type === 'promotion' ? '\u25b2' : '\u25bc'}
-                                </span>
-                                <div>
-                                  <strong>
-                                    {option.type === 'promotion' ? 'Promote' : 'Relegate'}
-                                  </strong>
-                                  <span>{summary}</span>
-                                </div>
-                              </div>
-                              {isConfirming ? (
-                                <div className="club-movement-confirm" role="group" aria-label={`Confirm ${option.type} for ${activeClub.name}`}>
-                                  <p>
-                                    Move <strong>{activeClub.name}</strong> from{' '}
-                                    <strong>{plan.source?.name}</strong> to{' '}
-                                    <strong>{option.destination?.name}</strong>? It starts the new
-                                    league on 0 points.
-                                  </p>
-                                  <div className="club-movement-confirm-actions">
-                                    <button
-                                      type="button"
-                                      className="btn sm"
-                                      disabled={movingThis !== null}
-                                      onClick={() => setConfirmingMovement(null)}
-                                    >
-                                      Cancel
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className={`btn sm primary ${option.type}`}
-                                      disabled={movingThis !== null}
-                                      onClick={() => void move(activeClub, option.type)}
-                                    >
-                                      {movingThis?.type === option.type
-                                        ? option.type === 'promotion'
-                                          ? 'Promoting\u2026'
-                                          : 'Relegating\u2026'
-                                        : option.type === 'promotion'
-                                          ? 'Confirm promotion'
-                                          : 'Confirm relegation'}
-                                    </button>
-                                  </div>
-                                </div>
-                              ) : (
-                                <button
-                                  type="button"
-                                  className={`btn sm ${option.type}`}
-                                  disabled={blocked || movingThis !== null}
-                                  title={inactive ? undefined : (option.reason ?? undefined)}
-                                  onClick={() =>
-                                    setConfirmingMovement({ slug: activeClub.slug, type: option.type })
-                                  }
-                                >
-                                  {option.type === 'promotion' ? 'Promote \u2191' : 'Relegate \u2193'}
-                                </button>
-                              )}
-                            </div>
-                          )
-                        })}
-                      </div>
                     </section>
                   </>
                 )
