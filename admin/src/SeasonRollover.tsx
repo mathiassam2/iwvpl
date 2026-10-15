@@ -219,7 +219,9 @@ export function SeasonRollover({
       result.movements.flatMap((movement) => movement.clubs.map((club) => club.clubId)),
     )
     return (
-      <div className="squad-modal-backdrop" onMouseDown={() => busy === null && onClose()}>
+      <div className="squad-modal-backdrop" onMouseDown={(event) => {
+        if (event.target === event.currentTarget && busy === null) onClose()
+      }}>
         <div
           className="squad-modal rollover-summary-modal"
           role="dialog"
@@ -302,7 +304,9 @@ export function SeasonRollover({
   const canCommit = step === 3 && name.trim() !== '' && year.trim() !== '' && !blocked && !planLoading
 
   return (
-    <div className="squad-modal-backdrop" onMouseDown={() => busy === null && onClose()}>
+    <div className="squad-modal-backdrop" onMouseDown={(event) => {
+      if (event.target === event.currentTarget && busy === null) onClose()
+    }}>
       <div
         className="squad-modal season-rollover-modal"
         role="dialog"
