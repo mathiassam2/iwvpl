@@ -34,6 +34,7 @@ import {
   setResult,
   setCurrentSeason,
   setFeaturedDivision,
+  setDivisionActive,
   updateClub,
   updateDivision,
   updateDivisionOrder,
@@ -332,8 +333,11 @@ function Standings({
     )
       .then((seasonDivisions) => {
         if (requestId !== divisionsRequestId.current) return
-        setDivisions(seasonDivisions)
-        setDivisionId(String(seasonDivisions[0]?.id ?? ''))
+        // Paused leagues are absent from the public standings, so there is no
+        // table to show for them here.
+        const active = seasonDivisions.filter((division) => Boolean(division.is_active))
+        setDivisions(active)
+        setDivisionId(String(active[0]?.id ?? ''))
       })
       .catch(() => {
         if (requestId === divisionsRequestId.current) setDivisions([])
@@ -798,7 +802,10 @@ function Results({
     guard(() => getDivisions(Number(createSeasonId)), 'Could not load divisions for the selected season')
       .then((seasonDivisions) => {
         if (currentDivisionRequest === fixtureDivisionRequestId.current) {
-          setFixtureDivisions(seasonDivisions)
+          // Only active leagues can be scheduled. Filtering here rather than at
+          // each control also keeps the "select every league" checkbox honest,
+          // because it compares against this same list.
+          setFixtureDivisions(seasonDivisions.filter((division) => Boolean(division.is_active)))
         }
       })
       .catch(() => {
@@ -2106,6 +2113,7 @@ function Divisions({
   const [reordering, setReordering] = useState(false)
   const [featuredBusy, setFeaturedBusy] = useState(false)
   const [featuredDivisionId, setFeaturedDivisionId] = useState('')
+  const [togglingId, setTogglingId] = useState<number | null>(null)
 
   const load = useCallback(async () => {
     const [divisionData, seasonData] = await Promise.all([
@@ -2159,6 +2167,78 @@ function Divisions({
     setName(division?.name ?? '')
     setPromotionCount(division?.promotion_count == null ? '0' : String(division.promotion_count))
     setRelegationCount(division?.relegation_count == null ? '0' : String(division.relegation_count))
+  }
+
+  const activeDivisions = divisions.filter((division) => Boolean(division.is_active))
+
+  /**
+   * Whether this league is allowed to be paused.
+   *
+   * Mirrors the server's rule — the season's last active league cannot be
+   * switched off — so the switch is disabled and explains itself through its
+   * title rather than refusing the request after a round trip.
+   */
+  const canPause = (division: Division) => Boolean(division.is_active) && activeDivisions.length > 1
+
+  /**
+   * Pause a league, or bring it back.
+   *
+   * Applied to local state first and reconciled from the response, so the
+   * switch does not lag a round trip behind the click. A refusal — the season's
+   * last active league — leaves the row exactly as it was, because the flag is
+   * only merged in once the server has agreed to it.
+   */
+  const toggleActive = async (division: Division) => {
+    if (togglingId !== null) return
+    const next = !Boolean(division.is_active)
+    const previous = division.is_active
+    setTogglingId(division.id)
+    setDivisions((current) =>
+      (current ?? []).map((item) => (item.id === division.id ? { ...item, is_active: next } : item)),
+    )
+    try {
+      const saved = await guard(
+        () => setDivisionActive(division.id, next),
+        next ? `Could not switch ${division.name} back on` : `Could not pause ${division.name}`,
+      )
+      setDivisions((current) =>
+        (current ?? []).map((item) =>
+          item.id === division.id ? { ...item, is_active: Boolean(saved.division.is_active) } : item,
+        ),
+      )
+      if (saved.season) {
+        setSeasons((current) =>
+          (current ?? []).map((season) =>
+            season.id === saved.season!.id
+              ? { ...season, featured_division_id: saved.season!.featured_division_id }
+              : season,
+          ),
+        )
+        setFeaturedDivisionId(String(saved.season.featured_division_id ?? ''))
+      }
+      onDivisionsChanged(
+        (divisions ?? []).map((item) =>
+          item.id === division.id ? { ...item, is_active: Boolean(saved.division.is_active) } : item,
+        ),
+      )
+      report(
+        'ok',
+        next
+          ? `${division.name} is active again.`
+          : saved.featuredCleared
+            ? `${division.name} is paused and is no longer the homepage featured league.`
+            : `${division.name} is paused. It is hidden from the site and cannot take new clubs or fixtures.`,
+      )
+    } catch {
+      // Put the switch back the way it was; the server refused the change.
+      setDivisions((current) =>
+        (current ?? []).map((item) =>
+          item.id === division.id ? { ...item, is_active: previous } : item,
+        ),
+      )
+    } finally {
+      setTogglingId(null)
+    }
   }
 
   const save = async (event: FormEvent<HTMLFormElement>) => {
@@ -2316,10 +2396,13 @@ function Divisions({
           <CustomSelect
             ariaLabel="Homepage featured league"
             value={featuredDivisionId}
-            disabled={!currentSeason || divisions.length === 0 || featuredBusy}
+            disabled={!currentSeason || activeDivisions.length === 0 || featuredBusy}
             options={[
               { value: '', label: 'Use highest-ranked league' },
-              ...divisions.map((division) => ({
+              // Paused leagues are hidden from the homepage, so offering one
+              // here would select something that cannot be rendered. The
+              // toggle clears the feature if the featured league is paused.
+              ...activeDivisions.map((division) => ({
                 value: String(division.id),
                 label: division.name,
               })),
@@ -2333,7 +2416,10 @@ function Divisions({
         ) : (
           <div className="division-admin-list">
             {divisions.map((division, index) => (
-              <article className="division-admin-item" key={division.id}>
+              <article
+                className={`division-admin-item${division.is_active ? '' : ' is-inactive'}`}
+                key={division.id}
+              >
                 {editing === division.id ? form : (
                   <>
                     <div className="division-admin-heading">
@@ -2342,7 +2428,12 @@ function Divisions({
                           {index + 1}
                         </span>
                         <div>
-                          <h3>{division.name}</h3>
+                          <h3>
+                            {division.name}
+                            {!division.is_active && (
+                              <span className="division-inactive-badge">Inactive</span>
+                            )}
+                          </h3>
                           <span className="hint">{division.season}</span>
                         </div>
                       </div>
@@ -2369,6 +2460,29 @@ function Divisions({
                             ↓
                           </button>
                         </div>
+                        <label
+                          className="division-active-toggle"
+                          title={
+                            canPause(division)
+                              ? 'Pause this league'
+                              : division.is_active
+                                ? `${division.name} is the only active league this season. Add another one before pausing it.`
+                                : 'Make this league active again'
+                          }
+                        >
+                          <input
+                            type="checkbox"
+                            role="switch"
+                            checked={Boolean(division.is_active)}
+                            disabled={togglingId !== null || editing !== null || reordering || !canPause(division)}
+                            aria-label={`${division.is_active ? 'Pause' : 'Activate'} ${division.name}`}
+                            onChange={() => void toggleActive(division)}
+                          />
+                          <span className="division-active-track" aria-hidden="true" />
+                          <span className="division-active-label">
+                            {division.is_active ? 'Active' : 'Inactive'}
+                          </span>
+                        </label>
                         <button className="btn sm" onClick={() => edit(division)} disabled={editing !== null || reordering}>
                           Edit division
                         </button>
@@ -2376,12 +2490,27 @@ function Divisions({
                     </div>
                     <div className="division-range-summary">
                       <p><span>Promotion</span><strong>
-                        {division.promotion_count == null ? 'Not set' : `Top ${division.promotion_count}`}
+                        {!division.is_active
+                          ? 'Paused'
+                          : division.promotion_count == null
+                            ? 'Not set'
+                            : `Top ${division.promotion_count}`}
                       </strong></p>
                       <p><span>Relegation</span><strong>
-                        {division.relegation_count == null ? 'Not set' : `Bottom ${division.relegation_count}`}
+                        {!division.is_active
+                          ? 'Paused'
+                          : division.relegation_count == null
+                            ? 'Not set'
+                            : `Bottom ${division.relegation_count}`}
                       </strong></p>
                     </div>
+                    {!division.is_active && (
+                      <p className="division-inactive-note">
+                        Hidden from the site and from every league picker in this admin. Clubs,
+                        fixtures and standings are kept as they are, and no club can move in or out
+                        of it at the end of the season until it is switched back on.
+                      </p>
+                    )}
                   </>
                 )}
               </article>
@@ -2391,7 +2520,8 @@ function Divisions({
       </div>
       <p className="footnote">
         Promotion and relegation are shown on the public standings. Divisions are retained for
-        season history, so they cannot be deleted here.
+        season history, so they cannot be deleted here. Pausing one keeps all of its history and
+        hides it until you switch it back on.
       </p>
     </div>
   )
@@ -3022,6 +3152,16 @@ function Clubs({
 
   const getDivisionId = (club: Club) => String(club.division_id ?? '')
   const configuredDivisionIds = new Set(divisions.map((division) => String(division.id)))
+
+  /**
+   * Leagues a club can be entered into.
+   *
+   * `divisions` still holds paused leagues, because their clubs are still in
+   * one and the list has to keep showing them where they are. This is the
+   * narrower list the two "move to league" pickers read from, so nothing new can
+   * be put into a league that is switched off.
+   */
+  const assignableDivisions = divisions.filter((division) => Boolean(division.is_active))
   const standingsByClub = new Map(standings.map((standing) => [standing.club_id, standing]))
 
   /**
@@ -3037,8 +3177,12 @@ function Clubs({
    * standings page. This mirrors `movementQuota` in api/src/domain/rollover.ts,
    * which is what actually decides the movement at the end of the season.
    */
-  const promotionTargetFor = (division: Division) => division.promotion_count ?? 0
+  const promotionTargetFor = (division: Division) =>
+    // A paused league takes no part in the ladder, so it gets no zone to colour
+    // on this page either.
+    division.is_active ? (division.promotion_count ?? 0) : 0
   const relegationTargetFor = (division: Division) => {
+    if (!division.is_active) return 0
     const configuredCount = division.relegation_count ?? 0
     return configuredCount > 0
       ? configuredCount
@@ -3527,7 +3671,7 @@ function Clubs({
                     disabled={bulkBusy}
                     options={[
                       { value: '', label: 'No change' },
-                      ...divisions.map((division) => ({
+                      ...assignableDivisions.map((division) => ({
                         value: String(division.id),
                         label: division.name,
                       })),
@@ -3713,7 +3857,7 @@ function Clubs({
                             }
                             options={[
                               { value: '', label: 'Unassigned' },
-                              ...divisions.map((division) => ({
+                              ...assignableDivisions.map((division) => ({
                                 value: String(division.id),
                                 label: division.name,
                               })),

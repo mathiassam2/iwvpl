@@ -1057,12 +1057,18 @@ admin.put(
       if (!current) return null
 
       if (divisionId !== null) {
+        // The homepage cannot render a paused league, so setting it as the
+        // feature is refused rather than silently ignored.
         const [divisionRows] = await conn.query(
-          'SELECT id FROM divisions WHERE id = ? AND season_id = ?',
+          'SELECT id, is_active FROM divisions WHERE id = ? AND season_id = ?',
           [divisionId, id],
         )
-        if ((divisionRows as unknown[]).length === 0) {
+        const division = (divisionRows as Array<{ id: number; is_active: number }>)[0]
+        if (!division) {
           return { error: 'Choose a league from this season.' as const }
+        }
+        if (!division.is_active) {
+          return { error: 'That league is paused. Switch it back on before featuring it.' as const }
         }
       }
 
@@ -1159,12 +1165,13 @@ admin.post(
         sort_order: number
         promotion_count: number | null
         relegation_count: number | null
+        is_active: number
       }> = []
       let copiedFeaturedDivisionId: number | null = null
 
       if (sourceSeason) {
         const [divisionRows] = await conn.query(
-          `SELECT id, name, slug, sort_order, promotion_count, relegation_count
+          `SELECT id, name, slug, sort_order, promotion_count, relegation_count, is_active
              FROM divisions
             WHERE season_id = ?
             ORDER BY sort_order, id`,
@@ -1177,13 +1184,14 @@ admin.post(
           sort_order: number
           promotion_count: number | null
           relegation_count: number | null
+          is_active: number
         }>) {
           const suffix = `-s${id}`
           const slug = `${division.slug.slice(0, 80 - suffix.length)}${suffix}`
           const [newDivisionResult] = await conn.execute(
             `INSERT INTO divisions
-               (season_id, name, slug, sort_order, promotion_count, relegation_count, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+               (season_id, name, slug, sort_order, promotion_count, relegation_count, is_active, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
             [
               id,
               division.name,
@@ -1191,10 +1199,15 @@ admin.post(
               division.sort_order,
               division.promotion_count,
               division.relegation_count,
+              // Copy the pause along with everything else, so opening a new
+              // season does not quietly restart a league that was switched off.
+              division.is_active,
             ],
           )
           const newDivisionId = (newDivisionResult as { insertId: number }).insertId
-          if (sourceSeason.featured_division_id === division.id) {
+          // A paused league cannot be the homepage feature, so the copy is not
+          // carried over: the new season falls back to its highest-ranked league.
+          if (sourceSeason.featured_division_id === division.id && division.is_active) {
             copiedFeaturedDivisionId = newDivisionId
           }
           await conn.execute(
@@ -1224,6 +1237,7 @@ admin.post(
             sort_order: division.sort_order,
             promotion_count: division.promotion_count,
             relegation_count: division.relegation_count,
+            is_active: division.is_active,
           })
         }
 
@@ -1305,6 +1319,10 @@ admin.post(
         season_id: season.id,
         sort_order: sortOrder,
         season: season.name,
+        // A new league is always active; the column default would say the same
+        // thing, but the response is assembled by hand and must not disagree
+        // with the row.
+        is_active: 1,
         ...movement,
       }
     })
@@ -1372,7 +1390,8 @@ admin.put(
     const movement = parseDivisionMovement(req.body)
     const division = await withTransaction(async (conn) => {
       const [divisionRows] = await conn.query(
-          `SELECT d.id, d.name, d.slug, d.season_id, d.sort_order, s.name AS season, s.year
+          `SELECT d.id, d.name, d.slug, d.season_id, d.sort_order, d.is_active,
+                  s.name AS season, s.year
            FROM divisions d
            JOIN seasons s ON s.id = d.season_id AND s.is_current = TRUE
           WHERE d.id = ? FOR UPDATE`,
@@ -1384,6 +1403,7 @@ admin.put(
           slug: string
           season_id: number
           sort_order: number
+          is_active: number
           season: string
           year: number
       }>)[0]
@@ -1432,11 +1452,115 @@ admin.put(
         season_id: current.season_id,
         sort_order: current.sort_order,
         season: current.season,
+        // Editing a league never changes whether it is active: the toggle has
+        // its own route so the two decisions cannot overwrite each other.
+        is_active: current.is_active,
         ...movement,
       }
     })
     if (!division) return res.status(404).json({ error: 'Current-season division not found.' })
     res.json({ division })
+  }),
+)
+
+/**
+ * Pause a league, or bring it back.
+ *
+ * Two rules the toggle cannot enforce on its own:
+ *
+ *   - The last active league cannot be paused. With none active the season
+ *     disappears from the public site entirely, and the only way back is to
+ *     find this setting, so the state is refused rather than allowed.
+ *
+ *   - A paused league cannot stay featured on the homepage, because the
+ *     homepage has no way to render it. The feature is cleared, which leaves
+ *     the season defaulting to the highest-ranked league.
+ */
+admin.put(
+  '/divisions/:id/active',
+  handler(async (req, res) => {
+    const id = Number.parseInt(req.params.id, 10)
+    if (!Number.isInteger(id) || id < 1) {
+      return res.status(400).json({ error: 'Division id must be a positive integer.' })
+    }
+    const isActive = req.body?.isActive
+    if (typeof isActive !== 'boolean') {
+      return res.status(400).json({ error: 'isActive must be true or false.' })
+    }
+
+    const result = await withTransaction(async (conn) => {
+      const [divisionRows] = await conn.query(
+        `SELECT d.id, d.name, d.season_id, d.is_active
+           FROM divisions d
+           JOIN seasons s ON s.id = d.season_id AND s.is_current = TRUE
+          WHERE d.id = ? FOR UPDATE`,
+        [id],
+      )
+      const division = (divisionRows as Array<{
+        id: number
+        name: string
+        season_id: number
+        is_active: number
+      }>)[0]
+      if (!division) return { error: 'Current-season division not found.' as const, status: 404 }
+      if (Boolean(division.is_active) === isActive) {
+        return { division, season: null, clearedFeature: false }
+      }
+
+      let clearedFeature = false
+      if (!isActive) {
+        const [activeRows] = await conn.query(
+          'SELECT COUNT(*) AS active_count FROM divisions WHERE season_id = ? AND is_active = TRUE',
+          [division.season_id],
+        )
+        const activeCount = Number(
+          (activeRows as Array<{ active_count: number }>)[0]?.active_count ?? 0,
+        )
+        if (activeCount <= 1) {
+          return {
+            error: `${division.name} is the only active league in this season. Add another league or switch this one back on before pausing it.` as const,
+            status: 400,
+          }
+        }
+
+        // Clearing the feature in the same transaction as the pause means the
+        // homepage can never be left pointing at a league that is hidden. Only
+        // reported when this division was the one being featured.
+        const [clear] = await conn.execute(
+          'UPDATE seasons SET featured_division_id = NULL WHERE id = ? AND featured_division_id = ?',
+          [division.season_id, division.id],
+        )
+        clearedFeature = Number((clear as { affectedRows?: number }).affectedRows ?? 0) > 0
+      }
+
+      await conn.execute('UPDATE divisions SET is_active = ? WHERE id = ?', [
+        isActive ? 1 : 0,
+        division.id,
+      ])
+
+      const [seasonRows] = await conn.query(
+        'SELECT id, name, year, is_current, featured_division_id FROM seasons WHERE id = ?',
+        [division.season_id],
+      )
+      const season = (seasonRows as Array<{
+        id: number
+        name: string
+        year: number
+        is_current: number
+        featured_division_id: number | null
+      }>)[0]
+
+      return { division: { ...division, is_active: isActive ? 1 : 0 }, season, clearedFeature }
+    })
+
+    if ('error' in result) return res.status(result.status).json({ error: result.error })
+    res.json({
+      division: result.division,
+      season: result.season,
+      // True only when this pause is what unfeatured the league, so the admin
+      // can say so rather than claiming a change it did not make.
+      featuredCleared: result.clearedFeature,
+    })
   }),
 )
 
@@ -1668,14 +1792,20 @@ admin.post(
       return res.json({ ok: true, divisionId: null, divisionName: null })
     }
 
-    const division = await queryOne<SeasonDivision>(
-      `SELECT d.id, d.name, d.season_id, d.sort_order, d.promotion_count, d.relegation_count
+    const division = await queryOne<SeasonDivision & { is_active: number }>(
+      `SELECT d.id, d.name, d.season_id, d.sort_order, d.promotion_count, d.relegation_count,
+              d.is_active
          FROM divisions d
          JOIN seasons s ON s.id = d.season_id AND s.is_current = TRUE
         WHERE d.id = ?`,
       [raw],
     )
     if (!division) return res.status(404).json({ error: 'Division not found.' })
+    if (!division.is_active) {
+      return res
+        .status(400)
+        .json({ error: `${division.name} is paused. Switch it back on before moving a club into it.` })
+    }
 
     const moved = await withTransaction(async (conn) => {
       const [clubRows] = await conn.query('SELECT id FROM clubs WHERE id = ? FOR UPDATE', [club.id])

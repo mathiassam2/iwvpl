@@ -366,6 +366,8 @@ export interface Division {
   sort_order: number
   promotion_count: number | null
   relegation_count: number | null
+  /** False once an admin pauses the league. See `setDivisionActive`. */
+  is_active: boolean | number
 }
 
 export interface AdminSeason {
@@ -376,9 +378,18 @@ export interface AdminSeason {
   featured_division_id: number | null
 }
 
+/**
+ * Every division in a season, paused ones included.
+ *
+ * The public route hides paused leagues, which is what the standings page
+ * wants; the admin has to see them in order to switch them back on, so it asks
+ * for them explicitly. Everything else in the admin filters them out again at
+ * the point of use rather than here, because the Divisions tab is the one
+ * place they belong.
+ */
 export const getDivisions = (seasonId?: number) =>
   request<{ divisions: Division[] }>(
-    `/api/divisions${seasonId == null ? '' : `?seasonId=${seasonId}`}`,
+    `/api/divisions?includeInactive=true${seasonId == null ? '' : `&seasonId=${seasonId}`}`,
   ).then((r) => r.divisions)
 
 /**
@@ -470,7 +481,26 @@ export const createSeason = (name: string, year: number) =>
     body: JSON.stringify({ name, year }),
   })
 
-export type DivisionInput = Omit<Division, 'id' | 'slug' | 'season' | 'sort_order'>
+/**
+ * Pause a league or bring it back.
+ *
+ * A separate call from `updateDivision` on purpose: the toggle is a one-button
+ * decision that must not depend on the edit form being open or correctly
+ * filled in. The server refuses to pause the season's last active league, and
+ * clears the homepage feature if the paused league was the one being featured.
+ */
+export const setDivisionActive = (id: number, isActive: boolean) =>
+  request<{
+    division: { id: number; is_active: boolean | number }
+    season: AdminSeason | null
+    featuredCleared: boolean
+  }>(`/api/admin/divisions/${id}/active`, {
+    method: 'PUT',
+    body: JSON.stringify({ isActive }),
+  })
+
+/** `is_active` is read-only on the create/update body; use `setDivisionActive`. */
+export type DivisionInput = Omit<Division, 'id' | 'slug' | 'season' | 'sort_order' | 'is_active'>
 
 export const createDivision = (division: DivisionInput) =>
   request<{ division: Division }>('/api/admin/divisions', {

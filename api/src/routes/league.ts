@@ -94,8 +94,13 @@ league.get(
     )
     if (!season) return res.status(404).json({ error: 'No current season' })
 
+    // Paused divisions are kept out of the public league list; the flag itself
+    // is admin-only, so it is not selected here.
     const divisions = await queryAll(
-      'SELECT id, name, slug, sort_order FROM divisions WHERE season_id = ? ORDER BY sort_order, id',
+      `SELECT id, name, slug, sort_order
+         FROM divisions
+        WHERE season_id = ? AND is_active = TRUE
+        ORDER BY sort_order, id`,
       [season.id],
     )
     res.json({ ...season, divisions })
@@ -432,6 +437,7 @@ league.get(
            ON current_membership.club_id = s.club_id
           AND current_membership.division_id = s.division_id
         WHERE d.season_id = ?
+          AND d.is_active = TRUE
           AND (? IS NULL OR d.slug = ?)
           AND NOT EXISTS (
             SELECT 1
@@ -501,6 +507,12 @@ league.get(
  * Public because division names already appear in the standings response, so
  * this leaks nothing new — and the admin app assigns clubs from the same list
  * rather than hard-coding division names.
+ *
+ * Paused divisions are omitted unless `includeInactive` is set. They are hidden
+ * by default because this route feeds the public standings page, and an admin
+ * paused a league precisely to stop it showing up. The admin passes the flag so
+ * it can still list, rename and switch a paused league back on; nothing else
+ * about it changes.
  */
 league.get(
   '/divisions',
@@ -521,12 +533,14 @@ league.get(
       const season = await queryOne<{ id: number }>('SELECT id FROM seasons WHERE id = ?', [seasonId])
       if (!season) return res.status(404).json({ error: 'Season not found.' })
     }
+    const includeInactive = _req.query.includeInactive === 'true'
     const rows = await queryAll(
       `SELECT d.id, d.name, d.slug, s.id AS season_id, s.name AS season,
-              d.sort_order, d.promotion_count, d.relegation_count
+              d.sort_order, d.promotion_count, d.relegation_count, d.is_active
          FROM divisions d
          JOIN seasons s ON s.id = d.season_id
         WHERE s.id = ?
+          ${includeInactive ? '' : 'AND d.is_active = TRUE'}
         ORDER BY d.sort_order, d.id`,
       [seasonId],
     )

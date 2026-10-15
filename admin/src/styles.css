@@ -964,6 +964,48 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .division-range-summary strong { color: var(--text); font-size: 11px; }
 .division-editor { display: grid; gap: 14px; padding: 16px; border-bottom: 1px solid var(--border); background: rgb(255 255 255 / 1.5%); }
 .division-admin-item .division-editor { margin: 15px -16px -16px; }
+
+/* A paused league stays on this page — it has to, because this is where it is
+   switched back on — but it is set apart so nobody reads it as live.
+   The dimming is applied to the secondary controls only, never to a wrapper:
+   opacity does not compose downwards, so putting it on the heading would also
+   dim the toggle and the badge nested inside it, which are the two things an
+   admin has to read in order to undo the pause. */
+.division-admin-item.is-inactive { background: var(--surface); }
+.division-admin-item.is-inactive .division-admin-heading h3 { color: var(--muted); }
+.division-admin-item.is-inactive .division-admin-rank { color: var(--faint); }
+.division-admin-item.is-inactive .division-admin-heading .btn,
+.division-admin-item.is-inactive .division-reorder-controls,
+.division-admin-item.is-inactive .division-range-summary { opacity: 0.45; }
+.division-inactive-badge {
+  display: inline-block; margin-left: 8px; padding: 2px 7px; vertical-align: middle;
+  border: 1px solid var(--border-strong); border-radius: 999px;
+  background: var(--surface-raised); color: var(--faint);
+  font-size: 9px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
+}
+.division-inactive-note {
+  margin: 11px 0 0; padding: 10px 12px;
+  border: 1px solid var(--border); border-left: 3px solid var(--faint); border-radius: 8px;
+  background: var(--surface-raised); color: var(--muted); font-size: 11px; line-height: 1.55;
+}
+
+.division-active-toggle { position: relative; display: inline-flex; align-items: center; gap: 7px; cursor: pointer; user-select: none; }
+.division-active-toggle input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.division-active-track {
+  position: relative; flex: none; width: 34px; height: 19px; border-radius: 999px;
+  background: var(--border); transition: background 120ms ease;
+}
+.division-active-track::after {
+  content: ''; position: absolute; top: 2px; left: 2px; width: 15px; height: 15px;
+  border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgb(15 23 42 / 28%);
+  transition: transform 120ms ease;
+}
+.division-active-toggle input:checked + .division-active-track { background: var(--accent); }
+.division-active-toggle input:checked + .division-active-track::after { transform: translateX(15px); }
+.division-active-toggle input:focus-visible + .division-active-track { outline: 2px solid var(--accent); outline-offset: 2px; }
+.division-active-label { min-width: 46px; color: var(--muted); font-size: 11px; font-weight: 700; }
+.division-active-toggle input:disabled ~ .division-active-label { color: var(--faint); }
+.division-active-toggle:has(input:disabled) { cursor: not-allowed; }
 .division-editor > label, .division-ranges label { display: grid; gap: 6px; color: var(--muted); font-size: 11px; font-weight: 700; }
 .division-editor > label .text, .division-ranges .text { width: 100%; min-height: 38px; }
 .division-range-help { margin: -5px 0 0; color: var(--faint); font-size: 11px; }

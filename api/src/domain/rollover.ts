@@ -34,6 +34,7 @@ type DivisionRow = {
   sort_order: number
   promotion_count: number | null
   relegation_count: number | null
+  is_active: number
 }
 
 type ClubRow = {
@@ -178,7 +179,8 @@ export async function loadRolloverContext(
 
   const divisions = await rows<DivisionRow>(
     runner,
-    `SELECT d.id, d.name, d.slug, d.sort_order, d.promotion_count, d.relegation_count
+    `SELECT d.id, d.name, d.slug, d.sort_order, d.promotion_count, d.relegation_count,
+            d.is_active
        FROM divisions d
       WHERE d.season_id = ?
       ORDER BY d.sort_order, d.id${lock}`,
@@ -239,6 +241,7 @@ export async function loadRolloverContext(
       sort_order: Number(division.sort_order),
       promotion_count: division.promotion_count === null ? null : Number(division.promotion_count),
       relegation_count: division.relegation_count === null ? null : Number(division.relegation_count),
+      is_active: Number(division.is_active),
       clubs: grouped.get(Number(division.id)) ?? [],
     })),
   }
@@ -275,6 +278,26 @@ function byFinish(clubs: RolloverClub[]): RolloverClub[] {
 }
 
 /**
+ * The nearest division in one direction that still takes part in the ladder.
+ *
+ * A paused league is skipped rather than used as a destination, so pausing the
+ * middle of the ladder sends the league above straight into the one below it
+ * instead of parking clubs in a league nobody is playing. Running out of
+ * divisions in that direction returns null, which the caller reports as
+ * "there is nothing above/below it" — the same as being at the top or bottom.
+ */
+function nextActiveDivision(
+  ladder: RolloverContext['divisions'],
+  index: number,
+  step: -1 | 1,
+): RolloverContext['divisions'][number] | null {
+  for (let cursor = index + step; cursor >= 0 && cursor < ladder.length; cursor += step) {
+    if (ladder[cursor].is_active) return ladder[cursor]
+  }
+  return null
+}
+
+/**
  * Work out who moves, without touching anything.
  *
  * Pure, so the preview the admin reads is the same function the commit runs —
@@ -291,15 +314,38 @@ export function planSeasonRollover(
   const warnings: string[] = []
 
   for (const division of ladder) {
-    if (!selected.has(division.id)) continue
     const index = ladder.findIndex((entry) => entry.id === division.id)
     const ranked = byFinish(division.clubs)
+
+    // A paused league takes no part in the movement. Its clubs are copied into
+    // the new season as they are, which is what "paused" is for: the league is
+    // not being played, so nothing moves in or out of it.
+    if (!division.is_active) {
+      if (selected.has(division.id)) {
+        for (const type of ['promotion', 'relegation'] as const) {
+          if (movementQuota(division, type) < 1) continue
+          legs.push({
+            type,
+            sourceDivisionId: division.id,
+            sourceDivisionName: division.name,
+            destinationDivisionId: null,
+            destinationDivisionName: null,
+            clubs: [],
+            skipped: true,
+            skipReason: `${division.name} is paused, so it does not ${type} anything this rollover. Switch the league back on to include it.`,
+          })
+        }
+      }
+      continue
+    }
+
+    if (!selected.has(division.id)) continue
 
     for (const type of ['promotion', 'relegation'] as const) {
       const quota = movementQuota(division, type)
       if (quota < 1) continue
 
-      const destination = type === 'promotion' ? ladder[index - 1] : ladder[index + 1]
+      const destination = nextActiveDivision(ladder, index, type === 'promotion' ? -1 : 1)
       const base = {
         type,
         sourceDivisionId: division.id,
@@ -525,8 +571,8 @@ export async function applySeasonRollover(
 
     const [divisionResult] = await runner.execute(
       `INSERT INTO divisions
-         (season_id, name, slug, sort_order, promotion_count, relegation_count, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+         (season_id, name, slug, sort_order, promotion_count, relegation_count, is_active, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
       [
         seasonId,
         division.name,
@@ -534,6 +580,9 @@ export async function applySeasonRollover(
         division.sort_order,
         setting?.promotionCount ?? division.promotion_count,
         setting?.relegationCount ?? division.relegation_count,
+        // A league paused at the end of a season opens the next one paused, so
+        // rolling over does not quietly bring it back to life.
+        division.is_active,
       ],
     )
     const newDivisionId = Number((divisionResult as { insertId: number }).insertId)
