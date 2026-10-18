@@ -13,8 +13,12 @@ import {
   ApiError,
   addPlayer,
   assignDivision,
+  createAdminPlayer,
+  createAdminUser,
   createFormat,
   decideClub,
+  deleteAdminPlayer,
+  deleteAdminUser,
   deleteFormat,
   deleteMatch,
   deleteMatches,
@@ -22,6 +26,8 @@ import {
   createDivision,
   createSeason,
   createMatch,
+  getAdminPlayers,
+  getAdminUsers,
   getClubs,
   getAdminSeasons,
   getDivisions,
@@ -40,12 +46,16 @@ import {
   setCurrentSeason,
   setFeaturedDivision,
   setDivisionActive,
+  updateAdminPlayer,
+  updateAdminUser,
   updateClub,
   updateDivision,
   updateDivisionOrder,
   updateFormat,
   updateSeason,
   withdrawResult,
+  type AdminPlayer,
+  type AdminUser,
   type Club,
   type CompetitionFormat,
   type FormatStatus,
@@ -56,10 +66,11 @@ import {
   type PendingClub,
   type RolloverRecord,
   type Standing,
+  type UserRole,
 } from './api'
 
-type Tab = 'standings' | 'results' | 'clubs'
-type ClubSection = 'clubs' | 'applications' | 'divisions' | 'homepage'
+type Tab = 'clubs' | 'applications' | 'results' | 'standings' | 'homepage' | 'members'
+type ClubSection = 'clubs' | 'divisions'
 
 /** Which bulk action is running, so only that button shows its spinner. */
 type BulkAction = 'update'
@@ -138,33 +149,48 @@ function ToastRow({
   )
 }
 
+const ALL_TABS: Tab[] = ['clubs', 'applications', 'results', 'standings', 'homepage', 'members']
+const MOBILE_PRIMARY_TABS: Tab[] = ['clubs', 'applications', 'results', 'standings']
+const MOBILE_OVERFLOW_TABS: Tab[] = ALL_TABS.filter((t) => !MOBILE_PRIMARY_TABS.includes(t))
+
 export default function App() {
   const [tab, setTab] = useState<Tab>(() => {
     const saved = window.localStorage.getItem('iwvpl-admin-tab')
-    return saved === 'standings' || saved === 'clubs' || saved === 'applications' || saved === 'divisions'
-      ? saved === 'applications' || saved === 'divisions' ? 'clubs' : saved
-      : 'results'
+    const savedSection = window.localStorage.getItem('iwvpl-admin-club-section')
+    if (
+      saved === 'clubs' ||
+      saved === 'applications' ||
+      saved === 'results' ||
+      saved === 'standings' ||
+      saved === 'homepage' ||
+      saved === 'members'
+    ) {
+      if (saved === 'clubs' && savedSection === 'applications') return 'applications'
+      if (saved === 'clubs' && savedSection === 'homepage') return 'homepage'
+      return saved
+    }
+    if (saved === 'divisions') return 'clubs'
+    return 'results'
   })
   const [clubSection, setClubSection] = useState<ClubSection>(() => {
     const savedTab = window.localStorage.getItem('iwvpl-admin-tab')
     const savedSection = window.localStorage.getItem('iwvpl-admin-club-section')
-    return savedTab === 'applications' || savedSection === 'applications'
-      ? 'applications'
-      : savedTab === 'divisions' || savedSection === 'divisions'
-        ? 'divisions'
-        : savedSection === 'homepage'
-          ? 'homepage'
-          : 'clubs'
+    return savedTab === 'divisions' || savedSection === 'divisions' ? 'divisions' : 'clubs'
   })
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false)
+  const mobileMoreRef = useRef<HTMLDivElement>(null)
   const [toasts, setToasts] = useState<Toast[]>([])
   const [pendingApplicationCount, setPendingApplicationCount] = useState(0)
   // Monotonic so two notices raised in the same tick stay independent toasts
   // instead of colliding on a shared identity.
   const nextToastId = useRef(0)
   const pageTitle: Record<Tab, string> = {
+    clubs: 'Club management',
+    applications: 'Club applications',
     results: 'Match centre',
     standings: 'League table',
-    clubs: 'Club management',
+    homepage: 'Homepage settings',
+    members: 'Managers & Players',
   }
 
   const report = useCallback((kind: Notice['kind'], text: string) => {
@@ -178,11 +204,23 @@ export default function App() {
 
   useEffect(() => {
     window.localStorage.setItem('iwvpl-admin-tab', tab)
+    setMobileMoreOpen(false)
   }, [tab])
 
   useEffect(() => {
     window.localStorage.setItem('iwvpl-admin-club-section', clubSection)
   }, [clubSection])
+
+  useEffect(() => {
+    if (!mobileMoreOpen) return
+    const handlePointerDown = (event: MouseEvent) => {
+      if (mobileMoreRef.current && !mobileMoreRef.current.contains(event.target as Node)) {
+        setMobileMoreOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handlePointerDown)
+    return () => document.removeEventListener('mousedown', handlePointerDown)
+  }, [mobileMoreOpen])
 
   // Any failure is reported through one channel so the views can simply throw
   // and the shell decides how to present it.
@@ -219,14 +257,22 @@ export default function App() {
 
   const tabLabels: Record<Tab, string> = {
     clubs: 'Clubs',
+    applications: 'Applications',
     results: 'Matches',
     standings: 'Standings',
+    homepage: 'Homepage',
+    members: 'Managers & Players',
   }
   const tabIcons: Record<Tab, string> = {
     clubs: '♙',
+    applications: '✉',
     results: '◉',
     standings: '▤',
+    homepage: '⌂',
+    members: '♟',
   }
+
+  const isOverflowTabActive = MOBILE_OVERFLOW_TABS.includes(tab)
 
   return (
     <div className="shell">
@@ -240,12 +286,12 @@ export default function App() {
       <div className="workspace">
         <aside className="sidebar">
           <p className="nav-label">WORKSPACE</p>
-          <nav className="tabs" role="tablist" aria-label="Admin sections">
-            {(['clubs', 'results', 'standings'] as Tab[]).map((t) => (
+          <nav className="tabs desktop-tabs" role="tablist" aria-label="Admin sections">
+            {ALL_TABS.map((t) => (
               <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>
                 <span className="nav-icon" aria-hidden="true">{tabIcons[t]}</span>
                 <span>{tabLabels[t]}</span>
-                {t === 'clubs' && pendingApplicationCount > 0 && (
+                {t === 'applications' && pendingApplicationCount > 0 && (
                   <span
                     className="nav-badge"
                     aria-label={`${pendingApplicationCount} club applications need review`}
@@ -258,6 +304,69 @@ export default function App() {
               </button>
             ))}
           </nav>
+
+          {/* Mobile navigation bar with More menu for overflow / future tabs */}
+          <div className="mobile-nav-wrap" ref={mobileMoreRef}>
+            {mobileMoreOpen && (
+              <div className="mobile-more-sheet" role="menu" aria-label="More admin sections">
+                <p className="mobile-more-title">More sections</p>
+                {MOBILE_OVERFLOW_TABS.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    role="menuitem"
+                    aria-current={tab === t ? 'page' : undefined}
+                    className={`mobile-more-item${tab === t ? ' is-active' : ''}`}
+                    onClick={() => {
+                      setTab(t)
+                      setMobileMoreOpen(false)
+                    }}
+                  >
+                    <span className="nav-icon" aria-hidden="true">{tabIcons[t]}</span>
+                    <span>{tabLabels[t]}</span>
+                    {t === tab && <span className="nav-arrow">✓</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+            <nav className="tabs mobile-tabs" role="tablist" aria-label="Admin sections">
+              {MOBILE_PRIMARY_TABS.map((t) => (
+                <button
+                  key={t}
+                  role="tab"
+                  aria-selected={tab === t}
+                  onClick={() => {
+                    setTab(t)
+                    setMobileMoreOpen(false)
+                  }}
+                >
+                  <span className="nav-icon" aria-hidden="true">{tabIcons[t]}</span>
+                  <span>{tabLabels[t]}</span>
+                  {t === 'applications' && pendingApplicationCount > 0 && (
+                    <span
+                      className="nav-badge"
+                      aria-label={`${pendingApplicationCount} club applications need review`}
+                      title={`${pendingApplicationCount} club applications need review`}
+                    >
+                      {pendingApplicationCount > 99 ? '99+' : pendingApplicationCount}
+                    </span>
+                  )}
+                </button>
+              ))}
+              <button
+                type="button"
+                aria-expanded={mobileMoreOpen}
+                aria-haspopup="menu"
+                aria-selected={isOverflowTabActive}
+                className={isOverflowTabActive || mobileMoreOpen ? 'is-more-active' : undefined}
+                onClick={() => setMobileMoreOpen((open) => !open)}
+              >
+                <span className="nav-icon" aria-hidden="true">⋯</span>
+                <span>More</span>
+              </button>
+            </nav>
+          </div>
+
           <div className="sidebar-note"><span className="secure-dot" />Changes save directly to the league database.</div>
         </aside>
 
@@ -271,27 +380,44 @@ export default function App() {
                   ? 'Record match scores and keep the table up to date.'
                   : tab === 'standings'
                     ? 'Review standings by season and league division.'
-                    : tab === 'clubs' && clubSection === 'applications'
+                    : tab === 'applications'
                       ? 'Review and respond to clubs waiting for approval.'
-                      : tab === 'clubs' && clubSection === 'homepage'
+                      : tab === 'homepage'
                         ? 'Control competition formats and featured clubs shown on the public homepage.'
-                        : tab === 'clubs'
-                          ? 'Update club details and manage player rosters.'
-                          : ''}
+                        : tab === 'members'
+                          ? 'View and manage all registered manager accounts and league players.'
+                          : 'Update club details, divisions, and player rosters.'}
               </p>
             </div>
           </div>
 
           {tab === 'standings' && <Standings guard={guard} />}
           {tab === 'results' && <Results guard={guard} report={report} />}
+          {tab === 'applications' && (
+            <Applications
+              guard={guard}
+              report={report}
+              onPendingCountChange={setPendingApplicationCount}
+            />
+          )}
+          {tab === 'homepage' && (
+            <HomepageSettings
+              guard={guard}
+              report={report}
+            />
+          )}
+          {tab === 'members' && (
+            <MembersManagement
+              guard={guard}
+              report={report}
+            />
+          )}
           {tab === 'clubs' && (
             <Clubs
               guard={guard}
               report={report}
               section={clubSection}
               setSection={setClubSection}
-              pendingApplicationCount={pendingApplicationCount}
-              onPendingCountChange={setPendingApplicationCount}
             />
           )}
         </main>
@@ -2868,15 +2994,11 @@ function Clubs({
   report,
   section,
   setSection,
-  pendingApplicationCount,
-  onPendingCountChange,
 }: {
   guard: <T>(fn: () => Promise<T>, what: string) => Promise<T>
   report: (kind: Notice['kind'], text: string) => void
   section: ClubSection
   setSection: (section: ClubSection) => void
-  pendingApplicationCount: number
-  onPendingCountChange: (count: number) => void
 }) {
   const [clubs, setClubs] = useState<Club[] | null>(null)
   const [standings, setStandings] = useState<Standing[]>([])
@@ -3426,47 +3548,17 @@ function Clubs({
         </button>
         <button
           role="tab"
-          aria-selected={section === 'applications'}
-          onClick={() => setSection('applications')}
-        >
-          Applications
-          {pendingApplicationCount > 0 && (
-            <span className="club-subnav-badge" aria-label={`${pendingApplicationCount} waiting`}>
-              {pendingApplicationCount > 99 ? '99+' : pendingApplicationCount}
-            </span>
-          )}
-        </button>
-        <button
-          role="tab"
           aria-selected={section === 'divisions'}
           onClick={() => setSection('divisions')}
         >
           Divisions
         </button>
-        <button
-          role="tab"
-          aria-selected={section === 'homepage'}
-          onClick={() => setSection('homepage')}
-        >
-          Homepage
-        </button>
       </div>
-      {section === 'applications' ? (
-        <Applications
-          guard={guard}
-          report={report}
-          onPendingCountChange={onPendingCountChange}
-        />
-      ) : section === 'divisions' ? (
+      {section === 'divisions' ? (
         <Divisions
           guard={guard}
           report={report}
           onDivisionsChanged={(nextDivisions) => setDivisions(nextDivisions)}
-        />
-      ) : section === 'homepage' ? (
-        <HomepageSettings
-          guard={guard}
-          report={report}
         />
       ) : (
         <>
@@ -4452,4 +4544,588 @@ function HomepageSettings({
     </div>
   )
 }
+
+/* ------------------------------------------- registered managers & players */
+
+const USER_ROLE_OPTIONS: Array<{ value: UserRole; label: string }> = [
+  { value: 'club_manager', label: 'Club Manager' },
+  { value: 'player', label: 'Player' },
+  { value: 'admin', label: 'Admin' },
+  { value: 'owner', label: 'Owner' },
+]
+
+function formatUserRole(role: UserRole): string {
+  return USER_ROLE_OPTIONS.find((opt) => opt.value === role)?.label ?? role
+}
+
+function MembersManagement({
+  guard,
+  report,
+}: {
+  guard: <T>(fn: () => Promise<T>, what: string) => Promise<T>
+  report: (kind: Notice['kind'], text: string) => void
+}) {
+  const [subview, setSubview] = useState<'accounts' | 'players'>('accounts')
+  const [users, setUsers] = useState<AdminUser[] | null>(null)
+  const [players, setPlayers] = useState<AdminPlayer[] | null>(null)
+  const [clubs, setClubs] = useState<Club[]>([])
+
+  // Account filters & editor state
+  const [userSearch, setUserSearch] = useState('')
+  const [userRoleFilter, setUserRoleFilter] = useState<'all' | UserRole>('all')
+  const [editingUser, setEditingUser] = useState<number | 'new' | null>(null)
+  const [userEmail, setUserEmail] = useState('')
+  const [userPassword, setUserPassword] = useState('')
+  const [userDisplayName, setUserDisplayName] = useState('')
+  const [userRole, setUserRole] = useState<UserRole>('club_manager')
+  const [userClubId, setUserClubId] = useState('')
+  const [userGamertag, setUserGamertag] = useState('')
+  const [userActive, setUserActive] = useState(true)
+  const [userBusy, setUserBusy] = useState(false)
+  const [deletingUserId, setDeletingUserId] = useState<number | null>(null)
+
+  // Player filters & editor state
+  const [playerSearch, setPlayerSearch] = useState('')
+  const [playerClubFilter, setPlayerClubFilter] = useState('')
+  const [editingPlayer, setEditingPlayer] = useState<number | 'new' | null>(null)
+  const [playerGamertag, setPlayerGamertag] = useState('')
+  const [playerClubId, setPlayerClubId] = useState('')
+  const [playerBusy, setPlayerBusy] = useState(false)
+  const [deletingPlayerId, setDeletingPlayerId] = useState<number | null>(null)
+
+  const loadAll = useCallback(async () => {
+    const [usersData, playersData, clubsData] = await Promise.all([
+      guard(getAdminUsers, 'Could not load registered accounts'),
+      guard(getAdminPlayers, 'Could not load league players'),
+      guard(() => getClubs(), 'Could not load clubs'),
+    ])
+    setUsers(usersData)
+    setPlayers(playersData)
+    setClubs(clubsData)
+  }, [guard])
+
+  useEffect(() => {
+    loadAll().catch(() => {
+      setUsers((prev) => prev ?? [])
+      setPlayers((prev) => prev ?? [])
+    })
+  }, [loadAll])
+
+  const openUserEditor = (user: AdminUser | null) => {
+    setEditingUser(user?.id ?? 'new')
+    setUserEmail(user?.email ?? '')
+    setUserPassword('')
+    setUserDisplayName(user?.display_name ?? '')
+    setUserRole(user?.role ?? 'club_manager')
+    setUserClubId(user?.club_id ? String(user.club_id) : '')
+    setUserGamertag(user?.gamertag ?? '')
+    setUserActive(user ? Boolean(user.is_active) : true)
+  }
+
+  const saveUser = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (editingUser === null) return
+    const target = editingUser
+    setUserBusy(true)
+    try {
+      const payload = {
+        email: userEmail.trim(),
+        ...(userPassword ? { password: userPassword } : {}),
+        displayName: userDisplayName.trim() || null,
+        role: userRole,
+        clubId: userClubId ? Number(userClubId) : null,
+        gamertag: userGamertag.trim() || null,
+        isActive: userActive,
+      }
+      await guard(
+        () => (target === 'new' ? createAdminUser(payload) : updateAdminUser(target, payload)),
+        target === 'new' ? 'Could not create account' : 'Could not update account',
+      )
+      await loadAll()
+      setEditingUser(null)
+      report('ok', target === 'new' ? 'Account created.' : 'Account updated.')
+    } catch {
+      /* already reported */
+    } finally {
+      setUserBusy(false)
+    }
+  }
+
+  const removeUser = async (user: AdminUser) => {
+    if (
+      deletingUserId !== null ||
+      !window.confirm(`Delete account "${user.email}"? Any active sessions will be revoked.`)
+    ) {
+      return
+    }
+    setDeletingUserId(user.id)
+    try {
+      await guard(() => deleteAdminUser(user.id), `Could not delete ${user.email}`)
+      await loadAll()
+      if (editingUser === user.id) setEditingUser(null)
+      report('ok', `${user.email} deleted.`)
+    } catch {
+      /* already reported */
+    } finally {
+      setDeletingUserId(null)
+    }
+  }
+
+  const openPlayerEditor = (player: AdminPlayer | null) => {
+    setEditingPlayer(player?.id ?? 'new')
+    setPlayerGamertag(player?.gamertag ?? '')
+    setPlayerClubId(player?.club_id ? String(player.club_id) : '')
+  }
+
+  const savePlayer = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (editingPlayer === null) return
+    const target = editingPlayer
+    setPlayerBusy(true)
+    try {
+      const payload = {
+        gamertag: playerGamertag.trim(),
+        clubId: playerClubId ? Number(playerClubId) : null,
+      }
+      await guard(
+        () =>
+          target === 'new' ? createAdminPlayer(payload) : updateAdminPlayer(target, payload),
+        target === 'new' ? 'Could not add player' : 'Could not update player',
+      )
+      await loadAll()
+      setEditingPlayer(null)
+      report('ok', `${payload.gamertag} saved.`)
+    } catch {
+      /* already reported */
+    } finally {
+      setPlayerBusy(false)
+    }
+  }
+
+  const removePlayerItem = async (player: AdminPlayer) => {
+    if (
+      deletingPlayerId !== null ||
+      !window.confirm(`Delete player "${player.gamertag}" from the league?`)
+    ) {
+      return
+    }
+    setDeletingPlayerId(player.id)
+    try {
+      await guard(() => deleteAdminPlayer(player.id), `Could not delete ${player.gamertag}`)
+      await loadAll()
+      if (editingPlayer === player.id) setEditingPlayer(null)
+      report('ok', `${player.gamertag} deleted.`)
+    } catch {
+      /* already reported */
+    } finally {
+      setDeletingPlayerId(null)
+    }
+  }
+
+  const filteredUsers = (users ?? []).filter((u) => {
+    if (userRoleFilter !== 'all' && u.role !== userRoleFilter) return false
+    const q = userSearch.trim().toLowerCase()
+    if (!q) return true
+    return (
+      u.email.toLowerCase().includes(q) ||
+      (u.display_name ?? '').toLowerCase().includes(q) ||
+      (u.club_name ?? '').toLowerCase().includes(q) ||
+      (u.gamertag ?? '').toLowerCase().includes(q)
+    )
+  })
+
+  const filteredPlayers = (players ?? []).filter((p) => {
+    if (playerClubFilter === 'free' && p.club_id !== null) return false
+    if (playerClubFilter === 'signed' && p.club_id === null) return false
+    if (
+      playerClubFilter &&
+      playerClubFilter !== 'free' &&
+      playerClubFilter !== 'signed' &&
+      String(p.club_id ?? '') !== playerClubFilter
+    ) {
+      return false
+    }
+    const q = playerSearch.trim().toLowerCase()
+    if (!q) return true
+    return (
+      p.gamertag.toLowerCase().includes(q) ||
+      (p.club_name ?? '').toLowerCase().includes(q) ||
+      (p.user_email ?? '').toLowerCase().includes(q)
+    )
+  })
+
+  const clubOptions = [
+    { value: '', label: 'None / Free agent' },
+    ...clubs.map((c) => ({ value: String(c.id), label: c.name })),
+  ]
+
+  const userForm = (
+    <form className="division-editor" onSubmit={(event) => void saveUser(event)}>
+      <div className="members-form-grid">
+        <label>
+          <span>Email address</span>
+          <input
+            className="text"
+            type="email"
+            placeholder="manager@example.com"
+            value={userEmail}
+            onChange={(event) => setUserEmail(event.target.value)}
+            maxLength={190}
+            required
+            autoFocus
+          />
+        </label>
+        <label>
+          <span>{editingUser === 'new' ? 'Password (min 8 chars)' : 'New password (leave blank to keep)'}</span>
+          <input
+            className="text"
+            type="password"
+            placeholder={editingUser === 'new' ? 'At least 8 characters' : 'Unchanged'}
+            value={userPassword}
+            onChange={(event) => setUserPassword(event.target.value)}
+            minLength={8}
+            required={editingUser === 'new'}
+          />
+        </label>
+        <label>
+          <span>Display name</span>
+          <input
+            className="text"
+            placeholder="Optional name"
+            value={userDisplayName}
+            onChange={(event) => setUserDisplayName(event.target.value)}
+            maxLength={120}
+          />
+        </label>
+        <label>
+          <span>Role</span>
+          <CustomSelect
+            ariaLabel="Account role"
+            value={userRole}
+            options={USER_ROLE_OPTIONS}
+            onChange={(value) => setUserRole(value as UserRole)}
+          />
+        </label>
+        <label>
+          <span>Managed / assigned club</span>
+          <CustomSelect
+            ariaLabel="Managed club"
+            value={userClubId}
+            options={clubOptions}
+            onChange={setUserClubId}
+          />
+        </label>
+        <label>
+          <span>Linked player gamertag</span>
+          <input
+            className="text"
+            placeholder="Optional EA FC gamertag"
+            value={userGamertag}
+            onChange={(event) => setUserGamertag(event.target.value)}
+            maxLength={120}
+          />
+        </label>
+      </div>
+      <div className="members-form-footer">
+        <label className="division-active-toggle">
+          <input
+            type="checkbox"
+            role="switch"
+            checked={userActive}
+            onChange={(event) => setUserActive(event.target.checked)}
+          />
+          <span className="division-active-track" aria-hidden="true" />
+          <span className="division-active-label">
+            {userActive ? 'Account active' : 'Deactivated'}
+          </span>
+        </label>
+        <div className="division-editor-actions">
+          <button
+            className="btn"
+            type="button"
+            disabled={userBusy}
+            onClick={() => setEditingUser(null)}
+          >
+            Cancel
+          </button>
+          <button className="btn primary" type="submit" disabled={userBusy}>
+            {userBusy
+              ? 'Saving…'
+              : editingUser === 'new'
+                ? 'Create account'
+                : 'Save changes'}
+          </button>
+        </div>
+      </div>
+    </form>
+  )
+
+  const playerForm = (
+    <form className="division-editor" onSubmit={(event) => void savePlayer(event)}>
+      <div className="members-player-form-grid">
+        <label>
+          <span>Player gamertag</span>
+          <input
+            className="text"
+            placeholder="e.g. LethaL_ShoTs11"
+            value={playerGamertag}
+            onChange={(event) => setPlayerGamertag(event.target.value)}
+            maxLength={120}
+            required
+            autoFocus
+          />
+        </label>
+        <label>
+          <span>Club</span>
+          <CustomSelect
+            ariaLabel="Player club"
+            value={playerClubId}
+            options={clubOptions}
+            onChange={setPlayerClubId}
+          />
+        </label>
+      </div>
+      <div className="division-editor-actions">
+        <button
+          className="btn"
+          type="button"
+          disabled={playerBusy}
+          onClick={() => setEditingPlayer(null)}
+        >
+          Cancel
+        </button>
+        <button className="btn primary" type="submit" disabled={playerBusy}>
+          {playerBusy
+            ? 'Saving…'
+            : editingPlayer === 'new'
+              ? 'Add player'
+              : 'Save changes'}
+        </button>
+      </div>
+    </form>
+  )
+
+  return (
+    <div className="division-management members-management">
+      <div className="club-subnav" role="tablist" aria-label="Managers and players views">
+        <button
+          role="tab"
+          aria-selected={subview === 'accounts'}
+          onClick={() => setSubview('accounts')}
+        >
+          Registered accounts <span>{users?.length ?? 0}</span>
+        </button>
+        <button
+          role="tab"
+          aria-selected={subview === 'players'}
+          onClick={() => setSubview('players')}
+        >
+          League players <span>{players?.length ?? 0}</span>
+        </button>
+      </div>
+
+      {subview === 'accounts' ? (
+        <div className="card">
+          <header>
+            <div>
+              <h2>Registered managers &amp; player accounts</h2>
+              <p className="hint">
+                Create, edit, deactivate, or delete registered login accounts and their club or gamertag links.
+              </p>
+            </div>
+            <button
+              className="btn primary sm"
+              type="button"
+              disabled={editingUser !== null}
+              onClick={() => openUserEditor(null)}
+            >
+              <span aria-hidden="true">＋</span> Add account
+            </button>
+          </header>
+
+          {editingUser === 'new' && userForm}
+
+          <div className="members-toolbar">
+            <input
+              className="text"
+              type="search"
+              placeholder="Search by email, name, club, or gamertag…"
+              aria-label="Search registered accounts"
+              value={userSearch}
+              onChange={(event) => setUserSearch(event.target.value)}
+            />
+            <div className="members-filter-select">
+              <CustomSelect
+                ariaLabel="Filter by role"
+                value={userRoleFilter}
+                options={[
+                  { value: 'all', label: 'All roles' },
+                  ...USER_ROLE_OPTIONS,
+                ]}
+                onChange={(value) => setUserRoleFilter(value as 'all' | UserRole)}
+              />
+            </div>
+          </div>
+
+          {users === null ? (
+            <div className="loading">Loading registered accounts…</div>
+          ) : filteredUsers.length === 0 ? (
+            <div className="empty">No registered accounts match the current filter.</div>
+          ) : (
+            <div className="division-admin-list">
+              {filteredUsers.map((u) => (
+                <article
+                  key={u.id}
+                  className={`division-admin-item${u.is_active ? '' : ' is-inactive'}`}
+                >
+                  {editingUser === u.id ? (
+                    userForm
+                  ) : (
+                    <div className="division-admin-heading members-row">
+                      <div className="division-admin-title">
+                        <div>
+                          <h3>
+                            {u.display_name || u.gamertag || u.email}
+                            <span className={`format-status-badge ${u.role === 'club_manager' ? 'status-active' : 'status-coming_soon'}`}>
+                              {formatUserRole(u.role)}
+                            </span>
+                            {!u.is_active && (
+                              <span className="division-inactive-badge">Deactivated</span>
+                            )}
+                          </h3>
+                          <span className="hint">
+                            {u.email}
+                            {u.club_name ? ` · Club: ${u.club_name}` : ''}
+                            {u.gamertag ? ` · Gamertag: ${u.gamertag}` : ''}
+                            {u.created_at ? ` · Joined ${u.created_at.slice(0, 10)}` : ''}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="division-admin-actions">
+                        <button
+                          className="btn sm"
+                          type="button"
+                          disabled={editingUser !== null}
+                          onClick={() => openUserEditor(u)}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="btn sm danger"
+                          type="button"
+                          disabled={deletingUserId === u.id || editingUser !== null}
+                          onClick={() => void removeUser(u)}
+                        >
+                          {deletingUserId === u.id ? 'Deleting…' : 'Delete'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="card">
+          <header>
+            <div>
+              <h2>League players</h2>
+              <p className="hint">
+                Manage all player rosters, gamertags, and club assignments across the league ({filteredPlayers.length} shown).
+              </p>
+            </div>
+            <button
+              className="btn primary sm"
+              type="button"
+              disabled={editingPlayer !== null}
+              onClick={() => openPlayerEditor(null)}
+            >
+              <span aria-hidden="true">＋</span> Add player
+            </button>
+          </header>
+
+          {editingPlayer === 'new' && playerForm}
+
+          <div className="members-toolbar">
+            <input
+              className="text"
+              type="search"
+              placeholder="Search players by gamertag, club, or account email…"
+              aria-label="Search league players"
+              value={playerSearch}
+              onChange={(event) => setPlayerSearch(event.target.value)}
+            />
+            <div className="members-filter-select">
+              <CustomSelect
+                ariaLabel="Filter players by club"
+                value={playerClubFilter}
+                options={[
+                  { value: '', label: 'All clubs & free agents' },
+                  { value: 'signed', label: 'Signed to a club' },
+                  { value: 'free', label: 'Free agents only' },
+                  ...clubs.map((c) => ({ value: String(c.id), label: c.name })),
+                ]}
+                onChange={setPlayerClubFilter}
+              />
+            </div>
+          </div>
+
+          {players === null ? (
+            <div className="loading">Loading league players…</div>
+          ) : filteredPlayers.length === 0 ? (
+            <div className="empty">No players match your search.</div>
+          ) : (
+            <div className="division-admin-list">
+              {filteredPlayers.map((p) => (
+                <article key={p.id} className="division-admin-item">
+                  {editingPlayer === p.id ? (
+                    playerForm
+                  ) : (
+                    <div className="division-admin-heading members-row">
+                      <div className="division-admin-title">
+                        <div>
+                          <h3>
+                            {p.gamertag}
+                            <span className={`format-status-badge ${p.club_id ? 'status-active' : 'status-inactive'}`}>
+                              {p.club_name ?? 'Free agent'}
+                            </span>
+                          </h3>
+                          <span className="hint">
+                            {p.user_email
+                              ? `Linked account: ${p.user_name ? `${p.user_name} (${p.user_email})` : p.user_email}`
+                              : 'No linked login account'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="division-admin-actions">
+                        <button
+                          className="btn sm"
+                          type="button"
+                          disabled={editingPlayer !== null}
+                          onClick={() => openPlayerEditor(p)}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="btn sm danger"
+                          type="button"
+                          disabled={deletingPlayerId === p.id || editingPlayer !== null}
+                          onClick={() => void removePlayerItem(p)}
+                        >
+                          {deletingPlayerId === p.id ? 'Deleting…' : 'Delete'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 

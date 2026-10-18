@@ -1364,7 +1364,10 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 }
 
 .homepage-club-header-actions {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 7px;
+  display: flex; flex-wrap: nowrap; align-items: center; gap: 7px; flex-shrink: 0;
+}
+.homepage-club-header-actions .btn {
+  white-space: nowrap; flex-shrink: 0;
 }
 .homepage-club-toolbar {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -1409,9 +1412,85 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   font-size: 10px;
 }
 
+/* ----------------------------------------------------- mobile navigation & More menu */
+.mobile-nav-wrap { display: none; position: relative; }
+.mobile-more-sheet {
+  position: absolute; right: 0; bottom: calc(100% + 10px); z-index: 30;
+  display: grid; gap: 4px; min-width: 224px; padding: 8px;
+  border: 1px solid var(--border-strong); border-radius: 12px;
+  background: rgb(18 21 24 / 98%); backdrop-filter: blur(18px);
+  box-shadow: 0 18px 42px rgb(0 0 0 / 55%);
+}
+.mobile-more-title {
+  margin: 0; padding: 4px 10px 6px;
+  color: var(--faint); font-size: 9px; font-weight: 800;
+  letter-spacing: 0.14em; text-transform: uppercase;
+}
+.mobile-more-item {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 42px;
+  padding: 0 11px; border: 1px solid transparent; border-radius: 9px;
+  color: var(--muted); background: transparent; font-size: 12px; font-weight: 650;
+  text-align: left; cursor: pointer; transition: background 0.15s ease, color 0.15s ease;
+}
+.mobile-more-item:hover { color: var(--text); background: var(--surface-hover); }
+.mobile-more-item.selected {
+  color: var(--accent); background: var(--accent-soft);
+  border-color: rgb(200 255 61 / 18%);
+}
+.mobile-more-item .nav-icon {
+  display: grid; place-items: center; width: 20px; font-size: 16px;
+}
+.mobile-more-item .nav-badge {
+  position: static; margin-left: auto;
+}
+.mobile-tabs button.is-more-active {
+  color: var(--accent); background: var(--accent-soft); border-color: rgb(200 255 61 / 15%);
+}
+
+/* ----------------------------------------------------- members & players CRUD */
+.members-management { display: grid; gap: 20px; }
+.members-toolbar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 20px; border-bottom: 1px solid var(--border);
+  background: rgb(255 255 255 / 1.5%);
+}
+.members-toolbar .text { flex: 1; min-width: 0; min-height: 36px; }
+.members-filter-select { min-width: 210px; }
+.members-filter-select .custom-select-trigger { min-height: 36px; height: 36px; }
+.members-form-grid {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px;
+}
+.members-form-grid label,
+.members-player-form-grid label {
+  display: grid; gap: 6px; min-width: 0; color: var(--muted); font-size: 11px; font-weight: 700;
+}
+.members-form-grid .text,
+.members-player-form-grid .text {
+  width: 100%; min-height: 38px;
+}
+.members-player-form-grid {
+  display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) auto; gap: 12px; align-items: end;
+}
+.members-form-footer {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);
+}
+.members-row { gap: 14px; }
+
 @media (max-width: 720px) {
+  .desktop-tabs { display: none; }
+  .mobile-nav-wrap { display: block; }
+  .mobile-tabs { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
   .homepage-format-fields { grid-template-columns: 1fr; }
   .homepage-club-toolbar { flex-wrap: wrap; padding: 12px 14px; }
   .homepage-club-grid { grid-template-columns: 1fr; padding: 12px 14px; }
+  .homepage-club-header-actions { gap: 5px; }
+  .homepage-club-header-actions .btn.sm { padding: 0 7px; font-size: 10px; }
+  .members-toolbar { flex-wrap: wrap; padding: 12px 14px; }
+  .members-filter-select { width: 100%; min-width: 0; }
+  .members-form-grid { grid-template-columns: 1fr; }
+  .members-player-form-grid { grid-template-columns: 1fr; }
+  .members-form-footer { flex-wrap: wrap; }
 }
+
 

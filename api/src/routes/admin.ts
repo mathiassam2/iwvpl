@@ -15,7 +15,7 @@
 import { Router } from 'express'
 import { execute, queryAll, queryOne, withTransaction, type Params } from '../db.js'
 import { clearResult, setResult } from '../domain/applyResult.js'
-import { notify } from '../domain/auth.js'
+import { hashPassword, MAX_PASSWORD_BYTES, notify } from '../domain/auth.js'
 import {
   applySeasonRollover,
   loadRolloverContext,
@@ -26,7 +26,7 @@ import {
   undoSeasonRollover,
   type RolloverSetting,
 } from '../domain/rollover.js'
-import { clubSlug } from '../domain/slug.js'
+import { clubSlug, gamertagKey } from '../domain/slug.js'
 
 export const admin = Router()
 
@@ -2147,4 +2147,460 @@ admin.put(
     res.json({ ok: true, featuredSlugs: slugs })
   }),
 )
+
+/* ------------------------------------------- registered managers & players */
+
+const USER_ROLES = new Set(['player', 'club_manager', 'admin', 'owner'])
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
+
+function parseUserEmail(value: unknown): string {
+  const s = requiredString(value, 'Email', 190).toLowerCase()
+  if (!EMAIL_RE.test(s)) {
+    throw Object.assign(new Error('Enter a valid email address.'), { status: 400 })
+  }
+  return s
+}
+
+function parseUserRole(value: unknown): string {
+  const s = String(value ?? 'club_manager').trim().toLowerCase()
+  if (!USER_ROLES.has(s)) {
+    throw Object.assign(
+      new Error("role must be 'player', 'club_manager', 'admin', or 'owner'."),
+      { status: 400 },
+    )
+  }
+  return s
+}
+
+function parseOptionalPassword(value: unknown, required: boolean): string | null {
+  const s = String(value ?? '')
+  if (!s) {
+    if (required) throw Object.assign(new Error('Password is required.'), { status: 400 })
+    return null
+  }
+  if (s.length < 8) {
+    throw Object.assign(new Error('Password must be at least 8 characters.'), { status: 400 })
+  }
+  if (Buffer.byteLength(s, 'utf8') > MAX_PASSWORD_BYTES) {
+    throw Object.assign(new Error('Password is too long.'), { status: 400 })
+  }
+  return s
+}
+
+const USER_SELECT_SQL = `
+  SELECT u.id, u.email, u.display_name, u.role, u.club_id, u.is_active, u.created_at,
+         c.name AS club_name, c.slug AS club_slug,
+         p.id AS player_id, p.gamertag, p.slug AS player_slug
+    FROM users u
+    LEFT JOIN clubs c ON c.id = u.club_id
+    LEFT JOIN players p ON p.user_id = u.id
+`
+
+admin.get(
+  '/users',
+  handler(async (_req, res) => {
+    const users = await queryAll(`${USER_SELECT_SQL} ORDER BY u.created_at DESC, u.id DESC`)
+    res.json({ users })
+  }),
+)
+
+admin.post(
+  '/users',
+  handler(async (req, res) => {
+    const email = parseUserEmail(req.body?.email)
+    const plainPassword = parseOptionalPassword(req.body?.password, true)!
+    const displayName = optionalString(req.body?.displayName, 120)
+    const role = parseUserRole(req.body?.role)
+    const isActive = req.body?.isActive === undefined ? true : Boolean(req.body.isActive)
+    const rawClubId = req.body?.clubId
+    const clubId =
+      rawClubId === null || rawClubId === undefined || rawClubId === ''
+        ? null
+        : Number(rawClubId)
+    if (clubId !== null && (!Number.isSafeInteger(clubId) || clubId < 1)) {
+      return res.status(400).json({ error: 'clubId must be a positive integer or null.' })
+    }
+    const gamertag = optionalString(req.body?.gamertag, 120)
+
+    const hash = await hashPassword(plainPassword)
+
+    const createdId = await withTransaction(async (conn) => {
+      const [existingEmail] = await conn.query('SELECT id FROM users WHERE email = ? LIMIT 1', [
+        email,
+      ])
+      if ((existingEmail as unknown[]).length > 0) {
+        throw Object.assign(new Error('An account with that email already exists.'), {
+          status: 409,
+        })
+      }
+
+      if (clubId !== null) {
+        const [clubRows] = await conn.query('SELECT id FROM clubs WHERE id = ? LIMIT 1', [clubId])
+        if (!((clubRows as unknown[])[0])) {
+          throw Object.assign(new Error('Selected club does not exist.'), { status: 404 })
+        }
+      }
+
+      const [inserted] = await conn.execute(
+        `INSERT INTO users
+           (email, password_hash, display_name, role, club_id, is_active, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+        [email, hash, displayName, role, clubId, isActive ? 1 : 0],
+      )
+      const userId = (inserted as any).insertId as number
+
+      if (gamertag) {
+        const key = gamertagKey(gamertag)
+        const [existingPlayers] = await conn.query(
+          'SELECT id, user_id FROM players WHERE gamertag_key = ? FOR UPDATE',
+          [key],
+        )
+        const existingPlayer = (existingPlayers as Array<{ id: number; user_id: number | null }>)[0]
+        if (existingPlayer) {
+          if (existingPlayer.user_id && existingPlayer.user_id !== userId) {
+            throw Object.assign(
+              new Error('That gamertag is already linked to another account.'),
+              { status: 409 },
+            )
+          }
+          await conn.execute(
+            `UPDATE players
+                SET user_id = ?,
+                    club_id = COALESCE(?, club_id),
+                    is_free_agent = IF(COALESCE(?, club_id) IS NULL, TRUE, FALSE),
+                    updated_at = NOW()
+              WHERE id = ?`,
+            [userId, clubId, clubId, existingPlayer.id],
+          )
+        } else {
+          await conn.execute(
+            `INSERT INTO players
+               (gamertag, gamertag_key, slug, user_id, club_id, is_free_agent, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+            [gamertag, key, clubSlug(gamertag) || key, userId, clubId, clubId === null ? 1 : 0],
+          )
+        }
+      }
+
+      return userId
+    })
+
+    const user = await queryOne(`${USER_SELECT_SQL} WHERE u.id = ?`, [createdId])
+    res.status(201).json({ user })
+  }),
+)
+
+admin.put(
+  '/users/:id',
+  handler(async (req, res) => {
+    const id = Number.parseInt(req.params.id, 10)
+    if (!Number.isSafeInteger(id) || id < 1) {
+      return res.status(400).json({ error: 'User id must be a positive integer.' })
+    }
+
+    const email = parseUserEmail(req.body?.email)
+    const plainPassword = parseOptionalPassword(req.body?.password, false)
+    const displayName = optionalString(req.body?.displayName, 120)
+    const role = parseUserRole(req.body?.role)
+    const isActive = req.body?.isActive === undefined ? true : Boolean(req.body.isActive)
+    const rawClubId = req.body?.clubId
+    const clubId =
+      rawClubId === null || rawClubId === undefined || rawClubId === ''
+        ? null
+        : Number(rawClubId)
+    if (clubId !== null && (!Number.isSafeInteger(clubId) || clubId < 1)) {
+      return res.status(400).json({ error: 'clubId must be a positive integer or null.' })
+    }
+    const gamertagProvided = Object.prototype.hasOwnProperty.call(req.body ?? {}, 'gamertag')
+    const gamertag = optionalString(req.body?.gamertag, 120)
+
+    const hash = plainPassword ? await hashPassword(plainPassword) : null
+
+    const found = await withTransaction(async (conn) => {
+      const [existingRows] = await conn.query('SELECT id FROM users WHERE id = ? FOR UPDATE', [id])
+      if (!((existingRows as unknown[])[0])) return false
+
+      const [emailDup] = await conn.query(
+        'SELECT id FROM users WHERE email = ? AND id <> ? LIMIT 1',
+        [email, id],
+      )
+      if ((emailDup as unknown[]).length > 0) {
+        throw Object.assign(new Error('Another account already uses that email address.'), {
+          status: 409,
+        })
+      }
+
+      if (clubId !== null) {
+        const [clubRows] = await conn.query('SELECT id FROM clubs WHERE id = ? LIMIT 1', [clubId])
+        if (!((clubRows as unknown[])[0])) {
+          throw Object.assign(new Error('Selected club does not exist.'), { status: 404 })
+        }
+      }
+
+      if (hash) {
+        await conn.execute(
+          `UPDATE users
+              SET email = ?, password_hash = ?, display_name = ?, role = ?, club_id = ?, is_active = ?, updated_at = NOW()
+            WHERE id = ?`,
+          [email, hash, displayName, role, clubId, isActive ? 1 : 0, id],
+        )
+      } else {
+        await conn.execute(
+          `UPDATE users
+              SET email = ?, display_name = ?, role = ?, club_id = ?, is_active = ?, updated_at = NOW()
+            WHERE id = ?`,
+          [email, displayName, role, clubId, isActive ? 1 : 0, id],
+        )
+      }
+
+      if (!isActive) {
+        await conn.execute('DELETE FROM sessions WHERE user_id = ?', [id])
+      }
+
+      if (gamertagProvided) {
+        if (!gamertag) {
+          await conn.execute('UPDATE players SET user_id = NULL, updated_at = NOW() WHERE user_id = ?', [id])
+        } else {
+          const key = gamertagKey(gamertag)
+          const [linkedRows] = await conn.query(
+            'SELECT id FROM players WHERE user_id = ? FOR UPDATE',
+            [id],
+          )
+          const linked = (linkedRows as Array<{ id: number }>)[0]
+
+          const [byTagRows] = await conn.query(
+            'SELECT id, user_id FROM players WHERE gamertag_key = ? FOR UPDATE',
+            [key],
+          )
+          const byTag = (byTagRows as Array<{ id: number; user_id: number | null }>)[0]
+
+          if (byTag && byTag.user_id && byTag.user_id !== id) {
+            throw Object.assign(
+              new Error('That gamertag is already linked to another account.'),
+              { status: 409 },
+            )
+          }
+
+          if (linked && (!byTag || byTag.id === linked.id)) {
+            await conn.execute(
+              `UPDATE players
+                  SET gamertag = ?, gamertag_key = ?, slug = ?, updated_at = NOW()
+                WHERE id = ?`,
+              [gamertag, key, clubSlug(gamertag) || key, linked.id],
+            )
+          } else if (byTag) {
+            if (linked) {
+              await conn.execute('UPDATE players SET user_id = NULL, updated_at = NOW() WHERE id = ?', [
+                linked.id,
+              ])
+            }
+            await conn.execute('UPDATE players SET user_id = ?, updated_at = NOW() WHERE id = ?', [
+              id,
+              byTag.id,
+            ])
+          } else {
+            await conn.execute(
+              `INSERT INTO players
+                 (gamertag, gamertag_key, slug, user_id, club_id, is_free_agent, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+              [gamertag, key, clubSlug(gamertag) || key, id, clubId, clubId === null ? 1 : 0],
+            )
+          }
+        }
+      }
+
+      return true
+    })
+
+    if (!found) return res.status(404).json({ error: 'Account not found.' })
+    const user = await queryOne(`${USER_SELECT_SQL} WHERE u.id = ?`, [id])
+    res.json({ user })
+  }),
+)
+
+admin.delete(
+  '/users/:id',
+  handler(async (req, res) => {
+    const id = Number.parseInt(req.params.id, 10)
+    if (!Number.isSafeInteger(id) || id < 1) {
+      return res.status(400).json({ error: 'User id must be a positive integer.' })
+    }
+
+    const deleted = await withTransaction(async (conn) => {
+      const [rows] = await conn.query('SELECT id FROM users WHERE id = ? FOR UPDATE', [id])
+      if (!((rows as unknown[])[0])) return false
+
+      await conn.execute('DELETE FROM sessions WHERE user_id = ?', [id])
+      await conn.execute('DELETE FROM notifications WHERE user_id = ?', [id])
+      await conn.execute('UPDATE players SET user_id = NULL, updated_at = NOW() WHERE user_id = ?', [
+        id,
+      ])
+      await conn.execute('DELETE FROM users WHERE id = ?', [id])
+      return true
+    })
+
+    if (!deleted) return res.status(404).json({ error: 'Account not found.' })
+    res.json({ ok: true, id })
+  }),
+)
+
+const PLAYER_SELECT_SQL = `
+  SELECT p.id, p.gamertag, p.slug, p.club_id, p.is_free_agent, p.user_id, p.created_at,
+         c.name AS club_name, c.slug AS club_slug, c.short_code AS club_code,
+         u.email AS user_email, u.display_name AS user_name
+    FROM players p
+    LEFT JOIN clubs c ON c.id = p.club_id
+    LEFT JOIN users u ON u.id = p.user_id
+`
+
+admin.get(
+  '/players',
+  handler(async (_req, res) => {
+    const players = await queryAll(`${PLAYER_SELECT_SQL} ORDER BY p.gamertag ASC, p.id ASC`)
+    res.json({ players })
+  }),
+)
+
+admin.post(
+  '/players',
+  handler(async (req, res) => {
+    const gamertag = requiredString(req.body?.gamertag, 'Gamertag', 120)
+    const rawClubId = req.body?.clubId
+    const clubId =
+      rawClubId === null || rawClubId === undefined || rawClubId === ''
+        ? null
+        : Number(rawClubId)
+    if (clubId !== null && (!Number.isSafeInteger(clubId) || clubId < 1)) {
+      return res.status(400).json({ error: 'clubId must be a positive integer or null.' })
+    }
+
+    const createdId = await withTransaction(async (conn) => {
+      const key = gamertagKey(gamertag)
+      const [existing] = await conn.query(
+        'SELECT id, gamertag FROM players WHERE gamertag_key = ? LIMIT 1',
+        [key],
+      )
+      const dup = (existing as Array<{ id: number; gamertag: string }>)[0]
+      if (dup) {
+        throw Object.assign(new Error(`${dup.gamertag} is already registered.`), { status: 409 })
+      }
+
+      if (clubId !== null) {
+        const [clubRows] = await conn.query('SELECT id FROM clubs WHERE id = ? LIMIT 1', [clubId])
+        if (!((clubRows as unknown[])[0])) {
+          throw Object.assign(new Error('Selected club does not exist.'), { status: 404 })
+        }
+      }
+
+      let slug = clubSlug(gamertag) || key
+      let suffix = 2
+      while (true) {
+        const [slugRows] = await conn.query('SELECT id FROM players WHERE slug = ? LIMIT 1', [slug])
+        if ((slugRows as unknown[]).length === 0) break
+        slug = `${clubSlug(gamertag) || key}-${suffix++}`
+      }
+
+      const [inserted] = await conn.execute(
+        `INSERT INTO players
+           (gamertag, gamertag_key, slug, club_id, is_free_agent, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, NOW(), NOW())`,
+        [gamertag, key, slug, clubId, clubId === null ? 1 : 0],
+      )
+      return (inserted as any).insertId as number
+    })
+
+    const player = await queryOne(`${PLAYER_SELECT_SQL} WHERE p.id = ?`, [createdId])
+    res.status(201).json({ player })
+  }),
+)
+
+admin.put(
+  '/players/:id',
+  handler(async (req, res) => {
+    const id = Number.parseInt(req.params.id, 10)
+    if (!Number.isSafeInteger(id) || id < 1) {
+      return res.status(400).json({ error: 'Player id must be a positive integer.' })
+    }
+    const gamertag = requiredString(req.body?.gamertag, 'Gamertag', 120)
+    const rawClubId = req.body?.clubId
+    const clubId =
+      rawClubId === null || rawClubId === undefined || rawClubId === ''
+        ? null
+        : Number(rawClubId)
+    if (clubId !== null && (!Number.isSafeInteger(clubId) || clubId < 1)) {
+      return res.status(400).json({ error: 'clubId must be a positive integer or null.' })
+    }
+
+    const found = await withTransaction(async (conn) => {
+      const [rows] = await conn.query('SELECT id, slug FROM players WHERE id = ? FOR UPDATE', [id])
+      const current = (rows as Array<{ id: number; slug: string }>)[0]
+      if (!current) return false
+
+      const key = gamertagKey(gamertag)
+      const [dups] = await conn.query(
+        'SELECT id, gamertag FROM players WHERE gamertag_key = ? AND id <> ? LIMIT 1',
+        [key, id],
+      )
+      const dup = (dups as Array<{ id: number; gamertag: string }>)[0]
+      if (dup) {
+        throw Object.assign(new Error(`${dup.gamertag} is already registered.`), { status: 409 })
+      }
+
+      if (clubId !== null) {
+        const [clubRows] = await conn.query('SELECT id FROM clubs WHERE id = ? LIMIT 1', [clubId])
+        if (!((clubRows as unknown[])[0])) {
+          throw Object.assign(new Error('Selected club does not exist.'), { status: 404 })
+        }
+      }
+
+      let slug = clubSlug(gamertag) || key
+      let suffix = 2
+      while (true) {
+        const [slugRows] = await conn.query(
+          'SELECT id FROM players WHERE slug = ? AND id <> ? LIMIT 1',
+          [slug, id],
+        )
+        if ((slugRows as unknown[]).length === 0) break
+        slug = `${clubSlug(gamertag) || key}-${suffix++}`
+      }
+
+      await conn.execute(
+        `UPDATE players
+            SET gamertag = ?, gamertag_key = ?, slug = ?, club_id = ?, is_free_agent = ?, updated_at = NOW()
+          WHERE id = ?`,
+        [gamertag, key, slug, clubId, clubId === null ? 1 : 0, id],
+      )
+      return true
+    })
+
+    if (!found) return res.status(404).json({ error: 'Player not found.' })
+    const player = await queryOne(`${PLAYER_SELECT_SQL} WHERE p.id = ?`, [id])
+    res.json({ player })
+  }),
+)
+
+admin.delete(
+  '/players/:id',
+  handler(async (req, res) => {
+    const id = Number.parseInt(req.params.id, 10)
+    if (!Number.isSafeInteger(id) || id < 1) {
+      return res.status(400).json({ error: 'Player id must be a positive integer.' })
+    }
+
+    const deleted = await withTransaction(async (conn) => {
+      const [rows] = await conn.query('SELECT id FROM players WHERE id = ? FOR UPDATE', [id])
+      if (!((rows as unknown[])[0])) return false
+
+      await conn.execute('DELETE FROM transfer_requests WHERE player_id = ?', [id])
+      await conn.execute('DELETE FROM transfers WHERE player_id = ?', [id])
+      await conn.execute('DELETE FROM player_season_stats WHERE player_id = ?', [id])
+      await conn.execute('DELETE FROM players WHERE id = ?', [id])
+      return true
+    })
+
+    if (!deleted) return res.status(404).json({ error: 'Player not found.' })
+    res.json({ ok: true, id })
+  }),
+)
+
 

@@ -632,4 +632,94 @@ export const setFeaturedClubs = (slugs: string[]) =>
   request<{ ok: true; featuredSlugs: string[] }>('/api/admin/clubs/featured', {
     method: 'PUT',
     body: JSON.stringify({ slugs }),
-  })
+  })
+
+/* ------------------------------------------- registered managers & players */
+
+export type UserRole = 'player' | 'club_manager' | 'admin' | 'owner'
+
+export interface AdminUser {
+  id: number
+  email: string
+  display_name: string | null
+  role: UserRole
+  club_id: number | null
+  club_name: string | null
+  club_slug: string | null
+  player_id: number | null
+  gamertag: string | null
+  player_slug: string | null
+  is_active: boolean | number
+  created_at: string
+}
+
+export interface AdminUserInput {
+  email: string
+  password?: string
+  displayName?: string | null
+  role: UserRole
+  clubId?: number | null
+  gamertag?: string | null
+  isActive?: boolean
+}
+
+export interface AdminPlayer {
+  id: number
+  gamertag: string
+  slug: string
+  club_id: number | null
+  club_name: string | null
+  club_slug: string | null
+  club_code: string | null
+  is_free_agent: boolean | number
+  user_id: number | null
+  user_email: string | null
+  user_name: string | null
+  created_at: string
+}
+
+export interface AdminPlayerInput {
+  gamertag: string
+  clubId: number | null
+}
+
+export const getAdminUsers = () =>
+  request<{ users: AdminUser[] }>('/api/admin/users').then((r) => r.users)
+
+export const createAdminUser = (input: AdminUserInput) =>
+  request<{ user: AdminUser }>('/api/admin/users', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  }).then((r) => r.user)
+
+export const updateAdminUser = (id: number, input: AdminUserInput) =>
+  request<{ user: AdminUser }>(`/api/admin/users/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  }).then((r) => r.user)
+
+export const deleteAdminUser = (id: number) =>
+  request<{ ok: true; id: number }>(`/api/admin/users/${id}`, {
+    method: 'DELETE',
+  })
+
+export const getAdminPlayers = () =>
+  request<{ players: AdminPlayer[] }>('/api/admin/players').then((r) => r.players)
+
+export const createAdminPlayer = (input: AdminPlayerInput) =>
+  request<{ player: AdminPlayer }>('/api/admin/players', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  }).then((r) => r.player)
+
+export const updateAdminPlayer = (id: number, input: AdminPlayerInput) =>
+  request<{ player: AdminPlayer }>(`/api/admin/players/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  }).then((r) => r.player)
+
+export const deleteAdminPlayer = (id: number) =>
+  request<{ ok: true; id: number }>(`/api/admin/players/${id}`, {
+    method: 'DELETE',
+  })
+
