@@ -2090,29 +2090,34 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   }
 }
 
+.club-directory-select-bar {
+  display: flex;
+  align-items: center;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: rgb(255 255 255 / 1.5%);
+}
 .club-directory-select-all {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  min-height: 36px;
-  padding: 0 11px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--bg);
+  gap: 10px;
+  min-height: 28px;
+  padding: 0 5px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
+  white-space: nowrap;
   cursor: pointer;
   user-select: none;
 }
 .club-directory-select-all:hover {
   color: var(--text);
-  border-color: var(--border-strong);
 }
 .club-directory-select-all input[type="checkbox"],
 .club-directory-checkbox input[type="checkbox"] {
   width: 17px;
   height: 17px;
+  margin: 0;
   accent-color: var(--accent);
   cursor: pointer;
 }

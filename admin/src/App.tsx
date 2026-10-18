@@ -3685,8 +3685,8 @@ function AllClubsDirectory({
           <div className="empty">No clubs match your filter.</div>
         ) : (
           <>
-            <div className="club-directory-select-all">
-              <label className="club-group-select">
+            <div className="club-directory-select-bar">
+              <label className="club-directory-select-all">
                 <input
                   type="checkbox"
                   checked={allFilteredSelected}
