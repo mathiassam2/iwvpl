@@ -576,10 +576,44 @@ export const withdrawResult = (matchId: number) =>
 export const deleteMatch = (matchId: number) =>
   request<{ ok: true; matchId: number }>(`/api/admin/matches/${matchId}`, { method: 'DELETE' })
 
+export interface AdminClubInput {
+  name: string
+  shortCode?: string | null
+  flag?: string | null
+  logoLocal?: string | null
+  logoUrl?: string | null
+  status?: 'active' | 'pending' | 'withdrawn'
+  divisionId?: number | null
+}
+
+export const getAdminClubs = (seasonId?: number) =>
+  request<{ clubs: Club[] }>(
+    `/api/admin/clubs${seasonId == null ? '' : `?seasonId=${seasonId}`}`,
+  ).then((r) => r.clubs)
+
+export const createAdminClub = (input: AdminClubInput) =>
+  request<{ club: Club }>('/api/admin/clubs', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  }).then((r) => r.club)
+
+export const deleteAdminClub = (slug: string) =>
+  request<{ ok: true; id: number; slug: string }>(
+    `/api/admin/clubs/${encodeURIComponent(slug)}`,
+    { method: 'DELETE' },
+  )
+
 /** `shortCode` is camelCase on the wire, and null clears the code. */
 export const updateClub = (
   slug: string,
-  patch: { name?: string; shortCode?: string | null; flag?: string | null; status?: string },
+  patch: {
+    name?: string
+    shortCode?: string | null
+    flag?: string | null
+    logoLocal?: string | null
+    logoUrl?: string | null
+    status?: string
+  },
 ) =>
   request<{ ok: true }>(`/api/admin/clubs/${slug}`, {
     method: 'PATCH',

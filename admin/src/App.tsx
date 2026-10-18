@@ -13,11 +13,13 @@ import {
   ApiError,
   addPlayer,
   assignDivision,
+  createAdminClub,
   createAdminPlayer,
   createAdminRegion,
   createAdminUser,
   createFormat,
   decideClub,
+  deleteAdminClub,
   deleteAdminPlayer,
   deleteAdminRegion,
   deleteAdminUser,
@@ -28,6 +30,7 @@ import {
   createDivision,
   createSeason,
   createMatch,
+  getAdminClubs,
   getAdminPlayers,
   getAdminRegions,
   getAdminUsers,
@@ -75,8 +78,8 @@ import {
   type UserRole,
 } from './api'
 
-type Tab = 'clubs' | 'applications' | 'results' | 'standings' | 'homepage' | 'members'
-type ClubSection = 'clubs' | 'divisions'
+type Tab = 'homepage' | 'members' | 'clubs' | 'applications' | 'results' | 'standings'
+type ClubSection = 'clubs' | 'divisions' | 'directory'
 
 /** Which bulk action is running, so only that button shows its spinner. */
 type BulkAction = 'update'
@@ -155,8 +158,8 @@ function ToastRow({
   )
 }
 
-const ALL_TABS: Tab[] = ['clubs', 'applications', 'results', 'standings', 'homepage', 'members']
-const MOBILE_PRIMARY_TABS: Tab[] = ['clubs', 'applications', 'results', 'standings']
+const ALL_TABS: Tab[] = ['homepage', 'members', 'clubs', 'applications', 'results', 'standings']
+const MOBILE_PRIMARY_TABS: Tab[] = ['homepage', 'members', 'clubs', 'applications']
 const MOBILE_OVERFLOW_TABS: Tab[] = ALL_TABS.filter((t) => !MOBILE_PRIMARY_TABS.includes(t))
 
 export default function App() {
@@ -176,12 +179,14 @@ export default function App() {
       return saved
     }
     if (saved === 'divisions') return 'clubs'
-    return 'results'
+    return 'homepage'
   })
   const [clubSection, setClubSection] = useState<ClubSection>(() => {
     const savedTab = window.localStorage.getItem('iwvpl-admin-tab')
     const savedSection = window.localStorage.getItem('iwvpl-admin-club-section')
-    return savedTab === 'divisions' || savedSection === 'divisions' ? 'divisions' : 'clubs'
+    if (savedTab === 'divisions' || savedSection === 'divisions') return 'divisions'
+    if (savedSection === 'directory') return 'directory'
+    return 'clubs'
   })
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false)
   const mobileMoreRef = useRef<HTMLDivElement>(null)
@@ -2995,6 +3000,479 @@ function SeasonManagement({
   )
 }
 
+const CLUB_REGION_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: '', label: 'Not set' },
+  { value: '🇸🇬', label: '🇸🇬 Singapore' },
+  { value: '🇲🇾', label: '🇲🇾 Malaysia' },
+  { value: '🇮🇩', label: '🇮🇩 Indonesia' },
+  { value: '🇹🇭', label: '🇹🇭 Thailand' },
+  { value: '🇧🇳', label: '🇧🇳 Brunei' },
+  { value: '🇵🇭', label: '🇵🇭 Philippines' },
+  { value: '🇻🇳', label: '🇻🇳 Vietnam' },
+]
+
+async function compressUploadedClubLogo(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(new Error('Could not read uploaded logo file'))
+    reader.onload = () => {
+      const dataUrl = typeof reader.result === 'string' ? reader.result : ''
+      if (!dataUrl) {
+        reject(new Error('Empty logo file'))
+        return
+      }
+      const img = new Image()
+      img.onerror = () => resolve(dataUrl)
+      img.onload = () => {
+        try {
+          const maxDim = 256
+          let width = img.naturalWidth || img.width
+          let height = img.naturalHeight || img.height
+          if (width > maxDim || height > maxDim) {
+            const scale = Math.min(maxDim / width, maxDim / height)
+            width = Math.max(1, Math.round(width * scale))
+            height = Math.max(1, Math.round(height * scale))
+          }
+          const canvas = document.createElement('canvas')
+          canvas.width = width
+          canvas.height = height
+          const ctx = canvas.getContext('2d')
+          if (!ctx) {
+            resolve(dataUrl)
+            return
+          }
+          ctx.clearRect(0, 0, width, height)
+          ctx.drawImage(img, 0, 0, width, height)
+          const webp = canvas.toDataURL('image/webp', 0.9)
+          resolve(webp.startsWith('data:image/webp') ? webp : canvas.toDataURL('image/png'))
+        } catch {
+          resolve(dataUrl)
+        }
+      }
+      img.src = dataUrl
+    }
+    reader.readAsDataURL(file)
+  })
+}
+
+function AllClubsDirectory({
+  guard,
+  report,
+  divisions,
+  onClubsChanged,
+}: {
+  guard: <T>(fn: () => Promise<T>, what: string) => Promise<T>
+  report: (kind: Notice['kind'], text: string) => void
+  divisions: Division[]
+  onClubsChanged: () => Promise<void>
+}) {
+  const [allClubs, setAllClubs] = useState<Club[] | null>(null)
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'pending' | 'withdrawn'>('all')
+  const [editingSlug, setEditingSlug] = useState<string | 'new' | null>(null)
+  const [formName, setFormName] = useState('')
+  const [formCode, setFormCode] = useState('')
+  const [formFlag, setFormFlag] = useState('')
+  const [formStatus, setFormStatus] = useState<'active' | 'pending' | 'withdrawn'>('active')
+  const [formDivisionId, setFormDivisionId] = useState('')
+  const [formLogo, setFormLogo] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [deletingSlug, setDeletingSlug] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    const data = await guard(() => getAdminClubs(), 'Could not load club directory')
+    setAllClubs(data)
+  }, [guard])
+
+  useEffect(() => {
+    load().catch(() => setAllClubs([]))
+  }, [load])
+
+  const assignableDivisions = divisions.filter((d) => Boolean(d.is_active))
+
+  const openEditor = (club: Club | null) => {
+    if (club) {
+      setEditingSlug(club.slug)
+      setFormName(club.name)
+      setFormCode(club.short_code ?? '')
+      setFormFlag(club.flag ?? '')
+      setFormStatus(
+        club.status === 'pending' || club.status === 'withdrawn' ? club.status : 'active',
+      )
+      setFormDivisionId(club.division_id ? String(club.division_id) : '')
+      setFormLogo(club.logo_local ?? club.logo_url ?? null)
+    } else {
+      setEditingSlug('new')
+      setFormName('')
+      setFormCode('')
+      setFormFlag('')
+      setFormStatus('active')
+      setFormDivisionId('')
+      setFormLogo(null)
+    }
+  }
+
+  const handleLogoFile = async (file: File | null) => {
+    if (!file) return
+    try {
+      const compressed = await compressUploadedClubLogo(file)
+      setFormLogo(compressed)
+      report('info', `Loaded logo "${file.name}". Click Save to publish.`)
+    } catch (err) {
+      report('error', err instanceof Error ? err.message : 'Could not read logo image')
+    }
+  }
+
+  const saveClubForm = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (editingSlug === null) return
+    const target = editingSlug
+    const trimmedName = formName.trim()
+    if (!trimmedName) {
+      report('error', 'Club name is required.')
+      return
+    }
+    setBusy(true)
+    try {
+      if (target === 'new') {
+        const created = await guard(
+          () =>
+            createAdminClub({
+              name: trimmedName,
+              shortCode: formCode.trim().toUpperCase() || null,
+              flag: formFlag.trim() || null,
+              status: formStatus,
+              logoLocal: formLogo,
+              logoUrl: formLogo,
+              divisionId: formDivisionId ? Number(formDivisionId) : null,
+            }),
+          'Could not create club',
+        )
+        await load()
+        await onClubsChanged()
+        setEditingSlug(null)
+        report('ok', `${created.name} created.`)
+      } else {
+        const existing = allClubs?.find((c) => c.slug === target)
+        await guard(
+          () =>
+            updateClub(target, {
+              name: trimmedName,
+              shortCode: formCode.trim().toUpperCase() || null,
+              flag: formFlag.trim() || null,
+              status: formStatus,
+              logoLocal: formLogo,
+              logoUrl: formLogo,
+            }),
+          `Could not update ${trimmedName}`,
+        )
+        const prevDiv = existing?.division_id ? String(existing.division_id) : ''
+        if (formDivisionId !== prevDiv && formStatus === 'active') {
+          await guard(
+            () => assignDivision(target, formDivisionId ? Number(formDivisionId) : null),
+            `Could not update league assignment for ${trimmedName}`,
+          )
+        }
+        await load()
+        await onClubsChanged()
+        setEditingSlug(null)
+        report('ok', `${trimmedName} updated.`)
+      }
+    } catch {
+      /* already reported */
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const removeClub = async (club: Club) => {
+    if (
+      deletingSlug !== null ||
+      !window.confirm(
+        `Delete "${club.name}" permanently?\n\nIts players will become free agents and any fixtures or standings rows for this club will be removed.`,
+      )
+    ) {
+      return
+    }
+    setDeletingSlug(club.slug)
+    try {
+      await guard(() => deleteAdminClub(club.slug), `Could not delete ${club.name}`)
+      await load()
+      await onClubsChanged()
+      if (editingSlug === club.slug) setEditingSlug(null)
+      report('ok', `${club.name} deleted.`)
+    } catch {
+      /* already reported */
+    } finally {
+      setDeletingSlug(null)
+    }
+  }
+
+  const filtered = (allClubs ?? []).filter((c) => {
+    if (statusFilter !== 'all' && c.status !== statusFilter) return false
+    const q = search.trim().toLowerCase()
+    if (!q) return true
+    return (
+      c.name.toLowerCase().includes(q) ||
+      (c.short_code ?? '').toLowerCase().includes(q) ||
+      c.slug.toLowerCase().includes(q) ||
+      (c.flag ?? '').toLowerCase().includes(q)
+    )
+  })
+
+  const clubEditorForm = (
+    <form className="division-editor" onSubmit={(event) => void saveClubForm(event)}>
+      <div className="club-crud-logo-row">
+        <div className="club-crud-logo-preview">
+          {formLogo ? (
+            <img src={formLogo} alt="Club crest preview" />
+          ) : (
+            <span>{(formCode || formName || 'CLB').slice(0, 3).toUpperCase()}</span>
+          )}
+        </div>
+        <div className="club-crud-logo-controls">
+          <span className="club-crud-logo-title">Club crest / logo</span>
+          <p className="hint">
+            Upload a PNG, WebP, or JPG crest. It is automatically optimized to 256×256 so it loads fast across tables and fixtures.
+          </p>
+          <div className="club-crud-logo-buttons">
+            <label className="btn sm">
+              Upload logo image
+              <input
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={(event) => {
+                  const file = event.target.files?.[0] ?? null
+                  void handleLogoFile(file)
+                  event.target.value = ''
+                }}
+              />
+            </label>
+            {formLogo && (
+              <button
+                type="button"
+                className="btn sm"
+                onClick={() => setFormLogo(null)}
+              >
+                Remove logo
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="members-form-grid">
+        <label>
+          <span>Club name</span>
+          <input
+            className="text"
+            placeholder="e.g. GARUDA VFC"
+            value={formName}
+            onChange={(event) => setFormName(event.target.value)}
+            maxLength={120}
+            required
+            autoFocus
+          />
+        </label>
+        <label>
+          <span>Short code (3–8 chars)</span>
+          <input
+            className="text"
+            placeholder="e.g. GRD"
+            value={formCode}
+            onChange={(event) => setFormCode(event.target.value.toUpperCase())}
+            maxLength={8}
+          />
+        </label>
+        <label>
+          <span>Region / flag</span>
+          <CustomSelect
+            ariaLabel="Club region flag"
+            value={formFlag}
+            options={CLUB_REGION_OPTIONS}
+            onChange={setFormFlag}
+          />
+        </label>
+        <label>
+          <span>Status</span>
+          <CustomSelect
+            ariaLabel="Club status"
+            value={formStatus}
+            options={[
+              { value: 'active', label: 'Active' },
+              { value: 'pending', label: 'Pending' },
+              { value: 'withdrawn', label: 'Withdrawn' },
+            ]}
+            onChange={(val) => {
+              if (val === 'active' || val === 'pending' || val === 'withdrawn') {
+                setFormStatus(val)
+              }
+            }}
+          />
+        </label>
+        <label>
+          <span>Current season league</span>
+          <CustomSelect
+            ariaLabel="Current season league"
+            value={formDivisionId}
+            disabled={formStatus !== 'active'}
+            options={[
+              { value: '', label: 'Unassigned' },
+              ...assignableDivisions.map((d) => ({ value: String(d.id), label: d.name })),
+            ]}
+            onChange={setFormDivisionId}
+          />
+        </label>
+      </div>
+
+      <div className="division-editor-actions">
+        <button
+          className="btn"
+          type="button"
+          disabled={busy}
+          onClick={() => setEditingSlug(null)}
+        >
+          Cancel
+        </button>
+        <button className="btn primary" type="submit" disabled={busy}>
+          {busy ? 'Saving…' : editingSlug === 'new' ? 'Create club' : 'Save changes'}
+        </button>
+      </div>
+    </form>
+  )
+
+  return (
+    <div className="division-management">
+      <div className="card">
+        <header>
+          <div>
+            <h2>All clubs directory</h2>
+            <p className="hint">
+              Create, edit, upload club logos, or delete clubs across the entire database ({filtered.length} of {allClubs?.length ?? 0} shown).
+            </p>
+          </div>
+          <button
+            className="btn primary sm"
+            type="button"
+            disabled={editingSlug !== null}
+            onClick={() => openEditor(null)}
+          >
+            <span aria-hidden="true">＋</span> Add club
+          </button>
+        </header>
+
+        {editingSlug === 'new' && clubEditorForm}
+
+        <div className="members-toolbar">
+          <input
+            className="text"
+            type="search"
+            placeholder="Search clubs by name, short code, or slug…"
+            aria-label="Search clubs"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+          <div className="members-filter-select">
+            <CustomSelect
+              ariaLabel="Filter clubs by status"
+              value={statusFilter}
+              options={[
+                { value: 'all', label: 'All statuses' },
+                { value: 'active', label: 'Active only' },
+                { value: 'pending', label: 'Pending only' },
+                { value: 'withdrawn', label: 'Withdrawn only' },
+              ]}
+              onChange={(val) => {
+                if (val === 'all' || val === 'active' || val === 'pending' || val === 'withdrawn') {
+                  setStatusFilter(val)
+                }
+              }}
+            />
+          </div>
+        </div>
+
+        {allClubs === null ? (
+          <div className="loading">Loading clubs…</div>
+        ) : filtered.length === 0 ? (
+          <div className="empty">No clubs match your filter.</div>
+        ) : (
+          <div className="division-admin-list">
+            {filtered.map((c) => {
+              const divName = divisions.find((d) => d.id === c.division_id)?.name
+              const logoSrc = c.logo_local || c.logo_url
+              return (
+                <article
+                  key={c.slug}
+                  className={`division-admin-item${c.status !== 'active' ? ' is-inactive' : ''}`}
+                >
+                  {editingSlug === c.slug ? (
+                    clubEditorForm
+                  ) : (
+                    <div className="division-admin-heading members-row">
+                      <div className="division-admin-title">
+                        <div className="club-crud-avatar">
+                          {logoSrc ? (
+                            <img src={logoSrc} alt="" />
+                          ) : (
+                            <span>{(c.short_code || c.name).slice(0, 3).toUpperCase()}</span>
+                          )}
+                        </div>
+                        <div>
+                          <h3>
+                            {c.flag && <span className="flag">{c.flag}</span>}
+                            {c.name}
+                            {c.short_code && (
+                              <span className="format-tag-badge">{c.short_code}</span>
+                            )}
+                            <span
+                              className={`format-status-badge ${
+                                c.status === 'active'
+                                  ? 'status-active'
+                                  : c.status === 'pending'
+                                    ? 'status-coming_soon'
+                                    : 'status-inactive'
+                              }`}
+                            >
+                              {c.status}
+                            </span>
+                          </h3>
+                          <span className="hint">
+                            {divName ? `League: ${divName}` : 'Unassigned'} · {c.players}{' '}
+                            {c.players === 1 ? 'player' : 'players'} · Slug: <code>{c.slug}</code>
+                          </span>
+                        </div>
+                      </div>
+                      <div className="division-admin-actions">
+                        <button
+                          className="btn sm"
+                          type="button"
+                          disabled={editingSlug !== null}
+                          onClick={() => openEditor(c)}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="btn sm danger"
+                          type="button"
+                          disabled={deletingSlug === c.slug || editingSlug !== null}
+                          onClick={() => void removeClub(c)}
+                        >
+                          {deletingSlug === c.slug ? 'Deleting…' : 'Delete'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </article>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function Clubs({
   guard,
   report,
@@ -3013,8 +3491,10 @@ function Clubs({
   const [lastRollover, setLastRollover] = useState<RolloverRecord | null>(null)
   const [seasons, setSeasons] = useState<AdminSeason[]>([])
   const [seasonId, setSeasonId] = useState('')
+  const [names, setNames] = useState<Record<string, string>>({})
   const [codes, setCodes] = useState<Record<string, string>>({})
   const [flags, setFlags] = useState<Record<string, string>>({})
+  const [logos, setLogos] = useState<Record<string, string | null>>({})
   const [statuses, setStatuses] = useState<Record<string, string>>({})
   const [divisions, setDivisions] = useState<Division[]>([])
   const [divisionOf, setDivisionOf] = useState<Record<string, string>>({})
@@ -3064,8 +3544,10 @@ function Clubs({
     setClubs(data)
     setStandings(currentStandings)
     setLastRollover(rollover)
+    setNames(Object.fromEntries(data.map((c) => [c.slug, c.name])))
     setCodes(Object.fromEntries(data.map((c) => [c.slug, c.short_code ?? ''])))
     setFlags(Object.fromEntries(data.map((c) => [c.slug, c.flag ?? ''])))
+    setLogos(Object.fromEntries(data.map((c) => [c.slug, c.logo_local ?? c.logo_url ?? null])))
     setStatuses(Object.fromEntries(data.map((c) => [c.slug, c.status])))
     setDivisions(currentDivisions)
     setDivisionOf(
@@ -3142,17 +3624,26 @@ function Clubs({
 
   const save = async (c: Club) => {
     if (readOnly) return
+    const nextName = (names[c.slug] ?? c.name).trim()
+    if (!nextName) {
+      report('error', 'Club name is required.')
+      return
+    }
     setBusy(c.slug)
     try {
       const nextFlag = (flags[c.slug] ?? '').trim() || null
+      const nextLogo = logos[c.slug] !== undefined ? logos[c.slug] : c.logo_local
       await guard(
         () =>
           updateClub(c.slug, {
+            name: nextName,
             shortCode: codes[c.slug] || null,
             flag: nextFlag,
+            logoLocal: nextLogo,
+            logoUrl: nextLogo,
             status: statuses[c.slug],
           }),
-        `Could not save ${c.name}`,
+        `Could not save ${nextName}`,
       )
       const chosen = divisionOf[c.slug] ?? ''
       setClubs((current) =>
@@ -3160,8 +3651,11 @@ function Clubs({
           club.slug === c.slug
             ? {
                 ...club,
+                name: nextName,
                 short_code: codes[c.slug] || null,
                 flag: nextFlag,
+                logo_local: nextLogo,
+                logo_url: nextLogo,
                 status: statuses[c.slug],
               }
             : club,
@@ -3181,8 +3675,8 @@ function Clubs({
         const res = await guard(
           () => assignDivision(c.slug, target),
           target === null
-            ? `Could not remove ${c.name} from its league`
-            : `Could not assign ${c.name} to the division`,
+            ? `Could not remove ${nextName} from its league`
+            : `Could not assign ${nextName} to the division`,
         )
         setClubs((current) =>
           current?.map((club) =>
@@ -3197,11 +3691,11 @@ function Clubs({
         report(
           'ok',
           res.divisionName
-            ? `Saved ${c.name} and entered it into ${res.divisionName}.`
-            : `Saved ${c.name} and removed it from its league. It is now unassigned.`,
+            ? `Saved ${nextName} and entered it into ${res.divisionName}.`
+            : `Saved ${nextName} and removed it from its league. It is now unassigned.`,
         )
       } else {
-        report('ok', `Saved ${c.name}.`)
+        report('ok', `Saved ${nextName}.`)
       }
 
       setEditing(null)
@@ -3213,8 +3707,10 @@ function Clubs({
   }
 
   const edit = (c: Club) => {
+    setNames((s) => ({ ...s, [c.slug]: c.name }))
     setCodes((s) => ({ ...s, [c.slug]: c.short_code ?? '' }))
     setFlags((s) => ({ ...s, [c.slug]: c.flag ?? '' }))
+    setLogos((s) => ({ ...s, [c.slug]: c.logo_local ?? c.logo_url ?? null }))
     setStatuses((s) => ({ ...s, [c.slug]: c.status }))
     setDivisionOf((s) => ({ ...s, [c.slug]: c.division_id ? String(c.division_id) : '' }))
     setNewPlayer((s) => ({ ...s, [c.slug]: '' }))
@@ -3222,8 +3718,10 @@ function Clubs({
   }
 
   const cancelEdit = (c: Club) => {
+    setNames((s) => ({ ...s, [c.slug]: c.name }))
     setCodes((s) => ({ ...s, [c.slug]: c.short_code ?? '' }))
     setFlags((s) => ({ ...s, [c.slug]: c.flag ?? '' }))
+    setLogos((s) => ({ ...s, [c.slug]: c.logo_local ?? c.logo_url ?? null }))
     setStatuses((s) => ({ ...s, [c.slug]: c.status }))
     setDivisionOf((s) => ({ ...s, [c.slug]: c.division_id ? String(c.division_id) : '' }))
     setNewPlayer((s) => ({ ...s, [c.slug]: '' }))
@@ -3566,12 +4064,26 @@ function Clubs({
         >
           Divisions
         </button>
+        <button
+          role="tab"
+          aria-selected={section === 'directory'}
+          onClick={() => setSection('directory')}
+        >
+          All clubs (CRUD)
+        </button>
       </div>
       {section === 'divisions' ? (
         <Divisions
           guard={guard}
           report={report}
           onDivisionsChanged={(nextDivisions) => setDivisions(nextDivisions)}
+        />
+      ) : section === 'directory' ? (
+        <AllClubsDirectory
+          guard={guard}
+          report={report}
+          divisions={divisions}
+          onClubsChanged={refresh}
         />
       ) : (
         <>
@@ -3908,11 +4420,13 @@ function Clubs({
               >
             <header>
               <div className="club-edit-heading">
-                {activeClub.logo_local && <img src={activeClub.logo_local} alt="" />}
+                {(logos[activeClub.slug] ?? activeClub.logo_local) && (
+                  <img src={logos[activeClub.slug] ?? activeClub.logo_local ?? ''} alt="" />
+                )}
                 <div>
                   <p className="eyebrow">CLUB MANAGEMENT</p>
                   <h2 id="club-edit-title">Edit {activeClub.name}</h2>
-                  <p className="club-edit-subtitle">Update details and manage the squad.</p>
+                  <p className="club-edit-subtitle">Update details, logo, and manage the squad.</p>
                 </div>
               </div>
               <button
@@ -3925,19 +4439,91 @@ function Clubs({
               </button>
             </header>
             <div className="club-edit-content">
+              <div className="club-crud-logo-row">
+                <div className="club-crud-logo-preview">
+                  {logos[activeClub.slug] ? (
+                    <img src={logos[activeClub.slug] ?? ''} alt={`${activeClub.name} crest`} />
+                  ) : (
+                    <span>
+                      {(codes[activeClub.slug] || names[activeClub.slug] || activeClub.name)
+                        .slice(0, 3)
+                        .toUpperCase()}
+                    </span>
+                  )}
+                </div>
+                <div className="club-crud-logo-controls">
+                  <span className="club-crud-logo-title">Club crest / logo</span>
+                  <div className="club-crud-logo-buttons">
+                    <label className="btn sm">
+                      Upload logo
+                      <input
+                        type="file"
+                        accept="image/*"
+                        style={{ display: 'none' }}
+                        onChange={(event) => {
+                          const file = event.target.files?.[0] ?? null
+                          if (file) {
+                            compressUploadedClubLogo(file)
+                              .then((dataUrl) => {
+                                setLogos((current) => ({
+                                  ...current,
+                                  [activeClub.slug]: dataUrl,
+                                }))
+                                report('info', `Loaded logo "${file.name}". Click Save changes to publish.`)
+                              })
+                              .catch((err) => {
+                                report('error', err instanceof Error ? err.message : 'Could not read logo')
+                              })
+                          }
+                          event.target.value = ''
+                        }}
+                      />
+                    </label>
+                    {logos[activeClub.slug] && (
+                      <button
+                        type="button"
+                        className="btn sm"
+                        onClick={() =>
+                          setLogos((current) => ({
+                            ...current,
+                            [activeClub.slug]: null,
+                          }))
+                        }
+                      >
+                        Remove logo
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
               <div className="club-edit-fields">
+                <label>
+                  <span>Club name</span>
+                  <input
+                    className="text"
+                    maxLength={120}
+                    required
+                    aria-label={`Club name for ${activeClub.name}`}
+                    value={names[activeClub.slug] ?? activeClub.name}
+                    onChange={(event) =>
+                      setNames((current) => ({
+                        ...current,
+                        [activeClub.slug]: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
                 <label>
                   <span>Short code</span>
                   <input
                     className="text"
-                    maxLength={12}
-                    autoFocus
+                    maxLength={8}
                     aria-label={`Short code for ${activeClub.name}`}
                     value={codes[activeClub.slug] ?? ''}
                     onChange={(event) =>
                       setCodes((current) => ({
                         ...current,
-                        [activeClub.slug]: event.target.value,
+                        [activeClub.slug]: event.target.value.toUpperCase(),
                       }))
                     }
                   />
@@ -3953,16 +4539,7 @@ function Clubs({
                         [activeClub.slug]: value,
                       }))
                     }
-                    options={[
-                      { value: '', label: 'Not set' },
-                      { value: '🇸🇬', label: '🇸🇬 Singapore' },
-                      { value: '🇲🇾', label: '🇲🇾 Malaysia' },
-                      { value: '🇮🇩', label: '🇮🇩 Indonesia' },
-                      { value: '🇹🇭', label: '🇹🇭 Thailand' },
-                      { value: '🇧🇳', label: '🇧🇳 Brunei' },
-                      { value: '🇵🇭', label: '🇵🇭 Philippines' },
-                      { value: '🇻🇳', label: '🇻🇳 Vietnam' },
-                    ]}
+                    options={CLUB_REGION_OPTIONS}
                   />
                 </label>
                 <label>

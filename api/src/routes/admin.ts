@@ -763,6 +763,137 @@ admin.post(
 
 /* ----------------------------------------------------------------- clubs */
 
+admin.get(
+  '/clubs',
+  handler(async (req, res) => {
+    const requestedSeasonId = req.query.seasonId
+    let seasonId: number | null = null
+    if (requestedSeasonId !== undefined) {
+      seasonId = Number(requestedSeasonId)
+      if (!Number.isSafeInteger(seasonId) || seasonId < 1) {
+        return res.status(400).json({ error: 'seasonId must be a positive integer.' })
+      }
+    }
+
+    const clubs = await queryAll(
+      `SELECT c.id, c.name, c.slug, c.short_code, c.flag, c.logo_url, c.logo_local, c.status,
+              c.is_featured,
+              (SELECT COUNT(*) FROM players p WHERE p.club_id = c.id) AS players,
+              (SELECT dc.division_id FROM division_clubs dc
+                JOIN divisions d ON d.id = dc.division_id
+                WHERE dc.club_id = c.id
+                  AND (? IS NULL OR d.season_id = ?)
+                  AND (? IS NOT NULL OR d.season_id = (
+                    SELECT id FROM seasons WHERE is_current = TRUE LIMIT 1
+                  ))
+                ORDER BY dc.id DESC LIMIT 1) AS division_id
+         FROM clubs c
+        ORDER BY c.name`,
+      [seasonId, seasonId, seasonId],
+    )
+    res.json({ clubs })
+  }),
+)
+
+admin.post(
+  '/clubs',
+  handler(async (req, res) => {
+    const name = requiredString(req.body?.name, 'Club name', 120)
+    const shortCode = optionalString(req.body?.shortCode, 8)
+    const flag = optionalString(req.body?.flag, 16)
+    const logoLocal = optionalString(req.body?.logoLocal ?? req.body?.logo_local, 6_000_000)
+    const logoUrl = optionalString(req.body?.logoUrl ?? req.body?.logo_url, 6_000_000)
+    const rawStatus = req.body?.status !== undefined ? String(req.body.status).trim() : 'active'
+    if (!['active', 'pending', 'withdrawn'].includes(rawStatus)) {
+      return res.status(400).json({ error: 'status must be active, pending or withdrawn.' })
+    }
+    const rawDivisionId = req.body?.divisionId
+    const divisionId =
+      rawDivisionId === null || rawDivisionId === undefined || rawDivisionId === ''
+        ? null
+        : Number(rawDivisionId)
+    if (divisionId !== null && (!Number.isSafeInteger(divisionId) || divisionId < 1)) {
+      return res.status(400).json({ error: 'divisionId must be a positive integer or null.' })
+    }
+
+    const created = await withTransaction(async (conn) => {
+      const [dupName] = await conn.query(
+        'SELECT id FROM clubs WHERE LOWER(name) = LOWER(?) LIMIT 1',
+        [name],
+      )
+      if ((dupName as unknown[]).length > 0) {
+        return { error: 'A club with that name already exists.' as const, status: 409 }
+      }
+
+      const baseSlug = clubSlug(name) || 'club'
+      let slug = baseSlug
+      let suffix = 2
+      while (true) {
+        const [slugRows] = await conn.query('SELECT id FROM clubs WHERE slug = ? LIMIT 1', [slug])
+        if ((slugRows as unknown[]).length === 0) break
+        slug = `${baseSlug}-${suffix++}`
+      }
+
+      let targetDivision: (SeasonDivision & { is_active: number }) | null = null
+      if (divisionId !== null) {
+        const [divRows] = await conn.query(
+          `SELECT d.id, d.name, d.season_id, d.sort_order, d.promotion_count, d.relegation_count,
+                  d.is_active
+             FROM divisions d
+             JOIN seasons s ON s.id = d.season_id AND s.is_current = TRUE
+            WHERE d.id = ? FOR UPDATE`,
+          [divisionId],
+        )
+        targetDivision = (divRows as Array<SeasonDivision & { is_active: number }>)[0] ?? null
+        if (!targetDivision) {
+          return { error: 'Selected division was not found in the current season.' as const, status: 404 }
+        }
+        if (!targetDivision.is_active) {
+          return {
+            error: `${targetDivision.name} is paused. Switch it back on before adding a club to it.` as const,
+            status: 400,
+          }
+        }
+      }
+
+      const [inserted] = await conn.execute(
+        `INSERT INTO clubs
+           (name, slug, short_code, flag, logo_url, logo_local, status, is_featured, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, TRUE, NOW(), NOW())`,
+        [name, slug, shortCode, flag, logoUrl ?? logoLocal, logoLocal ?? logoUrl, rawStatus],
+      )
+      const clubId = (inserted as any).insertId as number
+
+      if (targetDivision) {
+        await applyDivisionMove(conn, {
+          clubId,
+          destination: targetDivision,
+          movementType: 'transfer',
+        })
+      }
+
+      return { id: clubId, slug }
+    })
+
+    if ('error' in created) return res.status(created.status).json({ error: created.error })
+
+    const club = await queryOne(
+      `SELECT c.id, c.name, c.slug, c.short_code, c.flag, c.logo_url, c.logo_local, c.status,
+              c.is_featured,
+              (SELECT COUNT(*) FROM players p WHERE p.club_id = c.id) AS players,
+              (SELECT dc.division_id FROM division_clubs dc
+                JOIN divisions d ON d.id = dc.division_id
+                WHERE dc.club_id = c.id
+                  AND d.season_id = (SELECT id FROM seasons WHERE is_current = TRUE LIMIT 1)
+                ORDER BY dc.id DESC LIMIT 1) AS division_id
+         FROM clubs c
+        WHERE c.id = ?`,
+      [created.id],
+    )
+    res.status(201).json({ club })
+  }),
+)
+
 admin.patch(
   '/clubs/:slug',
   handler(async (req, res) => {
@@ -784,11 +915,11 @@ admin.patch(
     }
     if ('logoUrl' in req.body) {
       fields.push('logo_url = ?')
-      values.push(optionalString(req.body.logoUrl, 512))
+      values.push(optionalString(req.body.logoUrl, 6_000_000))
     }
     if ('logoLocal' in req.body) {
       fields.push('logo_local = ?')
-      values.push(optionalString(req.body.logoLocal, 512))
+      values.push(optionalString(req.body.logoLocal, 6_000_000))
     }
     if ('status' in req.body) {
       const status = requiredString(req.body.status, 'status', 32)
@@ -813,6 +944,83 @@ admin.patch(
       return res.status(404).json({ error: 'Club not found.' })
     }
     res.json({ ok: true, slug })
+  }),
+)
+
+admin.delete(
+  '/clubs/:slug',
+  handler(async (req, res) => {
+    const slug = requiredString(req.params.slug, 'slug', 140)
+
+    const result = await withTransaction(async (conn) => {
+      const [clubRows] = await conn.query(
+        'SELECT id, name FROM clubs WHERE slug = ? FOR UPDATE',
+        [slug],
+      )
+      const club = (clubRows as Array<{ id: number; name: string }>)[0]
+      if (!club) return { error: 'Club not found.' as const, status: 404 }
+
+      const [matchRows] = await conn.query(
+        `SELECT id, season_id, division_id, home_club_id, away_club_id, home_score, away_score
+           FROM matches
+          WHERE home_club_id = ? OR away_club_id = ?
+            FOR UPDATE`,
+        [club.id, club.id],
+      )
+      const clubMatches = matchRows as Array<{
+        id: number
+        season_id: number
+        division_id: number
+        home_club_id: number
+        away_club_id: number
+        home_score: number | null
+        away_score: number | null
+      }>
+
+      for (const match of clubMatches) {
+        if (match.home_score !== null && match.away_score !== null) {
+          await clearResult(
+            conn,
+            { seasonId: match.season_id, divisionId: match.division_id },
+            {
+              homeClubId: match.home_club_id,
+              awayClubId: match.away_club_id,
+              homeScore: match.home_score,
+              awayScore: match.away_score,
+            },
+          )
+        }
+      }
+
+      if (clubMatches.length > 0) {
+        const matchIds = clubMatches.map((m) => m.id)
+        await conn.query('DELETE FROM match_events WHERE match_id IN (?)', [matchIds])
+        await conn.query('DELETE FROM match_stats WHERE match_id IN (?)', [matchIds])
+        await conn.query('DELETE FROM matches WHERE id IN (?)', [matchIds])
+      }
+
+      await conn.execute('UPDATE users SET club_id = NULL, updated_at = NOW() WHERE club_id = ?', [
+        club.id,
+      ])
+      await conn.execute(
+        'UPDATE players SET club_id = NULL, is_free_agent = TRUE, updated_at = NOW() WHERE club_id = ?',
+        [club.id],
+      )
+      await conn.execute('UPDATE transfers SET from_club_id = NULL WHERE from_club_id = ?', [
+        club.id,
+      ])
+      await conn.execute('UPDATE transfers SET to_club_id = NULL WHERE to_club_id = ?', [club.id])
+      await conn.execute('DELETE FROM transfer_requests WHERE club_id = ?', [club.id])
+      await conn.execute('DELETE FROM season_division_movements WHERE club_id = ?', [club.id])
+      await conn.execute('DELETE FROM standings_snapshot WHERE club_id = ?', [club.id])
+      await conn.execute('DELETE FROM division_clubs WHERE club_id = ?', [club.id])
+      await conn.execute('DELETE FROM clubs WHERE id = ?', [club.id])
+
+      return { ok: true as const, id: club.id, slug }
+    })
+
+    if ('error' in result) return res.status(result.status).json({ error: result.error })
+    res.json(result)
   }),
 )
 
