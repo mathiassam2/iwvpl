@@ -4226,9 +4226,18 @@ function HomepageSettings({
   guard: <T>(fn: () => Promise<T>, what: string) => Promise<T>
   report: (kind: Notice['kind'], text: string) => void
 }) {
+  const [subview, setSubview] = useState<'flags' | 'formats' | 'clubs'>(() => {
+    const saved = window.localStorage.getItem('iwvpl-admin-homepage-subview')
+    if (saved === 'flags' || saved === 'formats' || saved === 'clubs') return saved
+    return 'flags'
+  })
   const [formats, setFormats] = useState<CompetitionFormat[] | null>(null)
   const [clubs, setClubs] = useState<Club[] | null>(null)
   const [regions, setRegions] = useState<HomepageRegion[] | null>(null)
+
+  useEffect(() => {
+    window.localStorage.setItem('iwvpl-admin-homepage-subview', subview)
+  }, [subview])
 
   const [editingFormat, setEditingFormat] = useState<number | 'new' | null>(null)
   const [formatName, setFormatName] = useState('')
@@ -4954,367 +4963,397 @@ function HomepageSettings({
 
   return (
     <div className="division-management homepage-management">
-      <div className="card">
-        <header>
-          <div>
-            <h2>Horizontal flags &amp; regional clubs (&ldquo;The Island&rdquo;)</h2>
-            <p className="hint">
-              Upload flag artwork and manage the horizontal region panels on the main website. Registered clubs are automatically assigned to their matching flag based on their registered region.
-            </p>
-          </div>
-          <button
-            className="btn primary sm"
-            type="button"
-            onClick={() => openRegionEditor(null)}
-            disabled={editingRegion !== null || regionReordering}
-          >
-            <span aria-hidden="true">＋</span> Add region flag
-          </button>
-        </header>
+      <div className="club-subnav" role="tablist" aria-label="Homepage sections">
+        <button
+          role="tab"
+          aria-selected={subview === 'flags'}
+          onClick={() => setSubview('flags')}
+        >
+          Regional flags <span>{regions?.length ?? 0}</span>
+        </button>
+        <button
+          role="tab"
+          aria-selected={subview === 'formats'}
+          onClick={() => setSubview('formats')}
+        >
+          Ways to compete <span>{formats?.length ?? 0}</span>
+        </button>
+        <button
+          role="tab"
+          aria-selected={subview === 'clubs'}
+          onClick={() => setSubview('clubs')}
+        >
+          Featured clubs <span>{featuredSlugs.size}</span>
+        </button>
+      </div>
 
-        {editingRegion === 'new' && regionForm}
-
-        {regions === null ? (
-          <div className="loading">Loading region flag panels…</div>
-        ) : regions.length === 0 && editingRegion !== 'new' ? (
-          <p className="empty">No region flag panels configured yet. Add one to display on the homepage.</p>
-        ) : (
-          <div className="division-admin-list">
-            {regions.map((region, index) => {
-              const matchedClubs = activeClubs.filter((c) => clubMatchesRegionAdmin(c, region))
-              return (
-                <article
-                  className={`division-admin-item region-admin-item${region.is_active ? '' : ' is-inactive'}`}
-                  key={region.id}
-                >
-                  {editingRegion === region.id ? (
-                    regionForm
-                  ) : (
-                    <>
-                      <div className="division-admin-heading homepage-format-row">
-                        <div className="division-admin-title region-admin-title">
-                          <span className="division-admin-rank" aria-label={`Panel ${index + 1}`}>
-                            {String(index + 1).padStart(2, '0')}
-                          </span>
-                          <div className="region-admin-art-preview">
-                            <img src={region.art_url} alt={`${region.name} flag`} />
-                          </div>
-                          <div>
-                            <h3>
-                              <span>{region.flag}</span> {region.name}
-                              <span className="format-status-badge status-active">{region.iso}</span>
-                              {!region.is_active && (
-                                <span className="division-inactive-badge">Hidden</span>
-                              )}
-                            </h3>
-                            <span className="hint">
-                              Auto-assigned: <strong>{matchedClubs.length}</strong>{' '}
-                              {matchedClubs.length === 1 ? 'registered club' : 'registered clubs'} in{' '}
-                              {region.name}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="division-admin-actions homepage-format-actions">
-                          <div className="division-reorder-controls" aria-label={`Reorder ${region.name}`}>
-                            <button
-                              className="icon-btn"
-                              type="button"
-                              aria-label={`Move ${region.name} left`}
-                              title="Move earlier"
-                              disabled={index === 0 || editingRegion !== null || regionReordering}
-                              onClick={() => void moveRegion(index, -1)}
-                            >
-                              ↑
-                            </button>
-                            <button
-                              className="icon-btn"
-                              type="button"
-                              aria-label={`Move ${region.name} right`}
-                              title="Move later"
-                              disabled={
-                                index === regions.length - 1 ||
-                                editingRegion !== null ||
-                                regionReordering
-                              }
-                              onClick={() => void moveRegion(index, 1)}
-                            >
-                              ↓
-                            </button>
-                          </div>
-                          <button
-                            className="btn sm"
-                            type="button"
-                            disabled={regionTogglingId === region.id || editingRegion !== null}
-                            onClick={() => void toggleRegionActive(region)}
-                          >
-                            {region.is_active ? 'Hide' : 'Show'}
-                          </button>
-                          <button
-                            className="btn sm"
-                            type="button"
-                            disabled={editingRegion !== null}
-                            onClick={() => openRegionEditor(region)}
-                          >
-                            Edit / Upload flag
-                          </button>
-                          <button
-                            className="btn sm danger"
-                            type="button"
-                            disabled={regionDeletingId === region.id || editingRegion !== null}
-                            onClick={() => void removeRegionItem(region)}
-                          >
-                            {regionDeletingId === region.id ? 'Removing…' : 'Remove'}
-                          </button>
-                        </div>
-                      </div>
-
-                      {matchedClubs.length > 0 && (
-                        <div className="region-assigned-clubs" aria-label={`Clubs in ${region.name}`}>
-                          {matchedClubs.map((c) => (
-                            <span className="region-club-pill" key={c.slug}>
-                              {c.logo_local && <img src={c.logo_local} alt="" />}
-                              <span>{c.name}</span>
-                              {c.short_code && <code>{c.short_code}</code>}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </>
-                  )}
-                </article>
-              )
-            })}
-          </div>
-        )}
-
-        <details className="region-assignment-Override">
-          <summary>
-            Manage club region assignments ({activeClubs.filter((c) => Boolean(c.flag)).length} of{' '}
-            {activeClubs.length} active clubs have a region set)
-          </summary>
-          <p className="hint" style={{ marginTop: 8, marginBottom: 12 }}>
-            New clubs are automatically assigned a region when their manager registers. You can also assign or update any club&rsquo;s region below so it appears under the right flag panel.
-          </p>
-          <div className="region-club-assign-grid">
-            {activeClubs.map((club) => (
-              <div className="region-club-assign-row" key={club.slug}>
-                <div className="club">
-                  {club.logo_local && <img src={club.logo_local} alt="" />}
-                  <span className="name">{club.name}</span>
-                </div>
-                <CustomSelect
-                  ariaLabel={`Region for ${club.name}`}
-                  value={club.flag ?? ''}
-                  disabled={assigningClubSlug === club.slug}
-                  options={[
-                    { value: '', label: 'Unassigned' },
-                    ...(regions ?? []).map((r) => ({
-                      value: r.flag,
-                      label: `${r.flag} ${r.name}`,
-                    })),
-                    ...REGION_PRESETS.filter(
-                      (p) => !(regions ?? []).some((r) => r.flag === p.flag),
-                    ).map((p) => ({
-                      value: p.flag,
-                      label: `${p.flag} ${p.name}`,
-                    })),
-                  ]}
-                  onChange={(value) => void quickAssignClubRegion(club, value)}
-                />
-              </div>
-            ))}
-          </div>
-        </details>
-
-        {renderOneToOneRailPreview(false)}
-
-        {previewExpanded && (
-          <div
-            className="squad-modal-backdrop rail-preview-modal-backdrop"
-            onMouseDown={(event) => {
-              if (event.target === event.currentTarget) setPreviewExpanded(false)
-            }}
-          >
-            <div className="rail-preview-modal" role="dialog" aria-modal="true" aria-label="1:1 Main Website Flag Rail Preview">
-              {renderOneToOneRailPreview(true)}
+      {subview === 'flags' && (
+        <div className="card">
+          <header>
+            <div>
+              <h2>Horizontal flags &amp; regional clubs (&ldquo;The Island&rdquo;)</h2>
+              <p className="hint">
+                Upload flag artwork and manage the horizontal region panels on the main website. Registered clubs are automatically assigned to their matching flag based on their registered region.
+              </p>
             </div>
-          </div>
-        )}
-      </div>
-
-      <div className="card">
-        <header>
-          <div>
-            <h2>Ways to compete</h2>
-            <p className="hint">
-              Control the competition formats section on the main page — add, remove, or set each format to Active, Coming Soon, or Inactive.
-            </p>
-          </div>
-          <button
-            className="btn primary sm"
-            type="button"
-            onClick={() => openFormatEditor(null)}
-            disabled={editingFormat !== null}
-          >
-            <span aria-hidden="true">＋</span> Add format
-          </button>
-        </header>
-
-        {editingFormat === 'new' && formatForm}
-
-        {formats === null ? (
-          <div className="loading">Loading competition formats…</div>
-        ) : formats.length === 0 && editingFormat !== 'new' ? (
-          <p className="empty">No competition formats configured yet. Add one to display on the homepage.</p>
-        ) : (
-          <div className="division-admin-list">
-            {formats.map((format, index) => (
-              <article
-                className={`division-admin-item${format.status === 'inactive' ? ' is-inactive' : ''}`}
-                key={format.id}
-              >
-                {editingFormat === format.id ? (
-                  formatForm
-                ) : (
-                  <div className="division-admin-heading homepage-format-row">
-                    <div className="division-admin-title">
-                      <span className="division-admin-rank" aria-label={`Format ${index + 1}`}>
-                        {String(index + 1).padStart(2, '0')}
-                      </span>
-                      <div>
-                        <h3>
-                          {format.name}
-                          <span className={`format-status-badge status-${format.status}`}>
-                            {format.status === 'active'
-                              ? format.tag || 'Active'
-                              : format.status === 'coming_soon'
-                                ? 'Coming Soon'
-                                : 'Inactive'}
-                          </span>
-                        </h3>
-                        {format.description && (
-                          <span className="hint">{format.description}</span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="division-admin-actions homepage-format-actions">
-                      <div className="homepage-status-select">
-                        <CustomSelect
-                          ariaLabel={`Status for ${format.name}`}
-                          value={format.status}
-                          disabled={statusBusyId === format.id || editingFormat !== null}
-                          options={FORMAT_STATUS_OPTIONS}
-                          onChange={(value) =>
-                            void changeFormatStatus(format, value as FormatStatus)
-                          }
-                        />
-                      </div>
-                      <button
-                        className="btn sm"
-                        type="button"
-                        disabled={editingFormat !== null}
-                        onClick={() => openFormatEditor(format)}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        className="btn sm danger"
-                        type="button"
-                        disabled={deleteBusyId === format.id || editingFormat !== null}
-                        onClick={() => void removeFormatItem(format)}
-                      >
-                        {deleteBusyId === format.id ? 'Removing…' : 'Remove'}
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </article>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className="card">
-        <header>
-          <div>
-            <h2>Every club in the league</h2>
-            <p className="hint">
-              Multi-select which clubs are featured in the homepage crest wall ({featuredSlugs.size} of {clubs?.length ?? 0} selected).
-            </p>
-          </div>
-          <div className="homepage-club-header-actions">
-            <button
-              className="btn sm"
-              type="button"
-              disabled={!clubs || filteredClubs.length === 0 || featuredBusy}
-              onClick={selectAllFilteredClubs}
-            >
-              Select all
-            </button>
-            <button
-              className="btn sm"
-              type="button"
-              disabled={!clubs || filteredClubs.length === 0 || featuredBusy}
-              onClick={deselectAllFilteredClubs}
-            >
-              Clear all
-            </button>
             <button
               className="btn primary sm"
               type="button"
-              disabled={!featuredDirty || featuredBusy}
-              onClick={() => void saveFeaturedClubsSelection()}
+              onClick={() => openRegionEditor(null)}
+              disabled={editingRegion !== null || regionReordering}
             >
-              {featuredBusy ? 'Saving…' : 'Save featured clubs'}
+              <span aria-hidden="true">＋</span> Add region flag
             </button>
-          </div>
-        </header>
+          </header>
 
-        <div className="homepage-club-toolbar">
-          <input
-            className="text"
-            type="search"
-            placeholder="Search clubs by name or code…"
-            aria-label="Search clubs to feature on the homepage"
-            value={clubSearch}
-            onChange={(event) => setClubSearch(event.target.value)}
-          />
-          {featuredDirty && (
-            <span className="homepage-unsaved-pill">Unsaved changes</span>
+          {editingRegion === 'new' && regionForm}
+
+          {regions === null ? (
+            <div className="loading">Loading region flag panels…</div>
+          ) : regions.length === 0 && editingRegion !== 'new' ? (
+            <p className="empty">No region flag panels configured yet. Add one to display on the homepage.</p>
+          ) : (
+            <div className="division-admin-list">
+              {regions.map((region, index) => {
+                const matchedClubs = activeClubs.filter((c) => clubMatchesRegionAdmin(c, region))
+                return (
+                  <article
+                    className={`division-admin-item region-admin-item${region.is_active ? '' : ' is-inactive'}`}
+                    key={region.id}
+                  >
+                    {editingRegion === region.id ? (
+                      regionForm
+                    ) : (
+                      <>
+                        <div className="division-admin-heading homepage-format-row">
+                          <div className="division-admin-title region-admin-title">
+                            <span className="division-admin-rank" aria-label={`Panel ${index + 1}`}>
+                              {String(index + 1).padStart(2, '0')}
+                            </span>
+                            <div className="region-admin-art-preview">
+                              <img src={region.art_url} alt={`${region.name} flag`} />
+                            </div>
+                            <div>
+                              <h3>
+                                <span>{region.flag}</span> {region.name}
+                                <span className="format-status-badge status-active">{region.iso}</span>
+                                {!region.is_active && (
+                                  <span className="division-inactive-badge">Hidden</span>
+                                )}
+                              </h3>
+                              <span className="hint">
+                                Auto-assigned: <strong>{matchedClubs.length}</strong>{' '}
+                                {matchedClubs.length === 1 ? 'registered club' : 'registered clubs'} in{' '}
+                                {region.name}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="division-admin-actions homepage-format-actions">
+                            <div className="division-reorder-controls" aria-label={`Reorder ${region.name}`}>
+                              <button
+                                className="icon-btn"
+                                type="button"
+                                aria-label={`Move ${region.name} left`}
+                                title="Move earlier"
+                                disabled={index === 0 || editingRegion !== null || regionReordering}
+                                onClick={() => void moveRegion(index, -1)}
+                              >
+                                ↑
+                              </button>
+                              <button
+                                className="icon-btn"
+                                type="button"
+                                aria-label={`Move ${region.name} right`}
+                                title="Move later"
+                                disabled={
+                                  index === regions.length - 1 ||
+                                  editingRegion !== null ||
+                                  regionReordering
+                                }
+                                onClick={() => void moveRegion(index, 1)}
+                              >
+                                ↓
+                              </button>
+                            </div>
+                            <button
+                              className="btn sm"
+                              type="button"
+                              disabled={regionTogglingId === region.id || editingRegion !== null}
+                              onClick={() => void toggleRegionActive(region)}
+                            >
+                              {region.is_active ? 'Hide' : 'Show'}
+                            </button>
+                            <button
+                              className="btn sm"
+                              type="button"
+                              disabled={editingRegion !== null}
+                              onClick={() => openRegionEditor(region)}
+                            >
+                              Edit / Upload flag
+                            </button>
+                            <button
+                              className="btn sm danger"
+                              type="button"
+                              disabled={regionDeletingId === region.id || editingRegion !== null}
+                              onClick={() => void removeRegionItem(region)}
+                            >
+                              {regionDeletingId === region.id ? 'Removing…' : 'Remove'}
+                            </button>
+                          </div>
+                        </div>
+
+                        {matchedClubs.length > 0 && (
+                          <div className="region-assigned-clubs" aria-label={`Clubs in ${region.name}`}>
+                            {matchedClubs.map((c) => (
+                              <span className="region-club-pill" key={c.slug}>
+                                {c.logo_local && <img src={c.logo_local} alt="" />}
+                                <span>{c.name}</span>
+                                {c.short_code && <code>{c.short_code}</code>}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </article>
+                )
+              })}
+            </div>
+          )}
+
+          <details className="region-assignment-Override">
+            <summary>
+              Manage club region assignments ({activeClubs.filter((c) => Boolean(c.flag)).length} of{' '}
+              {activeClubs.length} active clubs have a region set)
+            </summary>
+            <p className="hint" style={{ marginTop: 8, marginBottom: 12 }}>
+              New clubs are automatically assigned a region when their manager registers. You can also assign or update any club&rsquo;s region below so it appears under the right flag panel.
+            </p>
+            <div className="region-club-assign-grid">
+              {activeClubs.map((club) => (
+                <div className="region-club-assign-row" key={club.slug}>
+                  <div className="club">
+                    {club.logo_local && <img src={club.logo_local} alt="" />}
+                    <span className="name">{club.name}</span>
+                  </div>
+                  <CustomSelect
+                    ariaLabel={`Region for ${club.name}`}
+                    value={club.flag ?? ''}
+                    disabled={assigningClubSlug === club.slug}
+                    options={[
+                      { value: '', label: 'Unassigned' },
+                      ...(regions ?? []).map((r) => ({
+                        value: r.flag,
+                        label: `${r.flag} ${r.name}`,
+                      })),
+                      ...REGION_PRESETS.filter(
+                        (p) => !(regions ?? []).some((r) => r.flag === p.flag),
+                      ).map((p) => ({
+                        value: p.flag,
+                        label: `${p.flag} ${p.name}`,
+                      })),
+                    ]}
+                    onChange={(value) => void quickAssignClubRegion(club, value)}
+                  />
+                </div>
+              ))}
+            </div>
+          </details>
+
+          {renderOneToOneRailPreview(false)}
+
+          {previewExpanded && (
+            <div
+              className="squad-modal-backdrop rail-preview-modal-backdrop"
+              onMouseDown={(event) => {
+                if (event.target === event.currentTarget) setPreviewExpanded(false)
+              }}
+            >
+              <div className="rail-preview-modal" role="dialog" aria-modal="true" aria-label="1:1 Main Website Flag Rail Preview">
+                {renderOneToOneRailPreview(true)}
+              </div>
+            </div>
           )}
         </div>
+      )}
 
-        {clubs === null ? (
-          <div className="loading">Loading clubs…</div>
-        ) : filteredClubs.length === 0 ? (
-          <div className="empty">No clubs match your search.</div>
-        ) : (
-          <div className="homepage-club-grid" role="group" aria-label="Featured clubs selection">
-            {filteredClubs.map((club) => {
-              const checked = featuredSlugs.has(club.slug)
-              return (
-                <label
-                  key={club.slug}
-                  className={`homepage-club-option${checked ? ' is-selected' : ''}`}
+      {subview === 'formats' && (
+        <div className="card">
+          <header>
+            <div>
+              <h2>Ways to compete</h2>
+              <p className="hint">
+                Control the competition formats section on the main page — add, remove, or set each format to Active, Coming Soon, or Inactive.
+              </p>
+            </div>
+            <button
+              className="btn primary sm"
+              type="button"
+              onClick={() => openFormatEditor(null)}
+              disabled={editingFormat !== null}
+            >
+              <span aria-hidden="true">＋</span> Add format
+            </button>
+          </header>
+
+          {editingFormat === 'new' && formatForm}
+
+          {formats === null ? (
+            <div className="loading">Loading competition formats…</div>
+          ) : formats.length === 0 && editingFormat !== 'new' ? (
+            <p className="empty">No competition formats configured yet. Add one to display on the homepage.</p>
+          ) : (
+            <div className="division-admin-list">
+              {formats.map((format, index) => (
+                <article
+                  className={`division-admin-item${format.status === 'inactive' ? ' is-inactive' : ''}`}
+                  key={format.id}
                 >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    disabled={featuredBusy}
-                    onChange={(event) => toggleClubFeatured(club.slug, event.target.checked)}
-                  />
-                  {club.logo_local && <img src={club.logo_local} alt="" />}
-                  <div className="homepage-club-meta">
-                    <span className="name">{club.name}</span>
-                    <span className="hint">{club.short_code || '—'}</span>
-                  </div>
-                </label>
-              )
-            })}
+                  {editingFormat === format.id ? (
+                    formatForm
+                  ) : (
+                    <div className="division-admin-heading homepage-format-row">
+                      <div className="division-admin-title">
+                        <span className="division-admin-rank" aria-label={`Format ${index + 1}`}>
+                          {String(index + 1).padStart(2, '0')}
+                        </span>
+                        <div>
+                          <h3>
+                            {format.name}
+                            <span className={`format-status-badge status-${format.status}`}>
+                              {format.status === 'active'
+                                ? format.tag || 'Active'
+                                : format.status === 'coming_soon'
+                                  ? 'Coming Soon'
+                                  : 'Inactive'}
+                            </span>
+                          </h3>
+                          {format.description && (
+                            <span className="hint">{format.description}</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="division-admin-actions homepage-format-actions">
+                        <div className="homepage-status-select">
+                          <CustomSelect
+                            ariaLabel={`Status for ${format.name}`}
+                            value={format.status}
+                            disabled={statusBusyId === format.id || editingFormat !== null}
+                            options={FORMAT_STATUS_OPTIONS}
+                            onChange={(value) =>
+                              void changeFormatStatus(format, value as FormatStatus)
+                            }
+                          />
+                        </div>
+                        <button
+                          className="btn sm"
+                          type="button"
+                          disabled={editingFormat !== null}
+                          onClick={() => openFormatEditor(format)}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="btn sm danger"
+                          type="button"
+                          disabled={deleteBusyId === format.id || editingFormat !== null}
+                          onClick={() => void removeFormatItem(format)}
+                        >
+                          {deleteBusyId === format.id ? 'Removing…' : 'Remove'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {subview === 'clubs' && (
+        <div className="card">
+          <header>
+            <div>
+              <h2>Every club in the league</h2>
+              <p className="hint">
+                Multi-select which clubs are featured in the homepage crest wall ({featuredSlugs.size} of {clubs?.length ?? 0} selected).
+              </p>
+            </div>
+            <div className="homepage-club-header-actions">
+              <button
+                className="btn sm"
+                type="button"
+                disabled={!clubs || filteredClubs.length === 0 || featuredBusy}
+                onClick={selectAllFilteredClubs}
+              >
+                Select all
+              </button>
+              <button
+                className="btn sm"
+                type="button"
+                disabled={!clubs || filteredClubs.length === 0 || featuredBusy}
+                onClick={deselectAllFilteredClubs}
+              >
+                Clear all
+              </button>
+              <button
+                className="btn primary sm"
+                type="button"
+                disabled={!featuredDirty || featuredBusy}
+                onClick={() => void saveFeaturedClubsSelection()}
+              >
+                {featuredBusy ? 'Saving…' : 'Save featured clubs'}
+              </button>
+            </div>
+          </header>
+
+          <div className="homepage-club-toolbar">
+            <input
+              className="text"
+              type="search"
+              placeholder="Search clubs by name or code…"
+              aria-label="Search clubs to feature on the homepage"
+              value={clubSearch}
+              onChange={(event) => setClubSearch(event.target.value)}
+            />
+            {featuredDirty && (
+              <span className="homepage-unsaved-pill">Unsaved changes</span>
+            )}
           </div>
-        )}
-      </div>
+
+          {clubs === null ? (
+            <div className="loading">Loading clubs…</div>
+          ) : filteredClubs.length === 0 ? (
+            <div className="empty">No clubs match your search.</div>
+          ) : (
+            <div className="homepage-club-grid" role="group" aria-label="Featured clubs selection">
+              {filteredClubs.map((club) => {
+                const checked = featuredSlugs.has(club.slug)
+                return (
+                  <label
+                    key={club.slug}
+                    className={`homepage-club-option${checked ? ' is-selected' : ''}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={featuredBusy}
+                      onChange={(event) => toggleClubFeatured(club.slug, event.target.checked)}
+                    />
+                    {club.logo_local && <img src={club.logo_local} alt="" />}
+                    <div className="homepage-club-meta">
+                      <span className="name">{club.name}</span>
+                      <span className="hint">{club.short_code || '—'}</span>
+                    </div>
+                  </label>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
