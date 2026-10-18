@@ -1659,13 +1659,27 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   height: 100%;
   object-fit: cover;
 }
+.region-assigned-clubs-details {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.region-assigned-clubs-details > summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  user-select: none;
+  transition: color 140ms ease;
+}
+.region-assigned-clubs-details > summary:hover {
+  color: var(--text);
+}
 .region-assigned-clubs {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid var(--border);
+  margin-top: 8px;
 }
 .region-club-pill {
   display: inline-flex;

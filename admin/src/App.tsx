@@ -5106,15 +5106,21 @@ function HomepageSettings({
                         </div>
 
                         {matchedClubs.length > 0 && (
-                          <div className="region-assigned-clubs" aria-label={`Clubs in ${region.name}`}>
-                            {matchedClubs.map((c) => (
-                              <span className="region-club-pill" key={c.slug}>
-                                {c.logo_local && <img src={c.logo_local} alt="" />}
-                                <span>{c.name}</span>
-                                {c.short_code && <code>{c.short_code}</code>}
-                              </span>
-                            ))}
-                          </div>
+                          <details className="region-assigned-clubs-details">
+                            <summary>
+                              View {matchedClubs.length}{' '}
+                              {matchedClubs.length === 1 ? 'club' : 'clubs'} in {region.name}
+                            </summary>
+                            <div className="region-assigned-clubs" aria-label={`Clubs in ${region.name}`}>
+                              {matchedClubs.map((c) => (
+                                <span className="region-club-pill" key={c.slug}>
+                                  {c.logo_local && <img src={c.logo_local} alt="" />}
+                                  <span>{c.name}</span>
+                                  {c.short_code && <code>{c.short_code}</code>}
+                                </span>
+                              ))}
+                            </div>
+                          </details>
                         )}
                       </>
                     )}
