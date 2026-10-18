@@ -474,12 +474,15 @@ export function LeaderboardTable({
               'numeric grid h-8 w-8 shrink-0 place-items-center rounded-lg text-sm font-bold transition-transform duration-300 group-hover:scale-110',
               rank === 1
                 ? 'bg-[var(--badge-gold-bg)] text-[var(--badge-gold-fg)]'
-                : rank <= 3
-                  ? 'bg-[var(--accent-tint)] text-[var(--accent-text)]'
-                  : 'bg-[var(--surface-2)] text-[var(--text-muted)]',
+                : rank === 2
+                  ? 'bg-slate-300/20 text-slate-200 ring-1 ring-inset ring-slate-300/30'
+                  : rank === 3
+                    ? 'bg-amber-600/20 text-amber-300 ring-1 ring-inset ring-amber-500/30'
+                    : 'bg-[var(--surface-2)] text-[var(--text-muted)]',
             )}
+            aria-label={`Rank ${rank}`}
           >
-            {rank}
+            {rank === 1 ? '🏆' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank}
           </span>
 
           <SmartImage
