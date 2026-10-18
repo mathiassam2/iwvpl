@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { asset } from '@/lib/assets'
-import { CLUB_PLACEHOLDER, cx, clubSlug, stripFlag } from '@/lib/format'
+import { CLUB_PLACEHOLDER, cx, clubSlug, isoToFlag, stripFlag } from '@/lib/format'
 import {
   getLiveClubs,
   getLiveRegions,
@@ -75,9 +75,16 @@ function CrestChip({ name, logo, code, clubLink }: { name: string; logo: string;
 function matchesRegion(clubFlag: string | undefined | null, region: HomepageRegion): boolean {
   const f = (clubFlag ?? '').trim()
   if (!f) return false
-  if (f === region.flag.trim()) return true
+  const regionFlag = (region.flag ?? '').trim()
+  const regionIso = (region.iso ?? '').trim().toUpperCase()
+  const regionEmoji = isoToFlag(regionIso)
+  const clubEmoji = f.length === 2 ? isoToFlag(f) : ''
+
+  if (f === regionFlag) return true
+  if (regionEmoji && (f === regionEmoji || clubEmoji === regionEmoji)) return true
+  if (clubEmoji && clubEmoji === regionFlag) return true
   const lower = f.toLowerCase()
-  return lower === region.iso.toLowerCase() || lower === region.name.toLowerCase()
+  return lower === regionIso.toLowerCase() || lower === (region.name ?? '').trim().toLowerCase()
 }
 
 export function IslandRail() {
@@ -110,6 +117,7 @@ export function IslandRail() {
         ...r,
         clubs: featuredOrAll
           .filter((c) => matchesRegion(c.flag, r))
+          .sort((a, b) => a.name.localeCompare(b.name))
           .map((c) => ({
             team: c.name,
             slug: c.slug || clubSlug(c.name),

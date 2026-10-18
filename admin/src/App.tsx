@@ -5740,6 +5740,7 @@ function HomepageSettings({
   })()
 
   const activeClubs = (clubs ?? []).filter((c) => c.status === 'active')
+  const featuredActiveClubs = activeClubs.filter((c) => featuredSlugs.has(c.slug))
 
   const scrollPreviewToPanel = (idx: number) => {
     setPreviewActiveIdx(idx)
@@ -5756,7 +5757,7 @@ function HomepageSettings({
       <div className="rail-preview-toolbar">
         <div className="rail-preview-tabs" role="tablist" aria-label="Preview region panels">
           {previewRegions.map((r, idx) => {
-            const assignedCount = activeClubs.filter((c) => clubMatchesRegionAdmin(c, r)).length
+            const assignedCount = featuredActiveClubs.filter((c) => clubMatchesRegionAdmin(c, r)).length
             return (
               <button
                 key={`${r.id}-${r.iso}`}
@@ -5803,7 +5804,7 @@ function HomepageSettings({
           }}
         >
           {previewRegions.map((r, idx) => {
-            const regionClubs = activeClubs
+            const regionClubs = featuredActiveClubs
               .filter((c) => clubMatchesRegionAdmin(c, r))
               .sort((a, b) => a.name.localeCompare(b.name))
             return (
