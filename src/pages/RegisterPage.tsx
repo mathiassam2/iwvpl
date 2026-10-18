@@ -169,6 +169,7 @@ export default function RegisterPage() {
         gamertag: values.role === 'player' ? values.gamertag.trim() : undefined,
         clubName: values.role === 'club_manager' ? values.club.trim() : undefined,
         shortCode: values.role === 'club_manager' ? values.shortCode.trim() : undefined,
+        region: values.role === 'club_manager' ? values.region.trim() : undefined,
       })
       setUser(user)
       // Snapshot what was created, then clear the form. The confirmation

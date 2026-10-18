@@ -14,10 +14,12 @@ import {
   addPlayer,
   assignDivision,
   createAdminPlayer,
+  createAdminRegion,
   createAdminUser,
   createFormat,
   decideClub,
   deleteAdminPlayer,
+  deleteAdminRegion,
   deleteAdminUser,
   deleteFormat,
   deleteMatch,
@@ -27,6 +29,7 @@ import {
   createSeason,
   createMatch,
   getAdminPlayers,
+  getAdminRegions,
   getAdminUsers,
   getClubs,
   getAdminSeasons,
@@ -47,6 +50,8 @@ import {
   setFeaturedDivision,
   setDivisionActive,
   updateAdminPlayer,
+  updateAdminRegion,
+  updateAdminRegionOrder,
   updateAdminUser,
   updateClub,
   updateDivision,
@@ -59,6 +64,7 @@ import {
   type Club,
   type CompetitionFormat,
   type FormatStatus,
+  type HomepageRegion,
   type AdminSeason,
   type Division,
   type Match,
@@ -3008,6 +3014,7 @@ function Clubs({
   const [seasons, setSeasons] = useState<AdminSeason[]>([])
   const [seasonId, setSeasonId] = useState('')
   const [codes, setCodes] = useState<Record<string, string>>({})
+  const [flags, setFlags] = useState<Record<string, string>>({})
   const [statuses, setStatuses] = useState<Record<string, string>>({})
   const [divisions, setDivisions] = useState<Division[]>([])
   const [divisionOf, setDivisionOf] = useState<Record<string, string>>({})
@@ -3058,6 +3065,7 @@ function Clubs({
     setStandings(currentStandings)
     setLastRollover(rollover)
     setCodes(Object.fromEntries(data.map((c) => [c.slug, c.short_code ?? ''])))
+    setFlags(Object.fromEntries(data.map((c) => [c.slug, c.flag ?? ''])))
     setStatuses(Object.fromEntries(data.map((c) => [c.slug, c.status])))
     setDivisions(currentDivisions)
     setDivisionOf(
@@ -3136,10 +3144,12 @@ function Clubs({
     if (readOnly) return
     setBusy(c.slug)
     try {
+      const nextFlag = (flags[c.slug] ?? '').trim() || null
       await guard(
         () =>
           updateClub(c.slug, {
             shortCode: codes[c.slug] || null,
+            flag: nextFlag,
             status: statuses[c.slug],
           }),
         `Could not save ${c.name}`,
@@ -3151,6 +3161,7 @@ function Clubs({
             ? {
                 ...club,
                 short_code: codes[c.slug] || null,
+                flag: nextFlag,
                 status: statuses[c.slug],
               }
             : club,
@@ -3203,6 +3214,7 @@ function Clubs({
 
   const edit = (c: Club) => {
     setCodes((s) => ({ ...s, [c.slug]: c.short_code ?? '' }))
+    setFlags((s) => ({ ...s, [c.slug]: c.flag ?? '' }))
     setStatuses((s) => ({ ...s, [c.slug]: c.status }))
     setDivisionOf((s) => ({ ...s, [c.slug]: c.division_id ? String(c.division_id) : '' }))
     setNewPlayer((s) => ({ ...s, [c.slug]: '' }))
@@ -3211,6 +3223,7 @@ function Clubs({
 
   const cancelEdit = (c: Club) => {
     setCodes((s) => ({ ...s, [c.slug]: c.short_code ?? '' }))
+    setFlags((s) => ({ ...s, [c.slug]: c.flag ?? '' }))
     setStatuses((s) => ({ ...s, [c.slug]: c.status }))
     setDivisionOf((s) => ({ ...s, [c.slug]: c.division_id ? String(c.division_id) : '' }))
     setNewPlayer((s) => ({ ...s, [c.slug]: '' }))
@@ -3930,6 +3943,29 @@ function Clubs({
                   />
                 </label>
                 <label>
+                  <span>Region / flag</span>
+                  <CustomSelect
+                    ariaLabel={`Region for ${activeClub.name}`}
+                    value={flags[activeClub.slug] ?? ''}
+                    onChange={(value) =>
+                      setFlags((current) => ({
+                        ...current,
+                        [activeClub.slug]: value,
+                      }))
+                    }
+                    options={[
+                      { value: '', label: 'Not set' },
+                      { value: '🇸🇬', label: '🇸🇬 Singapore' },
+                      { value: '🇲🇾', label: '🇲🇾 Malaysia' },
+                      { value: '🇮🇩', label: '🇮🇩 Indonesia' },
+                      { value: '🇹🇭', label: '🇹🇭 Thailand' },
+                      { value: '🇧🇳', label: '🇧🇳 Brunei' },
+                      { value: '🇵🇭', label: '🇵🇭 Philippines' },
+                      { value: '🇻🇳', label: '🇻🇳 Vietnam' },
+                    ]}
+                  />
+                </label>
+                <label>
                   <span>Status</span>
                   <CustomSelect
                     ariaLabel={`Status for ${activeClub.name}`}
@@ -4108,6 +4144,81 @@ const FORMAT_STATUS_OPTIONS: Array<{ value: FormatStatus; label: string }> = [
   { value: 'inactive', label: 'Inactive' },
 ]
 
+const REGION_PRESETS: Array<{ iso: string; name: string; flag: string; defaultArt: string }> = [
+  { iso: 'SG', name: 'Singapore', flag: '🇸🇬', defaultArt: '/assets/hero/sg-hero.webp' },
+  { iso: 'MY', name: 'Malaysia', flag: '🇲🇾', defaultArt: '/assets/hero/my-hero.webp' },
+  { iso: 'ID', name: 'Indonesia', flag: '🇮🇩', defaultArt: '/assets/hero/in-hero.webp' },
+  { iso: 'TH', name: 'Thailand', flag: '🇹🇭', defaultArt: '/assets/hero/sg-hero.webp' },
+  { iso: 'BN', name: 'Brunei', flag: '🇧🇳', defaultArt: '/assets/hero/my-hero.webp' },
+  { iso: 'PH', name: 'Philippines', flag: '🇵🇭', defaultArt: '/assets/hero/in-hero.webp' },
+  { iso: 'VN', name: 'Vietnam', flag: '🇻🇳', defaultArt: '/assets/hero/sg-hero.webp' },
+]
+
+function clubMatchesRegionAdmin(club: Club, region: Pick<HomepageRegion, 'flag' | 'iso' | 'name'>): boolean {
+  const raw = (club.flag ?? '').trim()
+  if (!raw) return false
+  if (raw === region.flag) return true
+  const upper = raw.toUpperCase()
+  if (upper === region.iso.toUpperCase()) return true
+  if (raw.toLowerCase() === region.name.toLowerCase()) return true
+  const preset = REGION_PRESETS.find((p) => p.iso === region.iso.toUpperCase())
+  if (preset && raw === preset.flag) return true
+  return false
+}
+
+function clubThreeCode(club: Club): string {
+  const explicit = (club.short_code ?? '').trim().toUpperCase()
+  if (explicit) return explicit.slice(0, 3)
+  return club.name
+    .replace(/[^A-Za-z0-9]/g, '')
+    .toUpperCase()
+    .slice(0, 3)
+}
+
+async function compressUploadedFlagImage(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(new Error('Could not read uploaded image file'))
+    reader.onload = () => {
+      const dataUrl = typeof reader.result === 'string' ? reader.result : ''
+      if (!dataUrl) {
+        reject(new Error('Empty image file'))
+        return
+      }
+      const img = new Image()
+      img.onerror = () => resolve(dataUrl)
+      img.onload = () => {
+        try {
+          const maxWidth = 1920
+          const maxHeight = 1080
+          let width = img.naturalWidth || img.width
+          let height = img.naturalHeight || img.height
+          if (width > maxWidth || height > maxHeight) {
+            const scale = Math.min(maxWidth / width, maxHeight / height)
+            width = Math.round(width * scale)
+            height = Math.round(height * scale)
+          }
+          const canvas = document.createElement('canvas')
+          canvas.width = width
+          canvas.height = height
+          const ctx = canvas.getContext('2d')
+          if (!ctx) {
+            resolve(dataUrl)
+            return
+          }
+          ctx.drawImage(img, 0, 0, width, height)
+          const webp = canvas.toDataURL('image/webp', 0.86)
+          resolve(webp.startsWith('data:image/webp') ? webp : canvas.toDataURL('image/jpeg', 0.86))
+        } catch {
+          resolve(dataUrl)
+        }
+      }
+      img.src = dataUrl
+    }
+    reader.readAsDataURL(file)
+  })
+}
+
 function HomepageSettings({
   guard,
   report,
@@ -4117,6 +4228,8 @@ function HomepageSettings({
 }) {
   const [formats, setFormats] = useState<CompetitionFormat[] | null>(null)
   const [clubs, setClubs] = useState<Club[] | null>(null)
+  const [regions, setRegions] = useState<HomepageRegion[] | null>(null)
+
   const [editingFormat, setEditingFormat] = useState<number | 'new' | null>(null)
   const [formatName, setFormatName] = useState('')
   const [formatTag, setFormatTag] = useState('')
@@ -4126,15 +4239,36 @@ function HomepageSettings({
   const [statusBusyId, setStatusBusyId] = useState<number | null>(null)
   const [deleteBusyId, setDeleteBusyId] = useState<number | null>(null)
 
+  // Horizontal Flag Rail state
+  const [editingRegion, setEditingRegion] = useState<number | 'new' | null>(null)
+  const [regionPreset, setRegionPreset] = useState('SG')
+  const [regionIso, setRegionIso] = useState('SG')
+  const [regionName, setRegionName] = useState('Singapore')
+  const [regionFlag, setRegionFlag] = useState('🇸🇬')
+  const [regionArtUrl, setRegionArtUrl] = useState('/assets/hero/sg-hero.webp')
+  const [regionIsActive, setRegionIsActive] = useState(true)
+  const [regionBusy, setRegionBusy] = useState(false)
+  const [regionReordering, setRegionReordering] = useState(false)
+  const [regionTogglingId, setRegionTogglingId] = useState<number | null>(null)
+  const [regionDeletingId, setRegionDeletingId] = useState<number | null>(null)
+  const [previewActiveIdx, setPreviewActiveIdx] = useState(0)
+  const [previewExpanded, setPreviewExpanded] = useState(false)
+  const previewTrackRef = useRef<HTMLDivElement>(null)
+
   const [featuredSlugs, setFeaturedSlugs] = useState<Set<string>>(new Set())
   const [savedFeaturedSlugs, setSavedFeaturedSlugs] = useState<Set<string>>(new Set())
   const [clubSearch, setClubSearch] = useState('')
   const [featuredBusy, setFeaturedBusy] = useState(false)
+  const [assigningClubSlug, setAssigningClubSlug] = useState<string | null>(null)
 
   useEffect(() => {
     guard(getFormats, 'Could not load competition formats')
       .then(setFormats)
       .catch(() => setFormats([]))
+
+    guard(getAdminRegions, 'Could not load homepage flag regions')
+      .then(setRegions)
+      .catch(() => setRegions([]))
 
     guard(() => getClubs(), 'Could not load clubs for homepage feature')
       .then((allClubs) => {
@@ -4149,6 +4283,195 @@ function HomepageSettings({
       })
       .catch(() => setClubs([]))
   }, [guard])
+
+  useEffect(() => {
+    if (!previewExpanded) return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPreviewExpanded(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [previewExpanded])
+
+  const openRegionEditor = (region: HomepageRegion | null) => {
+    if (region) {
+      const matchedPreset = REGION_PRESETS.find((p) => p.iso === region.iso.toUpperCase())
+      setEditingRegion(region.id)
+      setRegionPreset(matchedPreset ? matchedPreset.iso : 'CUSTOM')
+      setRegionIso(region.iso)
+      setRegionName(region.name)
+      setRegionFlag(region.flag)
+      setRegionArtUrl(region.art_url)
+      setRegionIsActive(Boolean(region.is_active))
+    } else {
+      const defaultPreset =
+        REGION_PRESETS.find(
+          (preset) => !(regions ?? []).some((existing) => existing.iso.toUpperCase() === preset.iso),
+        ) ?? REGION_PRESETS[0]
+      setEditingRegion('new')
+      setRegionPreset(defaultPreset.iso)
+      setRegionIso(defaultPreset.iso)
+      setRegionName(defaultPreset.name)
+      setRegionFlag(defaultPreset.flag)
+      setRegionArtUrl(defaultPreset.defaultArt)
+      setRegionIsActive(true)
+    }
+  }
+
+  const applyRegionPreset = (value: string) => {
+    setRegionPreset(value)
+    const preset = REGION_PRESETS.find((p) => p.iso === value)
+    if (preset) {
+      setRegionIso(preset.iso)
+      setRegionName(preset.name)
+      setRegionFlag(preset.flag)
+      if (!regionArtUrl || regionArtUrl.startsWith('/assets/hero/')) {
+        setRegionArtUrl(preset.defaultArt)
+      }
+    }
+  }
+
+  const handleFlagFileUpload = async (file: File | null) => {
+    if (!file) return
+    try {
+      const compressed = await compressUploadedFlagImage(file)
+      setRegionArtUrl(compressed)
+      report('info', `Loaded "${file.name}" into the flag preview. Click Save to publish.`)
+    } catch (err) {
+      report('error', err instanceof Error ? err.message : 'Could not read image file')
+    }
+  }
+
+  const saveRegion = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (editingRegion === null) return
+    const target = editingRegion
+    const trimmedIso = regionIso.trim().toUpperCase()
+    const trimmedName = regionName.trim()
+    const trimmedFlag = regionFlag.trim()
+    const trimmedArt = regionArtUrl.trim()
+    if (!trimmedIso || !trimmedName || !trimmedFlag || !trimmedArt) {
+      report('error', 'Region code, name, flag emoji, and flag image are required.')
+      return
+    }
+    setRegionBusy(true)
+    try {
+      const payload = {
+        iso: trimmedIso,
+        name: trimmedName,
+        flag: trimmedFlag,
+        art_url: trimmedArt,
+        is_active: regionIsActive,
+      }
+      const saved = await guard(
+        () => (target === 'new' ? createAdminRegion(payload) : updateAdminRegion(target, payload)),
+        target === 'new' ? 'Could not add region flag panel' : 'Could not update region flag panel',
+      )
+      setRegions((current) => {
+        const list = current ?? []
+        const next =
+          target === 'new'
+            ? [...list, saved]
+            : list.map((item) => (item.id === saved.id ? saved : item))
+        return next.sort((a, b) => a.sort_order - b.sort_order || a.id - b.id)
+      })
+      setEditingRegion(null)
+      report('ok', `${saved.flag} ${saved.name} panel saved.`)
+    } catch {
+      /* already reported */
+    } finally {
+      setRegionBusy(false)
+    }
+  }
+
+  const toggleRegionActive = async (region: HomepageRegion) => {
+    if (regionTogglingId !== null) return
+    const nextActive = !Boolean(region.is_active)
+    setRegionTogglingId(region.id)
+    try {
+      const updated = await guard(
+        () => updateAdminRegion(region.id, { is_active: nextActive }),
+        `Could not update ${region.name}`,
+      )
+      setRegions((current) =>
+        (current ?? []).map((item) => (item.id === updated.id ? updated : item)),
+      )
+      report('ok', `${region.name} is now ${nextActive ? 'visible' : 'hidden'} on the homepage.`)
+    } catch {
+      /* already reported */
+    } finally {
+      setRegionTogglingId(null)
+    }
+  }
+
+  const moveRegion = async (index: number, direction: -1 | 1) => {
+    if (!regions) return
+    const nextIndex = index + direction
+    if (nextIndex < 0 || nextIndex >= regions.length || regionReordering || editingRegion !== null) {
+      return
+    }
+    const reordered = [...regions]
+    const [moved] = reordered.splice(index, 1)
+    reordered.splice(nextIndex, 0, moved)
+    setRegionReordering(true)
+    try {
+      await guard(
+        () => updateAdminRegionOrder(reordered.map((r) => r.id)),
+        'Could not reorder region flag panels',
+      )
+      setRegions(reordered.map((r, sort_order) => ({ ...r, sort_order })))
+      report('ok', 'Flag rail order updated.')
+    } catch {
+      /* already reported */
+    } finally {
+      setRegionReordering(false)
+    }
+  }
+
+  const removeRegionItem = async (region: HomepageRegion) => {
+    if (
+      regionDeletingId !== null ||
+      !window.confirm(`Remove the "${region.flag} ${region.name}" panel from the homepage flag rail?`)
+    ) {
+      return
+    }
+    setRegionDeletingId(region.id)
+    try {
+      await guard(() => deleteAdminRegion(region.id), `Could not remove ${region.name}`)
+      setRegions((current) => (current ?? []).filter((item) => item.id !== region.id))
+      if (editingRegion === region.id) setEditingRegion(null)
+      report('ok', `${region.name} panel removed.`)
+    } catch {
+      /* already reported */
+    } finally {
+      setRegionDeletingId(null)
+    }
+  }
+
+  const quickAssignClubRegion = async (club: Club, nextFlag: string) => {
+    if (assigningClubSlug !== null) return
+    setAssigningClubSlug(club.slug)
+    try {
+      const normalized = nextFlag.trim() || null
+      await guard(
+        () => updateClub(club.slug, { flag: normalized }),
+        `Could not update region for ${club.name}`,
+      )
+      setClubs((current) =>
+        (current ?? []).map((c) => (c.slug === club.slug ? { ...c, flag: normalized } : c)),
+      )
+      report('ok', `${club.name} assigned to ${normalized ?? 'Unassigned'}.`)
+    } catch {
+      /* already reported */
+    } finally {
+      setAssigningClubSlug(null)
+    }
+  }
 
   const openFormatEditor = (format: CompetitionFormat | null) => {
     setEditingFormat(format?.id ?? 'new')
@@ -4302,6 +4625,268 @@ function HomepageSettings({
     }
   }
 
+  // Build live preview panels: if the admin is currently editing a panel, reflect their live draft immediately in the 1:1 preview!
+  const previewRegions: HomepageRegion[] = (() => {
+    const base = (regions ?? []).map((r) =>
+      editingRegion === r.id
+        ? {
+            ...r,
+            iso: regionIso.trim().toUpperCase() || r.iso,
+            name: regionName.trim() || r.name,
+            flag: regionFlag.trim() || r.flag,
+            art_url: regionArtUrl.trim() || r.art_url,
+            is_active: regionIsActive,
+          }
+        : r,
+    )
+    if (editingRegion === 'new') {
+      base.push({
+        id: -1,
+        iso: regionIso.trim().toUpperCase() || 'NEW',
+        name: regionName.trim() || 'New Region',
+        flag: regionFlag.trim() || '🏳️',
+        art_url: regionArtUrl.trim() || '/assets/hero/sg-hero.webp',
+        is_active: regionIsActive,
+        sort_order: base.length,
+      })
+    }
+    return base.filter((r) => Boolean(r.is_active))
+  })()
+
+  const activeClubs = (clubs ?? []).filter((c) => c.status === 'active')
+
+  const scrollPreviewToPanel = (idx: number) => {
+    setPreviewActiveIdx(idx)
+    const track = previewTrackRef.current
+    if (!track) return
+    const panel = track.children[idx] as HTMLElement | undefined
+    if (panel) {
+      track.scrollTo({ left: panel.offsetLeft, behavior: 'smooth' })
+    }
+  }
+
+  const renderOneToOneRailPreview = (isFullscreen: boolean) => (
+    <div className={`rail-preview-shell${isFullscreen ? ' is-fullscreen' : ''}`}>
+      <div className="rail-preview-toolbar">
+        <div className="rail-preview-tabs" role="tablist" aria-label="Preview region panels">
+          {previewRegions.map((r, idx) => {
+            const assignedCount = activeClubs.filter((c) => clubMatchesRegionAdmin(c, r)).length
+            return (
+              <button
+                key={`${r.id}-${r.iso}`}
+                type="button"
+                role="tab"
+                aria-selected={previewActiveIdx === idx}
+                className={`rail-preview-tab${previewActiveIdx === idx ? ' is-active' : ''}`}
+                onClick={() => scrollPreviewToPanel(idx)}
+              >
+                <span className="rail-preview-tab-num">{String(idx + 1).padStart(2, '0')}</span>
+                <span>{r.flag}</span>
+                <span>{r.name}</span>
+                <span className="rail-preview-tab-count">{assignedCount}</span>
+              </button>
+            )
+          })}
+        </div>
+        <div className="rail-preview-actions">
+          <span className="rail-preview-badge">1:1 Main Web Preview</span>
+          <button
+            type="button"
+            className="btn sm"
+            onClick={() => setPreviewExpanded((prev) => !prev)}
+          >
+            {isFullscreen ? 'Close full preview' : 'Expand 1:1 full screen'}
+          </button>
+        </div>
+      </div>
+
+      {previewRegions.length === 0 ? (
+        <div className="empty">No active region flag panels to preview.</div>
+      ) : (
+        <div
+          className="rail-preview-viewport"
+          ref={isFullscreen ? undefined : previewTrackRef}
+          onScroll={(event) => {
+            const el = event.currentTarget
+            if (el.clientWidth > 0) {
+              const idx = Math.round(el.scrollLeft / el.clientWidth)
+              if (idx !== previewActiveIdx && idx >= 0 && idx < previewRegions.length) {
+                setPreviewActiveIdx(idx)
+              }
+            }
+          }}
+        >
+          {previewRegions.map((r, idx) => {
+            const regionClubs = activeClubs
+              .filter((c) => clubMatchesRegionAdmin(c, r))
+              .sort((a, b) => a.name.localeCompare(b.name))
+            return (
+              <article
+                key={`${r.id}-${r.iso}`}
+                className={`rail__panel rail__panel--${r.iso.toLowerCase()}`}
+              >
+                <div className="rail__art" aria-hidden="true">
+                  <img className="rail__art-img" src={r.art_url} alt="" />
+                </div>
+                <div className="rail__scrim" aria-hidden="true" />
+                <div className="rail__body">
+                  <span className="rail__index">0{idx + 1}</span>
+                  <p className="rail__flag" aria-hidden="true">
+                    {r.flag}
+                  </p>
+                  <h3 className="rail__name">{r.name}</h3>
+                  <p className="rail__meta">
+                    {regionClubs.length} {regionClubs.length === 1 ? 'club' : 'clubs'} registered in{' '}
+                    {r.name}
+                  </p>
+                  <ul className="rail__clubs" aria-label={`${r.name} clubs`}>
+                    {regionClubs.map((c) => (
+                      <li key={c.slug} className="rail__chip" title={c.name}>
+                        {c.logo_local ? (
+                          <img src={c.logo_local} alt={c.name} loading="lazy" />
+                        ) : (
+                          <span className="rail__chip-fallback">{clubThreeCode(c)}</span>
+                        )}
+                        <span className="rail__chip-code">{clubThreeCode(c)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </article>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+
+  const regionForm = (
+    <form className="division-editor region-editor" onSubmit={(event) => void saveRegion(event)}>
+      <div className="homepage-format-fields region-editor-grid">
+        <label>
+          <span>Preset region</span>
+          <CustomSelect
+            ariaLabel="Preset region"
+            value={regionPreset}
+            options={[
+              ...REGION_PRESETS.map((p) => ({
+                value: p.iso,
+                label: `${p.flag} ${p.name} (${p.iso})`,
+              })),
+              { value: 'CUSTOM', label: 'Custom region…' },
+            ]}
+            onChange={applyRegionPreset}
+          />
+        </label>
+        <label>
+          <span>ISO code</span>
+          <input
+            className="text"
+            placeholder="e.g. SG"
+            value={regionIso}
+            onChange={(event) => {
+              setRegionIso(event.target.value.toUpperCase())
+              setRegionPreset('CUSTOM')
+            }}
+            maxLength={8}
+            required
+          />
+        </label>
+        <label>
+          <span>Country / region name</span>
+          <input
+            className="text"
+            placeholder="e.g. Singapore"
+            value={regionName}
+            onChange={(event) => {
+              setRegionName(event.target.value)
+              setRegionPreset('CUSTOM')
+            }}
+            maxLength={64}
+            required
+          />
+        </label>
+        <label>
+          <span>Flag icon / emoji</span>
+          <input
+            className="text"
+            placeholder="e.g. 🇸🇬"
+            value={regionFlag}
+            onChange={(event) => {
+              setRegionFlag(event.target.value)
+              setRegionPreset('CUSTOM')
+            }}
+            maxLength={16}
+            required
+          />
+        </label>
+      </div>
+
+      <div className="region-upload-row">
+        <div className="region-upload-controls">
+          <label>
+            <span>Upload flag background artwork</span>
+            <div className="region-upload-input-group">
+              <label className="btn sm region-upload-btn">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(event) => void handleFlagFileUpload(event.target.files?.[0] ?? null)}
+                />
+                Upload flag image…
+              </label>
+              <input
+                className="text"
+                placeholder="Or paste image URL / path (e.g. /assets/hero/sg-hero.webp)"
+                value={regionArtUrl.startsWith('data:') ? 'Uploaded custom flag image' : regionArtUrl}
+                readOnly={regionArtUrl.startsWith('data:')}
+                onChange={(event) => setRegionArtUrl(event.target.value)}
+              />
+              {regionArtUrl.startsWith('data:') && (
+                <button
+                  type="button"
+                  className="btn sm"
+                  onClick={() => {
+                    const preset = REGION_PRESETS.find((p) => p.iso === regionIso.toUpperCase())
+                    setRegionArtUrl(preset?.defaultArt ?? '/assets/hero/sg-hero.webp')
+                  }}
+                >
+                  Reset to default art
+                </button>
+              )}
+            </div>
+          </label>
+          <p className="hint">
+            Recommended: wide landscape flag artwork (1920×1080 WebP/JPG/PNG). Changes appear immediately in the 1:1 preview below.
+          </p>
+        </div>
+        {regionArtUrl && (
+          <div className="region-upload-thumb">
+            <img src={regionArtUrl} alt={`${regionName} flag preview`} />
+          </div>
+        )}
+      </div>
+
+      <div className="division-editor-actions">
+        <button
+          className="btn"
+          type="button"
+          disabled={regionBusy}
+          onClick={() => setEditingRegion(null)}
+        >
+          Cancel
+        </button>
+        <button className="btn primary" type="submit" disabled={regionBusy}>
+          {regionBusy
+            ? 'Saving…'
+            : editingRegion === 'new'
+              ? 'Add region flag'
+              : 'Save region changes'}
+        </button>
+      </div>
+    </form>
+  )
+
   const formatForm = (
     <form className="division-editor" onSubmit={(event) => void saveFormat(event)}>
       <div className="homepage-format-fields">
@@ -4369,6 +4954,195 @@ function HomepageSettings({
 
   return (
     <div className="division-management homepage-management">
+      <div className="card">
+        <header>
+          <div>
+            <h2>Horizontal flags &amp; regional clubs (&ldquo;The Island&rdquo;)</h2>
+            <p className="hint">
+              Upload flag artwork and manage the horizontal region panels on the main website. Registered clubs are automatically assigned to their matching flag based on their registered region.
+            </p>
+          </div>
+          <button
+            className="btn primary sm"
+            type="button"
+            onClick={() => openRegionEditor(null)}
+            disabled={editingRegion !== null || regionReordering}
+          >
+            <span aria-hidden="true">＋</span> Add region flag
+          </button>
+        </header>
+
+        {editingRegion === 'new' && regionForm}
+
+        {regions === null ? (
+          <div className="loading">Loading region flag panels…</div>
+        ) : regions.length === 0 && editingRegion !== 'new' ? (
+          <p className="empty">No region flag panels configured yet. Add one to display on the homepage.</p>
+        ) : (
+          <div className="division-admin-list">
+            {regions.map((region, index) => {
+              const matchedClubs = activeClubs.filter((c) => clubMatchesRegionAdmin(c, region))
+              return (
+                <article
+                  className={`division-admin-item region-admin-item${region.is_active ? '' : ' is-inactive'}`}
+                  key={region.id}
+                >
+                  {editingRegion === region.id ? (
+                    regionForm
+                  ) : (
+                    <>
+                      <div className="division-admin-heading homepage-format-row">
+                        <div className="division-admin-title region-admin-title">
+                          <span className="division-admin-rank" aria-label={`Panel ${index + 1}`}>
+                            {String(index + 1).padStart(2, '0')}
+                          </span>
+                          <div className="region-admin-art-preview">
+                            <img src={region.art_url} alt={`${region.name} flag`} />
+                          </div>
+                          <div>
+                            <h3>
+                              <span>{region.flag}</span> {region.name}
+                              <span className="format-status-badge status-active">{region.iso}</span>
+                              {!region.is_active && (
+                                <span className="division-inactive-badge">Hidden</span>
+                              )}
+                            </h3>
+                            <span className="hint">
+                              Auto-assigned: <strong>{matchedClubs.length}</strong>{' '}
+                              {matchedClubs.length === 1 ? 'registered club' : 'registered clubs'} in{' '}
+                              {region.name}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="division-admin-actions homepage-format-actions">
+                          <div className="division-reorder-controls" aria-label={`Reorder ${region.name}`}>
+                            <button
+                              className="icon-btn"
+                              type="button"
+                              aria-label={`Move ${region.name} left`}
+                              title="Move earlier"
+                              disabled={index === 0 || editingRegion !== null || regionReordering}
+                              onClick={() => void moveRegion(index, -1)}
+                            >
+                              ↑
+                            </button>
+                            <button
+                              className="icon-btn"
+                              type="button"
+                              aria-label={`Move ${region.name} right`}
+                              title="Move later"
+                              disabled={
+                                index === regions.length - 1 ||
+                                editingRegion !== null ||
+                                regionReordering
+                              }
+                              onClick={() => void moveRegion(index, 1)}
+                            >
+                              ↓
+                            </button>
+                          </div>
+                          <button
+                            className="btn sm"
+                            type="button"
+                            disabled={regionTogglingId === region.id || editingRegion !== null}
+                            onClick={() => void toggleRegionActive(region)}
+                          >
+                            {region.is_active ? 'Hide' : 'Show'}
+                          </button>
+                          <button
+                            className="btn sm"
+                            type="button"
+                            disabled={editingRegion !== null}
+                            onClick={() => openRegionEditor(region)}
+                          >
+                            Edit / Upload flag
+                          </button>
+                          <button
+                            className="btn sm danger"
+                            type="button"
+                            disabled={regionDeletingId === region.id || editingRegion !== null}
+                            onClick={() => void removeRegionItem(region)}
+                          >
+                            {regionDeletingId === region.id ? 'Removing…' : 'Remove'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {matchedClubs.length > 0 && (
+                        <div className="region-assigned-clubs" aria-label={`Clubs in ${region.name}`}>
+                          {matchedClubs.map((c) => (
+                            <span className="region-club-pill" key={c.slug}>
+                              {c.logo_local && <img src={c.logo_local} alt="" />}
+                              <span>{c.name}</span>
+                              {c.short_code && <code>{c.short_code}</code>}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </article>
+              )
+            })}
+          </div>
+        )}
+
+        <details className="region-assignment-Override">
+          <summary>
+            Manage club region assignments ({activeClubs.filter((c) => Boolean(c.flag)).length} of{' '}
+            {activeClubs.length} active clubs have a region set)
+          </summary>
+          <p className="hint" style={{ marginTop: 8, marginBottom: 12 }}>
+            New clubs are automatically assigned a region when their manager registers. You can also assign or update any club&rsquo;s region below so it appears under the right flag panel.
+          </p>
+          <div className="region-club-assign-grid">
+            {activeClubs.map((club) => (
+              <div className="region-club-assign-row" key={club.slug}>
+                <div className="club">
+                  {club.logo_local && <img src={club.logo_local} alt="" />}
+                  <span className="name">{club.name}</span>
+                </div>
+                <CustomSelect
+                  ariaLabel={`Region for ${club.name}`}
+                  value={club.flag ?? ''}
+                  disabled={assigningClubSlug === club.slug}
+                  options={[
+                    { value: '', label: 'Unassigned' },
+                    ...(regions ?? []).map((r) => ({
+                      value: r.flag,
+                      label: `${r.flag} ${r.name}`,
+                    })),
+                    ...REGION_PRESETS.filter(
+                      (p) => !(regions ?? []).some((r) => r.flag === p.flag),
+                    ).map((p) => ({
+                      value: p.flag,
+                      label: `${p.flag} ${p.name}`,
+                    })),
+                  ]}
+                  onChange={(value) => void quickAssignClubRegion(club, value)}
+                />
+              </div>
+            ))}
+          </div>
+        </details>
+
+        {renderOneToOneRailPreview(false)}
+
+        {previewExpanded && (
+          <div
+            className="squad-modal-backdrop rail-preview-modal-backdrop"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) setPreviewExpanded(false)
+            }}
+          >
+            <div className="rail-preview-modal" role="dialog" aria-modal="true" aria-label="1:1 Main Website Flag Rail Preview">
+              {renderOneToOneRailPreview(true)}
+            </div>
+          </div>
+        )}
+      </div>
+
       <div className="card">
         <header>
           <div>

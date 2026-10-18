@@ -1,63 +1,63 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { asset } from '@/lib/assets'
-import { cx, clubSlug, stripFlag } from '@/lib/format'
+import { CLUB_PLACEHOLDER, cx, clubSlug, stripFlag } from '@/lib/format'
+import {
+  getLiveClubs,
+  getLiveRegions,
+  liveLeagueEnabled,
+  type HomepageRegion,
+} from '@/lib/liveLeague'
 import { siteData } from '@/data'
+import type { Club } from '@/types/site'
 
 /**
  * "The Island" — the centrepiece.
  *
  * A tall section with a sticky viewport; inside it a track that travels
  * sideways as the page scrolls down. Each nation gets the campaign key
- * art at its own drift depth, and the clubs that nation actually has in
- * the Premier League table underneath it.
+ * art at its own drift depth, and the clubs registered to that region
+ * underneath it.
  *
  * All of it is CSS scroll-driven (see `.rail*` in styles/index.css). No
  * scroll listener, no measurement, no inline styles.
- *
- * Counts are deliberately precise: the table has 18 clubs split 10/6/2
- * across MY/SG/ID, while the wider roster in `siteData.clubs` has 37.
- * Those are different numbers about different things, so they are
- * labelled as such rather than blended into one tidy-looking "28 clubs".
  */
 
-type Nation = {
-  iso: string
-  flag: string
-  name: string
-  art: string
-}
-
-const NATIONS: Nation[] = [
+const DEFAULT_NATIONS: HomepageRegion[] = [
   {
+    id: 1,
     iso: 'SG',
     flag: '🇸🇬',
     name: 'Singapore',
     art: '/assets/hero/sg-hero.webp',
+    sortOrder: 0,
   },
   {
+    id: 2,
     iso: 'MY',
     flag: '🇲🇾',
     name: 'Malaysia',
     art: '/assets/hero/my-hero.webp',
+    sortOrder: 1,
   },
   {
+    id: 3,
     iso: 'ID',
     flag: '🇮🇩',
     name: 'Indonesia',
     art: '/assets/hero/in-hero.webp',
+    sortOrder: 2,
   },
 ]
 
-/** The one division with a real table. */
 const DIVISION = 'Premier League'
 
-function CrestChip({ name, logo, code }: { name: string; logo: string; code: string }) {
+function CrestChip({ name, logo, code, clubLink }: { name: string; logo: string; code: string; clubLink: string }) {
   return (
     <li className="rail__chip">
-      <Link to={`/clubs/${slug(name)}`} className="rail__chip-link" title={name}>
+      <Link to={`/clubs/${clubLink}`} className="rail__chip-link" title={name}>
         <img
-          src={logo}
+          src={logo || CLUB_PLACEHOLDER}
           alt=""
           width={44}
           height={44}
@@ -71,42 +71,89 @@ function CrestChip({ name, logo, code }: { name: string; logo: string; code: str
   )
 }
 
-/** Slug helper, aliased so the chip below reads tersely. */
-function slug(name: string): string {
-  return clubSlug(name)
+/** Normalize a flag or region string so clubs auto-match their region panel. */
+function matchesRegion(clubFlag: string | undefined | null, region: HomepageRegion): boolean {
+  const f = (clubFlag ?? '').trim()
+  if (!f) return false
+  if (f === region.flag.trim()) return true
+  const lower = f.toLowerCase()
+  return lower === region.iso.toLowerCase() || lower === region.name.toLowerCase()
 }
 
 export function IslandRail() {
-  /* Group the real table by nation. Order follows NATIONS, not the data. */
-  const byNation = useMemo(() => {
-    const rows = siteData.standingsByDivision?.[DIVISION]?.rows ?? siteData.standings
-    return NATIONS.map((n) => ({
-      ...n,
-      clubs: rows.filter((r) => r.flag === n.flag),
-    }))
+  const [liveRegions, setLiveRegions] = useState<HomepageRegion[] | null>(null)
+  const [liveClubs, setLiveClubs] = useState<Club[] | null>(null)
+
+  useEffect(() => {
+    if (!liveLeagueEnabled) return
+    const controller = new AbortController()
+    getLiveRegions(controller.signal)
+      .then((rows) => {
+        if (!controller.signal.aborted) setLiveRegions(rows)
+      })
+      .catch(() => {})
+    getLiveClubs(controller.signal)
+      .then((rows) => {
+        if (!controller.signal.aborted) setLiveClubs(rows)
+      })
+      .catch(() => {})
+    return () => controller.abort()
   }, [])
+
+  const regions = liveRegions ?? DEFAULT_NATIONS
+
+  /* Group registered clubs by nation/region. */
+  const byNation = useMemo(() => {
+    if (liveClubs) {
+      const featuredOrAll = liveClubs.filter((c) => c.isFeatured !== false)
+      return regions.map((r) => ({
+        ...r,
+        clubs: featuredOrAll
+          .filter((c) => matchesRegion(c.flag, r))
+          .map((c) => ({
+            team: c.name,
+            slug: c.slug || clubSlug(c.name),
+            logo: c.logoLocal ? asset(c.logoLocal) : c.logo ? asset(c.logo) : CLUB_PLACEHOLDER,
+            code: c.code || stripFlag(c.name).slice(0, 3).toUpperCase(),
+          })),
+      }))
+    }
+
+    const rows = siteData.standingsByDivision?.[DIVISION]?.rows ?? siteData.standings
+    return regions.map((r) => ({
+      ...r,
+      clubs: rows
+        .filter((row) => matchesRegion(row.flag, r))
+        .map((row) => ({
+          team: row.team,
+          slug: clubSlug(row.team),
+          logo: row.logo,
+          code: row.code,
+        })),
+    }))
+  }, [liveClubs, regions])
+
+  if (byNation.length === 0) return null
 
   return (
     <section className="rail" aria-labelledby="island-heading">
       <h2 id="island-heading" className="sr-only">
-        The three nations of the Island-Wide Virtual Premier League
+        The nations of the Island-Wide Virtual Premier League
       </h2>
 
       <div className="rail__vp">
         <div className="rail__track">
           {byNation.map((n, i) => (
             <article
-              key={n.iso}
+              key={`${n.iso}-${n.id}`}
               className={cx('rail__panel', `rail__panel--${n.iso.toLowerCase()}`)}
-              aria-label={`${n.name} — ${n.clubs.length} clubs in the ${DIVISION} table`}
+              aria-label={`${n.name} — ${n.clubs.length} registered ${n.clubs.length === 1 ? 'club' : 'clubs'}`}
             >
               <div className="rail__art">
                 <img
                   src={asset(n.art)}
                   alt={`IWVPL campaign artwork — ${n.name}`}
                   className="rail__art-img"
-                  /* First panel is adjacent to the fold, so it is not
-                     deferred; the rest have time to arrive as you scroll. */
                   loading={i === 0 ? 'eager' : 'lazy'}
                   decoding="async"
                 />
@@ -123,12 +170,12 @@ export function IslandRail() {
                 </p>
                 <h3 className="rail__name">{n.name}</h3>
                 <p className="rail__meta">
-                  {n.clubs.length} {n.clubs.length === 1 ? 'club' : 'clubs'} in the {DIVISION} table
+                  {n.clubs.length} {n.clubs.length === 1 ? 'club' : 'clubs'} registered in {n.name}
                 </p>
 
                 <ul className="rail__clubs">
                   {n.clubs.map((c) => (
-                    <CrestChip key={c.team} name={c.team} logo={c.logo} code={c.code} />
+                    <CrestChip key={c.slug} name={c.team} logo={c.logo} code={c.code} clubLink={c.slug} />
                   ))}
                 </ul>
               </div>

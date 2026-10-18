@@ -341,6 +341,25 @@ export async function getLiveClubs(signal: AbortSignal): Promise<Club[]> {
   }))
 }
 
+export interface HomepageRegion {
+  id: number
+  iso: string
+  name: string
+  flag: string
+  art: string
+  sortOrder: number
+}
+
+interface ApiRegion {
+  id: number
+  iso: string
+  name: string
+  flag: string
+  art_url: string
+  is_active: boolean | number
+  sort_order: number
+}
+
 export async function getLiveFormats(signal: AbortSignal): Promise<Format[]> {
   const response = await get<{ formats: ApiFormat[] }>('/api/formats', signal)
   return response.formats.map((f) => ({
@@ -349,6 +368,18 @@ export async function getLiveFormats(signal: AbortSignal): Promise<Format[]> {
     tag: f.status === 'coming_soon' ? 'Coming Soon' : f.tag,
     desc: f.description,
     status: f.status,
+  }))
+}
+
+export async function getLiveRegions(signal: AbortSignal): Promise<HomepageRegion[]> {
+  const response = await get<{ regions: ApiRegion[] }>('/api/regions', signal)
+  return response.regions.map((r) => ({
+    id: r.id,
+    iso: r.iso,
+    name: r.name,
+    flag: r.flag,
+    art: r.art_url,
+    sortOrder: r.sort_order,
   }))
 }
 

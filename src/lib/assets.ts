@@ -9,6 +9,8 @@
  * silent 404 for every image. Route public/ assets through `asset()` instead.
  */
 export function asset(path: string): string {
+  if (!path) return ''
+  if (/^(data:|blob:|https?:\/\/)/i.test(path)) return path
   // BASE_URL is normalised to end in '/' by Vite; the '/' fallback covers
   // non-Vite contexts (tests, tooling) so this never yields a double slash.
   const base = import.meta.env.BASE_URL || '/'

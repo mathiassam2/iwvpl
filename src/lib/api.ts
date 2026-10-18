@@ -117,6 +117,7 @@ export const register = (payload: {
   clubName?: string
   /** Decorative table label, up to 8 characters. Uppercased server-side. */
   shortCode?: string
+  region?: string
 }) => post<{ user: User }>('/api/auth/register', payload)
 
 export const logout = () => post<{ ok: true }>('/api/auth/logout')

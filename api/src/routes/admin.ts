@@ -2603,4 +2603,138 @@ admin.delete(
   }),
 )
 
+/* ------------------------------------------------------- homepage regions */
+
+function parseArtUrl(value: unknown): string {
+  const s = String(value ?? '').trim()
+  if (!s) throw Object.assign(new Error('Flag artwork image is required.'), { status: 400 })
+  if (s.length > 6_000_000) {
+    throw Object.assign(new Error('Flag artwork image is too large (max ~4.5 MB).'), { status: 400 })
+  }
+  return s
+}
+
+admin.get(
+  '/regions',
+  handler(async (_req, res) => {
+    const regions = await queryAll(
+      `SELECT id, iso, name, flag, art_url, is_active, sort_order
+         FROM homepage_regions
+        ORDER BY sort_order, id`,
+    )
+    res.json({ regions })
+  }),
+)
+
+admin.post(
+  '/regions',
+  handler(async (req, res) => {
+    const name = requiredString(req.body?.name, 'Region name', 120)
+    const iso = requiredString(req.body?.iso, 'ISO code', 16).toUpperCase()
+    const flag = requiredString(req.body?.flag, 'Flag emoji', 32)
+    const artUrl = parseArtUrl(req.body?.artUrl)
+    const isActive = req.body?.isActive === undefined ? true : Boolean(req.body.isActive)
+
+    const region = await withTransaction(async (conn) => {
+      const [maxRows] = await conn.query(
+        'SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_order FROM homepage_regions FOR UPDATE',
+      )
+      const sortOrder = Number((maxRows as Array<{ next_order: number }>)[0]?.next_order ?? 0)
+      const [inserted] = await conn.execute(
+        `INSERT INTO homepage_regions
+           (iso, name, flag, art_url, is_active, sort_order, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+        [iso, name, flag, artUrl, isActive ? 1 : 0, sortOrder],
+      )
+      const id = (inserted as any).insertId as number
+      return { id, iso, name, flag, art_url: artUrl, is_active: isActive, sort_order: sortOrder }
+    })
+
+    res.status(201).json({ region })
+  }),
+)
+
+admin.put(
+  '/regions/order',
+  handler(async (req, res) => {
+    const ids = req.body?.regionIds
+    if (
+      !Array.isArray(ids) ||
+      ids.length === 0 ||
+      ids.some((id) => !Number.isSafeInteger(id) || id < 1)
+    ) {
+      return res.status(400).json({ error: 'regionIds must be a non-empty array of region IDs.' })
+    }
+
+    await withTransaction(async (conn) => {
+      for (let i = 0; i < ids.length; i += 1) {
+        await conn.execute(
+          'UPDATE homepage_regions SET sort_order = ?, updated_at = NOW() WHERE id = ?',
+          [i, ids[i]],
+        )
+      }
+    })
+
+    res.json({ ok: true })
+  }),
+)
+
+admin.put(
+  '/regions/:id',
+  handler(async (req, res) => {
+    const id = Number.parseInt(req.params.id, 10)
+    if (!Number.isSafeInteger(id) || id < 1) {
+      return res.status(400).json({ error: 'Region id must be a positive integer.' })
+    }
+    const name = requiredString(req.body?.name, 'Region name', 120)
+    const iso = requiredString(req.body?.iso, 'ISO code', 16).toUpperCase()
+    const flag = requiredString(req.body?.flag, 'Flag emoji', 32)
+    const artUrl = parseArtUrl(req.body?.artUrl)
+    const isActive = req.body?.isActive === undefined ? true : Boolean(req.body.isActive)
+
+    const region = await withTransaction(async (conn) => {
+      const [rows] = await conn.query(
+        'SELECT id, sort_order FROM homepage_regions WHERE id = ? FOR UPDATE',
+        [id],
+      )
+      const current = (rows as Array<{ id: number; sort_order: number }>)[0]
+      if (!current) return null
+
+      await conn.execute(
+        `UPDATE homepage_regions
+            SET iso = ?, name = ?, flag = ?, art_url = ?, is_active = ?, updated_at = NOW()
+          WHERE id = ?`,
+        [iso, name, flag, artUrl, isActive ? 1 : 0, id],
+      )
+      return {
+        id,
+        iso,
+        name,
+        flag,
+        art_url: artUrl,
+        is_active: isActive,
+        sort_order: current.sort_order,
+      }
+    })
+
+    if (!region) return res.status(404).json({ error: 'Region not found.' })
+    res.json({ region })
+  }),
+)
+
+admin.delete(
+  '/regions/:id',
+  handler(async (req, res) => {
+    const id = Number.parseInt(req.params.id, 10)
+    if (!Number.isSafeInteger(id) || id < 1) {
+      return res.status(400).json({ error: 'Region id must be a positive integer.' })
+    }
+
+    const affected = await execute('DELETE FROM homepage_regions WHERE id = ?', [id])
+    if (affected === 0) return res.status(404).json({ error: 'Region not found.' })
+    res.json({ ok: true, id })
+  }),
+)
+
+
 

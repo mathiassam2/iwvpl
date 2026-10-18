@@ -162,6 +162,23 @@ league.get(
   }),
 )
 
+/* ----------------------------------------------------------------- regions */
+
+league.get(
+  '/regions',
+  handler(async (req, res) => {
+    const includeInactive = req.query.includeInactive === 'true'
+    const where = includeInactive ? '' : 'WHERE is_active = TRUE'
+    const regions = await queryAll(
+      `SELECT id, iso, name, flag, art_url, is_active, sort_order
+         FROM homepage_regions
+         ${where}
+        ORDER BY sort_order, id`,
+    )
+    res.json({ regions })
+  }),
+)
+
 league.get(
   '/clubs/:slug',
   handler(async (req, res) => {

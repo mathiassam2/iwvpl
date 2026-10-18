@@ -579,7 +579,7 @@ export const deleteMatch = (matchId: number) =>
 /** `shortCode` is camelCase on the wire, and null clears the code. */
 export const updateClub = (
   slug: string,
-  patch: { name?: string; shortCode?: string | null; status?: string },
+  patch: { name?: string; shortCode?: string | null; flag?: string | null; status?: string },
 ) =>
   request<{ ok: true }>(`/api/admin/clubs/${slug}`, {
     method: 'PATCH',
@@ -632,6 +632,50 @@ export const setFeaturedClubs = (slugs: string[]) =>
   request<{ ok: true; featuredSlugs: string[] }>('/api/admin/clubs/featured', {
     method: 'PUT',
     body: JSON.stringify({ slugs }),
+  })
+
+export interface HomepageRegion {
+  id: number
+  iso: string
+  name: string
+  flag: string
+  art_url: string
+  is_active: boolean | number
+  sort_order: number
+}
+
+export interface HomepageRegionInput {
+  iso: string
+  name: string
+  flag: string
+  artUrl: string
+  isActive?: boolean
+}
+
+export const getAdminRegions = () =>
+  request<{ regions: HomepageRegion[] }>('/api/admin/regions').then((r) => r.regions)
+
+export const createAdminRegion = (input: HomepageRegionInput) =>
+  request<{ region: HomepageRegion }>('/api/admin/regions', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  }).then((r) => r.region)
+
+export const updateAdminRegion = (id: number, input: HomepageRegionInput) =>
+  request<{ region: HomepageRegion }>(`/api/admin/regions/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  }).then((r) => r.region)
+
+export const updateAdminRegionOrder = (regionIds: number[]) =>
+  request<{ ok: true }>('/api/admin/regions/order', {
+    method: 'PUT',
+    body: JSON.stringify({ regionIds }),
+  })
+
+export const deleteAdminRegion = (id: number) =>
+  request<{ ok: true; id: number }>(`/api/admin/regions/${id}`, {
+    method: 'DELETE',
   })
 
 /* ------------------------------------------- registered managers & players */

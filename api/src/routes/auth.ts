@@ -108,6 +108,29 @@ auth.post(
         ? clean(req.body.shortCode, 'Short code', 8).toUpperCase()
         : null
 
+    const regionRaw =
+      role === 'club_manager' && req.body?.region ? String(req.body.region).trim() : ''
+    const REGION_FLAGS: Record<string, string> = {
+      singapore: '🇸🇬',
+      sg: '🇸🇬',
+      malaysia: '🇲🇾',
+      my: '🇲🇾',
+      indonesia: '🇮🇩',
+      id: '🇮🇩',
+      thailand: '🇹🇭',
+      th: '🇹🇭',
+      brunei: '🇧🇳',
+      bn: '🇧🇳',
+      philippines: '🇵🇭',
+      ph: '🇵🇭',
+      vietnam: '🇻🇳',
+      vn: '🇻🇳',
+    }
+    const clubFlag =
+      role === 'club_manager' && regionRaw
+        ? REGION_FLAGS[regionRaw.toLowerCase()] ?? (regionRaw.length <= 16 ? regionRaw : null)
+        : null
+
     if (gamertag) {
       const clash = await queryOne(
         'SELECT id FROM players WHERE gamertag_key = ?',
@@ -142,9 +165,9 @@ auth.post(
         // listed nowhere public and cannot play fixtures. GET /api/clubs
         // already filters on status, so pending needs no separate hiding.
         const [res] = await conn.execute(
-          `INSERT INTO clubs (name, slug, short_code, status, created_at, updated_at)
-           VALUES (?, ?, ?, 'pending', NOW(), NOW())`,
-          [clubName, clubSlug(clubName), shortCode],
+          `INSERT INTO clubs (name, slug, short_code, flag, status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, 'pending', NOW(), NOW())`,
+          [clubName, clubSlug(clubName), shortCode, clubFlag],
         )
         clubId = (res as any).insertId
       }
