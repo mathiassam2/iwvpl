@@ -1,7 +1,7 @@
 import { asset } from '@/lib/assets'
 import { AVATAR_PLACEHOLDER } from '@/lib/format'
 import type { PlayerProfile } from '@/lib/players'
-import type { Club, Match, StandingDivision } from '@/types/site'
+import type { Club, Format, Match, StandingDivision } from '@/types/site'
 
 interface ApiClub {
   id: number
@@ -12,7 +12,17 @@ interface ApiClub {
   logo_url: string | null
   logo_local: string | null
   status: string
+  is_featured?: boolean | number
   players: number
+}
+
+interface ApiFormat {
+  id: number
+  name: string
+  tag: string
+  description: string
+  status: 'active' | 'inactive' | 'coming_soon'
+  sort_order: number
 }
 
 interface ApiMatch {
@@ -317,6 +327,7 @@ export async function getLiveClubs(signal: AbortSignal): Promise<Club[]> {
 
   return response.clubs.map((c) => ({
     name: c.name,
+    slug: c.slug,
     flag: c.flag ?? '',
     code: c.short_code ?? '',
     // Internal detail page, never the original site.
@@ -326,6 +337,18 @@ export async function getLiveClubs(signal: AbortSignal): Promise<Club[]> {
     players: Number(c.players ?? 0),
     status: (c.status === 'active' ? 'Active' : 'Pending') as Club['status'],
     raw: c.name,
+    isFeatured: c.is_featured === undefined ? true : Boolean(c.is_featured),
+  }))
+}
+
+export async function getLiveFormats(signal: AbortSignal): Promise<Format[]> {
+  const response = await get<{ formats: ApiFormat[] }>('/api/formats', signal)
+  return response.formats.map((f) => ({
+    id: f.id,
+    name: f.name,
+    tag: f.status === 'coming_soon' ? 'Coming Soon' : f.tag,
+    desc: f.description,
+    status: f.status,
   }))
 }
 

@@ -94,9 +94,28 @@ export interface Club {
   logo_local: string | null
   logo_url: string | null
   status: string
+  is_featured?: boolean | number
   /** Division currently entered in, null when unassigned. */
   division_id: number | null
   players: number
+}
+
+export type FormatStatus = 'active' | 'inactive' | 'coming_soon'
+
+export interface CompetitionFormat {
+  id: number
+  name: string
+  tag: string
+  description: string
+  status: FormatStatus
+  sort_order: number
+}
+
+export interface CompetitionFormatInput {
+  name: string
+  tag: string
+  description: string
+  status: FormatStatus
 }
 
 /* ------------------------------------------------------------------ types */
@@ -578,3 +597,39 @@ export const removePlayer = (slug: string, gamertag: string) =>
     `/api/admin/clubs/${slug}/players/${encodeURIComponent(gamertag)}`,
     { method: 'DELETE' },
   )
+
+/* ----------------------------------------------------- homepage & formats */
+
+export const getFormats = () =>
+  request<{ formats: CompetitionFormat[] }>('/api/formats?includeInactive=true').then(
+    (r) => r.formats,
+  )
+
+export const createFormat = (input: CompetitionFormatInput) =>
+  request<{ format: CompetitionFormat }>('/api/admin/formats', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  }).then((r) => r.format)
+
+export const updateFormat = (id: number, input: CompetitionFormatInput) =>
+  request<{ format: CompetitionFormat }>(`/api/admin/formats/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  }).then((r) => r.format)
+
+export const setFormatStatus = (id: number, status: FormatStatus) =>
+  request<{ format: CompetitionFormat }>(`/api/admin/formats/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  }).then((r) => r.format)
+
+export const deleteFormat = (id: number) =>
+  request<{ ok: true; id: number }>(`/api/admin/formats/${id}`, {
+    method: 'DELETE',
+  })
+
+export const setFeaturedClubs = (slugs: string[]) =>
+  request<{ ok: true; featuredSlugs: string[] }>('/api/admin/clubs/featured', {
+    method: 'PUT',
+    body: JSON.stringify({ slugs }),
+  })

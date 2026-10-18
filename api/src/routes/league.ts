@@ -127,6 +127,7 @@ league.get(
 
     const clubs = await queryAll(
       `SELECT c.id, c.name, c.slug, c.short_code, c.flag, c.logo_url, c.logo_local, c.status,
+              c.is_featured,
               (SELECT COUNT(*) FROM players p WHERE p.club_id = c.id) AS players,
               (SELECT dc.division_id FROM division_clubs dc
                 JOIN divisions d ON d.id = dc.division_id
@@ -144,11 +145,28 @@ league.get(
   }),
 )
 
+/* ----------------------------------------------------------------- formats */
+
+league.get(
+  '/formats',
+  handler(async (req, res) => {
+    const includeInactive = req.query.includeInactive === 'true'
+    const where = includeInactive ? '' : "WHERE status <> 'inactive'"
+    const formats = await queryAll(
+      `SELECT id, name, tag, description, status, sort_order
+         FROM competition_formats
+         ${where}
+        ORDER BY sort_order, id`,
+    )
+    res.json({ formats })
+  }),
+)
+
 league.get(
   '/clubs/:slug',
   handler(async (req, res) => {
     const club = await queryOne<{ id: number }>(
-      `SELECT id, name, slug, short_code, flag, logo_url, logo_local, status, source_url
+      `SELECT id, name, slug, short_code, flag, logo_url, logo_local, status, is_featured, source_url
          FROM clubs WHERE slug = ?`,
       [req.params.slug],
     )

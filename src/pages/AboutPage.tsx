@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from 'react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import {
   Accordion,
@@ -13,11 +14,31 @@ import {
 import { SITE, siteData } from '@/data'
 import { asset } from '@/lib/assets'
 import { communityFlag } from '@/lib/format'
+import { getLiveFormats, liveLeagueEnabled } from '@/lib/liveLeague'
+import type { Format } from '@/types/site'
 
 export default function AboutPage() {
+  const [liveFormats, setLiveFormats] = useState<Format[] | null>(null)
+
+  useEffect(() => {
+    if (!liveLeagueEnabled) return
+    const controller = new AbortController()
+    getLiveFormats(controller.signal)
+      .then(setLiveFormats)
+      .catch(() => {
+        /* fall back to static formats if unreachable */
+      })
+    return () => controller.abort()
+  }, [])
+
+  const formats = useMemo(
+    () => (liveFormats ?? siteData.formats).filter((f) => f.status !== 'inactive'),
+    [liveFormats],
+  )
+
   const stats = [
     { k: String(siteData.clubs.length), v: 'Clubs registered' },
-    { k: String(siteData.formats.length), v: 'Competition formats' },
+    { k: String(formats.length), v: 'Competition formats' },
     { k: '5', v: 'Pro Club divisions' },
     { k: '5', v: 'Countries' },
   ]
@@ -57,8 +78,8 @@ export default function AboutPage() {
                   We organise a variety of EA SPORTS FC competitions, including:
                 </h3>
                 <ul className="mt-4 space-y-2.5">
-                  {siteData.formats.map((f) => (
-                    <li key={f.name} className="flex items-start gap-3 text-[15px] text-[var(--text-muted)]">
+                  {formats.map((f) => (
+                    <li key={f.id ?? f.name} className="flex items-start gap-3 text-[15px] text-[var(--text-muted)]">
                       <span aria-hidden className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--accent)]" />
                       <span>
                         <span className="font-semibold text-[var(--text-strong)]">{f.name}</span>{' '}
@@ -201,15 +222,18 @@ export default function AboutPage() {
             }
           />
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {siteData.formats.map((f) => (
-              <Card key={f.name} as="article" interactive className="flex h-full flex-col p-6">
-                <Badge tone={f.tag.toLowerCase().includes('soon') ? 'muted' : 'volt'}>
-                  {f.tag}
-                </Badge>
-                <h3 className="mt-5 text-lg font-bold text-[var(--text-strong)]">{f.name}</h3>
-                <p className="mt-2.5 text-sm leading-relaxed text-[var(--text-muted)]">{f.desc}</p>
-              </Card>
-            ))}
+            {formats.map((f) => {
+              const soon = f.status === 'coming_soon' || f.tag.toLowerCase().includes('soon')
+              return (
+                <Card key={f.id ?? f.name} as="article" interactive className="flex h-full flex-col p-6">
+                  <Badge tone={soon ? 'muted' : 'volt'}>
+                    {soon ? 'Coming Soon' : f.tag}
+                  </Badge>
+                  <h3 className="mt-5 text-lg font-bold text-[var(--text-strong)]">{f.name}</h3>
+                  <p className="mt-2.5 text-sm leading-relaxed text-[var(--text-muted)]">{f.desc}</p>
+                </Card>
+              )
+            })}
           </div>
         </Container>
       </Section>

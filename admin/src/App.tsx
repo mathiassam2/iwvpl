@@ -13,7 +13,9 @@ import {
   ApiError,
   addPlayer,
   assignDivision,
+  createFormat,
   decideClub,
+  deleteFormat,
   deleteMatch,
   deleteMatches,
   deleteUnscheduledMatches,
@@ -23,6 +25,7 @@ import {
   getClubs,
   getAdminSeasons,
   getDivisions,
+  getFormats,
   getMatches,
   getMatchPriorities,
   getPendingClubs,
@@ -31,6 +34,8 @@ import {
   generateFixtures,
   removePlayer,
   scheduleMatch,
+  setFeaturedClubs,
+  setFormatStatus,
   setResult,
   setCurrentSeason,
   setFeaturedDivision,
@@ -38,9 +43,12 @@ import {
   updateClub,
   updateDivision,
   updateDivisionOrder,
+  updateFormat,
   updateSeason,
   withdrawResult,
   type Club,
+  type CompetitionFormat,
+  type FormatStatus,
   type AdminSeason,
   type Division,
   type Match,
@@ -51,7 +59,7 @@ import {
 } from './api'
 
 type Tab = 'standings' | 'results' | 'clubs'
-type ClubSection = 'clubs' | 'applications' | 'divisions'
+type ClubSection = 'clubs' | 'applications' | 'divisions' | 'homepage'
 
 /** Which bulk action is running, so only that button shows its spinner. */
 type BulkAction = 'update'
@@ -144,7 +152,9 @@ export default function App() {
       ? 'applications'
       : savedTab === 'divisions' || savedSection === 'divisions'
         ? 'divisions'
-        : 'clubs'
+        : savedSection === 'homepage'
+          ? 'homepage'
+          : 'clubs'
   })
   const [toasts, setToasts] = useState<Toast[]>([])
   const [pendingApplicationCount, setPendingApplicationCount] = useState(0)
@@ -263,9 +273,11 @@ export default function App() {
                     ? 'Review standings by season and league division.'
                     : tab === 'clubs' && clubSection === 'applications'
                       ? 'Review and respond to clubs waiting for approval.'
-                      : tab === 'clubs'
-                        ? 'Update club details and manage player rosters.'
-                        : ''}
+                      : tab === 'clubs' && clubSection === 'homepage'
+                        ? 'Control competition formats and featured clubs shown on the public homepage.'
+                        : tab === 'clubs'
+                          ? 'Update club details and manage player rosters.'
+                          : ''}
               </p>
             </div>
           </div>
@@ -3431,6 +3443,13 @@ function Clubs({
         >
           Divisions
         </button>
+        <button
+          role="tab"
+          aria-selected={section === 'homepage'}
+          onClick={() => setSection('homepage')}
+        >
+          Homepage
+        </button>
       </div>
       {section === 'applications' ? (
         <Applications
@@ -3443,6 +3462,11 @@ function Clubs({
           guard={guard}
           report={report}
           onDivisionsChanged={(nextDivisions) => setDivisions(nextDivisions)}
+        />
+      ) : section === 'homepage' ? (
+        <HomepageSettings
+          guard={guard}
+          report={report}
         />
       ) : (
         <>
@@ -3983,3 +4007,449 @@ function Clubs({
     </>
   )
 }
+
+/* ------------------------------------------------------- homepage settings */
+
+const FORMAT_STATUS_OPTIONS: Array<{ value: FormatStatus; label: string }> = [
+  { value: 'active', label: 'Active' },
+  { value: 'coming_soon', label: 'Coming Soon' },
+  { value: 'inactive', label: 'Inactive' },
+]
+
+function HomepageSettings({
+  guard,
+  report,
+}: {
+  guard: <T>(fn: () => Promise<T>, what: string) => Promise<T>
+  report: (kind: Notice['kind'], text: string) => void
+}) {
+  const [formats, setFormats] = useState<CompetitionFormat[] | null>(null)
+  const [clubs, setClubs] = useState<Club[] | null>(null)
+  const [editingFormat, setEditingFormat] = useState<number | 'new' | null>(null)
+  const [formatName, setFormatName] = useState('')
+  const [formatTag, setFormatTag] = useState('')
+  const [formatDesc, setFormatDesc] = useState('')
+  const [formatStatusInput, setFormatStatusInput] = useState<FormatStatus>('active')
+  const [formatBusy, setFormatBusy] = useState(false)
+  const [statusBusyId, setStatusBusyId] = useState<number | null>(null)
+  const [deleteBusyId, setDeleteBusyId] = useState<number | null>(null)
+
+  const [featuredSlugs, setFeaturedSlugs] = useState<Set<string>>(new Set())
+  const [savedFeaturedSlugs, setSavedFeaturedSlugs] = useState<Set<string>>(new Set())
+  const [clubSearch, setClubSearch] = useState('')
+  const [featuredBusy, setFeaturedBusy] = useState(false)
+
+  useEffect(() => {
+    guard(getFormats, 'Could not load competition formats')
+      .then(setFormats)
+      .catch(() => setFormats([]))
+
+    guard(() => getClubs(), 'Could not load clubs for homepage feature')
+      .then((allClubs) => {
+        setClubs(allClubs)
+        const initial = new Set(
+          allClubs
+            .filter((c) => (c.is_featured === undefined ? true : Boolean(c.is_featured)))
+            .map((c) => c.slug),
+        )
+        setFeaturedSlugs(initial)
+        setSavedFeaturedSlugs(new Set(initial))
+      })
+      .catch(() => setClubs([]))
+  }, [guard])
+
+  const openFormatEditor = (format: CompetitionFormat | null) => {
+    setEditingFormat(format?.id ?? 'new')
+    setFormatName(format?.name ?? '')
+    setFormatTag(format?.tag ?? '')
+    setFormatDesc(format?.description ?? '')
+    setFormatStatusInput(format?.status ?? 'active')
+  }
+
+  const saveFormat = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (editingFormat === null) return
+    const target = editingFormat
+    const trimmedName = formatName.trim()
+    if (!trimmedName) {
+      report('error', 'Enter a format name.')
+      return
+    }
+    setFormatBusy(true)
+    try {
+      const payload = {
+        name: trimmedName,
+        tag: formatTag.trim(),
+        description: formatDesc.trim(),
+        status: formatStatusInput,
+      }
+      const saved = await guard(
+        () => (target === 'new' ? createFormat(payload) : updateFormat(target, payload)),
+        target === 'new' ? 'Could not add competition format' : 'Could not update competition format',
+      )
+      setFormats((current) => {
+        const list = current ?? []
+        const next =
+          target === 'new'
+            ? [...list, saved]
+            : list.map((item) => (item.id === saved.id ? saved : item))
+        return next.sort((a, b) => a.sort_order - b.sort_order || a.id - b.id)
+      })
+      setEditingFormat(null)
+      report('ok', `${saved.name} saved.`)
+    } catch {
+      /* already reported */
+    } finally {
+      setFormatBusy(false)
+    }
+  }
+
+  const changeFormatStatus = async (format: CompetitionFormat, nextStatus: FormatStatus) => {
+    if (format.status === nextStatus || statusBusyId !== null) return
+    setStatusBusyId(format.id)
+    try {
+      const updated = await guard(
+        () => setFormatStatus(format.id, nextStatus),
+        `Could not update status for ${format.name}`,
+      )
+      setFormats((current) =>
+        (current ?? []).map((item) => (item.id === updated.id ? updated : item)),
+      )
+      const statusLabel =
+        nextStatus === 'active'
+          ? 'Active'
+          : nextStatus === 'coming_soon'
+            ? 'Coming Soon'
+            : 'Inactive'
+      report('ok', `${format.name} set to ${statusLabel}.`)
+    } catch {
+      /* already reported */
+    } finally {
+      setStatusBusyId(null)
+    }
+  }
+
+  const removeFormatItem = async (format: CompetitionFormat) => {
+    if (deleteBusyId !== null) return
+    setDeleteBusyId(format.id)
+    try {
+      await guard(() => deleteFormat(format.id), `Could not remove ${format.name}`)
+      setFormats((current) => (current ?? []).filter((item) => item.id !== format.id))
+      if (editingFormat === format.id) setEditingFormat(null)
+      report('ok', `${format.name} removed.`)
+    } catch {
+      /* already reported */
+    } finally {
+      setDeleteBusyId(null)
+    }
+  }
+
+  const toggleClubFeatured = (slug: string, checked: boolean) => {
+    setFeaturedSlugs((current) => {
+      const next = new Set(current)
+      if (checked) next.add(slug)
+      else next.delete(slug)
+      return next
+    })
+  }
+
+  const filteredClubs = (clubs ?? []).filter((club) => {
+    const q = clubSearch.trim().toLowerCase()
+    if (!q) return true
+    return (
+      club.name.toLowerCase().includes(q) ||
+      (club.short_code ?? '').toLowerCase().includes(q) ||
+      club.slug.toLowerCase().includes(q)
+    )
+  })
+
+  const selectAllFilteredClubs = () => {
+    setFeaturedSlugs((current) => {
+      const next = new Set(current)
+      for (const club of filteredClubs) next.add(club.slug)
+      return next
+    })
+  }
+
+  const deselectAllFilteredClubs = () => {
+    setFeaturedSlugs((current) => {
+      const next = new Set(current)
+      for (const club of filteredClubs) next.delete(club.slug)
+      return next
+    })
+  }
+
+  const featuredDirty =
+    featuredSlugs.size !== savedFeaturedSlugs.size ||
+    [...featuredSlugs].some((slug) => !savedFeaturedSlugs.has(slug))
+
+  const saveFeaturedClubsSelection = async () => {
+    if (featuredBusy) return
+    setFeaturedBusy(true)
+    try {
+      const slugs = [...featuredSlugs]
+      await guard(
+        () => setFeaturedClubs(slugs),
+        'Could not update featured clubs on homepage',
+      )
+      setSavedFeaturedSlugs(new Set(slugs))
+      setClubs((current) =>
+        (current ?? []).map((club) => ({
+          ...club,
+          is_featured: featuredSlugs.has(club.slug),
+        })),
+      )
+      report(
+        'ok',
+        `Homepage featured clubs updated (${slugs.length} ${slugs.length === 1 ? 'club' : 'clubs'} selected).`,
+      )
+    } catch {
+      /* already reported */
+    } finally {
+      setFeaturedBusy(false)
+    }
+  }
+
+  const formatForm = (
+    <form className="division-editor" onSubmit={(event) => void saveFormat(event)}>
+      <div className="homepage-format-fields">
+        <label>
+          <span>Format name</span>
+          <input
+            className="text"
+            placeholder="e.g. Pro Club League"
+            value={formatName}
+            onChange={(event) => setFormatName(event.target.value)}
+            maxLength={120}
+            required
+            autoFocus
+          />
+        </label>
+        <label>
+          <span>Format tag / mode</span>
+          <input
+            className="text"
+            placeholder="e.g. 11 vs 11"
+            value={formatTag}
+            onChange={(event) => setFormatTag(event.target.value)}
+            maxLength={64}
+          />
+        </label>
+        <label>
+          <span>Status</span>
+          <CustomSelect
+            ariaLabel="Format status"
+            value={formatStatusInput}
+            options={FORMAT_STATUS_OPTIONS}
+            onChange={(value) => setFormatStatusInput(value as FormatStatus)}
+          />
+        </label>
+      </div>
+      <label>
+        <span>Description</span>
+        <input
+          className="text"
+          placeholder="Short description of this competition format"
+          value={formatDesc}
+          onChange={(event) => setFormatDesc(event.target.value)}
+          maxLength={512}
+        />
+      </label>
+      <div className="division-editor-actions">
+        <button
+          className="btn"
+          type="button"
+          disabled={formatBusy}
+          onClick={() => setEditingFormat(null)}
+        >
+          Cancel
+        </button>
+        <button className="btn primary" type="submit" disabled={formatBusy}>
+          {formatBusy
+            ? 'Saving…'
+            : editingFormat === 'new'
+              ? 'Add format'
+              : 'Save changes'}
+        </button>
+      </div>
+    </form>
+  )
+
+  return (
+    <div className="division-management homepage-management">
+      <div className="card">
+        <header>
+          <div>
+            <h2>Ways to compete</h2>
+            <p className="hint">
+              Control the competition formats section on the main page — add, remove, or set each format to Active, Coming Soon, or Inactive.
+            </p>
+          </div>
+          <button
+            className="btn primary sm"
+            type="button"
+            onClick={() => openFormatEditor(null)}
+            disabled={editingFormat !== null}
+          >
+            <span aria-hidden="true">＋</span> Add format
+          </button>
+        </header>
+
+        {editingFormat === 'new' && formatForm}
+
+        {formats === null ? (
+          <div className="loading">Loading competition formats…</div>
+        ) : formats.length === 0 && editingFormat !== 'new' ? (
+          <p className="empty">No competition formats configured yet. Add one to display on the homepage.</p>
+        ) : (
+          <div className="division-admin-list">
+            {formats.map((format, index) => (
+              <article
+                className={`division-admin-item${format.status === 'inactive' ? ' is-inactive' : ''}`}
+                key={format.id}
+              >
+                {editingFormat === format.id ? (
+                  formatForm
+                ) : (
+                  <div className="division-admin-heading homepage-format-row">
+                    <div className="division-admin-title">
+                      <span className="division-admin-rank" aria-label={`Format ${index + 1}`}>
+                        {String(index + 1).padStart(2, '0')}
+                      </span>
+                      <div>
+                        <h3>
+                          {format.name}
+                          <span className={`format-status-badge status-${format.status}`}>
+                            {format.status === 'active'
+                              ? format.tag || 'Active'
+                              : format.status === 'coming_soon'
+                                ? 'Coming Soon'
+                                : 'Inactive'}
+                          </span>
+                        </h3>
+                        {format.description && (
+                          <span className="hint">{format.description}</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="division-admin-actions homepage-format-actions">
+                      <div className="homepage-status-select">
+                        <CustomSelect
+                          ariaLabel={`Status for ${format.name}`}
+                          value={format.status}
+                          disabled={statusBusyId === format.id || editingFormat !== null}
+                          options={FORMAT_STATUS_OPTIONS}
+                          onChange={(value) =>
+                            void changeFormatStatus(format, value as FormatStatus)
+                          }
+                        />
+                      </div>
+                      <button
+                        className="btn sm"
+                        type="button"
+                        disabled={editingFormat !== null}
+                        onClick={() => openFormatEditor(format)}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        className="btn sm danger"
+                        type="button"
+                        disabled={deleteBusyId === format.id || editingFormat !== null}
+                        onClick={() => void removeFormatItem(format)}
+                      >
+                        {deleteBusyId === format.id ? 'Removing…' : 'Remove'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </article>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="card">
+        <header>
+          <div>
+            <h2>Every club in the league</h2>
+            <p className="hint">
+              Multi-select which clubs are featured in the homepage crest wall ({featuredSlugs.size} of {clubs?.length ?? 0} selected).
+            </p>
+          </div>
+          <div className="homepage-club-header-actions">
+            <button
+              className="btn sm"
+              type="button"
+              disabled={!clubs || filteredClubs.length === 0 || featuredBusy}
+              onClick={selectAllFilteredClubs}
+            >
+              Select all
+            </button>
+            <button
+              className="btn sm"
+              type="button"
+              disabled={!clubs || filteredClubs.length === 0 || featuredBusy}
+              onClick={deselectAllFilteredClubs}
+            >
+              Clear all
+            </button>
+            <button
+              className="btn primary sm"
+              type="button"
+              disabled={!featuredDirty || featuredBusy}
+              onClick={() => void saveFeaturedClubsSelection()}
+            >
+              {featuredBusy ? 'Saving…' : 'Save featured clubs'}
+            </button>
+          </div>
+        </header>
+
+        <div className="homepage-club-toolbar">
+          <input
+            className="text"
+            type="search"
+            placeholder="Search clubs by name or code…"
+            aria-label="Search clubs to feature on the homepage"
+            value={clubSearch}
+            onChange={(event) => setClubSearch(event.target.value)}
+          />
+          {featuredDirty && (
+            <span className="homepage-unsaved-pill">Unsaved changes</span>
+          )}
+        </div>
+
+        {clubs === null ? (
+          <div className="loading">Loading clubs…</div>
+        ) : filteredClubs.length === 0 ? (
+          <div className="empty">No clubs match your search.</div>
+        ) : (
+          <div className="homepage-club-grid" role="group" aria-label="Featured clubs selection">
+            {filteredClubs.map((club) => {
+              const checked = featuredSlugs.has(club.slug)
+              return (
+                <label
+                  key={club.slug}
+                  className={`homepage-club-option${checked ? ' is-selected' : ''}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    disabled={featuredBusy}
+                    onChange={(event) => toggleClubFeatured(club.slug, event.target.checked)}
+                  />
+                  {club.logo_local && <img src={club.logo_local} alt="" />}
+                  <div className="homepage-club-meta">
+                    <span className="name">{club.name}</span>
+                    <span className="hint">{club.short_code || '—'}</span>
+                  </div>
+                </label>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+

@@ -58,7 +58,6 @@ export function Scroller() {
   const [liveResults, setLiveResults] = useState<typeof siteData.results | null>(null)
   const [error, setError] = useState('')
   const [reload, setReload] = useState(0)
-  useMarqueeSpeed(sectionRef)
 
   useEffect(() => {
     if (!liveLeagueEnabled) return
@@ -97,6 +96,8 @@ export function Scroller() {
       })),
     }
   }, [results])
+
+  useMarqueeSpeed(sectionRef, items.length)
 
   if (error) {
     return (

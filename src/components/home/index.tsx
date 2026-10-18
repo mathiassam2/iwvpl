@@ -17,6 +17,7 @@ import { matchIndexOf } from '@/lib/match'
 import { asset } from '@/lib/assets'
 import { CLUB_PLACEHOLDER, cx, stripFlag, totalGoals } from '@/lib/format'
 import {
+  getLiveFormats,
   getLiveResults,
   getLiveStandings,
   featuredStandingDivision,
@@ -25,7 +26,7 @@ import {
   type LiveStandings,
 } from '@/lib/liveLeague'
 import { useSeasonName } from '@/lib/season'
-import type { Standing, StandingDivision } from '@/types/site'
+import type { Format, Standing, StandingDivision } from '@/types/site'
 
 
 /* ==================================================================== HERO */
@@ -612,7 +613,43 @@ export function Hero() {
   )
 }
 /* ============================================================== FORMATS */
+const COUNT_WORDS: Record<number, string> = {
+  1: 'One',
+  2: 'Two',
+  3: 'Three',
+  4: 'Four',
+  5: 'Five',
+  6: 'Six',
+  7: 'Seven',
+  8: 'Eight',
+  9: 'Nine',
+  10: 'Ten',
+}
+
 export function Formats() {
+  const [liveFormats, setLiveFormats] = useState<Format[] | null>(null)
+
+  useEffect(() => {
+    if (!liveLeagueEnabled) return
+    const controller = new AbortController()
+    getLiveFormats(controller.signal)
+      .then(setLiveFormats)
+      .catch(() => {
+        /* fall back to static formats if unreachable */
+      })
+    return () => controller.abort()
+  }, [])
+
+  const formats = useMemo(
+    () => (liveFormats ?? siteData.formats).filter((f) => f.status !== 'inactive'),
+    [liveFormats],
+  )
+
+  if (!formats.length) return null
+
+  const countWord = COUNT_WORDS[formats.length] ?? String(formats.length)
+  const heading = `${countWord} ${formats.length === 1 ? 'way' : 'ways'} to compete`
+
   return (
     /* Tighter exit than the standard Section rhythm: with the copy gone this
        section is only four short lines, and the default 96px bottom plus
@@ -624,7 +661,7 @@ export function Formats() {
             names carry the meaning and the index carries the rhythm. */}
         <div className="mb-8 flex flex-wrap items-end justify-between gap-4 border-b border-[var(--border)] pb-5">
           <h2 className="text-2xl font-bold text-[var(--text-strong)] sm:text-3xl">
-            Four ways to compete
+            {heading}
           </h2>
           <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-[var(--text-faint)]">
             Competition formats
@@ -632,10 +669,11 @@ export function Formats() {
         </div>
 
         <div className="grid gap-px sm:grid-cols-2 lg:grid-cols-4">
-          {siteData.formats.map((f, i) => {
-            const soon = f.tag.toLowerCase().includes('soon')
+          {formats.map((f, i) => {
+            const soon = f.status === 'coming_soon' || f.tag.toLowerCase().includes('soon')
+            const tagLabel = soon ? 'Coming Soon' : f.tag
             return (
-              <Reveal key={f.name} delay={i * 70}>
+              <Reveal key={f.id ?? f.name} delay={i * 70}>
                 <div className="group relative flex h-full flex-col justify-between gap-5 px-5 py-5 sm:px-6">
                   <div className="flex items-baseline justify-between gap-3">
                     <span
@@ -644,7 +682,7 @@ export function Formats() {
                         soon ? 'text-[var(--text-faint)]' : 'text-[var(--accent-text)]',
                       )}
                     >
-                      {f.tag}
+                      {tagLabel}
                     </span>
                     <span
                       aria-hidden
@@ -1133,7 +1171,7 @@ export function Sponsors() {
     <Section tone="deep" className="!py-16">
       <Container size="narrow">
         <div className="text-center">
-          <Eyebrow className="mb-5">Proudly sponsored by</Eyebrow>
+          <Eyebrow className="mb-5">Proudly partnered by</Eyebrow>
           <p className="mb-12 text-sm text-[var(--text-muted)]">
             A special thanks to our generous partners.
           </p>

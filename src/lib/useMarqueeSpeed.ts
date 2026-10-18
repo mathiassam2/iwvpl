@@ -27,12 +27,15 @@ import { useEffect } from 'react'
 const SLOW = 0.4
 const DURATION_MS = 520
 
-/** easeOutCubic — fast off the line, settling gently into the target speed. */
+/** easeInOutCubic — smooth acceleration and deceleration when hovering the ticker. */
 function ease(t: number): number {
-  return 1 - Math.pow(1 - t, 3)
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
 }
 
-export function useMarqueeSpeed(sectionRef: React.RefObject<HTMLElement>) {
+export function useMarqueeSpeed(
+  sectionRef: React.RefObject<HTMLElement>,
+  ready: unknown = true,
+) {
   useEffect(() => {
     const section = sectionRef.current
     if (!section) return
@@ -40,12 +43,15 @@ export function useMarqueeSpeed(sectionRef: React.RefObject<HTMLElement>) {
     const track = section.querySelector<HTMLElement>('.marquee__track')
     if (!track) return
 
-    const anim = track.getAnimations().find((a) => a.animationName === 'sd-marquee')
-    if (!anim) return
+    const findAnim = () =>
+      track.getAnimations().find((a) => (a as CSSAnimation).animationName === 'sd-marquee') ??
+      track.getAnimations()[0]
 
     let frame = 0
 
     const tween = (target: number) => {
+      const anim = findAnim()
+      if (!anim) return
       cancelAnimationFrame(frame)
       const from = anim.playbackRate
       if (Math.abs(from - target) < 0.001) {
@@ -72,7 +78,8 @@ export function useMarqueeSpeed(sectionRef: React.RefObject<HTMLElement>) {
       section.removeEventListener('pointerenter', onEnter)
       section.removeEventListener('pointerleave', onLeave)
       // Leaving mid-tween must not strand the track at a crawl.
-      anim.playbackRate = 1
+      const anim = findAnim()
+      if (anim) anim.playbackRate = 1
     }
-  }, [sectionRef])
+  }, [sectionRef, ready])
 }

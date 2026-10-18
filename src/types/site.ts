@@ -27,9 +27,11 @@ export interface NavItem {
 }
 
 export interface Format {
+  id?: number
   name: string
   tag: string
   desc: string
+  status?: 'active' | 'inactive' | 'coming_soon'
 }
 
 export interface FaqItem {
@@ -86,6 +88,7 @@ export type ClubStatus = 'Active' | 'Non-Active' | 'Pending Approval' | ''
 
 export interface Club {
   name: string
+  slug?: string
   flag: string
   code: string
   url: string
@@ -94,6 +97,7 @@ export interface Club {
   players: number
   status: ClubStatus
   raw: string
+  isFeatured?: boolean
 }
 
 export interface LeaderboardRow {

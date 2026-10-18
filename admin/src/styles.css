@@ -1329,3 +1329,89 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 }
 
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+/* ----------------------------------------------------- homepage management */
+.homepage-management { display: grid; gap: 20px; }
+.homepage-format-fields {
+  display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(150px, 190px);
+  gap: 12px;
+}
+.homepage-format-fields label {
+  display: grid; gap: 6px; min-width: 0; color: var(--muted); font-size: 11px; font-weight: 700;
+}
+.homepage-format-fields .text { width: 100%; min-height: 38px; }
+.homepage-format-row { gap: 14px; }
+.homepage-format-actions { flex-wrap: wrap; gap: 8px; }
+.homepage-status-select { min-width: 148px; }
+.homepage-status-select .custom-select-trigger { min-height: 32px; height: 32px; }
+
+.format-status-badge {
+  display: inline-block; margin-left: 8px; padding: 2px 8px; vertical-align: middle;
+  border-radius: 999px; font-size: 9px; font-weight: 800;
+  letter-spacing: 0.06em; text-transform: uppercase;
+}
+.format-status-badge.status-active {
+  border: 1px solid rgb(200 255 61 / 25%);
+  background: var(--accent-soft); color: var(--accent);
+}
+.format-status-badge.status-coming_soon {
+  border: 1px solid rgb(255 190 92 / 32%);
+  background: rgb(255 190 92 / 10%); color: #ffd98f;
+}
+.format-status-badge.status-inactive {
+  border: 1px solid var(--border-strong);
+  background: var(--surface-raised); color: var(--faint);
+}
+
+.homepage-club-header-actions {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 7px;
+}
+.homepage-club-toolbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 20px; border-bottom: 1px solid var(--border);
+  background: rgb(255 255 255 / 1.5%);
+}
+.homepage-club-toolbar .text { flex: 1; min-width: 0; min-height: 36px; }
+.homepage-unsaved-pill {
+  flex: none; padding: 4px 9px; border: 1px solid rgb(255 190 92 / 32%);
+  border-radius: 999px; background: rgb(255 190 92 / 10%); color: #ffd98f;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+}
+.homepage-club-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px; padding: 16px 20px;
+}
+.homepage-club-option {
+  display: flex; align-items: center; gap: 10px; min-width: 0; padding: 10px 12px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--bg);
+  cursor: pointer; user-select: none; transition: border-color 140ms ease, background 140ms ease;
+}
+.homepage-club-option:hover {
+  border-color: var(--border-strong); background: var(--surface-hover);
+}
+.homepage-club-option.is-selected {
+  border-color: rgb(200 255 61 / 38%); background: var(--accent-soft);
+}
+.homepage-club-option input[type="checkbox"] {
+  flex: none; width: 17px; height: 17px; accent-color: var(--accent); cursor: pointer;
+}
+.homepage-club-option img {
+  flex: none; width: 28px; height: 28px; border-radius: 6px; object-fit: contain;
+}
+.homepage-club-meta {
+  display: grid; gap: 2px; min-width: 0;
+}
+.homepage-club-meta .name {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--text); font-size: 12px; font-weight: 700;
+}
+.homepage-club-meta .hint {
+  font-size: 10px;
+}
+
+@media (max-width: 720px) {
+  .homepage-format-fields { grid-template-columns: 1fr; }
+  .homepage-club-toolbar { flex-wrap: wrap; padding: 12px 14px; }
+  .homepage-club-grid { grid-template-columns: 1fr; padding: 12px 14px; }
+}
+

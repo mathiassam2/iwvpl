@@ -1,9 +1,8 @@
 import { Link } from 'react-router-dom'
-import { Container, Eyebrow, Reveal } from '@/components/ui'
+import { Container, Reveal } from '@/components/ui'
 import { SITE, siteData } from '@/data'
 import { asset } from '@/lib/assets'
 import { communityFlag, cx } from '@/lib/format'
-import { useSeasonName } from '@/lib/season'
 
 const ESSENTIAL = [
   { label: 'About Us', href: '/about' },
@@ -30,44 +29,9 @@ const LEAGUES = [
 
 export function Footer() {
   const year = new Date().getFullYear()
-  const seasonName = useSeasonName()
 
   return (
     <footer className="relative border-t border-[var(--border)] bg-[var(--bg-deep)] text-[var(--text)]">
-      {/* CTA strip */}
-      <div className="relative overflow-hidden border-b border-[var(--border)]">
-        <div className="pointer-events-none absolute inset-0 bg-grid opacity-60" />
-        <div className="pointer-events-none absolute inset-0 bg-radial-volt" />
-        <Container size="wide" className="relative py-14 sm:py-16">
-          <div className="flex flex-col items-start justify-between gap-8 lg:flex-row lg:items-center">
-            <div className="max-w-xl">
-              <Eyebrow className="mb-4">Join the league</Eyebrow>
-              <h2 className="text-3xl font-bold sm:text-4xl">
-                Ready to step onto the <span className="text-gradient">virtual pitch?</span>
-              </h2>
-              <p className="mt-4 text-base leading-relaxed text-[var(--text-muted)]">
-                {SITE.teamsRegistered} of {SITE.teamCap} team slots filled for {seasonName}.
-                Registration is {SITE.registrationFee} per team.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-3">
-              <Link
-                to="/register"
-                className="inline-flex h-[52px] items-center rounded-full bg-[var(--accent-solid)] px-7 font-semibold text-[var(--on-volt)] transition-all duration-300 hover:bg-[var(--accent-hover)] hover:shadow-[0_12px_32px_-10px_rgb(200_255_61/0.75)] active:scale-[0.97]"
-              >
-                Register your team
-              </Link>
-              <Link
-                to="/about"
-                className="inline-flex h-[52px] items-center rounded-full border border-[var(--border-strong)] px-7 font-semibold text-[var(--text-strong)] transition-all duration-300 hover:border-[var(--accent-ring)] hover:bg-[var(--surface-hover)]"
-              >
-                Learn more
-              </Link>
-            </div>
-          </div>
-        </Container>
-      </div>
-
       <Container size="wide" className="py-14">
         <div className="grid gap-10 md:grid-cols-2 lg:grid-cols-4">
           <div>

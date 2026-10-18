@@ -6,9 +6,7 @@ import {
   AboutStrip,
   Formats,
   Hero,
-  JoinCta,
   NewsSection,
-  ResultsPreview,
   Sponsors,
 } from '@/components/home'
 
@@ -40,11 +38,9 @@ export default function HomePage() {
       <Statement />
       <Formats />
       <CrestWall />
-      <ResultsPreview />
       <AboutStrip />
       <NewsSection />
       <Sponsors />
-      <JoinCta />
     </div>
   )
 }

@@ -1986,3 +1986,165 @@ admin.post(
     res.json(result)
   }),
 )
+
+/* ----------------------------------------------------- homepage & formats */
+
+const FORMAT_STATUSES = new Set(['active', 'inactive', 'coming_soon'])
+
+function parseFormatStatus(value: unknown): 'active' | 'inactive' | 'coming_soon' {
+  const s = String(value ?? 'active').trim().toLowerCase()
+  if (!FORMAT_STATUSES.has(s)) {
+    throw Object.assign(
+      new Error("status must be 'active', 'inactive', or 'coming_soon'."),
+      { status: 400 },
+    )
+  }
+  return s as 'active' | 'inactive' | 'coming_soon'
+}
+
+admin.post(
+  '/formats',
+  handler(async (req, res) => {
+    const name = requiredString(req.body?.name, 'name', 120)
+    const tag = optionalString(req.body?.tag, 64) ?? ''
+    const description = optionalString(req.body?.description, 512) ?? ''
+    const status = parseFormatStatus(req.body?.status)
+
+    const format = await withTransaction(async (conn) => {
+      const [maxRows] = await conn.query(
+        'SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_order FROM competition_formats FOR UPDATE',
+      )
+      const sortOrder = Math.max(0, Number((maxRows as Array<{ next_order: number }>)[0]?.next_order ?? 0))
+      const [inserted] = await conn.execute(
+        `INSERT INTO competition_formats (name, tag, description, status, sort_order, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, NOW(), NOW())`,
+        [name, tag, description, status, sortOrder],
+      )
+      const id = (inserted as any).insertId as number
+      const [rows] = await conn.query(
+        'SELECT id, name, tag, description, status, sort_order FROM competition_formats WHERE id = ?',
+        [id],
+      )
+      return (rows as any[])[0]
+    })
+
+    res.status(201).json({ format })
+  }),
+)
+
+admin.put(
+  '/formats/:id',
+  handler(async (req, res) => {
+    const id = Number.parseInt(req.params.id, 10)
+    if (!Number.isSafeInteger(id) || id < 1) {
+      return res.status(400).json({ error: 'Format id must be a positive integer.' })
+    }
+    const name = requiredString(req.body?.name, 'name', 120)
+    const tag = optionalString(req.body?.tag, 64) ?? ''
+    const description = optionalString(req.body?.description, 512) ?? ''
+    const status = parseFormatStatus(req.body?.status)
+
+    const format = await withTransaction(async (conn) => {
+      const [existing] = await conn.query(
+        'SELECT id FROM competition_formats WHERE id = ? FOR UPDATE',
+        [id],
+      )
+      if (!((existing as unknown[])[0])) return null
+
+      await conn.execute(
+        `UPDATE competition_formats
+            SET name = ?, tag = ?, description = ?, status = ?, updated_at = NOW()
+          WHERE id = ?`,
+        [name, tag, description, status, id],
+      )
+      const [rows] = await conn.query(
+        'SELECT id, name, tag, description, status, sort_order FROM competition_formats WHERE id = ?',
+        [id],
+      )
+      return (rows as any[])[0]
+    })
+
+    if (!format) return res.status(404).json({ error: 'Competition format not found.' })
+    res.json({ format })
+  }),
+)
+
+admin.patch(
+  '/formats/:id/status',
+  handler(async (req, res) => {
+    const id = Number.parseInt(req.params.id, 10)
+    if (!Number.isSafeInteger(id) || id < 1) {
+      return res.status(400).json({ error: 'Format id must be a positive integer.' })
+    }
+    const status = parseFormatStatus(req.body?.status)
+
+    const format = await withTransaction(async (conn) => {
+      const [existing] = await conn.query(
+        'SELECT id FROM competition_formats WHERE id = ? FOR UPDATE',
+        [id],
+      )
+      if (!((existing as unknown[])[0])) return null
+
+      await conn.execute(
+        'UPDATE competition_formats SET status = ?, updated_at = NOW() WHERE id = ?',
+        [status, id],
+      )
+      const [rows] = await conn.query(
+        'SELECT id, name, tag, description, status, sort_order FROM competition_formats WHERE id = ?',
+        [id],
+      )
+      return (rows as any[])[0]
+    })
+
+    if (!format) return res.status(404).json({ error: 'Competition format not found.' })
+    res.json({ format })
+  }),
+)
+
+admin.delete(
+  '/formats/:id',
+  handler(async (req, res) => {
+    const id = Number.parseInt(req.params.id, 10)
+    if (!Number.isSafeInteger(id) || id < 1) {
+      return res.status(400).json({ error: 'Format id must be a positive integer.' })
+    }
+
+    const deleted = await withTransaction(async (conn) => {
+      const [existing] = await conn.query(
+        'SELECT id FROM competition_formats WHERE id = ? FOR UPDATE',
+        [id],
+      )
+      if (!((existing as unknown[])[0])) return false
+      await conn.execute('DELETE FROM competition_formats WHERE id = ?', [id])
+      return true
+    })
+
+    if (!deleted) return res.status(404).json({ error: 'Competition format not found.' })
+    res.json({ ok: true, id })
+  }),
+)
+
+admin.put(
+  '/clubs/featured',
+  handler(async (req, res) => {
+    const slugsRaw = req.body?.slugs
+    if (!Array.isArray(slugsRaw)) {
+      return res.status(400).json({ error: 'slugs must be an array of club slugs.' })
+    }
+    const slugs = [...new Set(slugsRaw.map((s) => String(s ?? '').trim()).filter(Boolean))]
+
+    await withTransaction(async (conn) => {
+      await conn.execute('UPDATE clubs SET is_featured = FALSE, updated_at = NOW()')
+      if (slugs.length > 0) {
+        const placeholders = slugs.map(() => '?').join(', ')
+        await conn.execute(
+          `UPDATE clubs SET is_featured = TRUE, updated_at = NOW() WHERE slug IN (${placeholders})`,
+          slugs,
+        )
+      }
+    })
+
+    res.json({ ok: true, featuredSlugs: slugs })
+  }),
+)
+

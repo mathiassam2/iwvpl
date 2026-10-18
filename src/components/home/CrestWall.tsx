@@ -1,7 +1,11 @@
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ButtonLink, Container, Section, SectionHead } from '@/components/ui'
 import { siteData } from '@/data'
-import { clubSlug, stripFlag } from '@/lib/format'
+import { asset } from '@/lib/assets'
+import { CLUB_PLACEHOLDER, clubSlug, stripFlag } from '@/lib/format'
+import { getLiveClubs, liveLeagueEnabled } from '@/lib/liveLeague'
+import type { Club } from '@/types/site'
 
 /**
  * Every club in the roster, as a wall of crests.
@@ -20,7 +24,23 @@ import { clubSlug, stripFlag } from '@/lib/format'
  * CSS, so this component is a list again.
  */
 export function CrestWall() {
-  const clubs = siteData.clubs
+  const [liveClubs, setLiveClubs] = useState<Club[] | null>(null)
+
+  useEffect(() => {
+    if (!liveLeagueEnabled) return
+    const controller = new AbortController()
+    getLiveClubs(controller.signal)
+      .then(setLiveClubs)
+      .catch(() => {
+        /* fall back to static clubs if unreachable */
+      })
+    return () => controller.abort()
+  }, [])
+
+  const clubs = useMemo(() => {
+    const source = liveClubs ?? siteData.clubs
+    return source.filter((club) => club.isFeatured !== false)
+  }, [liveClubs])
 
   if (!clubs.length) return null
 
@@ -32,7 +52,7 @@ export function CrestWall() {
           title="Every club in the league"
           lede={
             clubs.length === 1
-              ? 'One club entered this season.'
+              ? 'One club featured this season.'
               : `${clubs.length} clubs entered this season, spread across ${siteData.divisions?.length ?? 0} divisions.`
           }
           action={
@@ -43,22 +63,26 @@ export function CrestWall() {
         />
 
         <ul className="crest-wall">
-          {clubs.map((club) => (
-            <li className="crest-wall__cell" key={club.name}>
-              <Link to={`/clubs/${clubSlug(club.name)}`} className="crest-wall__link">
-                <img
-                  src={club.logoLocal || undefined}
-                  alt=""
-                  width={64}
-                  height={64}
-                  loading="lazy"
-                  decoding="async"
-                  className="crest-wall__img"
-                />
-                <span className="crest-wall__name">{stripFlag(club.name)}</span>
-              </Link>
-            </li>
-          ))}
+          {clubs.map((club) => {
+            const slug = club.slug || clubSlug(club.name)
+            const logoSrc = club.logoLocal ? asset(club.logoLocal) : club.logo || CLUB_PLACEHOLDER
+            return (
+              <li className="crest-wall__cell" key={slug}>
+                <Link to={`/clubs/${slug}`} className="crest-wall__link">
+                  <img
+                    src={logoSrc}
+                    alt=""
+                    width={64}
+                    height={64}
+                    loading="lazy"
+                    decoding="async"
+                    className="crest-wall__img"
+                  />
+                  <span className="crest-wall__name">{stripFlag(club.name)}</span>
+                </Link>
+              </li>
+            )
+          })}
         </ul>
       </Container>
     </Section>
