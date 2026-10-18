@@ -47,10 +47,9 @@ export default function LoginPage() {
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault()
     const next: typeof errors = {}
-    if (!email.trim()) next.email = 'Enter your email address.'
-    else if (!EMAIL_RE.test(email.trim())) next.email = 'That email address looks incomplete.'
+    if (!email.trim()) next.email = 'Enter your email address or username.'
     if (!password) next.password = 'Enter your password.'
-    else if (password.length < 6) next.password = 'Use at least 6 characters.'
+    else if (password.length < 4) next.password = 'Enter your password.'
     setErrors(next)
     if (Object.keys(next).length > 0) return
 
@@ -90,7 +89,7 @@ export default function LoginPage() {
                 wordmark on the one page the eye is meant to be on the form. */}
             <h1 className="text-3xl font-extrabold sm:text-4xl">Welcome back</h1>
             <p className="mt-2.5 text-[15px] text-[var(--text-muted)]">
-              Sign in to your portal.
+              Sign in with your email or legacy IWVPL username.
             </p>
 
             <form onSubmit={onSubmit} noValidate className="mt-9 space-y-4">
@@ -99,19 +98,19 @@ export default function LoginPage() {
                   htmlFor="email"
                   className="mb-2 block text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--text-faint)]"
                 >
-                  Email
+                  Email or Username
                 </label>
                 <input
                   id="email"
-                  type="email"
-                  autoComplete="email"
+                  type="text"
+                  autoComplete="username"
                   value={email}
                   onChange={(e) => {
                     setEmail(e.target.value)
                     setNotice(null)
                     setFormError(null)
                   }}
-                  placeholder="manager@club.com"
+                  placeholder="manager@club.com or username"
                   aria-invalid={Boolean(errors.email)}
                   className={cx(
                     input,

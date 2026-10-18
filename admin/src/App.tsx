@@ -3079,6 +3079,20 @@ function AllClubsDirectory({
   const [busy, setBusy] = useState(false)
   const [deletingSlug, setDeletingSlug] = useState<string | null>(null)
 
+  // Squad / players management inside All Clubs
+  const [playersBySlug, setPlayersBySlug] = useState<Record<string, string[]>>({})
+  const [squadLoading, setSquadLoading] = useState(false)
+  const [newPlayerTag, setNewPlayerTag] = useState('')
+  const [playerBusy, setPlayerBusy] = useState(false)
+  const [squadModalSlug, setSquadModalSlug] = useState<string | null>(null)
+
+  // Bulk selection & actions inside All Clubs
+  const [selectedSlugs, setSelectedSlugs] = useState<Set<string>>(() => new Set())
+  const [bulkAction, setBulkAction] = useState<'update' | 'delete' | null>(null)
+  const [bulkLeague, setBulkLeague] = useState('')
+  const [bulkStatus, setBulkStatus] = useState('')
+  const [bulkFlag, setBulkFlag] = useState('')
+
   const load = useCallback(async () => {
     const data = await guard(() => getAdminClubs(), 'Could not load club directory')
     setAllClubs(data)
@@ -3088,9 +3102,27 @@ function AllClubsDirectory({
     load().catch(() => setAllClubs([]))
   }, [load])
 
+  const loadClubPlayers = useCallback(async (slug: string) => {
+    setSquadLoading(true)
+    try {
+      const res = await fetch(`/api/clubs/${encodeURIComponent(slug)}`)
+      if (!res.ok) throw new Error(`Request failed (${res.status})`)
+      const body: { players: { gamertag: string }[] } = await res.json()
+      setPlayersBySlug((current) => ({
+        ...current,
+        [slug]: body.players.map((p) => p.gamertag),
+      }))
+    } catch {
+      /* non-fatal */
+    } finally {
+      setSquadLoading(false)
+    }
+  }, [])
+
   const assignableDivisions = divisions.filter((d) => Boolean(d.is_active))
 
   const openEditor = (club: Club | null) => {
+    setNewPlayerTag('')
     if (club) {
       setEditingSlug(club.slug)
       setFormName(club.name)
@@ -3101,6 +3133,7 @@ function AllClubsDirectory({
       )
       setFormDivisionId(club.division_id ? String(club.division_id) : '')
       setFormLogo(club.logo_local ?? club.logo_url ?? null)
+      void loadClubPlayers(club.slug)
     } else {
       setEditingSlug('new')
       setFormName('')
@@ -3120,6 +3153,45 @@ function AllClubsDirectory({
       report('info', `Loaded logo "${file.name}". Click Save to publish.`)
     } catch (err) {
       report('error', err instanceof Error ? err.message : 'Could not read logo image')
+    }
+  }
+
+  const addPlayerToClub = async (club: Club) => {
+    const tag = newPlayerTag.trim()
+    if (!tag) {
+      report('error', 'Enter a player gamertag first.')
+      return
+    }
+    setPlayerBusy(true)
+    try {
+      await guard(() => addPlayer(club.slug, tag), `Could not add ${tag} to ${club.name}`)
+      setNewPlayerTag('')
+      await loadClubPlayers(club.slug)
+      await load()
+      await onClubsChanged()
+      report('ok', `${tag} added to ${club.name}.`)
+    } catch {
+      /* already reported */
+    } finally {
+      setPlayerBusy(false)
+    }
+  }
+
+  const releasePlayerFromClub = async (club: Club, gamertag: string) => {
+    setPlayerBusy(true)
+    try {
+      await guard(
+        () => removePlayer(club.slug, gamertag),
+        `Could not release ${gamertag} from ${club.name}`,
+      )
+      await loadClubPlayers(club.slug)
+      await load()
+      await onClubsChanged()
+      report('ok', `${gamertag} released from ${club.name}.`)
+    } catch {
+      /* already reported */
+    } finally {
+      setPlayerBusy(false)
     }
   }
 
@@ -3148,6 +3220,14 @@ function AllClubsDirectory({
             }),
           'Could not create club',
         )
+        const inlinePlayer = newPlayerTag.trim()
+        if (inlinePlayer) {
+          await guard(
+            () => addPlayer(created.slug, inlinePlayer),
+            `Created ${created.name}, but could not add player ${inlinePlayer}`,
+          ).catch(() => undefined)
+          setNewPlayerTag('')
+        }
         await load()
         await onClubsChanged()
         setEditingSlug(null)
@@ -3197,6 +3277,11 @@ function AllClubsDirectory({
     setDeletingSlug(club.slug)
     try {
       await guard(() => deleteAdminClub(club.slug), `Could not delete ${club.name}`)
+      setSelectedSlugs((current) => {
+        const next = new Set(current)
+        next.delete(club.slug)
+        return next
+      })
       await load()
       await onClubsChanged()
       if (editingSlug === club.slug) setEditingSlug(null)
@@ -3220,8 +3305,138 @@ function AllClubsDirectory({
     )
   })
 
+  const selectedClubs = (allClubs ?? []).filter((c) => selectedSlugs.has(c.slug))
+  const selectedCount = selectedClubs.length
+  const allFilteredSelected =
+    filtered.length > 0 && filtered.every((c) => selectedSlugs.has(c.slug))
+  const someFilteredSelected =
+    !allFilteredSelected && filtered.some((c) => selectedSlugs.has(c.slug))
+
+  const toggleSelected = (slug: string, on: boolean) => {
+    setSelectedSlugs((current) => {
+      const next = new Set(current)
+      if (on) next.add(slug)
+      else next.delete(slug)
+      return next
+    })
+  }
+
+  const toggleAllFiltered = (on: boolean) => {
+    setSelectedSlugs((current) => {
+      const next = new Set(current)
+      for (const c of filtered) {
+        if (on) next.add(c.slug)
+        else next.delete(c.slug)
+      }
+      return next
+    })
+  }
+
+  const clearSelection = () => setSelectedSlugs(new Set())
+
+  const bulkBusy = bulkAction !== null
+  const bulkHasPending = bulkLeague !== '' || bulkStatus !== '' || bulkFlag !== ''
+  const bulkPendingLabels = [
+    bulkLeague !== '' &&
+      `move to ${
+        bulkLeague === 'unassigned'
+          ? 'Unassigned'
+          : (divisions.find((d) => String(d.id) === bulkLeague)?.name ?? 'a league')
+      }`,
+    bulkStatus !== '' && `status ${bulkStatus}`,
+    bulkFlag !== '' && `region ${bulkFlag === 'clear' ? 'cleared' : bulkFlag}`,
+  ].filter((x): x is string => Boolean(x))
+
+  const applyDirectoryBulkUpdate = async () => {
+    if (bulkBusy || !bulkHasPending || selectedCount === 0) return
+    setBulkAction('update')
+    const failed: string[] = []
+    let done = 0
+    const targetDiv = bulkLeague === '' || bulkLeague === 'unassigned' ? null : Number(bulkLeague)
+    try {
+      for (const club of selectedClubs) {
+        try {
+          const patch: { status?: string; flag?: string | null } = {}
+          if (bulkStatus) patch.status = bulkStatus
+          if (bulkFlag) patch.flag = bulkFlag === 'clear' ? null : bulkFlag
+          if (Object.keys(patch).length > 0) {
+            await updateClub(club.slug, patch)
+          }
+          if (bulkLeague !== '') {
+            const currentDiv = club.division_id ? String(club.division_id) : ''
+            const desiredDiv = targetDiv === null ? '' : String(targetDiv)
+            if (currentDiv !== desiredDiv) {
+              await assignDivision(club.slug, targetDiv)
+            }
+          }
+          done += 1
+        } catch {
+          failed.push(club.name)
+        }
+      }
+      await load()
+      await onClubsChanged()
+      if (failed.length === 0) {
+        report('ok', `Updated ${done} club${done === 1 ? '' : 's'}.`)
+        clearSelection()
+      } else {
+        report('error', `Updated ${done} of ${selectedClubs.length} clubs. Failed: ${failed.join(', ')}.`)
+      }
+      setBulkLeague('')
+      setBulkStatus('')
+      setBulkFlag('')
+    } finally {
+      setBulkAction(null)
+    }
+  }
+
+  const applyDirectoryBulkDelete = async () => {
+    if (
+      bulkBusy ||
+      selectedCount === 0 ||
+      !window.confirm(
+        `Permanently delete ${selectedCount} selected club${selectedCount === 1 ? '' : 's'}?\n\nTheir players will become free agents and any fixtures or standings rows for these clubs will be removed.`,
+      )
+    ) {
+      return
+    }
+    setBulkAction('delete')
+    const failed: string[] = []
+    let done = 0
+    try {
+      for (const club of selectedClubs) {
+        try {
+          await deleteAdminClub(club.slug)
+          done += 1
+        } catch {
+          failed.push(club.name)
+        }
+      }
+      await load()
+      await onClubsChanged()
+      clearSelection()
+      if (failed.length === 0) {
+        report('ok', `Deleted ${done} club${done === 1 ? '' : 's'}.`)
+      } else {
+        report('error', `Deleted ${done} clubs. Failed: ${failed.join(', ')}.`)
+      }
+    } finally {
+      setBulkAction(null)
+    }
+  }
+
+  const editingClubObj =
+    editingSlug && editingSlug !== 'new'
+      ? (allClubs?.find((c) => c.slug === editingSlug) ?? null)
+      : null
+  const editingClubPlayers = editingClubObj ? (playersBySlug[editingClubObj.slug] ?? []) : []
+
   const clubEditorForm = (
-    <form className="division-editor" onSubmit={(event) => void saveClubForm(event)}>
+    <form
+      className="division-editor"
+      onClick={(event) => event.stopPropagation()}
+      onSubmit={(event) => void saveClubForm(event)}
+    >
       <div className="club-crud-logo-row">
         <div className="club-crud-logo-preview">
           {formLogo ? (
@@ -3326,6 +3541,74 @@ function AllClubsDirectory({
         </label>
       </div>
 
+      {editingClubObj ? (
+        <section className="club-edit-roster" style={{ marginTop: 14 }}>
+          <div>
+            <h3>Squad players ({editingClubPlayers.length || editingClubObj.players})</h3>
+            <p className="hint">Add a player by gamertag or release existing squad members.</p>
+          </div>
+          <div className="club-edit-add">
+            <input
+              className="text"
+              placeholder="Enter player gamertag to sign…"
+              aria-label={`Add a player to ${editingClubObj.name}`}
+              value={newPlayerTag}
+              onChange={(event) => setNewPlayerTag(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  void addPlayerToClub(editingClubObj)
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="btn"
+              disabled={playerBusy}
+              onClick={() => void addPlayerToClub(editingClubObj)}
+            >
+              {playerBusy ? 'Adding…' : 'Add player'}
+            </button>
+          </div>
+          {squadLoading ? (
+            <p className="hint" style={{ marginTop: 8 }}>Loading squad…</p>
+          ) : editingClubPlayers.length > 0 ? (
+            <div className="squad-list" style={{ marginTop: 10, maxHeight: 200, overflowY: 'auto' }}>
+              {editingClubPlayers.map((gamertag) => (
+                <div className="squad-player" key={gamertag}>
+                  <span>{gamertag}</span>
+                  <button
+                    type="button"
+                    className="btn sm danger"
+                    disabled={playerBusy}
+                    onClick={() => void releasePlayerFromClub(editingClubObj, gamertag)}
+                  >
+                    Release
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="hint" style={{ marginTop: 8 }}>No players signed to this club yet.</p>
+          )}
+        </section>
+      ) : (
+        <section className="club-edit-roster" style={{ marginTop: 14 }}>
+          <div>
+            <h3>Initial player (optional)</h3>
+            <p className="hint">Optionally sign a first player by gamertag right when creating the club.</p>
+          </div>
+          <div className="club-edit-add">
+            <input
+              className="text"
+              placeholder="Optional first player gamertag…"
+              value={newPlayerTag}
+              onChange={(event) => setNewPlayerTag(event.target.value)}
+            />
+          </div>
+        </section>
+      )}
+
       <div className="division-editor-actions">
         <button
           className="btn"
@@ -3342,14 +3625,18 @@ function AllClubsDirectory({
     </form>
   )
 
+  const squadModalClub = squadModalSlug
+    ? (allClubs?.find((c) => c.slug === squadModalSlug) ?? null)
+    : null
+
   return (
     <div className="division-management">
       <div className="card">
         <header>
           <div>
-            <h2>All clubs directory</h2>
+            <h2>All clubs</h2>
             <p className="hint">
-              Create, edit, upload club logos, or delete clubs across the entire database ({filtered.length} of {allClubs?.length ?? 0} shown).
+              Click any club row to edit details, upload its logo, or add/release players ({filtered.length} of {allClubs?.length ?? 0} shown).
             </p>
           </div>
           <button
@@ -3397,78 +3684,289 @@ function AllClubsDirectory({
         ) : filtered.length === 0 ? (
           <div className="empty">No clubs match your filter.</div>
         ) : (
-          <div className="division-admin-list">
-            {filtered.map((c) => {
-              const divName = divisions.find((d) => d.id === c.division_id)?.name
-              const logoSrc = c.logo_local || c.logo_url
-              return (
-                <article
-                  key={c.slug}
-                  className={`division-admin-item${c.status !== 'active' ? ' is-inactive' : ''}`}
-                >
-                  {editingSlug === c.slug ? (
-                    clubEditorForm
-                  ) : (
-                    <div className="division-admin-heading members-row">
-                      <div className="division-admin-title">
-                        <div className="club-crud-avatar">
-                          {logoSrc ? (
-                            <img src={logoSrc} alt="" />
-                          ) : (
-                            <span>{(c.short_code || c.name).slice(0, 3).toUpperCase()}</span>
-                          )}
-                        </div>
-                        <div>
-                          <h3>
-                            {c.flag && <span className="flag">{c.flag}</span>}
-                            {c.name}
-                            {c.short_code && (
-                              <span className="format-tag-badge">{c.short_code}</span>
+          <>
+            <div className="club-directory-select-all">
+              <label className="club-group-select">
+                <input
+                  type="checkbox"
+                  checked={allFilteredSelected}
+                  ref={(node) => {
+                    if (node) node.indeterminate = someFilteredSelected
+                  }}
+                  onChange={(event) => toggleAllFiltered(event.target.checked)}
+                />
+                <span>
+                  Select all shown ({filtered.length})
+                  {selectedCount > 0 ? ` · ${selectedCount} selected` : ''}
+                </span>
+              </label>
+            </div>
+            <div className="division-admin-list">
+              {filtered.map((c) => {
+                const divName = divisions.find((d) => d.id === c.division_id)?.name
+                const logoSrc = c.logo_local || c.logo_url
+                const isSelected = selectedSlugs.has(c.slug)
+                return (
+                  <article
+                    key={c.slug}
+                    className={`division-admin-item club-directory-row${c.status !== 'active' ? ' is-inactive' : ''}${isSelected ? ' is-selected' : ''}`}
+                    tabIndex={editingSlug === c.slug ? -1 : 0}
+                    role={editingSlug === c.slug ? undefined : 'button'}
+                    aria-label={editingSlug === c.slug ? undefined : `Edit ${c.name}`}
+                    onClick={() => {
+                      if (editingSlug !== c.slug) openEditor(c)
+                    }}
+                    onKeyDown={(event) => {
+                      if (editingSlug === c.slug) return
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        openEditor(c)
+                      }
+                    }}
+                  >
+                    {editingSlug === c.slug ? (
+                      clubEditorForm
+                    ) : (
+                      <div className="division-admin-heading members-row">
+                        <div className="division-admin-title">
+                          <label
+                            className="club-directory-checkbox"
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              aria-label={`Select ${c.name}`}
+                              onChange={(event) => toggleSelected(c.slug, event.target.checked)}
+                            />
+                          </label>
+                          <div className="club-crud-avatar">
+                            {logoSrc ? (
+                              <img src={logoSrc} alt="" />
+                            ) : (
+                              <span>{(c.short_code || c.name).slice(0, 3).toUpperCase()}</span>
                             )}
-                            <span
-                              className={`format-status-badge ${
-                                c.status === 'active'
-                                  ? 'status-active'
-                                  : c.status === 'pending'
-                                    ? 'status-coming_soon'
-                                    : 'status-inactive'
-                              }`}
-                            >
-                              {c.status}
+                          </div>
+                          <div>
+                            <h3>
+                              {c.flag && <span className="flag">{c.flag}</span>}
+                              {c.name}
+                              {c.short_code && (
+                                <span className="format-tag-badge">{c.short_code}</span>
+                              )}
+                              <span
+                                className={`format-status-badge ${
+                                  c.status === 'active'
+                                    ? 'status-active'
+                                    : c.status === 'pending'
+                                      ? 'status-coming_soon'
+                                      : 'status-inactive'
+                                }`}
+                              >
+                                {c.status}
+                              </span>
+                            </h3>
+                            <span className="hint">
+                              {divName ? `League: ${divName}` : 'Unassigned'} · Slug: <code>{c.slug}</code>
                             </span>
-                          </h3>
-                          <span className="hint">
-                            {divName ? `League: ${divName}` : 'Unassigned'} · {c.players}{' '}
-                            {c.players === 1 ? 'player' : 'players'} · Slug: <code>{c.slug}</code>
-                          </span>
+                          </div>
+                        </div>
+                        <div
+                          className="division-admin-actions"
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <button
+                            className="squad-link"
+                            type="button"
+                            onClick={() => {
+                              setSquadModalSlug(c.slug)
+                              setNewPlayerTag('')
+                              void loadClubPlayers(c.slug)
+                            }}
+                          >
+                            Squad <span className="squad-count">{c.players}</span>
+                          </button>
+                          <button
+                            className="btn sm danger"
+                            type="button"
+                            disabled={deletingSlug === c.slug}
+                            onClick={() => void removeClub(c)}
+                          >
+                            {deletingSlug === c.slug ? 'Deleting…' : 'Delete'}
+                          </button>
                         </div>
                       </div>
-                      <div className="division-admin-actions">
-                        <button
-                          className="btn sm"
-                          type="button"
-                          disabled={editingSlug !== null}
-                          onClick={() => openEditor(c)}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          className="btn sm danger"
-                          type="button"
-                          disabled={deletingSlug === c.slug || editingSlug !== null}
-                          onClick={() => void removeClub(c)}
-                        >
-                          {deletingSlug === c.slug ? 'Deleting…' : 'Delete'}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </article>
-              )
-            })}
-          </div>
+                    )}
+                  </article>
+                )
+              })}
+            </div>
+          </>
         )}
       </div>
+
+      {selectedCount > 0 && (
+        <div className="bulk-bar" role="region" aria-label="Bulk actions for all clubs">
+          <div className="bulk-bar-count">
+            <strong>{selectedCount}</strong>
+            <span>selected</span>
+          </div>
+          <div className="bulk-bar-actions">
+            <label className="bulk-bar-field">
+              <span>Move to league</span>
+              <CustomSelect
+                ariaLabel="Bulk move clubs to league"
+                value={bulkLeague}
+                disabled={bulkBusy}
+                options={[
+                  { value: '', label: 'No change' },
+                  ...assignableDivisions.map((division) => ({
+                    value: String(division.id),
+                    label: division.name,
+                  })),
+                  { value: 'unassigned', label: 'Unassigned' },
+                ]}
+                onChange={setBulkLeague}
+              />
+            </label>
+            <label className="bulk-bar-field">
+              <span>Set status</span>
+              <CustomSelect
+                ariaLabel="Bulk set club status"
+                value={bulkStatus}
+                disabled={bulkBusy}
+                options={[
+                  { value: '', label: 'No change' },
+                  { value: 'active', label: 'Active' },
+                  { value: 'pending', label: 'Pending' },
+                  { value: 'withdrawn', label: 'Withdrawn' },
+                ]}
+                onChange={setBulkStatus}
+              />
+            </label>
+            <label className="bulk-bar-field">
+              <span>Set region</span>
+              <CustomSelect
+                ariaLabel="Bulk set club region"
+                value={bulkFlag}
+                disabled={bulkBusy}
+                options={[
+                  { value: '', label: 'No change' },
+                  { value: 'clear', label: 'Clear region' },
+                  ...CLUB_REGION_OPTIONS.filter((o) => o.value !== ''),
+                ]}
+                onChange={setBulkFlag}
+              />
+            </label>
+            <button
+              className="btn primary sm bulk-bar-update"
+              type="button"
+              disabled={bulkBusy || !bulkHasPending}
+              aria-busy={bulkAction === 'update'}
+              onClick={() => void applyDirectoryBulkUpdate()}
+            >
+              {bulkAction === 'update' ? 'Updating…' : 'Update'}
+            </button>
+            <button
+              className="btn danger sm"
+              type="button"
+              disabled={bulkBusy}
+              onClick={() => void applyDirectoryBulkDelete()}
+            >
+              {bulkAction === 'delete' ? 'Deleting…' : 'Delete selected'}
+            </button>
+          </div>
+          <p className="bulk-bar-hint" role="status">
+            {bulkHasPending
+              ? `Update will apply to ${selectedCount} club${selectedCount === 1 ? '' : 's'}: ${bulkPendingLabels.join(', ')}.`
+              : 'Pick a league, status, or region above, then press Update.'}
+          </p>
+          <button
+            className="bulk-bar-clear"
+            type="button"
+            disabled={bulkBusy}
+            onClick={clearSelection}
+          >
+            Clear selection
+          </button>
+        </div>
+      )}
+
+      {squadModalClub && (
+        <div
+          className="squad-modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setSquadModalSlug(null)
+          }}
+        >
+          <section
+            className="squad-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="directory-squad-modal-title"
+          >
+            <header>
+              <div>
+                <p className="eyebrow">CLUB SQUAD</p>
+                <h2 id="directory-squad-modal-title">{squadModalClub.name}</h2>
+              </div>
+              <button
+                className="icon-btn"
+                type="button"
+                aria-label="Close squad"
+                onClick={() => setSquadModalSlug(null)}
+              >
+                ×
+              </button>
+            </header>
+            <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--line)' }}>
+              <div className="club-edit-add">
+                <input
+                  className="text"
+                  placeholder="Enter player gamertag to sign…"
+                  value={newPlayerTag}
+                  onChange={(event) => setNewPlayerTag(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault()
+                      void addPlayerToClub(squadModalClub)
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  className="btn primary sm"
+                  disabled={playerBusy}
+                  onClick={() => void addPlayerToClub(squadModalClub)}
+                >
+                  {playerBusy ? 'Adding…' : 'Add player'}
+                </button>
+              </div>
+            </div>
+            {squadLoading ? (
+              <p className="squad-modal-message">Loading squad…</p>
+            ) : (playersBySlug[squadModalClub.slug] ?? []).length > 0 ? (
+              <div className="squad-list">
+                {(playersBySlug[squadModalClub.slug] ?? []).map((gamertag) => (
+                  <div className="squad-player" key={gamertag}>
+                    <span>{gamertag}</span>
+                    <button
+                      className="btn sm danger"
+                      type="button"
+                      disabled={playerBusy}
+                      onClick={() => void releasePlayerFromClub(squadModalClub, gamertag)}
+                    >
+                      Release
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="squad-modal-message">No players signed to this club yet.</p>
+            )}
+          </section>
+        </div>
+      )}
     </div>
   )
 }
@@ -4069,7 +4567,7 @@ function Clubs({
           aria-selected={section === 'directory'}
           onClick={() => setSection('directory')}
         >
-          All clubs (CRUD)
+          All clubs
         </button>
       </div>
       {section === 'divisions' ? (

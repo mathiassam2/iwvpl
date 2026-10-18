@@ -8,7 +8,7 @@
  */
 
 import bcrypt from 'bcryptjs'
-import { createHash, randomBytes } from 'node:crypto'
+import { createHash, createHmac, randomBytes } from 'node:crypto'
 import type { Request, Response } from 'express'
 import { config } from '../config.js'
 import { execute, now, queryOne } from '../db.js'
@@ -63,7 +63,15 @@ export async function hashPassword(plain: string): Promise<string> {
 
 export async function verifyPassword(plain: string, hash: string): Promise<boolean> {
   try {
-    return await bcrypt.compare(plain, hash)
+    if (hash.startsWith('$wp')) {
+      const prehashed = createHmac('sha384', 'wp-sha384')
+        .update(plain, 'utf8')
+        .digest('base64')
+      const bHash = hash.slice(3).replace(/^\$2y\$/, '$2b$')
+      return await bcrypt.compare(prehashed, bHash)
+    }
+    const normalizedHash = hash.replace(/^\$2y\$/, '$2b$')
+    return await bcrypt.compare(plain, normalizedHash)
   } catch {
     // A malformed hash in the database must read as "wrong password", never as
     // a 500 that tells an attacker the row exists.

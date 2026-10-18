@@ -2090,3 +2090,56 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   }
 }
 
+.club-directory-select-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  user-select: none;
+}
+.club-directory-select-all:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.club-directory-select-all input[type="checkbox"],
+.club-directory-checkbox input[type="checkbox"] {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.club-directory-checkbox {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.club-directory-checkbox:hover {
+  background: var(--surface-hover);
+}
+.club-directory-row {
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease;
+}
+.club-directory-row:hover,
+.club-directory-row:focus-visible {
+  background: var(--surface-hover);
+  outline: none;
+}
+.club-directory-row.is-selected {
+  background: var(--accent-soft);
+}
+.club-directory-row.is-selected:hover {
+  background: rgb(200 255 61 / 14%);
+}

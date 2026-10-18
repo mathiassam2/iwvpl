@@ -223,25 +223,31 @@ auth.post(
 auth.post(
   '/login',
   handler(async (req, res) => {
-    const address = String(req.body?.email ?? '').trim().toLowerCase()
+    const identifier = String(req.body?.email ?? '').trim()
     const secret = String(req.body?.password ?? '')
-    if (!address || !secret) {
-      throw Object.assign(new Error('Enter your email address and password.'), { status: 400 })
+    if (!identifier || !secret) {
+      throw Object.assign(new Error('Enter your email or username and password.'), { status: 400 })
     }
 
+    const lower = identifier.toLowerCase()
     const row = await queryOne<AccountUser & { password_hash: string; is_active: number }>(
       `SELECT u.id, u.email, u.display_name, u.role, u.club_id, u.password_hash, u.is_active,
               p.id AS player_id, p.gamertag
          FROM users u
          LEFT JOIN players p ON p.user_id = u.id
-        WHERE u.email = ?`,
-      [address],
+        WHERE LOWER(u.email) = ?
+           OR LOWER(u.username) = ?
+           OR LOWER(u.display_name) = ?
+           OR p.gamertag_key = ?
+        ORDER BY (LOWER(u.email) = ?) DESC, (LOWER(u.username) = ?) DESC, u.id ASC
+        LIMIT 1`,
+      [lower, lower, lower, lower, lower, lower],
     )
 
     // One message for every failure — unknown address, wrong password, disabled
     // account. Anything more specific is a credential oracle.
     const invalid = () =>
-      Object.assign(new Error('Email or password is incorrect.'), { status: 401 })
+      Object.assign(new Error('Email/username or password is incorrect.'), { status: 401 })
 
     // Hash against a throwaway hash even when the address is unknown.
     // Returning early would make the response time a reliable signal that the
