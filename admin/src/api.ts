@@ -645,11 +645,13 @@ export interface HomepageRegion {
 }
 
 export interface HomepageRegionInput {
-  iso: string
-  name: string
-  flag: string
-  artUrl: string
+  iso?: string
+  name?: string
+  flag?: string
+  artUrl?: string
+  art_url?: string
   isActive?: boolean
+  is_active?: boolean
 }
 
 export const getAdminRegions = () =>

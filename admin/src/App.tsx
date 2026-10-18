@@ -4374,7 +4374,9 @@ function HomepageSettings({
         iso: trimmedIso,
         name: trimmedName,
         flag: trimmedFlag,
+        artUrl: trimmedArt,
         art_url: trimmedArt,
+        isActive: regionIsActive,
         is_active: regionIsActive,
       }
       const saved = await guard(

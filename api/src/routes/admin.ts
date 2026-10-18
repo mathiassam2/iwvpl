@@ -2632,8 +2632,9 @@ admin.post(
     const name = requiredString(req.body?.name, 'Region name', 120)
     const iso = requiredString(req.body?.iso, 'ISO code', 16).toUpperCase()
     const flag = requiredString(req.body?.flag, 'Flag emoji', 32)
-    const artUrl = parseArtUrl(req.body?.artUrl)
-    const isActive = req.body?.isActive === undefined ? true : Boolean(req.body.isActive)
+    const artUrl = parseArtUrl(req.body?.artUrl ?? req.body?.art_url)
+    const rawActive = req.body?.isActive ?? req.body?.is_active
+    const isActive = rawActive === undefined ? true : Boolean(rawActive)
 
     const region = await withTransaction(async (conn) => {
       const [maxRows] = await conn.query(
@@ -2686,19 +2687,40 @@ admin.put(
     if (!Number.isSafeInteger(id) || id < 1) {
       return res.status(400).json({ error: 'Region id must be a positive integer.' })
     }
-    const name = requiredString(req.body?.name, 'Region name', 120)
-    const iso = requiredString(req.body?.iso, 'ISO code', 16).toUpperCase()
-    const flag = requiredString(req.body?.flag, 'Flag emoji', 32)
-    const artUrl = parseArtUrl(req.body?.artUrl)
-    const isActive = req.body?.isActive === undefined ? true : Boolean(req.body.isActive)
 
     const region = await withTransaction(async (conn) => {
       const [rows] = await conn.query(
-        'SELECT id, sort_order FROM homepage_regions WHERE id = ? FOR UPDATE',
+        'SELECT id, iso, name, flag, art_url, is_active, sort_order FROM homepage_regions WHERE id = ? FOR UPDATE',
         [id],
       )
-      const current = (rows as Array<{ id: number; sort_order: number }>)[0]
+      const current = (rows as Array<{
+        id: number
+        iso: string
+        name: string
+        flag: string
+        art_url: string
+        is_active: number | boolean
+        sort_order: number
+      }>)[0]
       if (!current) return null
+
+      const name =
+        req.body?.name !== undefined
+          ? requiredString(req.body.name, 'Region name', 120)
+          : current.name
+      const iso =
+        req.body?.iso !== undefined
+          ? requiredString(req.body.iso, 'ISO code', 16).toUpperCase()
+          : current.iso
+      const flag =
+        req.body?.flag !== undefined
+          ? requiredString(req.body.flag, 'Flag emoji', 32)
+          : current.flag
+      const rawArt = req.body?.artUrl ?? req.body?.art_url
+      const artUrl = rawArt !== undefined ? parseArtUrl(rawArt) : current.art_url
+      const rawActive = req.body?.isActive ?? req.body?.is_active
+      const isActive =
+        rawActive !== undefined ? Boolean(rawActive) : Boolean(current.is_active)
 
       await conn.execute(
         `UPDATE homepage_regions
