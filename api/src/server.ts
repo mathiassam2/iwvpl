@@ -24,8 +24,9 @@ import cookieParser from 'cookie-parser'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { config } from './config.js'
-import { closePool } from './db.js'
+import { closePool, queryOne } from './db.js'
 import { runMigrations } from './migrate.js'
+import { seed } from './domain/seed.js'
 import { league } from './routes/league.js'
 import { admin } from './routes/admin.js'
 import { auth } from './routes/auth.js'
@@ -228,6 +229,20 @@ async function start(): Promise<void> {
     }
   }
 
+  // Optional auto-seed on first boot when the clubs table is completely empty.
+  if (process.env.SEED_IF_EMPTY === 'true') {
+    try {
+      const row = await queryOne<{ n: number }>('SELECT COUNT(*) AS n FROM clubs')
+      if (Number(row?.n ?? 0) === 0 && existsSync(config.paths.crawlData)) {
+        console.log('Database has 0 clubs; seeding initial league data from site_data.json...')
+        const report = await seed()
+        console.log(`Seeded ${report.season} / ${report.division}:`, report.counts)
+      }
+    } catch (err) {
+      console.warn('Could not auto-seed database on boot:', err instanceof Error ? err.message : err)
+    }
+  }
+
   // Expired sessions are dead weight that nothing else removes, and the table
   // only ever grows. A single DELETE on boot is enough: rows past their expiry
   // are already rejected by the lookup, so pruning is housekeeping, not
@@ -239,13 +254,21 @@ async function start(): Promise<void> {
     console.warn('Could not prune expired sessions:', err instanceof Error ? err.message : err)
   }
 
-  const server = app.listen(config.port, config.host, () => {
+  const onListening = () => {
     console.log(`IWVPL api  http://${config.host}:${config.port}`)
     console.log(`  env      ${config.env}`)
     console.log(`  database ${config.db.user}@${config.db.host}:${config.db.port}/${config.db.database} (tls=${config.db.tls})`)
     console.log(`  spa      ${webBuilt ? config.paths.webDist : 'NOT BUILT'}`)
     console.log(`  admin    ${adminBuilt ? '/admin (basic auth)' : 'NOT BUILT'}`)
-  })
+  }
+
+  const isPassenger =
+    typeof (globalThis as any).PhusionPassenger !== 'undefined' ||
+    Boolean(process.env.PASSENGER_APP_ENV)
+
+  const server = isPassenger
+    ? app.listen(config.port, onListening)
+    : app.listen(config.port, config.host, onListening)
 
   // Render sends SIGTERM on deploy. Without a graceful exit the in-flight
   // request is dropped and the pool's sockets are severed mid-query.
