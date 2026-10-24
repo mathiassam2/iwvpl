@@ -27,6 +27,7 @@ import {
   searchPlayers,
   sendOffer,
   squad,
+  updateClubDescription,
   type Offer,
 } from '@/lib/api'
 import { cx } from '@/lib/format'
@@ -94,7 +95,9 @@ function ManagerPanel() {
   const [busy, setBusy] = useState(false)
 
   const [clubName, setClubName] = useState('')
-  const [myClub, setMyClub] = useState<{ id: number; name: string; slug: string } | null>(null)
+  const [myClub, setMyClub] = useState<{ id: number; name: string; slug: string; description?: string | null; formation?: string | null } | null>(null)
+  const [editingDesc, setEditingDesc] = useState(false)
+  const [descDraft, setDescDraft] = useState('')
   const [squadList, setSquadList] = useState<Awaited<ReturnType<typeof squad>>['squad']>([])
   const [offers, setOffers] = useState<Offer[]>([])
 
@@ -121,6 +124,21 @@ function ManagerPanel() {
       setOffers([])
     }
   }, [])
+
+  const onSaveDescription = async (newDesc: string) => {
+    setBusy(true)
+    setNotice(null)
+    try {
+      await updateClubDescription(newDesc)
+      setMyClub((cur) => (cur ? { ...cur, description: newDesc || null } : null))
+      setEditingDesc(false)
+      setNotice({ kind: 'ok', text: newDesc ? 'Club description updated.' : 'Club description removed.' })
+    } catch (err) {
+      setNotice({ kind: 'error', text: msg(err) })
+    } finally {
+      setBusy(false)
+    }
+  }
 
   useEffect(() => {
     void loadClub()
@@ -254,6 +272,132 @@ function ManagerPanel() {
           </p>
         </section>
       )}
+
+      {/* ---- club description ---- */}
+      <section className={card}>
+        <PanelHead
+          label="Club Profile"
+          title="Club Description"
+          action={
+            !editingDesc && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setDescDraft(myClub?.description ?? '')
+                  setEditingDesc(true)
+                }}
+              >
+                {myClub?.description ? 'Edit Description' : 'Add Description'}
+              </Button>
+            )
+          }
+        />
+        <p className={prose}>
+          This sub text appears directly under your club&apos;s name across the public site and club page.
+        </p>
+        {editingDesc ? (
+          <div className="mt-4 space-y-3">
+            <textarea
+              className="w-full rounded-lg border border-[var(--border-strong)] bg-[var(--bg)] p-3 text-[13px] text-[var(--text-strong)] outline-none focus:border-[var(--accent-ring)]"
+              rows={3}
+              maxLength={1000}
+              placeholder="Add a bio or description for your club…"
+              value={descDraft}
+              onChange={(e) => setDescDraft(e.target.value)}
+            />
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <span className="text-xs text-[var(--text-faint)]">{descDraft.length}/1000 characters</span>
+              <div className="flex items-center gap-2">
+                {myClub?.description && (
+                  <Button size="sm" variant="ghost" disabled={busy} onClick={() => void onSaveDescription('')}>
+                    Remove
+                  </Button>
+                )}
+                <Button size="sm" variant="outline" disabled={busy} onClick={() => setEditingDesc(false)}>
+                  Cancel
+                </Button>
+                <Button size="sm" disabled={busy} onClick={() => void onSaveDescription(descDraft.trim())}>
+                  {busy ? 'Saving…' : 'Save Description'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-4 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-3.5">
+            {myClub?.description ? (
+              <p className="text-sm italic text-[var(--text-strong)]">&ldquo;{myClub.description}&rdquo;</p>
+            ) : (
+              <p className="text-xs text-[var(--text-faint)]">
+                No description set yet. Click &quot;Add Description&quot; to set the sub text under your club name.
+              </p>
+            )}
+          </div>
+        )}
+      </section>
+
+      {/* ---- club description ---- */}
+      <section className={card}>
+        <PanelHead
+          label="Club Profile"
+          title="Club Description"
+          action={
+            !editingDesc && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setDescDraft(myClub?.description ?? '')
+                  setEditingDesc(true)
+                }}
+              >
+                {myClub?.description ? 'Edit Description' : 'Add Description'}
+              </Button>
+            )
+          }
+        />
+        <p className={prose}>
+          This sub text appears directly under your club&apos;s name across the public site and club page.
+        </p>
+        {editingDesc ? (
+          <div className="mt-4 space-y-3">
+            <textarea
+              className="w-full rounded-lg border border-[var(--border-strong)] bg-[var(--bg)] p-3 text-[13px] text-[var(--text-strong)] outline-none focus:border-[var(--accent-ring)]"
+              rows={3}
+              maxLength={1000}
+              placeholder="Add a bio or description for your club…"
+              value={descDraft}
+              onChange={(e) => setDescDraft(e.target.value)}
+            />
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <span className="text-xs text-[var(--text-faint)]">{descDraft.length}/1000 characters</span>
+              <div className="flex items-center gap-2">
+                {myClub?.description && (
+                  <Button size="sm" variant="ghost" disabled={busy} onClick={() => void onSaveDescription('')}>
+                    Remove
+                  </Button>
+                )}
+                <Button size="sm" variant="outline" disabled={busy} onClick={() => setEditingDesc(false)}>
+                  Cancel
+                </Button>
+                <Button size="sm" disabled={busy} onClick={() => void onSaveDescription(descDraft.trim())}>
+                  {busy ? 'Saving…' : 'Save Description'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-4 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-3.5">
+            {myClub?.description ? (
+              <p className="text-sm italic text-[var(--text-strong)]">&ldquo;{myClub.description}&rdquo;</p>
+            ) : (
+              <p className="text-xs text-[var(--text-faint)]">
+                No description set yet. Click &quot;Add Description&quot; to set the sub text under your club name.
+              </p>
+            )}
+          </div>
+        )}
+      </section>
 
       {/* ---- squad ---- */}
       <section className={card}>

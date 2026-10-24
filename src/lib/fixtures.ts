@@ -56,7 +56,7 @@ export interface Squad {
 }
 
 /** x/y are percentages; y=100 is the goal the team defends. */
-const FORMATIONS: Record<string, { shape: string; slots: [role: string, x: number, y: number][] }> = {
+export const FORMATIONS: Record<string, { shape: string; slots: [role: string, x: number, y: number][] }> = {
   '4-3-3': {
     shape: '4-3-3',
     slots: [

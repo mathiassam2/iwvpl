@@ -17,7 +17,9 @@ import { SITE, siteData } from '@/data'
 import { AVATAR_PLACEHOLDER, CLUB_PLACEHOLDER, clubSlug, cx, stripFlag } from '@/lib/format'
 import { matchIndexOf } from '@/lib/match'
 import { getLiveClub, liveLeagueEnabled } from '@/lib/liveLeague'
-import { squadFor } from '@/lib/fixtures'
+import { FORMATIONS, squadFor, type Squad } from '@/lib/fixtures'
+import { useAuth } from '@/lib/auth'
+import { updateClubDescription } from '@/lib/api'
 
 const STATUS_TONE = {
   Active: 'volt',
@@ -34,6 +36,10 @@ function sameClub(a: string, b: string): boolean {
 export default function ClubDetailPage() {
   const { slug = '' } = useParams()
   const [tab, setTab] = useState('overview')
+  const { user } = useAuth()
+  const [isEditingDesc, setIsEditingDesc] = useState(false)
+  const [descInput, setDescInput] = useState('')
+  const [descSaving, setDescSaving] = useState(false)
 
   /**
    * Club identity, live, falling back to the crawl.
@@ -93,17 +99,38 @@ export default function ClubDetailPage() {
         rows: board.rows.filter((r) => sameClub(r.team, club.name)),
       }))
       .filter((g) => g.rows.length > 0)
-    /*
-     * `squadFor` is a seeded random-name generator, not a lookup — it invents
-     * a plausible 22 for any key it is given. For a club in the crawl that is
-     * harmless dressing; for a club created through an account it would print
-     * a starting XI of strangers under its name, which is a fabricated fact
-     * about a real club. A live-only club gets its actual roster instead, and
-     * no invented one.
-     */
-    const squad = inCrawl ? squadFor(club.name) : null
+    const realPlayers = liveClub?.playersList ?? []
+    const starters = realPlayers.filter((p) => Boolean(p.is_starting_11))
+    const bench = realPlayers.filter((p) => !p.is_starting_11)
+
+    let squad: Squad | null = null
+    if (starters.length > 0) {
+      const formation = liveClub?.formation && FORMATIONS[liveClub.formation] ? liveClub.formation : '4-3-3'
+      const { slots } = FORMATIONS[formation]
+      squad = {
+        formation,
+        starters: starters.slice(0, 11).map((p, i) => ({
+          number: p.shirt_number ?? (i === 0 ? 1 : i + 2),
+          name: p.gamertag,
+          role: p.position || slots[i]?.[0] || (i === 0 ? 'GK' : 'ST'),
+          x: slots[i]?.[1] ?? 50,
+          y: slots[i]?.[2] ?? 50,
+        })),
+        bench: bench.map((p, i) => ({
+          number: p.shirt_number ?? (12 + i),
+          name: p.gamertag,
+          role: p.position || 'SUB',
+        })),
+        manager: liveClub?.manager || (inCrawl ? squadFor(club.name).manager : 'Club Manager'),
+      }
+    } else if (realPlayers.length > 0) {
+      squad = null
+    } else if (inCrawl) {
+      squad = squadFor(club.name)
+    }
+
     return { standing, matches: played, next, last, transfers, scorers, squad }
-  }, [club, inCrawl])
+  }, [club, inCrawl, liveClub])
 
   if (!club || !data) {
     return (
@@ -428,6 +455,88 @@ export default function ClubDetailPage() {
               <h1 className="mt-2.5 text-2xl font-extrabold leading-tight text-[var(--text-strong)] sm:text-4xl">
                 {name}
               </h1>
+              {club.description && (
+                <p className="mt-2 max-w-2xl text-sm leading-relaxed text-[var(--text-muted)] sm:text-base">
+                  {club.description}
+                </p>
+              )}
+              {user?.role === 'club_manager' && (user.clubSlug === slug || user.clubId === liveClub?.id) && (
+                <div className="mt-2.5">
+                  {!isEditingDesc ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDescInput(club.description ?? '')
+                        setIsEditingDesc(true)
+                      }}
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--accent-text)] transition-opacity hover:opacity-80"
+                    >
+                      <span>✏️</span> {club.description ? 'Edit club description' : 'Add club description'}
+                    </button>
+                  ) : (
+                    <div className="mt-2 max-w-xl space-y-2 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-3">
+                      <textarea
+                        className="w-full rounded-lg border border-[var(--border-strong)] bg-[var(--bg)] p-2.5 text-xs text-[var(--text-strong)] outline-none focus:border-[var(--accent-ring)]"
+                        rows={3}
+                        maxLength={1000}
+                        placeholder="Add sub text / description for your club…"
+                        value={descInput}
+                        onChange={(e) => setDescInput(e.target.value)}
+                      />
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] text-[var(--text-faint)]">{descInput.length}/1000 characters</span>
+                        <div className="flex items-center gap-2">
+                          {club.description && (
+                            <button
+                              type="button"
+                              disabled={descSaving}
+                              onClick={async () => {
+                                setDescSaving(true)
+                                try {
+                                  await updateClubDescription('')
+                                  if (liveClub) setLiveClub({ ...liveClub, description: null })
+                                  setIsEditingDesc(false)
+                                } finally {
+                                  setDescSaving(false)
+                                }
+                              }}
+                              className="px-2 py-1 text-xs font-medium text-[var(--danger-text)] hover:underline"
+                            >
+                              Remove
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            disabled={descSaving}
+                            onClick={() => setIsEditingDesc(false)}
+                            className="px-2 py-1 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--text-strong)]"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            disabled={descSaving}
+                            onClick={async () => {
+                              setDescSaving(true)
+                              try {
+                                const trimmed = descInput.trim()
+                                await updateClubDescription(trimmed)
+                                if (liveClub) setLiveClub({ ...liveClub, description: trimmed || null })
+                                setIsEditingDesc(false)
+                              } finally {
+                                setDescSaving(false)
+                              }
+                            }}
+                            className="rounded-md bg-[var(--accent-solid)] px-3 py-1 text-xs font-bold text-[var(--on-volt)] hover:brightness-110"
+                          >
+                            {descSaving ? 'Saving…' : 'Save'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
               {data.standing && (
                 <p className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-[var(--text-muted)]">
                   <span className="numeric">

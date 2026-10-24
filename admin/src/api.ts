@@ -85,6 +85,17 @@ export interface Match {
   away_logo: string | null
 }
 
+export interface ClubPlayer {
+  id: number
+  gamertag: string
+  slug: string
+  avatar_local?: string | null
+  is_free_agent?: number | boolean
+  is_starting_11: number | boolean
+  shirt_number?: number | null
+  position?: string | null
+}
+
 export interface Club {
   id: number
   name: string
@@ -624,6 +635,22 @@ export const addPlayer = (slug: string, gamertag: string) =>
   request<{ ok: true; id: number }>(`/api/admin/clubs/${slug}/players`, {
     method: 'POST',
     body: JSON.stringify({ gamertag }),
+  })
+
+export const updateClubLineup = (slug: string, startingPlayerIds: number[], formation?: string) =>
+  request<{ ok: true; players: ClubPlayer[] }>(`/api/admin/clubs/${encodeURIComponent(slug)}/lineup`, {
+    method: 'PUT',
+    body: JSON.stringify({ startingPlayerIds, formation }),
+  })
+
+export const updateClubPlayer = (
+  slug: string,
+  playerId: number,
+  patch: { is_starting_11?: boolean; shirt_number?: number | null; position?: string | null },
+) =>
+  request<{ ok: true }>(`/api/admin/clubs/${encodeURIComponent(slug)}/players/${playerId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
   })
 
 export const removePlayer = (slug: string, gamertag: string) =>

@@ -65,6 +65,8 @@ import {
   type AdminPlayer,
   type AdminUser,
   type Club,
+  type ClubPlayer,
+  updateClubPlayer,
   type CompetitionFormat,
   type FormatStatus,
   type HomepageRegion,
@@ -3080,7 +3082,9 @@ function AllClubsDirectory({
   const [deletingSlug, setDeletingSlug] = useState<string | null>(null)
 
   // Squad / players management inside All Clubs
-  const [playersBySlug, setPlayersBySlug] = useState<Record<string, string[]>>({})
+  const [playersBySlug, setPlayersBySlug] = useState<Record<string, ClubPlayer[]>>({})
+  const [formDescription, setFormDescription] = useState('')
+  const [formFormation, setFormFormation] = useState('4-3-3')
   const [squadLoading, setSquadLoading] = useState(false)
   const [newPlayerTag, setNewPlayerTag] = useState('')
   const [playerBusy, setPlayerBusy] = useState(false)
@@ -3107,10 +3111,10 @@ function AllClubsDirectory({
     try {
       const res = await fetch(`/api/clubs/${encodeURIComponent(slug)}`)
       if (!res.ok) throw new Error(`Request failed (${res.status})`)
-      const body: { players: { gamertag: string }[] } = await res.json()
+      const body: { players: ClubPlayer[]; formation?: string } = await res.json()
       setPlayersBySlug((current) => ({
         ...current,
-        [slug]: body.players.map((p) => p.gamertag),
+        [slug]: body.players,
       }))
     } catch {
       /* non-fatal */
@@ -3118,6 +3122,23 @@ function AllClubsDirectory({
       setSquadLoading(false)
     }
   }, [])
+
+  const toggleStarter = async (club: Club, player: ClubPlayer) => {
+    const nextVal = !Boolean(player.is_starting_11)
+    setPlayerBusy(true)
+    try {
+      await guard(
+        () => updateClubPlayer(club.slug, player.id, { is_starting_11: nextVal }),
+        `Could not update ${player.gamertag}`,
+      )
+      await loadClubPlayers(club.slug)
+      report('ok', `${player.gamertag} ${nextVal ? 'marked as Starting 11' : 'moved to bench'}.`)
+    } catch {
+      /* already reported */
+    } finally {
+      setPlayerBusy(false)
+    }
+  }
 
   const assignableDivisions = divisions.filter((d) => Boolean(d.is_active))
 
@@ -3133,6 +3154,8 @@ function AllClubsDirectory({
       )
       setFormDivisionId(club.division_id ? String(club.division_id) : '')
       setFormLogo(club.logo_local ?? club.logo_url ?? null)
+      setFormDescription(club.description ?? '')
+      setFormFormation(club.formation ?? '4-3-3')
       void loadClubPlayers(club.slug)
     } else {
       setEditingSlug('new')
@@ -3142,6 +3165,8 @@ function AllClubsDirectory({
       setFormStatus('active')
       setFormDivisionId('')
       setFormLogo(null)
+      setFormDescription('')
+      setFormFormation('4-3-3')
     }
   }
 
@@ -3217,6 +3242,8 @@ function AllClubsDirectory({
               logoLocal: formLogo,
               logoUrl: formLogo,
               divisionId: formDivisionId ? Number(formDivisionId) : null,
+              description: formDescription.trim() || null,
+              formation: formFormation || '4-3-3',
             }),
           'Could not create club',
         )
@@ -3243,6 +3270,8 @@ function AllClubsDirectory({
               status: formStatus,
               logoLocal: formLogo,
               logoUrl: formLogo,
+              description: formDescription.trim() || null,
+              formation: formFormation || '4-3-3',
             }),
           `Could not update ${trimmedName}`,
         )
@@ -3573,15 +3602,39 @@ function AllClubsDirectory({
           {squadLoading ? (
             <p className="hint" style={{ marginTop: 8 }}>Loading squad…</p>
           ) : editingClubPlayers.length > 0 ? (
-            <div className="squad-list" style={{ marginTop: 10, maxHeight: 200, overflowY: 'auto' }}>
-              {editingClubPlayers.map((gamertag) => (
-                <div className="squad-player" key={gamertag}>
-                  <span>{gamertag}</span>
+            <div className="squad-list" style={{ marginTop: 10, maxHeight: 220, overflowY: 'auto' }}>
+              {editingClubPlayers.map((player) => (
+                <div className={`squad-player ${player.is_starting_11 ? 'is-starter' : ''}`} key={player.id} style={{ padding: '6px 10px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', margin: 0 }}>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(player.is_starting_11)}
+                      disabled={playerBusy}
+                      onChange={() => void toggleStarter(editingClubObj, player)}
+                      style={{ width: 16, height: 16, accentColor: 'var(--accent)', cursor: 'pointer' }}
+                    />
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 800,
+                        letterSpacing: '0.05em',
+                        padding: '2px 6px',
+                        borderRadius: 4,
+                        background: player.is_starting_11 ? 'var(--accent)' : 'var(--plate)',
+                        color: player.is_starting_11 ? '#07080a' : 'var(--muted)',
+                      }}
+                    >
+                      {player.is_starting_11 ? 'STARTING XI' : 'BENCH'}
+                    </span>
+                  </label>
+                  <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)', flex: 1, minWidth: 0 }} className="truncate">
+                    {player.gamertag}
+                  </span>
                   <button
                     type="button"
                     className="btn sm danger"
                     disabled={playerBusy}
-                    onClick={() => void releasePlayerFromClub(editingClubObj, gamertag)}
+                    onClick={() => void releasePlayerFromClub(editingClubObj, player.gamertag)}
                   >
                     Release
                   </button>
@@ -3907,8 +3960,32 @@ function AllClubsDirectory({
           >
             <header>
               <div>
-                <p className="eyebrow">CLUB SQUAD</p>
+                <p className="eyebrow">CLUB SQUAD &amp; STARTING 11</p>
                 <h2 id="directory-squad-modal-title">{squadModalClub.name}</h2>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
+                  <span
+                    className="badge"
+                    style={{
+                      background:
+                        (playersBySlug[squadModalClub.slug] ?? []).filter((p) => p.is_starting_11).length === 11
+                          ? 'rgba(74, 222, 128, 0.2)'
+                          : 'rgba(200, 255, 61, 0.15)',
+                      color:
+                        (playersBySlug[squadModalClub.slug] ?? []).filter((p) => p.is_starting_11).length === 11
+                          ? '#4ade80'
+                          : 'var(--accent)',
+                      fontWeight: 700,
+                      fontSize: 11,
+                      padding: '2px 8px',
+                      borderRadius: 6,
+                    }}
+                  >
+                    Starting XI: {(playersBySlug[squadModalClub.slug] ?? []).filter((p) => p.is_starting_11).length}/11 selected
+                  </span>
+                  <span style={{ fontSize: 12, color: 'var(--muted)' }}>
+                    Formation: <strong>{squadModalClub.formation ?? '4-3-3'}</strong>
+                  </span>
+                </div>
               </div>
               <button
                 className="icon-btn"
@@ -3947,14 +4024,38 @@ function AllClubsDirectory({
               <p className="squad-modal-message">Loading squad…</p>
             ) : (playersBySlug[squadModalClub.slug] ?? []).length > 0 ? (
               <div className="squad-list">
-                {(playersBySlug[squadModalClub.slug] ?? []).map((gamertag) => (
-                  <div className="squad-player" key={gamertag}>
-                    <span>{gamertag}</span>
+                {(playersBySlug[squadModalClub.slug] ?? []).map((player) => (
+                  <div className={`squad-player ${player.is_starting_11 ? 'is-starter' : ''}`} key={player.id} style={{ padding: '8px 12px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', margin: 0 }}>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(player.is_starting_11)}
+                        disabled={playerBusy}
+                        onChange={() => void toggleStarter(squadModalClub, player)}
+                        style={{ width: 16, height: 16, accentColor: 'var(--accent)', cursor: 'pointer' }}
+                      />
+                      <span
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 800,
+                          letterSpacing: '0.05em',
+                          padding: '2px 6px',
+                          borderRadius: 4,
+                          background: player.is_starting_11 ? 'var(--accent)' : 'var(--plate)',
+                          color: player.is_starting_11 ? '#07080a' : 'var(--muted)',
+                        }}
+                      >
+                        {player.is_starting_11 ? 'STARTING XI' : 'BENCH'}
+                      </span>
+                    </label>
+                    <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)', flex: 1, minWidth: 0 }} className="truncate">
+                      {player.gamertag}
+                    </span>
                     <button
                       className="btn sm danger"
                       type="button"
                       disabled={playerBusy}
-                      onClick={() => void releasePlayerFromClub(squadModalClub, gamertag)}
+                      onClick={() => void releasePlayerFromClub(squadModalClub, player.gamertag)}
                     >
                       Release
                     </button>

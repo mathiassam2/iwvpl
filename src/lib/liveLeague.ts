@@ -460,10 +460,31 @@ export async function getLivePlayer(
  * even though its row exists — it has not been approved, and exposing it would
  * publish an unapproved entry.
  */
+export interface LiveClubPlayer {
+  id: number
+  gamertag: string
+  slug: string
+  avatar_local: string | null
+  is_free_agent: number | boolean
+  is_starting_11: number | boolean
+  shirt_number: number | null
+  position: string | null
+}
+
+export type LiveClubDetail = Club & {
+  id?: number
+  description?: string | null
+  formation?: string | null
+  manager?: string | null
+  division: string | null
+  roster: Array<{ name: string }>
+  playersList?: LiveClubPlayer[]
+}
+
 export async function getLiveClub(
   slug: string,
   signal: AbortSignal,
-): Promise<(Club & { division: string | null; roster: Array<{ name: string }> }) | null> {
+): Promise<LiveClubDetail | null> {
   try {
     const response = await get<{
       id: number

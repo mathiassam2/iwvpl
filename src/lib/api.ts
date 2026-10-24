@@ -130,6 +130,12 @@ export const me = () => request<{ user: User | null }>('/api/auth/me')
 
 export const createClub = (name: string) => post<{ ok: true; clubId: number }>('/api/manager/club', { name })
 
+export const updateClubDescription = (description: string) =>
+  request<{ ok: true; description: string | null }>('/api/manager/club/description', {
+    method: 'PATCH',
+    body: JSON.stringify({ description }),
+  })
+
 export const searchPlayers = (q: string, signal?: AbortSignal) =>
   request<{
     players: Array<{
@@ -153,13 +159,16 @@ export const managerOffers = () => request<{ offers: Offer[] }>('/api/manager/of
 
 export const squad = () =>
   request<{
-    club: { id: number; name: string; slug: string }
+    club: { id: number; name: string; slug: string; description: string | null; formation: string | null }
     squad: Array<{
       id: number
       gamertag: string
       slug: string
       avatar_local: string | null
       is_free_agent: number
+      is_starting_11: number
+      shirt_number: number | null
+      position: string | null
       pending: number
     }>
   }>('/api/manager/squad')

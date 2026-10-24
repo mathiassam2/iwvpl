@@ -777,7 +777,7 @@ admin.get(
 
     const clubs = await queryAll(
       `SELECT c.id, c.name, c.slug, c.short_code, c.flag, c.logo_url, c.logo_local, c.status,
-              c.is_featured,
+              c.is_featured, c.description, c.formation,
               (SELECT COUNT(*) FROM players p WHERE p.club_id = c.id) AS players,
               (SELECT dc.division_id FROM division_clubs dc
                 JOIN divisions d ON d.id = dc.division_id
@@ -928,6 +928,14 @@ admin.patch(
       }
       fields.push('status = ?')
       values.push(status)
+    }
+    if ('description' in req.body) {
+      fields.push('description = ?')
+      values.push(optionalString(req.body.description, 2000))
+    }
+    if ('formation' in req.body) {
+      fields.push('formation = ?')
+      values.push(optionalString(req.body.formation, 16) ?? '4-3-3')
     }
 
     if (fields.length === 0) {
@@ -1087,6 +1095,98 @@ admin.delete(
       return res.status(404).json({ error: 'Player not found on that club.' })
     }
     res.json({ ok: true })
+  }),
+)
+
+/**
+ * Bulk or selective update of starting XI and formation for a club.
+ */
+admin.put(
+  '/clubs/:slug/lineup',
+  handler(async (req, res) => {
+    const slug = requiredString(req.params.slug, 'slug', 140)
+    const club = await queryOne<{ id: number }>('SELECT id FROM clubs WHERE slug = ?', [slug])
+    if (!club) return res.status(404).json({ error: 'Club not found.' })
+
+    const startingIds = Array.isArray(req.body?.startingPlayerIds)
+      ? req.body.startingPlayerIds.map(Number).filter((n: number) => Number.isInteger(n) && n > 0)
+      : null
+
+    const playerList = Array.isArray(req.body?.players) ? req.body.players : null
+
+    await withTransaction(async (conn) => {
+      if (req.body?.formation) {
+        await conn.execute('UPDATE clubs SET formation = ?, updated_at = NOW() WHERE id = ?', [
+          String(req.body.formation).trim().slice(0, 16),
+          club.id,
+        ])
+      }
+
+      if (startingIds !== null) {
+        await conn.execute('UPDATE players SET is_starting_11 = FALSE WHERE club_id = ?', [club.id])
+        if (startingIds.length > 0) {
+          const placeholders = startingIds.map(() => '?').join(', ')
+          await conn.execute(
+            `UPDATE players SET is_starting_11 = TRUE, updated_at = NOW() WHERE club_id = ? AND id IN (${placeholders})`,
+            [club.id, ...startingIds],
+          )
+        }
+      } else if (playerList !== null) {
+        for (const p of playerList) {
+          const pid = Number(p.id)
+          if (!Number.isInteger(pid) || pid < 1) continue
+          const isStarter = Boolean(p.is_starting_11)
+          const shirtNum = p.shirt_number !== undefined && p.shirt_number !== null && p.shirt_number !== '' ? Number(p.shirt_number) : null
+          const pos = p.position ? String(p.position).trim().slice(0, 16) : null
+          await conn.execute(
+            'UPDATE players SET is_starting_11 = ?, shirt_number = ?, position = ?, updated_at = NOW() WHERE id = ? AND club_id = ?',
+            [isStarter ? 1 : 0, shirtNum, pos, pid, club.id],
+          )
+        }
+      }
+    })
+
+    const updated = await queryAll(
+      'SELECT id, gamertag, slug, avatar_local, is_free_agent, is_starting_11, shirt_number, position FROM players WHERE club_id = ? ORDER BY is_starting_11 DESC, shirt_number ASC, gamertag ASC',
+      [club.id],
+    )
+    res.json({ ok: true, players: updated })
+  }),
+)
+
+admin.patch(
+  '/clubs/:slug/players/:playerId',
+  handler(async (req, res) => {
+    const slug = requiredString(req.params.slug, 'slug', 140)
+    const playerId = Number(req.params.playerId)
+    if (!Number.isInteger(playerId) || playerId < 1) {
+      return res.status(400).json({ error: 'Invalid player ID' })
+    }
+    const club = await queryOne<{ id: number }>('SELECT id FROM clubs WHERE slug = ?', [slug])
+    if (!club) return res.status(404).json({ error: 'Club not found.' })
+
+    const fields: string[] = []
+    const values: any[] = []
+
+    if ('is_starting_11' in req.body) {
+      fields.push('is_starting_11 = ?')
+      values.push(Boolean(req.body.is_starting_11) ? 1 : 0)
+    }
+    if ('shirt_number' in req.body) {
+      fields.push('shirt_number = ?')
+      values.push(req.body.shirt_number === null || req.body.shirt_number === '' ? null : Number(req.body.shirt_number))
+    }
+    if ('position' in req.body) {
+      fields.push('position = ?')
+      values.push(req.body.position ? String(req.body.position).trim().slice(0, 16) : null)
+    }
+
+    if (fields.length > 0) {
+      values.push(playerId, club.id)
+      await execute(`UPDATE players SET ${fields.join(', ')}, updated_at = NOW() WHERE id = ? AND club_id = ?`, values)
+    }
+
+    res.json({ ok: true, playerId })
   }),
 )
 

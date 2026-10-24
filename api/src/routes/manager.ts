@@ -9,7 +9,7 @@
  */
 
 import { Router } from 'express'
-import { queryAll, queryOne, withTransaction } from '../db.js'
+import { execute, queryAll, queryOne, withTransaction } from '../db.js'
 import { requireAuth, requireManager } from '../middleware/auth.js'
 import { clubSlug } from '../domain/slug.js'
 import { notify } from '../domain/auth.js'
@@ -36,9 +36,9 @@ function id(value: unknown, field: string): number {
 }
 
 /** The caller's club, or a 409 explaining that they need one first. */
-async function ownClub(userId: number): Promise<{ id: number; name: string; slug: string }> {
-  const club = await queryOne<{ id: number; name: string; slug: string }>(
-    'SELECT id, name, slug FROM clubs WHERE id = (SELECT club_id FROM users WHERE id = ?)',
+async function ownClub(userId: number): Promise<{ id: number; name: string; slug: string; description: string | null; formation: string | null }> {
+  const club = await queryOne<{ id: number; name: string; slug: string; description: string | null; formation: string | null }>(
+    'SELECT id, name, slug, description, formation FROM clubs WHERE id = (SELECT club_id FROM users WHERE id = ?)',
     [userId],
   )
   if (!club) {
@@ -295,14 +295,32 @@ manager.get(
   handler(async (req, res) => {
     const club = await ownClub(req.user!.id)
     const rows = await queryAll(
-      `SELECT p.id, p.gamertag, p.slug, p.avatar_local, p.is_free_agent,
+      `SELECT p.id, p.gamertag, p.slug, p.avatar_local, p.is_free_agent, p.is_starting_11, p.shirt_number, p.position,
               (SELECT COUNT(*) FROM transfer_requests tr
                 WHERE tr.player_id = p.id AND tr.to_club_id = ? AND tr.status = 'pending') AS pending
          FROM players p
         WHERE p.club_id = ?
-        ORDER BY p.gamertag`,
+        ORDER BY p.is_starting_11 DESC, p.gamertag ASC`,
       [club.id, club.id],
     )
     res.json({ club, squad: rows })
+  }),
+)
+/**
+ * Update the manager's club description.
+ */
+manager.patch(
+  '/club/description',
+  handler(async (req, res) => {
+    const club = await ownClub(req.user!.id)
+    const raw = req.body?.description
+    const description = raw === null || raw === undefined ? null : String(raw).trim().slice(0, 1000)
+
+    await execute('UPDATE clubs SET description = ?, updated_at = NOW() WHERE id = ?', [
+      description || null,
+      club.id,
+    ])
+
+    res.json({ ok: true, description: description || null })
   }),
 )

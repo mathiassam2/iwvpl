@@ -183,13 +183,12 @@ league.get(
   '/clubs/:slug',
   handler(async (req, res) => {
     const club = await queryOne<{ id: number }>(
-      `SELECT id, name, slug, short_code, flag, logo_url, logo_local, status, is_featured, source_url
-         FROM clubs WHERE slug = ?`,
+      `SELECT id, name, slug, short_code, flag, logo_url, logo_local, status, is_featured, source_url, description, formation FROM clubs WHERE slug = ?`,
       [req.params.slug],
     )
     if (!club) return res.status(404).json({ error: 'Club not found' })
 
-    const [division, players] = await Promise.all([
+    const [division, players, manager] = await Promise.all([
       queryOne(
         `SELECT d.id, d.name, d.slug
            FROM divisions d
@@ -199,13 +198,16 @@ league.get(
         [club.id],
       ),
       queryAll(
-        `SELECT id, gamertag, slug, avatar_local, is_free_agent
-           FROM players WHERE club_id = ? ORDER BY gamertag`,
+        `SELECT id, gamertag, slug, avatar_local, is_free_agent, is_starting_11, shirt_number, position FROM players WHERE club_id = ? ORDER BY is_starting_11 DESC, shirt_number ASC, gamertag ASC`,
+        [club.id],
+      ),
+      queryOne<{ display_name: string }>(
+        `SELECT display_name FROM users WHERE club_id = ? AND role = 'club_manager' AND is_active = TRUE LIMIT 1`,
         [club.id],
       ),
     ])
 
-    res.json({ ...club, division, players })
+    res.json({ ...club, division, players, manager: manager?.display_name ?? null })
   }),
 )
 
