@@ -43,7 +43,21 @@ const app = express()
 app.set('trust proxy', 1)
 app.disable('x-powered-by')
 
-app.use(express.json({ limit: '10mb' }))
+// Standard security headers (defense in depth against MIME-sniffing, clickjacking, and XSS)
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff')
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN')
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+  if (config.isProd) {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
+  }
+  next()
+})
+
+// Bounded body limits to prevent resource exhaustion / DoS
+app.use(express.json({ limit: '2mb' }))
+app.use(express.urlencoded({ extended: true, limit: '2mb' }))
 app.use(cookieParser())
 
 /* --------------------------------------------------------------- logging */
@@ -75,6 +89,9 @@ app.use((req, res, next) => {
  * browser treats localhost and 127.0.0.1 as distinct from each other too.
  */
 const allowedOrigins = new Set<string>([
+  'https://beta.iwvpl.asia',
+  'https://iwvpl.asia',
+  'https://www.iwvpl.asia',
   ...(process.env.PUBLIC_SITE_ORIGIN ? [process.env.PUBLIC_SITE_ORIGIN.trim()] : []),
   'http://localhost:3000',
   'http://127.0.0.1:3000',
