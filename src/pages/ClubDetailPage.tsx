@@ -102,6 +102,7 @@ export default function ClubDetailPage() {
     const realPlayers = liveClub?.playersList ?? []
     const starters = realPlayers.filter((p) => Boolean(p.is_starting_11))
     const bench = realPlayers.filter((p) => !p.is_starting_11)
+    const isPlaceholder = !liveClub && inCrawl
 
     let squad: Squad | null = null
     if (starters.length > 0) {
@@ -123,13 +124,14 @@ export default function ClubDetailPage() {
         })),
         manager: liveClub?.manager || (inCrawl ? squadFor(club.name).manager : 'Club Manager'),
       }
-    } else if (realPlayers.length > 0) {
+    } else if (liveClub) {
+      // Registered club in database has its own squad; do not invent fake random crawler players
       squad = null
     } else if (inCrawl) {
       squad = squadFor(club.name)
     }
 
-    return { standing, matches: played, next, last, transfers, scorers, squad }
+    return { standing, matches: played, next, last, transfers, scorers, squad, isPlaceholder }
   }, [club, inCrawl, liveClub])
 
   if (!club || !data) {
@@ -190,10 +192,14 @@ export default function ClubDetailPage() {
             <p className="border-t border-[var(--border)] px-5 py-3 text-xs text-[var(--text-faint)]">
               Manager{' '}
               <span className="font-semibold text-[var(--text-muted)]">{data.squad.manager}</span>
-              {' · '}
-              <span className="text-[var(--text-faint)]">
-                Lineup is placeholder data until squads are registered.
-              </span>
+              {data.isPlaceholder && (
+                <>
+                  {' · '}
+                  <span className="text-[var(--text-faint)]">
+                    Lineup is placeholder data until squads are registered.
+                  </span>
+                </>
+              )}
             </p>
           </>
         ) : (
@@ -202,7 +208,7 @@ export default function ClubDetailPage() {
           <div className="p-5 sm:p-6">
             <EmptyState
               title="No starting XI yet"
-              hint="Once your manager signs players and fixtures are played, the lineup appears here."
+              hint="The manager or league admin has not set the starting 11 yet."
             />
           </div>
         )}
@@ -269,8 +275,8 @@ export default function ClubDetailPage() {
           Starting XI · {data.squad.formation}
         </p>
         <ul className="divide-y divide-[var(--border)]">
-          {data.squad.starters.map((p) => (
-            <li key={p.number} className="flex items-center gap-3 px-5 py-2.5">
+          {data.squad.starters.map((p, i) => (
+            <li key={`${p.name}-${p.number}-${i}`} className="flex items-center gap-3 px-5 py-2.5">
               <span className="numeric grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[var(--accent-tint)] text-[11px] font-bold text-[var(--accent-text)]">
                 {p.number}
               </span>
@@ -290,8 +296,8 @@ export default function ClubDetailPage() {
           Bench
         </p>
         <ul className="divide-y divide-[var(--border)]">
-          {data.squad.bench.map((p) => (
-            <li key={p.number} className="flex items-center gap-3 px-5 py-2.5">
+          {data.squad.bench.map((p, i) => (
+            <li key={`${p.name}-${p.number}-${i}`} className="flex items-center gap-3 px-5 py-2.5">
               <span className="numeric grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[var(--surface-2)] text-[11px] font-bold text-[var(--text-muted)]">
                 {p.number}
               </span>

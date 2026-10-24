@@ -98,6 +98,8 @@ export interface Club {
   status: ClubStatus
   raw: string
   isFeatured?: boolean
+  description?: string | null
+  formation?: string | null
 }
 
 export interface LeaderboardRow {

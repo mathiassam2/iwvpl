@@ -1112,7 +1112,17 @@ admin.put(
       ? req.body.startingPlayerIds.map(Number).filter((n: number) => Number.isInteger(n) && n > 0)
       : null
 
+    if (startingIds !== null && startingIds.length > 11) {
+      return res.status(400).json({ error: 'Starting XI cannot exceed 11 players.' })
+    }
+
     const playerList = Array.isArray(req.body?.players) ? req.body.players : null
+    if (playerList !== null) {
+      const startingCount = playerList.filter((p: any) => Boolean(p.is_starting_11)).length
+      if (startingCount > 11) {
+        return res.status(400).json({ error: 'Starting XI cannot exceed 11 players.' })
+      }
+    }
 
     await withTransaction(async (conn) => {
       if (req.body?.formation) {
@@ -1169,8 +1179,18 @@ admin.patch(
     const values: any[] = []
 
     if ('is_starting_11' in req.body) {
+      const isStarting = Boolean(req.body.is_starting_11)
+      if (isStarting) {
+        const countRow = await queryOne<{ count: number }>(
+          'SELECT COUNT(*) as count FROM players WHERE club_id = ? AND is_starting_11 = 1 AND id != ?',
+          [club.id, playerId],
+        )
+        if (countRow && countRow.count >= 11) {
+          return res.status(400).json({ error: 'Starting XI cannot exceed 11 players.' })
+        }
+      }
       fields.push('is_starting_11 = ?')
-      values.push(Boolean(req.body.is_starting_11) ? 1 : 0)
+      values.push(isStarting ? 1 : 0)
     }
     if ('shirt_number' in req.body) {
       fields.push('shirt_number = ?')

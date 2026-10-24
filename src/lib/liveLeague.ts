@@ -495,14 +495,19 @@ export async function getLiveClub(
       logo_url: string | null
       logo_local: string | null
       status: string
-      division: { name: string } | null
-      players: Array<{ gamertag: string }>
+      description: string | null
+      formation: string | null
+      manager: string | null
+      division: { id: number; name: string; tier: number } | null
+      players: LiveClubPlayer[]
     }>(`/api/clubs/${encodeURIComponent(slug)}`, signal)
 
     if (response.status !== 'active') return null
 
     return {
+      id: response.id,
       name: response.name,
+      slug: response.slug,
       flag: response.flag ?? '',
       code: response.short_code ?? '',
       url: '',
@@ -511,8 +516,12 @@ export async function getLiveClub(
       players: response.players.length,
       status: 'Active',
       raw: response.name,
+      description: response.description ?? null,
+      formation: response.formation ?? null,
+      manager: response.manager ?? null,
       division: response.division?.name ?? null,
       roster: response.players.map((p) => ({ name: p.gamertag })),
+      playersList: response.players,
     }
   } catch {
     return null

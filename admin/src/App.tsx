@@ -3106,8 +3106,8 @@ function AllClubsDirectory({
     load().catch(() => setAllClubs([]))
   }, [load])
 
-  const loadClubPlayers = useCallback(async (slug: string) => {
-    setSquadLoading(true)
+  const loadClubPlayers = useCallback(async (slug: string, options?: { silent?: boolean }) => {
+    if (!options?.silent) setSquadLoading(true)
     try {
       const res = await fetch(`/api/clubs/${encodeURIComponent(slug)}`)
       if (!res.ok) throw new Error(`Request failed (${res.status})`)
@@ -3119,24 +3119,42 @@ function AllClubsDirectory({
     } catch {
       /* non-fatal */
     } finally {
-      setSquadLoading(false)
+      if (!options?.silent) setSquadLoading(false)
     }
   }, [])
 
   const toggleStarter = async (club: Club, player: ClubPlayer) => {
     const nextVal = !Boolean(player.is_starting_11)
-    setPlayerBusy(true)
+    const currentSquad = playersBySlug[club.slug] ?? []
+    const currentStarters = currentSquad.filter((p) => Boolean(p.is_starting_11)).length
+
+    if (nextVal && currentStarters >= 11) {
+      report('err', 'Starting 11 is full (11/11). Uncheck a starter before adding another.')
+      return
+    }
+
+    // 1. Optimistic update: instantly toggle state in place so UI never flickers or jumps
+    setPlayersBySlug((current) => ({
+      ...current,
+      [club.slug]: (current[club.slug] ?? []).map((p) =>
+        p.id === player.id ? { ...p, is_starting_11: nextVal ? 1 : 0 } : p,
+      ),
+    }))
+
     try {
-      await guard(
-        () => updateClubPlayer(club.slug, player.id, { is_starting_11: nextVal }),
-        `Could not update ${player.gamertag}`,
-      )
-      await loadClubPlayers(club.slug)
+      await updateClubPlayer(club.slug, player.id, { is_starting_11: nextVal })
+      // 2. Silent refresh: sync without showing loader message or resetting scroll
+      await loadClubPlayers(club.slug, { silent: true })
       report('ok', `${player.gamertag} ${nextVal ? 'marked as Starting 11' : 'moved to bench'}.`)
-    } catch {
-      /* already reported */
-    } finally {
-      setPlayerBusy(false)
+    } catch (err) {
+      // Revert optimistic update on failure
+      setPlayersBySlug((current) => ({
+        ...current,
+        [club.slug]: (current[club.slug] ?? []).map((p) =>
+          p.id === player.id ? { ...p, is_starting_11: player.is_starting_11 } : p,
+        ),
+      }))
+      report('err', `Could not update ${player.gamertag}: ${err instanceof Error ? err.message : 'Unknown error'}`)
     }
   }
 
@@ -3573,7 +3591,13 @@ function AllClubsDirectory({
       {editingClubObj ? (
         <section className="club-edit-roster" style={{ marginTop: 14 }}>
           <div>
-            <h3>Squad players ({editingClubPlayers.length || editingClubObj.players})</h3>
+            <h3>
+              Squad players ({editingClubPlayers.length || editingClubObj.players})
+              {' · '}
+              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent)' }}>
+                {editingClubPlayers.filter((p) => p.is_starting_11).length}/11 Starting
+              </span>
+            </h3>
             <p className="hint">Add a player by gamertag or release existing squad members.</p>
           </div>
           <div className="club-edit-add">
@@ -3599,7 +3623,7 @@ function AllClubsDirectory({
               {playerBusy ? 'Adding…' : 'Add player'}
             </button>
           </div>
-          {squadLoading ? (
+          {squadLoading && editingClubPlayers.length === 0 ? (
             <p className="hint" style={{ marginTop: 8 }}>Loading squad…</p>
           ) : editingClubPlayers.length > 0 ? (
             <div className="squad-list" style={{ marginTop: 10, maxHeight: 220, overflowY: 'auto' }}>
@@ -4020,7 +4044,7 @@ function AllClubsDirectory({
                 </button>
               </div>
             </div>
-            {squadLoading ? (
+            {squadLoading && (playersBySlug[squadModalClub.slug] ?? []).length === 0 ? (
               <p className="squad-modal-message">Loading squad…</p>
             ) : (playersBySlug[squadModalClub.slug] ?? []).length > 0 ? (
               <div className="squad-list">
