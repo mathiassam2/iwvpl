@@ -469,6 +469,7 @@ export interface LiveClubPlayer {
   is_starting_11: number | boolean
   shirt_number: number | null
   position: string | null
+  sort_order?: number
 }
 
 export type LiveClubDetail = Club & {

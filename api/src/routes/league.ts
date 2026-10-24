@@ -198,7 +198,7 @@ league.get(
         [club.id],
       ),
       queryAll(
-        `SELECT id, gamertag, slug, avatar_local, is_free_agent, is_starting_11, shirt_number, position FROM players WHERE club_id = ? ORDER BY is_starting_11 DESC, shirt_number ASC, gamertag ASC`,
+        `SELECT id, gamertag, slug, avatar_local, is_free_agent, is_starting_11, shirt_number, position, sort_order FROM players WHERE club_id = ? ORDER BY is_starting_11 DESC, sort_order ASC, shirt_number ASC, gamertag ASC`,
         [club.id],
       ),
       queryOne<{ display_name: string }>(

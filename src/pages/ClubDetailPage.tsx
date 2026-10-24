@@ -110,13 +110,19 @@ export default function ClubDetailPage() {
       const { slots } = FORMATIONS[formation]
       squad = {
         formation,
-        starters: starters.slice(0, 11).map((p, i) => ({
-          number: p.shirt_number ?? (i === 0 ? 1 : i + 2),
-          name: p.gamertag,
-          role: p.position || slots[i]?.[0] || (i === 0 ? 'GK' : 'ST'),
-          x: slots[i]?.[1] ?? 50,
-          y: slots[i]?.[2] ?? 50,
-        })),
+        starters: starters.slice(0, 11).map((p, i) => {
+          const slotIdx = typeof p.sort_order === 'number' && p.sort_order >= 0 && p.sort_order < slots.length
+            ? p.sort_order
+            : i
+          const slot = slots[slotIdx] || slots[i] || ['ST', 50, 50]
+          return {
+            number: p.shirt_number ?? (slotIdx === 0 ? 1 : slotIdx + 2),
+            name: p.gamertag,
+            role: p.position || slot[0] || (slotIdx === 0 ? 'GK' : 'ST'),
+            x: slot[1] ?? 50,
+            y: slot[2] ?? 50,
+          }
+        }),
         bench: bench.map((p, i) => ({
           number: p.shirt_number ?? (12 + i),
           name: p.gamertag,

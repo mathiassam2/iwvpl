@@ -2148,3 +2148,102 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .club-directory-row.is-selected:hover {
   background: rgb(200 255 61 / 14%);
 }
+
+
+/* Starting XI Pitch Modal */
+.pitch-lineup-modal {
+  width: min(100%, 1020px);
+  max-height: min(92vh, 880px);
+  overflow-y: auto;
+  border: 1px solid var(--border-strong);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.65);
+  display: flex;
+  flex-direction: column;
+}
+
+.pitch-lineup-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 22px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.pitch-lineup-body {
+  display: grid;
+  grid-template-columns: minmax(320px, 440px) 1fr;
+  gap: 24px;
+  padding: 20px 22px;
+  align-items: start;
+}
+
+@media (max-width: 860px) {
+  .pitch-lineup-body {
+    grid-template-columns: 1fr;
+    gap: 18px;
+    padding: 14px;
+  }
+}
+
+.pitch-container {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  user-select: none;
+}
+
+.pitch-grass-stripes {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.pitch-grass-stripe {
+  flex: 1;
+}
+
+.pitch-grass-stripe:nth-child(odd) {
+  background: #0b2413;
+}
+
+.pitch-grass-stripe:nth-child(even) {
+  background: #0f2e1a;
+}
+
+.pitch-slot-node {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  cursor: pointer;
+  text-align: center;
+  transition: transform 0.15s ease;
+}
+
+.pitch-slot-node:hover {
+  transform: translate(-50%, -50%) scale(1.08);
+}
+
+.pitch-slot-node.is-active {
+  z-index: 10;
+}
+
+.pitch-player-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: var(--plate);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+}

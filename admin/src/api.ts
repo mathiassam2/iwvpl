@@ -94,6 +94,7 @@ export interface ClubPlayer {
   is_starting_11: number | boolean
   shirt_number?: number | null
   position?: string | null
+  sort_order?: number
 }
 
 export interface Club {
@@ -637,11 +638,23 @@ export const addPlayer = (slug: string, gamertag: string) =>
     body: JSON.stringify({ gamertag }),
   })
 
-export const updateClubLineup = (slug: string, startingPlayerIds: number[], formation?: string) =>
-  request<{ ok: true; players: ClubPlayer[] }>(`/api/admin/clubs/${encodeURIComponent(slug)}/lineup`, {
+export const updateClubLineup = (
+  slug: string,
+  payload:
+    | {
+        startingPlayerIds?: number[]
+        formation?: string
+        lineup?: Array<{ playerId: number; position: string; sort_order: number; shirt_number?: number | null }>
+      }
+    | number[],
+  formation?: string,
+) => {
+  const body = Array.isArray(payload) ? { startingPlayerIds: payload, formation } : payload
+  return request<{ ok: true; players: ClubPlayer[] }>(`/api/admin/clubs/${encodeURIComponent(slug)}/lineup`, {
     method: 'PUT',
-    body: JSON.stringify({ startingPlayerIds, formation }),
+    body: JSON.stringify(body),
   })
+}
 
 export const updateClubPlayer = (
   slug: string,

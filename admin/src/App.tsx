@@ -67,6 +67,7 @@ import {
   type Club,
   type ClubPlayer,
   updateClubPlayer,
+  updateClubLineup,
   type CompetitionFormat,
   type FormatStatus,
   type HomepageRegion,
@@ -3057,6 +3058,765 @@ async function compressUploadedClubLogo(file: File): Promise<string> {
   })
 }
 
+
+const FORMATION_CONFIGS: Record<
+  string,
+  { label: string; slots: [role: string, x: number, y: number][] }
+> = {
+  '4-3-3': {
+    label: '4-3-3 (Attack)',
+    slots: [
+      ['GK', 50, 91],
+      ['LB', 12, 76],
+      ['CB', 37, 80],
+      ['CB', 63, 80],
+      ['RB', 88, 76],
+      ['CM', 25, 56],
+      ['CM', 50, 49],
+      ['CM', 75, 56],
+      ['LW', 16, 22],
+      ['ST', 50, 13],
+      ['RW', 84, 22],
+    ],
+  },
+  '4-2-3-1': {
+    label: '4-2-3-1 (Wide)',
+    slots: [
+      ['GK', 50, 91],
+      ['LB', 12, 76],
+      ['CB', 37, 80],
+      ['CB', 63, 80],
+      ['RB', 88, 76],
+      ['CDM', 38, 62],
+      ['CDM', 62, 62],
+      ['LM', 18, 41],
+      ['AM', 50, 37],
+      ['RM', 82, 41],
+      ['ST', 50, 13],
+    ],
+  },
+  '4-4-2': {
+    label: '4-4-2 (Flat)',
+    slots: [
+      ['GK', 50, 91],
+      ['LB', 12, 76],
+      ['CB', 37, 80],
+      ['CB', 63, 80],
+      ['RB', 88, 76],
+      ['LM', 16, 48],
+      ['CM', 38, 52],
+      ['CM', 62, 52],
+      ['RM', 84, 48],
+      ['ST', 36, 17],
+      ['ST', 64, 17],
+    ],
+  },
+  '3-5-2': {
+    label: '3-5-2',
+    slots: [
+      ['GK', 50, 91],
+      ['CB', 25, 78],
+      ['CB', 50, 82],
+      ['CB', 75, 78],
+      ['LWB', 10, 57],
+      ['CM', 35, 56],
+      ['CM', 50, 45],
+      ['CM', 65, 56],
+      ['RWB', 90, 57],
+      ['ST', 36, 17],
+      ['ST', 64, 17],
+    ],
+  },
+  '4-1-2-1-2': {
+    label: '4-1-2-1-2 (Diamond)',
+    slots: [
+      ['GK', 50, 91],
+      ['LB', 12, 76],
+      ['CB', 37, 80],
+      ['CB', 63, 80],
+      ['RB', 88, 76],
+      ['CDM', 50, 64],
+      ['LM', 20, 48],
+      ['RM', 80, 48],
+      ['CAM', 50, 35],
+      ['ST', 36, 17],
+      ['ST', 64, 17],
+    ],
+  },
+  '5-3-2': {
+    label: '5-3-2',
+    slots: [
+      ['GK', 50, 91],
+      ['LWB', 11, 70],
+      ['CB', 30, 80],
+      ['CB', 50, 83],
+      ['CB', 70, 80],
+      ['RWB', 89, 70],
+      ['CM', 30, 50],
+      ['CM', 50, 44],
+      ['CM', 70, 50],
+      ['ST', 36, 17],
+      ['ST', 64, 17],
+    ],
+  },
+}
+
+function PitchLineupModal({
+  club,
+  players,
+  onClose,
+  onSave,
+}: {
+  club: Club
+  players: ClubPlayer[]
+  onClose: () => void
+  onSave: (
+    formation: string,
+    lineup: Array<{ playerId: number; position: string; sort_order: number; shirt_number?: number | null }>,
+  ) => Promise<void>
+}) {
+  const initialFormation = club.formation && FORMATION_CONFIGS[club.formation] ? club.formation : '4-3-3'
+  const [formation, setFormation] = useState<string>(initialFormation)
+  const currentSlots = FORMATION_CONFIGS[formation]?.slots ?? FORMATION_CONFIGS['4-3-3'].slots
+
+  const [slotAssignments, setSlotAssignments] = useState<Array<number | null>>(() => {
+    const starters = [...players.filter((p) => Boolean(p.is_starting_11))].sort((a, b) => {
+      const orderA = typeof a.sort_order === 'number' ? a.sort_order : 99
+      const orderB = typeof b.sort_order === 'number' ? b.sort_order : 99
+      return orderA - orderB
+    })
+    const slotsArr: Array<number | null> = Array(11).fill(null)
+    for (let i = 0; i < 11; i++) {
+      const p = starters.find((s) => s.sort_order === i) || starters[i]
+      if (p && !slotsArr.includes(p.id)) {
+        slotsArr[i] = p.id
+      }
+    }
+    return slotsArr
+  })
+
+  const [activeSlotIndex, setActiveSlotIndex] = useState<number>(0)
+  const [search, setSearch] = useState('')
+  const [filter, setFilter] = useState<'all' | 'bench' | 'starters'>('all')
+  const [saving, setSaving] = useState(false)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+
+  const assignedCount = slotAssignments.filter((id) => id !== null).length
+  const activeSlot = currentSlots[activeSlotIndex] || ['ST', 50, 50]
+  const activePlayerId = slotAssignments[activeSlotIndex]
+  const activePlayer = players.find((p) => p.id === activePlayerId) || null
+
+  const handleSlotClick = (index: number) => {
+    setActiveSlotIndex(index)
+  }
+
+  const handleSelectPlayer = (player: ClubPlayer) => {
+    const existingIndex = slotAssignments.indexOf(player.id)
+    const next = [...slotAssignments]
+
+    if (existingIndex !== -1 && existingIndex !== activeSlotIndex) {
+      next[existingIndex] = slotAssignments[activeSlotIndex]
+      next[activeSlotIndex] = player.id
+    } else {
+      next[activeSlotIndex] = player.id
+    }
+
+    setSlotAssignments(next)
+
+    const nextEmpty = next.findIndex((id, idx) => idx > activeSlotIndex && id === null)
+    if (nextEmpty !== -1) {
+      setActiveSlotIndex(nextEmpty)
+    } else {
+      const anyEmpty = next.findIndex((id) => id === null)
+      if (anyEmpty !== -1) setActiveSlotIndex(anyEmpty)
+    }
+  }
+
+  const handleUnassignCurrent = () => {
+    const next = [...slotAssignments]
+    next[activeSlotIndex] = null
+    setSlotAssignments(next)
+  }
+
+  const handleClearAll = () => {
+    if (window.confirm('Clear all starting positions on the pitch?')) {
+      setSlotAssignments(Array(11).fill(null))
+      setActiveSlotIndex(0)
+    }
+  }
+
+  const handleSave = async () => {
+    setErrorMsg(null)
+    setSaving(true)
+    try {
+      const lineup: Array<{
+        playerId: number
+        position: string
+        sort_order: number
+        shirt_number?: number | null
+      }> = []
+
+      for (let i = 0; i < currentSlots.length; i++) {
+        const pid = slotAssignments[i]
+        if (!pid) continue
+        const p = players.find((x) => x.id === pid)
+        lineup.push({
+          playerId: pid,
+          position: currentSlots[i][0],
+          sort_order: i,
+          shirt_number: p?.shirt_number ?? (i === 0 ? 1 : i + 2),
+        })
+      }
+
+      await onSave(formation, lineup)
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : 'Could not save lineup')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const filteredPlayers = players.filter((p) => {
+    if (search.trim()) {
+      const q = search.trim().toLowerCase()
+      if (!p.gamertag.toLowerCase().includes(q)) return false
+    }
+    const isStarter = slotAssignments.includes(p.id)
+    if (filter === 'bench' && isStarter) return false
+    if (filter === 'starters' && !isStarter) return false
+    return true
+  })
+
+  return (
+    <div
+      className="squad-modal-backdrop"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget && !saving) onClose()
+      }}
+    >
+      <section
+        className="pitch-lineup-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="pitch-modal-title"
+      >
+        <header className="pitch-lineup-header">
+          <div>
+            <p className="eyebrow">TACTICAL BOARD · STARTING XI</p>
+            <h2 id="pitch-modal-title" style={{ margin: 0, fontSize: 20 }}>
+              {club.name}
+            </h2>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4 }}>
+              <span
+                className="badge"
+                style={{
+                  background: assignedCount === 11 ? 'rgba(74, 222, 128, 0.2)' : 'rgba(200, 255, 61, 0.15)',
+                  color: assignedCount === 11 ? '#4ade80' : 'var(--accent)',
+                  fontWeight: 700,
+                  fontSize: 11,
+                  padding: '2px 8px',
+                  borderRadius: 6,
+                }}
+              >
+                Starting XI: {assignedCount}/11 Selected
+              </span>
+              <span style={{ fontSize: 12, color: 'var(--muted)' }}>
+                Click any slot on the pitch to assign or align a player to their position.
+              </span>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700 }}>
+              <span>Formation:</span>
+              <select
+                className="text"
+                value={formation}
+                onChange={(e) => setFormation(e.target.value)}
+                style={{ padding: '4px 10px', height: 32, fontSize: 12, fontWeight: 700 }}
+              >
+                {Object.entries(FORMATION_CONFIGS).map(([fmtKey, conf]) => (
+                  <option key={fmtKey} value={fmtKey}>
+                    {conf.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              className="icon-btn"
+              type="button"
+              aria-label="Close lineup modal"
+              onClick={onClose}
+              disabled={saving}
+            >
+              ×
+            </button>
+          </div>
+        </header>
+
+        {errorMsg && (
+          <div style={{ padding: '8px 22px', background: 'rgba(255, 75, 75, 0.15)', color: '#ff6b6b', fontSize: 13 }}>
+            {errorMsg}
+          </div>
+        )}
+
+        <div className="pitch-lineup-body">
+          {/* Left Column: Interactive Pitch */}
+          <div>
+            <div className="pitch-container">
+              <div className="pitch-grass-stripes" aria-hidden>
+                {Array.from({ length: 8 }, (_, i) => (
+                  <div key={i} className="pitch-grass-stripe" />
+                ))}
+              </div>
+
+              <svg
+                aria-hidden
+                viewBox="0 0 100 100"
+                preserveAspectRatio="none"
+                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
+              >
+                <g fill="none" stroke="rgba(255,255,255,0.28)" strokeWidth="0.5" vectorEffect="non-scaling-stroke">
+                  <rect x="2" y="2" width="96" height="96" />
+                  <line x1="2" y1="50" x2="98" y2="50" />
+                  <circle cx="50" cy="50" r="10" />
+                  <circle cx="50" cy="50" r="0.8" fill="rgba(255,255,255,0.4)" />
+                  <rect x="22" y="2" width="56" height="14" />
+                  <rect x="36" y="2" width="28" height="5" />
+                  <rect x="22" y="84" width="56" height="14" />
+                  <rect x="36" y="93" width="28" height="5" />
+                </g>
+              </svg>
+
+              {currentSlots.map((slot, index) => {
+                const pid = slotAssignments[index]
+                const player = pid ? players.find((p) => p.id === pid) : null
+                const isActive = activeSlotIndex === index
+
+                return (
+                  <div
+                    key={`${index}-${slot[0]}`}
+                    className={`pitch-slot-node ${isActive ? 'is-active' : ''}`}
+                    style={{
+                      left: `${slot[1]}%`,
+                      top: `${slot[2]}%`,
+                    }}
+                    onClick={() => handleSlotClick(index)}
+                    title={`Slot ${index + 1}: ${slot[0]} - ${player ? player.gamertag : 'Empty (Click to assign)'}`}
+                  >
+                    {player ? (
+                      <div>
+                        <div
+                          style={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: '50%',
+                            background: isActive ? 'var(--accent)' : '#d9ff4d',
+                            color: '#07080a',
+                            display: 'grid',
+                            placeItems: 'center',
+                            fontWeight: 800,
+                            fontSize: 12,
+                            margin: '0 auto',
+                            boxShadow: isActive
+                              ? '0 0 0 3px #07080a, 0 0 0 5px var(--accent), 0 4px 14px rgba(0,0,0,0.6)'
+                              : '0 2px 6px rgba(0,0,0,0.5)',
+                            border: '1px solid rgba(0,0,0,0.4)',
+                          }}
+                        >
+                          {player.shirt_number ?? (index === 0 ? 1 : index + 2)}
+                        </div>
+                        <div
+                          style={{
+                            marginTop: 3,
+                            maxWidth: 72,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            fontSize: 10,
+                            fontWeight: 700,
+                            color: '#fff',
+                            textShadow: '0 1px 3px rgba(0,0,0,0.9), 0 0 2px rgba(0,0,0,0.9)',
+                            background: 'rgba(7, 8, 10, 0.75)',
+                            padding: '1px 5px',
+                            borderRadius: 4,
+                          }}
+                        >
+                          {player.gamertag}
+                        </div>
+                        <span
+                          style={{
+                            display: 'inline-block',
+                            fontSize: 9,
+                            fontWeight: 800,
+                            letterSpacing: '0.04em',
+                            padding: '1px 4px',
+                            borderRadius: 3,
+                            background: isActive ? 'var(--accent)' : 'rgba(255,255,255,0.25)',
+                            color: isActive ? '#07080a' : '#fff',
+                            marginTop: 1,
+                          }}
+                        >
+                          {slot[0]}
+                        </span>
+                      </div>
+                    ) : (
+                      <div>
+                        <div
+                          style={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: '50%',
+                            border: isActive ? '2px solid var(--accent)' : '2px dashed rgba(255,255,255,0.4)',
+                            background: isActive ? 'rgba(200,255,61,0.25)' : 'rgba(0,0,0,0.3)',
+                            color: isActive ? 'var(--accent)' : 'rgba(255,255,255,0.7)',
+                            display: 'grid',
+                            placeItems: 'center',
+                            fontWeight: 800,
+                            fontSize: 14,
+                            margin: '0 auto',
+                            boxShadow: isActive ? '0 0 12px rgba(200,255,61,0.5)' : 'none',
+                          }}
+                        >
+                          +
+                        </div>
+                        <span
+                          style={{
+                            display: 'inline-block',
+                            fontSize: 9,
+                            fontWeight: 800,
+                            letterSpacing: '0.04em',
+                            padding: '1px 5px',
+                            borderRadius: 3,
+                            background: isActive ? 'var(--accent)' : 'rgba(0,0,0,0.5)',
+                            color: isActive ? '#07080a' : '#fff',
+                            marginTop: 2,
+                          }}
+                        >
+                          {slot[0]}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
+              <button
+                type="button"
+                className="btn sm"
+                onClick={handleClearAll}
+                style={{ fontSize: 11 }}
+              >
+                Clear all positions
+              </button>
+              <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+                Goal line at bottom (defending)
+              </span>
+            </div>
+          </div>
+
+          {/* Right Column: Player Selector for Active Position */}
+          <div className="pitch-player-picker">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--line)', paddingBottom: 10 }}>
+              <div>
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                  Position #{activeSlotIndex + 1}
+                </span>
+                <h3 style={{ margin: '2px 0 0', fontSize: 17, color: 'var(--text)' }}>
+                  {activeSlot[0]} · Slot Assignment
+                </h3>
+              </div>
+
+              {activePlayer && (
+                <button
+                  type="button"
+                  className="btn sm danger"
+                  onClick={handleUnassignCurrent}
+                  style={{ fontSize: 11 }}
+                >
+                  Remove from {activeSlot[0]}
+                </button>
+              )}
+            </div>
+
+            {activePlayer ? (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '8px 12px',
+                  borderRadius: 8,
+                  background: 'rgba(200,255,61,0.1)',
+                  border: '1px solid rgba(200,255,61,0.3)',
+                }}
+              >
+                <span
+                  style={{
+                    width: 24,
+                    height: 24,
+                    borderRadius: '50%',
+                    background: 'var(--accent)',
+                    color: '#07080a',
+                    fontWeight: 800,
+                    fontSize: 11,
+                    display: 'grid',
+                    placeItems: 'center',
+                  }}
+                >
+                  {activePlayer.shirt_number ?? (activeSlotIndex === 0 ? 1 : activeSlotIndex + 2)}
+                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)' }}>
+                    {activePlayer.gamertag}
+                  </span>
+                  <span style={{ display: 'block', fontSize: 11, color: 'var(--muted)' }}>
+                    Currently assigned to {activeSlot[0]}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <p style={{ margin: 0, fontSize: 12, color: 'var(--muted)' }}>
+                Click a player from your squad below to assign them to <strong>{activeSlot[0]}</strong>.
+              </p>
+            )}
+
+            {/* Filter controls */}
+            <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+              <input
+                className="text"
+                placeholder="Search squad players…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                style={{ flex: 1, height: 32, fontSize: 12 }}
+              />
+              <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 7, overflow: 'hidden' }}>
+                <button
+                  type="button"
+                  onClick={() => setFilter('all')}
+                  style={{
+                    padding: '4px 8px',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    background: filter === 'all' ? 'var(--accent)' : 'transparent',
+                    color: filter === 'all' ? '#07080a' : 'var(--muted)',
+                    border: 'none',
+                    cursor: 'pointer',
+                  }}
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilter('bench')}
+                  style={{
+                    padding: '4px 8px',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    background: filter === 'bench' ? 'var(--accent)' : 'transparent',
+                    color: filter === 'bench' ? '#07080a' : 'var(--muted)',
+                    border: 'none',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Bench
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilter('starters')}
+                  style={{
+                    padding: '4px 8px',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    background: filter === 'starters' ? 'var(--accent)' : 'transparent',
+                    color: filter === 'starters' ? '#07080a' : 'var(--muted)',
+                    border: 'none',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Starters
+                </button>
+              </div>
+            </div>
+
+            {/* Squad List */}
+            <div
+              style={{
+                maxHeight: 330,
+                overflowY: 'auto',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 4,
+                marginTop: 4,
+                paddingRight: 4,
+              }}
+            >
+              {filteredPlayers.length === 0 ? (
+                <p style={{ textAlign: 'center', padding: '24px 0', fontSize: 12, color: 'var(--faint)' }}>
+                  No players found matching "{search}"
+                </p>
+              ) : (
+                filteredPlayers.map((player) => {
+                  const existingSlot = slotAssignments.indexOf(player.id)
+                  const isCurrentSlot = existingSlot === activeSlotIndex
+                  const isAssignedElsewhere = existingSlot !== -1 && !isCurrentSlot
+                  const assignedRole = isAssignedElsewhere ? currentSlots[existingSlot][0] : null
+
+                  return (
+                    <div
+                      key={player.id}
+                      onClick={() => handleSelectPlayer(player)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 10,
+                        padding: '8px 12px',
+                        borderRadius: 8,
+                        background: isCurrentSlot
+                          ? 'rgba(200, 255, 61, 0.18)'
+                          : isAssignedElsewhere
+                            ? 'rgba(255, 255, 255, 0.04)'
+                            : 'var(--surface)',
+                        border: isCurrentSlot
+                          ? '1px solid var(--accent)'
+                          : '1px solid var(--border)',
+                        cursor: 'pointer',
+                        transition: 'background 0.1s ease',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
+                        <span
+                          style={{
+                            width: 22,
+                            height: 22,
+                            borderRadius: '50%',
+                            background: isCurrentSlot
+                              ? 'var(--accent)'
+                              : isAssignedElsewhere
+                                ? 'var(--surface-hover)'
+                                : 'var(--plate)',
+                            color: isCurrentSlot ? '#07080a' : 'var(--muted)',
+                            display: 'grid',
+                            placeItems: 'center',
+                            fontSize: 10,
+                            fontWeight: 700,
+                            flexShrink: 0,
+                          }}
+                        >
+                          {player.shirt_number ?? '#'}
+                        </span>
+                        <span
+                          style={{
+                            fontWeight: 600,
+                            fontSize: 13,
+                            color: isCurrentSlot ? 'var(--accent)' : 'var(--text)',
+                          }}
+                          className="truncate"
+                        >
+                          {player.gamertag}
+                        </span>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                        {isCurrentSlot ? (
+                          <span
+                            style={{
+                              fontSize: 10,
+                              fontWeight: 800,
+                              background: 'var(--accent)',
+                              color: '#07080a',
+                              padding: '2px 6px',
+                              borderRadius: 4,
+                            }}
+                          >
+                            Selected Here
+                          </span>
+                        ) : isAssignedElsewhere ? (
+                          <span
+                            style={{
+                              fontSize: 10,
+                              fontWeight: 700,
+                              background: 'rgba(255, 255, 255, 0.08)',
+                              color: 'var(--muted)',
+                              padding: '2px 6px',
+                              borderRadius: 4,
+                            }}
+                          >
+                            At {assignedRole} ⇄
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn sm"
+                            style={{ padding: '2px 8px', fontSize: 10 }}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleSelectPlayer(player)
+                            }}
+                          >
+                            Assign to {activeSlot[0]}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Modal Footer */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            padding: '14px 22px',
+            borderTop: '1px solid var(--border)',
+            background: 'var(--surface)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span
+              style={{
+                fontSize: 13,
+                fontWeight: 700,
+                color: assignedCount === 11 ? '#4ade80' : 'var(--text-muted)',
+              }}
+            >
+              {assignedCount}/11 Starting Players Assigned
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <button
+              className="btn"
+              type="button"
+              disabled={saving}
+              onClick={onClose}
+            >
+              Cancel
+            </button>
+            <button
+              className="btn primary"
+              type="button"
+              disabled={saving}
+              onClick={handleSave}
+            >
+              {saving ? 'Saving Lineup…' : 'Save Starting XI & Formation'}
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  )
+}
+
 function AllClubsDirectory({
   guard,
   report,
@@ -3089,6 +3849,29 @@ function AllClubsDirectory({
   const [newPlayerTag, setNewPlayerTag] = useState('')
   const [playerBusy, setPlayerBusy] = useState(false)
   const [squadModalSlug, setSquadModalSlug] = useState<string | null>(null)
+  const [pitchModalClub, setPitchModalClub] = useState<Club | null>(null)
+
+  const openLineupPitchModal = (club: Club) => {
+    setPitchModalClub(club)
+    void loadClubPlayers(club.slug, { silent: true })
+  }
+
+  const handleSavePitchLineup = async (
+    formation: string,
+    lineup: Array<{ playerId: number; position: string; sort_order: number; shirt_number?: number | null }>,
+  ) => {
+    if (!pitchModalClub) return
+    await guard(
+      () => updateClubLineup(pitchModalClub.slug, { formation, lineup }),
+      `Could not save starting XI for ${pitchModalClub.name}`,
+    )
+    setAllClubs((current) =>
+      (current ?? []).map((c) => (c.slug === pitchModalClub.slug ? { ...c, formation } : c)),
+    )
+    await loadClubPlayers(pitchModalClub.slug, { silent: true })
+    report('ok', `Starting XI and ${formation} formation saved for ${pitchModalClub.name}!`)
+    setPitchModalClub(null)
+  }
 
   // Bulk selection & actions inside All Clubs
   const [selectedSlugs, setSelectedSlugs] = useState<Set<string>>(() => new Set())
@@ -3591,13 +4374,23 @@ function AllClubsDirectory({
       {editingClubObj ? (
         <section className="club-edit-roster" style={{ marginTop: 14 }}>
           <div>
-            <h3>
-              Squad players ({editingClubPlayers.length || editingClubObj.players})
-              {' · '}
-              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent)' }}>
-                {editingClubPlayers.filter((p) => p.is_starting_11).length}/11 Starting
-              </span>
-            </h3>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+              <h3>
+                Squad players ({editingClubPlayers.length || editingClubObj.players})
+                {' · '}
+                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent)' }}>
+                  {editingClubPlayers.filter((p) => p.is_starting_11).length}/11 Starting
+                </span>
+              </h3>
+              <button
+                type="button"
+                className="btn primary sm"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                onClick={() => openLineupPitchModal(editingClubObj)}
+              >
+                <span>⚽</span> Set Starting XI on Pitch
+              </button>
+            </div>
             <p className="hint">Add a player by gamertag or release existing squad members.</p>
           </div>
           <div className="club-edit-add">
@@ -3864,6 +4657,18 @@ function AllClubsDirectory({
                             Squad <span className="squad-count">{c.players}</span>
                           </button>
                           <button
+                            className="btn sm"
+                            type="button"
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                            title="Open tactical pitch to choose starting 11"
+                            onClick={() => {
+                              void loadClubPlayers(c.slug)
+                              openLineupPitchModal(c)
+                            }}
+                          >
+                            <span>⚽</span> Starting XI
+                          </button>
+                          <button
                             className="btn sm danger"
                             type="button"
                             disabled={deletingSlug === c.slug}
@@ -3969,6 +4774,15 @@ function AllClubsDirectory({
         </div>
       )}
 
+      {pitchModalClub && (
+        <PitchLineupModal
+          club={pitchModalClub}
+          players={playersBySlug[pitchModalClub.slug] ?? []}
+          onClose={() => setPitchModalClub(null)}
+          onSave={handleSavePitchLineup}
+        />
+      )}
+
       {squadModalClub && (
         <div
           className="squad-modal-backdrop"
@@ -4009,6 +4823,17 @@ function AllClubsDirectory({
                   <span style={{ fontSize: 12, color: 'var(--muted)' }}>
                     Formation: <strong>{squadModalClub.formation ?? '4-3-3'}</strong>
                   </span>
+                  <button
+                    type="button"
+                    className="btn primary sm"
+                    style={{ marginLeft: 6, display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                    onClick={() => {
+                      setSquadModalSlug(null)
+                      openLineupPitchModal(squadModalClub)
+                    }}
+                  >
+                    <span>⚽</span> Choose Starting XI on Pitch
+                  </button>
                 </div>
               </div>
               <button
