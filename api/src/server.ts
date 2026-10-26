@@ -57,8 +57,8 @@ app.use((_req, res, next) => {
 })
 
 // Bounded body limits to prevent resource exhaustion / DoS
-app.use(express.json({ limit: '2mb' }))
-app.use(express.urlencoded({ extended: true, limit: '2mb' }))
+app.use(express.json({ limit: '15mb' }))
+app.use(express.urlencoded({ extended: true, limit: '15mb' }))
 app.use(cookieParser())
 
 // Compress JSON API responses (>1KB) with gzip so large club/CMS payloads transfer 4-6x faster.

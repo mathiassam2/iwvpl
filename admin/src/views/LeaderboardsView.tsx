@@ -1145,12 +1145,31 @@ function PodiumPreviewSlot({
         zIndex: isFirst ? 3 : 1,
       }}
     >
+      {/* Glow ambient background aura for #1 Champion - unmasked so it never gets clipped */}
+      {isFirst && (
+        <div
+          style={{
+            position: 'absolute',
+            width: 240,
+            height: 240,
+            top: 20,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background:
+              'radial-gradient(circle, rgba(200, 255, 61, 0.4) 0%, rgba(200, 255, 61, 0.1) 40%, transparent 70%)',
+            filter: 'blur(24px)',
+            pointerEvents: 'none',
+            zIndex: 1,
+          }}
+        />
+      )}
+
       {/* 3D Overflowing Cutout Celebration Image Stage (4:5 Synchronized Ratio) */}
       <div
         style={{
           position: 'relative',
           width: '100%',
-          maxWidth: isFirst ? 280 : 230,
+          maxWidth: isFirst ? 285 : place === 2 ? 240 : 215,
           aspectRatio: '4 / 5',
           marginBottom: isFirst ? -44 : -36,
           zIndex: 2,
@@ -1163,20 +1182,6 @@ function PodiumPreviewSlot({
           WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 80%, transparent 98%)',
         }}
       >
-        {/* Glow ambient background aura for #1 Champion */}
-        {isFirst && (
-          <div
-            style={{
-              position: 'absolute',
-              width: 170,
-              height: 170,
-              bottom: 16,
-              background: 'radial-gradient(circle, rgba(200, 255, 61, 0.4) 0%, rgba(200, 255, 61, 0) 70%)',
-              filter: 'blur(20px)',
-              pointerEvents: 'none',
-            }}
-          />
-        )}
 
         {stat?.celebration_image ? (
           <img
@@ -1222,7 +1227,7 @@ function PodiumPreviewSlot({
       <div
         style={{
           width: '100%',
-          minHeight: isFirst ? 180 : 145,
+          minHeight: isFirst ? 220 : place === 2 ? 175 : 145,
           padding: isFirst ? '30px 16px 16px' : '26px 14px 14px',
           borderRadius: 14,
           background: isFirst

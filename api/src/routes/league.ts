@@ -131,6 +131,9 @@ league.get(
   handler(async (req, res) => {
     const includePending = req.query.includePending === 'true'
     const where = includePending ? '' : "WHERE c.status = 'active'"
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+    res.setHeader('Pragma', 'no-cache')
+    res.setHeader('Expires', '0')
     const requestedSeasonId = req.query.seasonId
     let seasonId: number | null = null
     if (requestedSeasonId !== undefined) {
@@ -341,6 +344,9 @@ league.get(
     const limit = intParam(req.query.limit, 50, 1, 200)
     const offset = intParam(req.query.offset, 0, 0, 100000)
     const status = typeof req.query.status === 'string' ? req.query.status : null
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+    res.setHeader('Pragma', 'no-cache')
+    res.setHeader('Expires', '0')
     const requestedSeasonId = req.query.seasonId
     let seasonId: number | null = null
     if (requestedSeasonId !== undefined) {
@@ -557,6 +563,9 @@ league.get(
 league.get(
   '/standings',
   handler(async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+    res.setHeader('Pragma', 'no-cache')
+    res.setHeader('Expires', '0')
     const requestedSeasonId = req.query.seasonId
     let season: {
       id: number
@@ -628,6 +637,8 @@ league.get(
     )
     const img = row?.image
     if (!img) return res.status(404).end()
+    res.setHeader('Access-Control-Allow-Origin', '*')
+    res.setHeader('Vary', 'Origin')
 
     const match = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/is.exec(img)
     if (match) {
@@ -662,6 +673,9 @@ const BOARDS: Record<string, 'goals' | 'assists' | 'saves'> = {
 league.get(
   '/leaderboards/summary',
   handler(async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+    res.setHeader('Pragma', 'no-cache')
+    res.setHeader('Expires', '0')
     const requestedSeasonId = req.query.seasonId
     let seasonId: number | null = null
     if (requestedSeasonId !== undefined) {
@@ -718,6 +732,9 @@ league.get(
 league.get(
   '/leaderboards',
   handler(async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+    res.setHeader('Pragma', 'no-cache')
+    res.setHeader('Expires', '0')
     const requested = typeof req.query.board === 'string' ? req.query.board.toLowerCase() : 'goals'
     const column = BOARDS[requested]
     if (!column) {

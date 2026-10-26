@@ -74,8 +74,8 @@ function PodiumAwardIcon({ place, isFirst }: { place: number; isFirst: boolean }
 
 /**
  * Top-three showcase with high-end 3D overflowing celebration cutouts.
- * Features an arena stage backdrop, tiered Olympic pedestals, and seamless
- * bottom edge blending.
+ * Features tiered Olympic pedestals (#1 distinctly highest, #2 medium, #3 lowest),
+ * unmasked 360-degree ambient aura, and open container layout.
  */
 export function LeaderboardPodium({ board }: { board: Leaderboard }) {
   const [first, second, third] = board.rows
@@ -94,16 +94,16 @@ export function LeaderboardPodium({ board }: { board: Leaderboard }) {
   ]
 
   return (
-    <section className="relative overflow-visible rounded-2xl sm:rounded-3xl border border-white/10 bg-radial-[ellipse_at_50%_15%] from-[rgba(200,255,61,0.1)] via-[rgba(18,23,34,0.85)] to-[#090c12] p-4 pt-12 sm:p-6 sm:pt-16 md:p-8 md:pt-20 shadow-[0_24px_70px_rgba(0,0,0,0.85),inset_0_1px_0_rgba(255,255,255,0.1)]">
+    <section className="relative w-full overflow-visible py-4 sm:py-8">
       {/* Stage Header Eyebrow */}
-      <div className="text-center mb-6 sm:mb-8">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--accent-soft)] px-3 py-1 text-[10px] font-extrabold tracking-[0.18em] uppercase text-[var(--accent-text)] border border-[var(--accent-ring)]">
+      <div className="text-center mb-8 sm:mb-10">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--accent-soft)] px-3.5 py-1 text-[10px] font-extrabold tracking-[0.18em] uppercase text-[var(--accent-text)] border border-[var(--accent-ring)]">
           ★ {board.title} PODIUM HONOURS ★
         </span>
       </div>
 
-      {/* 3-Column Podium Stage */}
-      <div className="grid grid-cols-3 items-end gap-2.5 sm:gap-4 md:gap-6 max-w-4xl mx-auto">
+      {/* 3-Column Podium Stage with bottom-aligned Olympic step tiers */}
+      <div className="grid grid-cols-3 items-end gap-2.5 sm:gap-4 md:gap-6 max-w-4xl mx-auto overflow-visible">
         {slots.map(({ row, place, label }) => {
           const isFirst = place === 1
           const cutout = row?.celebrationImage || row?.avatarLocal || row?.avatar || null
@@ -132,68 +132,78 @@ export function LeaderboardPodium({ board }: { board: Leaderboard }) {
             <div
               key={place}
               className={cx(
-                'relative flex flex-col items-center w-full',
+                'relative flex flex-col items-center w-full overflow-visible',
                 isFirst ? 'z-20' : 'z-10',
               )}
             >
+              {/* Golden/accent ambient glow aura behind #1 champion - unmasked so it never gets cut at the top */}
+              {isFirst && (
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute -top-12 sm:-top-16 left-1/2 -translate-x-1/2 w-64 h-64 sm:w-84 sm:h-84 rounded-full opacity-40 blur-3xl z-0"
+                  style={{
+                    background:
+                      'radial-gradient(circle, var(--accent-solid) 0%, rgba(200, 255, 61, 0.22) 40%, transparent 70%)',
+                  }}
+                />
+              )}
+
               {/* 3D Overflowing Cutout Stage (4:5 Synchronized Aspect Ratio) */}
               <div
                 className={cx(
                   'relative w-full aspect-[4/5] flex items-end justify-center pointer-events-none -mb-9 sm:-mb-11 overflow-visible z-10',
                   isFirst
-                    ? 'max-w-[220px] sm:max-w-[250px]'
-                    : 'max-w-[190px] sm:max-w-[220px]',
+                    ? 'max-w-[245px] sm:max-w-[275px]'
+                    : place === 2
+                      ? 'max-w-[195px] sm:max-w-[220px]'
+                      : 'max-w-[175px] sm:max-w-[200px]',
                 )}
-                style={{
-                  // Softly fade bottom edge so waist cuts blend naturally into the pedestal card
-                  maskImage: 'linear-gradient(to bottom, black 0%, black 80%, transparent 98%)',
-                  WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 80%, transparent 98%)',
-                }}
               >
-                {/* Golden ambient aura behind #1 champion cutout */}
-                {isFirst && (
-                  <span
-                    aria-hidden
-                    className="pointer-events-none absolute bottom-4 h-32 w-32 sm:h-44 sm:w-44 rounded-full bg-[var(--accent-solid)] opacity-35 blur-2xl"
-                  />
-                )}
-
-                {hasCustomCelebration ? (
-                  <img
-                    src={row!.celebrationImage!}
-                    alt={row!.name}
-                    loading="lazy"
-                    decoding="async"
-                    className="w-full h-full object-contain object-bottom drop-shadow-[0_16px_32px_rgba(0,0,0,0.9)] filter transition-transform duration-300 hover:scale-105"
-                  />
-                ) : row ? (
-                  <div
-                    className={cx(
-                      'relative flex items-end justify-center mb-8 sm:mb-10',
-                      isFirst ? 'h-24 w-24 sm:h-30 sm:w-30' : 'h-18 w-18 sm:h-22 sm:w-22',
-                    )}
-                  >
+                {/* The cutout image itself with soft bottom edge blending into the pedestal card */}
+                <div
+                  className="relative w-full h-full flex items-end justify-center overflow-visible"
+                  style={{
+                    maskImage: 'linear-gradient(to bottom, black 0%, black 82%, transparent 98%)',
+                    WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 82%, transparent 98%)',
+                  }}
+                >
+                  {hasCustomCelebration ? (
                     <img
-                      src={cutout || AVATAR_PLACEHOLDER}
-                      alt={row.name}
+                      src={row!.celebrationImage!}
+                      alt={row!.name}
                       loading="lazy"
                       decoding="async"
-                      className={cx(
-                        'rounded-full object-cover shadow-[0_14px_28px_rgba(0,0,0,0.8)] ring-2',
-                        isFirst
-                          ? 'h-20 w-20 sm:h-26 sm:w-26 ring-[var(--accent-solid)]'
-                          : 'h-14 w-14 sm:h-18 sm:w-18 ring-white/20',
-                      )}
+                      className="w-full h-full object-contain object-bottom drop-shadow-[0_16px_32px_rgba(0,0,0,0.9)] filter transition-transform duration-300 hover:scale-105"
                     />
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center mb-8 opacity-25">
-                    <span className="text-3xl sm:text-4xl">🧍</span>
-                  </div>
-                )}
+                  ) : row ? (
+                    <div
+                      className={cx(
+                        'relative flex items-end justify-center mb-8 sm:mb-10',
+                        isFirst ? 'h-24 w-24 sm:h-30 sm:w-30' : 'h-18 w-18 sm:h-22 sm:w-22',
+                      )}
+                    >
+                      <img
+                        src={cutout || AVATAR_PLACEHOLDER}
+                        alt={row.name}
+                        loading="lazy"
+                        decoding="async"
+                        className={cx(
+                          'rounded-full object-cover shadow-[0_14px_28px_rgba(0,0,0,0.8)] ring-2',
+                          isFirst
+                            ? 'h-20 w-20 sm:h-26 sm:w-26 ring-[var(--accent-solid)]'
+                            : 'h-14 w-14 sm:h-18 sm:w-18 ring-white/20',
+                        )}
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center mb-8 opacity-25">
+                      <span className="text-3xl sm:text-4xl">🧍</span>
+                    </div>
+                  )}
+                </div>
               </div>
 
-              {/* Pedestal Card Container (Sits in front of waist for seamless framing) */}
+              {/* Pedestal Card Container (Tiered Olympic step heights: #1 highest, #2 medium, #3 lowest) */}
               {row ? (
                 <Link
                   to={playerHref(row.name)}
@@ -201,8 +211,10 @@ export function LeaderboardPodium({ board }: { board: Leaderboard }) {
                     'relative w-full rounded-xl sm:rounded-2xl text-center transition-all duration-300 ease-out z-20 block',
                     'hover:-translate-y-1 focus-visible:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-solid)]',
                     isFirst
-                      ? 'min-h-[175px] sm:min-h-[188px] pt-6 pb-4 px-3 sm:pt-7 sm:pb-5 sm:px-4 border border-[var(--accent-solid)]/45 shadow-[0_20px_45px_-12px_rgba(200,255,61,0.32),inset_0_1px_0_rgba(200,255,61,0.35)]'
-                      : 'min-h-[155px] sm:min-h-[168px] pt-5 pb-3.5 px-2.5 sm:pt-6 sm:pb-4 sm:px-3.5 border border-white/10 shadow-[0_14px_32px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.08)]',
+                      ? 'min-h-[225px] sm:min-h-[245px] pt-7 pb-5 px-3.5 sm:pt-8 sm:pb-6 sm:px-4.5 border border-[var(--accent-solid)]/45 shadow-[0_20px_45px_-12px_rgba(200,255,61,0.32),inset_0_1px_0_rgba(200,255,61,0.35)]'
+                      : place === 2
+                        ? 'min-h-[170px] sm:min-h-[188px] pt-5 pb-3.5 px-2.5 sm:pt-6 sm:pb-4 sm:px-3.5 border border-white/10 shadow-[0_14px_32px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.08)]'
+                        : 'min-h-[135px] sm:min-h-[150px] pt-4 pb-3 px-2 sm:pt-5 sm:pb-3.5 sm:px-3 border border-white/10 shadow-[0_12px_28px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.06)]',
                   )}
                   style={{
                     background: isFirst
@@ -234,7 +246,11 @@ export function LeaderboardPodium({ board }: { board: Leaderboard }) {
                   <p
                     className={cx(
                       'relative mt-2.5 truncate font-extrabold text-white',
-                      isFirst ? 'text-sm sm:text-base md:text-lg' : 'text-xs sm:text-sm',
+                      isFirst
+                        ? 'text-base sm:text-lg md:text-xl'
+                        : place === 2
+                          ? 'text-xs sm:text-sm'
+                          : 'text-[11.5px] sm:text-xs',
                     )}
                     title={row.name}
                   >
@@ -252,8 +268,10 @@ export function LeaderboardPodium({ board }: { board: Leaderboard }) {
                     className={cx(
                       'numeric relative mt-2 sm:mt-3 font-black leading-none tracking-tight',
                       isFirst
-                        ? 'text-3xl text-[var(--accent-text)] sm:text-4xl md:text-5xl drop-shadow-[0_2px_12px_rgba(200,255,61,0.35)]'
-                        : 'text-2xl text-white sm:text-3xl md:text-4xl',
+                        ? 'text-4xl text-[var(--accent-text)] sm:text-5xl md:text-6xl drop-shadow-[0_2px_12px_rgba(200,255,61,0.35)]'
+                        : place === 2
+                          ? 'text-2xl text-white sm:text-3xl md:text-4xl'
+                          : 'text-xl text-white sm:text-2xl md:text-3xl',
                     )}
                   >
                     {row.value}
@@ -264,9 +282,16 @@ export function LeaderboardPodium({ board }: { board: Leaderboard }) {
                   </p>
                 </Link>
               ) : (
-                /* Empty Contender Pedestal */
+                /* Empty Contender Pedestal with matching tier heights */
                 <div
-                  className="relative w-full rounded-xl sm:rounded-2xl text-center min-h-[160px] sm:min-h-[185px] pt-7 pb-5 px-3 border border-dashed border-white/10 bg-white/[0.02] flex flex-col items-center justify-center z-10"
+                  className={cx(
+                    'relative w-full rounded-xl sm:rounded-2xl text-center border border-dashed border-white/10 bg-white/[0.02] flex flex-col items-center justify-center z-10',
+                    isFirst
+                      ? 'min-h-[225px] sm:min-h-[245px] pt-8 pb-6 px-3.5'
+                      : place === 2
+                        ? 'min-h-[170px] sm:min-h-[188px] pt-6 pb-4 px-2.5'
+                        : 'min-h-[135px] sm:min-h-[150px] pt-5 pb-3.5 px-2',
+                  )}
                 >
                   <span
                     className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-white/5 text-white/40"

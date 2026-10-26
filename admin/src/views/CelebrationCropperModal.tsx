@@ -14,9 +14,9 @@ export interface CelebrationCropperModalProps {
 
 // Fixed 4:5 Aspect Ratio Stage Dimensions (plenty of vertical headroom for raised arms & celebrations)
 const STAGE_WIDTH = 280
-const STAGE_HEIGHT = 340
+const STAGE_HEIGHT = 350
 const EXPORT_WIDTH = 560
-const EXPORT_HEIGHT = 680
+const EXPORT_HEIGHT = 700
 const OVERLAP_BOTTOM = 40 // Amount the pedestal card overlaps onto the bottom of the cutout stage
 
 export function CelebrationCropperModal({
@@ -141,7 +141,10 @@ export function CelebrationCropperModal({
       await new Promise<void>((resolve, reject) => {
         img.onload = () => resolve()
         img.onerror = () => reject(new Error('Failed to load image for cropping.'))
-        img.src = imageSrc
+        const loadUrl = imageSrc.startsWith('data:')
+          ? imageSrc
+          : `${imageSrc}${imageSrc.includes('?') ? '&' : '?'}t=${Date.now()}`
+        img.src = loadUrl
       })
 
       const canvas = document.createElement('canvas')
@@ -182,7 +185,15 @@ export function CelebrationCropperModal({
       ctx.fillRect(0, 0, EXPORT_WIDTH, EXPORT_HEIGHT)
       ctx.globalCompositeOperation = 'source-over'
 
-      const resultDataUrl = canvas.toDataURL('image/png')
+      let resultDataUrl = ''
+      try {
+        resultDataUrl = canvas.toDataURL('image/webp', 0.92)
+        if (!resultDataUrl.startsWith('data:image/webp')) {
+          resultDataUrl = canvas.toDataURL('image/png')
+        }
+      } catch {
+        resultDataUrl = canvas.toDataURL('image/png')
+      }
       await onApply(resultDataUrl)
       onClose()
     } catch (err) {
@@ -342,8 +353,8 @@ export function CelebrationCropperModal({
                 background: 'transparent',
                 border: '1px dashed rgba(255, 255, 255, 0.16)',
                 borderBottom: 'none',
-                maskImage: 'linear-gradient(to bottom, black 0%, black 78%, transparent 98%)',
-                WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 78%, transparent 98%)',
+
+
               }}
             >
               {/* Glow aura if previewing #1 */}

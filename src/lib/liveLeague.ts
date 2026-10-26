@@ -624,7 +624,7 @@ export function peekLiveLeaderboards(): LiveLeaderboardSummary | null {
 
 export async function getLiveLeaderboardSummary(signal?: AbortSignal): Promise<LiveLeaderboardSummary | null> {
   try {
-    const res = await get<LiveLeaderboardSummary>('/api/leaderboards/summary', signal)
+    const res = await get<LiveLeaderboardSummary>(`/api/leaderboards/summary?_=${Date.now()}`, signal)
     cachedLiveLeaderboards = res
     return res
   } catch {
