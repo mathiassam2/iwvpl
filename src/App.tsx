@@ -6,6 +6,7 @@ import { useParallax } from '@/hooks/useParallax'
 import { AuthProvider } from '@/lib/auth'
 import { CartProvider } from '@/lib/cart'
 import { SeasonProvider } from '@/lib/season'
+import { SiteContentProvider } from '@/data'
 
 const StandingsPage = lazy(() => import('@/pages/StandingsPage'))
 const ResultsPage = lazy(() => import('@/pages/ResultsPage'))
@@ -71,6 +72,7 @@ export default function App() {
    */
   return (
     <HashRouter>
+      <SiteContentProvider>
       {/* Inside the router so redirects can use the history, and above the
           shell so the header can read the session on first paint. */}
       <AuthProvider>
@@ -115,6 +117,7 @@ export default function App() {
         </SeasonProvider>
         </CartProvider>
       </AuthProvider>
+      </SiteContentProvider>
     </HashRouter>
   )
 }

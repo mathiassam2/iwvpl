@@ -19,7 +19,17 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+const getCache = new Map<string, { data: unknown; ts: number }>()
+const inFlightGets = new Map<string, Promise<unknown>>()
+const CACHE_FRESH_MS = 20_000
+const CACHE_REVALIDATE_MS = 3_500
+
+export function invalidateAdminCache(): void {
+  getCache.clear()
+  inFlightGets.clear()
+}
+
+async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...init,
     // Basic auth is enforced at the HTTP layer, so the browser supplies the
@@ -44,6 +54,49 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T)
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const method = (init?.method ?? 'GET').toUpperCase()
+  if (method !== 'GET') {
+    invalidateAdminCache()
+    return fetchJson<T>(path, init)
+  }
+
+  const now = Date.now()
+  const cached = getCache.get(path)
+  if (cached && now - cached.ts < CACHE_FRESH_MS) {
+    if (now - cached.ts > CACHE_REVALIDATE_MS && !inFlightGets.has(path)) {
+      const bg = fetchJson<T>(path, init)
+        .then((fresh) => {
+          getCache.set(path, { data: fresh, ts: Date.now() })
+          return fresh
+        })
+        .catch(() => cached.data as T)
+        .finally(() => {
+          inFlightGets.delete(path)
+        })
+      inFlightGets.set(path, bg)
+    }
+    return cached.data as T
+  }
+
+  const existing = inFlightGets.get(path)
+  if (existing) {
+    return existing as Promise<T>
+  }
+
+  const p = fetchJson<T>(path, init)
+    .then((data) => {
+      getCache.set(path, { data, ts: Date.now() })
+      return data
+    })
+    .finally(() => {
+      inFlightGets.delete(path)
+    })
+
+  inFlightGets.set(path, p)
+  return p
 }
 
 /* ------------------------------------------------------------------ types */
@@ -98,6 +151,9 @@ export interface Club {
   /** Division currently entered in, null when unassigned. */
   division_id: number | null
   players: number
+  manager_user_id?: number | null
+  manager_email?: string | null
+  manager_name?: string | null
 }
 
 export type FormatStatus = 'active' | 'inactive' | 'coming_soon'
@@ -359,6 +415,10 @@ export interface PendingClub {
   id: number
   name: string
   slug: string
+  short_code?: string | null
+  flag?: string | null
+  logo_local?: string | null
+  logo_url?: string | null
   created_at: string
   user_id: number | null
   email: string | null
@@ -620,10 +680,42 @@ export const updateClub = (
     body: JSON.stringify(patch),
   })
 
-export const addPlayer = (slug: string, gamertag: string) =>
+export const assignClubManager = (slug: string, userId: number | null) =>
+  request<{ ok: true; clubId: number }>(`/api/admin/clubs/${encodeURIComponent(slug)}/manager`, {
+    method: 'PUT',
+    body: JSON.stringify({ userId }),
+  })
+
+export interface ClubLineupSlot {
+  position: string
+  playerId: number | null
+  gamertag: string
+  shirtNumber: number
+}
+
+export interface ClubLineupBench {
+  playerId: number | null
+  gamertag: string
+  shirtNumber: number
+  position?: string
+}
+
+export interface ClubLineup {
+  formation: string
+  starters: Array<ClubLineupSlot | null>
+  bench: ClubLineupBench[]
+}
+
+export const saveClubLineup = (slug: string, lineup: ClubLineup) =>
+  request<{ ok: true; starting_xi: ClubLineup }>(`/api/admin/clubs/${encodeURIComponent(slug)}/lineup`, {
+    method: 'PUT',
+    body: JSON.stringify(lineup),
+  })
+
+export const addPlayer = (slug: string, gamertag: string, shirtNumber?: number | null) =>
   request<{ ok: true; id: number }>(`/api/admin/clubs/${slug}/players`, {
     method: 'POST',
-    body: JSON.stringify({ gamertag }),
+    body: JSON.stringify({ gamertag, ...(shirtNumber === undefined ? {} : { shirtNumber }) }),
   })
 
 export const removePlayer = (slug: string, gamertag: string) =>
@@ -747,6 +839,7 @@ export interface AdminPlayer {
   id: number
   gamertag: string
   slug: string
+  shirt_number: number | null
   club_id: number | null
   club_name: string | null
   club_slug: string | null
@@ -761,6 +854,7 @@ export interface AdminPlayer {
 export interface AdminPlayerInput {
   gamertag: string
   clubId: number | null
+  shirtNumber?: number | null
 }
 
 export const getAdminUsers = () =>
@@ -802,4 +896,193 @@ export const deleteAdminPlayer = (id: number) =>
   request<{ ok: true; id: number }>(`/api/admin/players/${id}`, {
     method: 'DELETE',
   })
+
+export interface ClubDetailResponse {
+  id: number
+  name: string
+  slug: string
+  short_code: string | null
+  flag: string | null
+  logo_url: string | null
+  logo_local: string | null
+  status: string
+  starting_xi?: ClubLineup | null
+  manager_name?: string | null
+  division: { id: number; name: string; slug: string } | null
+  players: Array<{
+    id: number
+    gamertag: string
+    slug: string
+    shirt_number: number | null
+    avatar_local: string | null
+    is_free_agent: number | boolean
+  }>
+}
+
+export const getClubDetail = (slug: string) =>
+  request<ClubDetailResponse>(`/api/clubs/${encodeURIComponent(slug)}`)
+
+/* ----------------------------------------------------- website content cms */
+
+export interface CmsSocialLink {
+  label: string
+  href: string
+}
+
+export interface CmsSiteMeta {
+  name: string
+  shortName: string
+  tagline: string
+  subtitle: string
+  description: string
+  url: string
+  email: string
+  base: string
+  copyright: string
+  disclaimer: string
+  social: CmsSocialLink[]
+  season: string
+  registrationFee: string
+  teamCap: number
+  teamsRegistered: number
+}
+
+export interface CmsFaqItem {
+  q: string
+  a: string
+}
+
+export interface CmsAboutData {
+  intro: string
+  vision: string
+  faq: CmsFaqItem[]
+}
+
+export interface CmsProduct {
+  slug: string
+  name: string
+  kicker: string
+  price: string
+  image: string
+  summary: string
+  validFor: string
+  access: string
+  features: string
+  note: string
+}
+
+export interface CmsNewsPost {
+  id: number
+  slug: string
+  title: string
+  date: string
+  categories: string[]
+  tags: string[]
+  excerpt: string
+  body: string
+  images: string[]
+  featured: string
+  featuredLocal: string
+}
+
+export interface SiteContentData {
+  site: CmsSiteMeta
+  about: CmsAboutData
+  products: CmsProduct[]
+  news: CmsNewsPost[]
+}
+
+export type SiteSectionKey = 'site' | 'about' | 'products' | 'news'
+
+export const getSiteContent = () =>
+  request<SiteContentData>('/api/admin/site-content')
+
+export const updateSiteContent = <K extends SiteSectionKey>(
+  section: K,
+  content: SiteContentData[K],
+) =>
+  request<{ ok: true; content: SiteContentData }>(`/api/admin/site-content/${section}`, {
+    method: 'PUT',
+    body: JSON.stringify({ content }),
+  }).then((r) => r.content)
+
+/* ------------------------------------------------- leaderboards & player stats */
+
+export interface AdminPlayerStat {
+  id: number
+  player_id: number
+  season_id: number
+  division_id: number
+  goals: number
+  assists: number
+  saves: number
+  clean_sheets: number
+  appearances: number
+  updated_at: string
+  gamertag: string
+  player_slug: string
+  celebration_image: string | null
+  avatar_local: string | null
+  club_id: number | null
+  club_name: string | null
+  club_slug: string | null
+  club_flag: string | null
+  division_name: string | null
+  division_slug: string | null
+}
+
+export interface AdminLeaderboardsData {
+  seasons: Array<{ id: number; name: string; year: number; is_current: number }>
+  seasonId: number | null
+  divisions: Array<{ id: number; name: string; slug: string; sort_order: number }>
+  stats: AdminPlayerStat[]
+  players: Array<{
+    id: number
+    gamertag: string
+    slug: string
+    shirt_number: number | null
+    celebration_image: string | null
+    avatar_local: string | null
+    club_id: number | null
+    club_name: string | null
+    club_slug: string | null
+    club_flag: string | null
+  }>
+}
+
+export const getAdminLeaderboards = (seasonId?: number) =>
+  request<AdminLeaderboardsData>(
+    `/api/admin/leaderboards${seasonId != null ? `?seasonId=${seasonId}` : ''}`,
+  )
+
+export const saveAdminPlayerStat = (data: {
+  playerId: number
+  seasonId?: number
+  divisionId?: number | null
+  goals: number
+  assists: number
+  saves: number
+  cleanSheets?: number
+  appearances?: number
+}) =>
+  request<{ ok: true; stats: AdminPlayerStat }>('/api/admin/leaderboards/stats', {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  })
+
+export const updatePlayerCelebration = (playerId: number, celebrationImage: string | null) =>
+  request<{ ok: true; playerId: number; celebrationImage: string | null }>(
+    `/api/admin/players/${playerId}/celebration`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ celebrationImage }),
+    },
+  )
+
+export const deleteAdminPlayerStat = (statId: number) =>
+  request<{ ok: true; id: number }>(`/api/admin/leaderboards/stats/${statId}`, {
+    method: 'DELETE',
+  })
+
+
 

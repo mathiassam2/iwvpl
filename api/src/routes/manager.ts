@@ -36,15 +36,44 @@ function id(value: unknown, field: string): number {
 }
 
 /** The caller's club, or a 409 explaining that they need one first. */
-async function ownClub(userId: number): Promise<{ id: number; name: string; slug: string }> {
-  const club = await queryOne<{ id: number; name: string; slug: string }>(
-    'SELECT id, name, slug FROM clubs WHERE id = (SELECT club_id FROM users WHERE id = ?)',
+async function ownClub(userId: number): Promise<{
+  id: number
+  name: string
+  slug: string
+  short_code: string | null
+  flag: string | null
+  logo_local: string | null
+  logo_url: string | null
+  status: string
+  starting_xi: any | null
+}> {
+  const club = await queryOne<{
+    id: number
+    name: string
+    slug: string
+    short_code: string | null
+    flag: string | null
+    logo_local: string | null
+    logo_url: string | null
+    status: string
+    starting_xi_json: string | null
+  }>(
+    'SELECT id, name, slug, short_code, flag, logo_local, logo_url, status, starting_xi_json FROM clubs WHERE id = (SELECT club_id FROM users WHERE id = ?)',
     [userId],
   )
   if (!club) {
     throw Object.assign(new Error('Create your club before managing a squad.'), { status: 409 })
   }
-  return club
+  let starting_xi = null
+  if (club.starting_xi_json) {
+    try {
+      starting_xi = JSON.parse(club.starting_xi_json)
+    } catch {
+      starting_xi = null
+    }
+  }
+  const { starting_xi_json: _ignored, ...rest } = club
+  return { ...rest, starting_xi }
 }
 
 /* ------------------------------------------------------------ create club */
@@ -86,12 +115,20 @@ manager.post(
     const shortCode = req.body?.shortCode
       ? String(req.body.shortCode).trim().toUpperCase().slice(0, 8) || null
       : null
+    const region = req.body?.region ?? req.body?.flag
+      ? String(req.body?.region ?? req.body?.flag).trim().slice(0, 16) || null
+      : null
+    const rawLogo = req.body?.logo ?? req.body?.clubLogo
+    const logo = rawLogo ? String(rawLogo).trim() || null : null
+    if (logo && logo.length > 6_000_000) {
+      bad('Club logo image is too large.')
+    }
 
     const clubId = await withTransaction(async (conn) => {
       const [clubRes] = await conn.execute(
-        `INSERT INTO clubs (name, slug, short_code, status, created_at, updated_at)
-         VALUES (?, ?, ?, 'pending', NOW(), NOW())`,
-        [name, slug, shortCode],
+        `INSERT INTO clubs (name, slug, short_code, flag, logo_local, logo_url, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'pending', NOW(), NOW())`,
+        [name, slug, shortCode, region, logo, logo],
       )
       const id = (clubRes as any).insertId
       await conn.execute('UPDATE users SET club_id = ?, updated_at = NOW() WHERE id = ?', [
@@ -110,6 +147,58 @@ manager.post(
     )
 
     res.status(201).json({ ok: true, clubId })
+  }),
+)
+
+/**
+ * Update the manager's own club details (logo, short code, region).
+ */
+manager.patch(
+  '/club',
+  handler(async (req, res) => {
+    const club = await ownClub(req.user!.id)
+    const fields: string[] = []
+    const values: any[] = []
+
+    if ('logo' in (req.body ?? {}) || 'clubLogo' in (req.body ?? {})) {
+      const raw = req.body.logo !== undefined ? req.body.logo : req.body.clubLogo
+      const logo = raw === null || raw === '' ? null : String(raw).trim()
+      if (logo && logo.length > 6_000_000) {
+        bad('Club logo image is too large.')
+      }
+      fields.push('logo_local = ?', 'logo_url = ?')
+      values.push(logo, logo)
+    }
+
+    if ('shortCode' in (req.body ?? {})) {
+      const sc = req.body.shortCode
+        ? String(req.body.shortCode).trim().toUpperCase().slice(0, 8) || null
+        : null
+      fields.push('short_code = ?')
+      values.push(sc)
+    }
+
+    if ('region' in (req.body ?? {}) || 'flag' in (req.body ?? {})) {
+      const raw = req.body.region !== undefined ? req.body.region : req.body.flag
+      const fl = raw ? String(raw).trim().slice(0, 16) || null : null
+      fields.push('flag = ?')
+      values.push(fl)
+    }
+
+    if (fields.length === 0) {
+      bad('No editable club fields provided.')
+    }
+
+    values.push(club.id)
+    await withTransaction(async (conn) => {
+      await conn.execute(
+        `UPDATE clubs SET ${fields.join(', ')}, updated_at = NOW() WHERE id = ?`,
+        values,
+      )
+    })
+
+    const updated = await ownClub(req.user!.id)
+    res.json({ ok: true, club: updated })
   }),
 )
 
@@ -295,14 +384,169 @@ manager.get(
   handler(async (req, res) => {
     const club = await ownClub(req.user!.id)
     const rows = await queryAll(
-      `SELECT p.id, p.gamertag, p.slug, p.avatar_local, p.is_free_agent,
+      `SELECT p.id, p.gamertag, p.slug, p.shirt_number, p.avatar_local, p.is_free_agent,
               (SELECT COUNT(*) FROM transfer_requests tr
                 WHERE tr.player_id = p.id AND tr.to_club_id = ? AND tr.status = 'pending') AS pending
          FROM players p
         WHERE p.club_id = ?
-        ORDER BY p.gamertag`,
+        ORDER BY COALESCE(p.shirt_number, 999), p.gamertag`,
       [club.id, club.id],
     )
     res.json({ club, squad: rows })
+  }),
+)
+
+/**
+ * Save the manager's Starting XI & Bench lineup, and sync any updated player shirt numbers.
+ */
+manager.put(
+  '/lineup',
+  handler(async (req, res) => {
+    const club = await ownClub(req.user!.id)
+    const lineup = req.body?.lineup ?? req.body
+    if (!lineup || typeof lineup !== 'object') {
+      bad('Lineup payload is required.')
+    }
+    const formation = String(lineup.formation ?? '4-3-3').trim()
+    const starters = Array.isArray(lineup.starters) ? lineup.starters : []
+    const bench = Array.isArray(lineup.bench) ? lineup.bench : []
+
+    const normalized = {
+      formation,
+      starters: starters.map((s: any, idx: number) => {
+        if (!s || !String(s?.gamertag ?? '').trim()) return null
+        const pos = String(s?.position ?? s?.role ?? '').slice(0, 12)
+        const num = Math.min(
+          99,
+          Math.max(
+            1,
+            Number.parseInt(String(s?.shirtNumber ?? s?.number ?? idx + 1), 10) || idx + 1,
+          ),
+        )
+        return {
+          slotIndex: Number.isInteger(s?.slotIndex) ? s.slotIndex : idx,
+          position: pos,
+          role: pos,
+          playerId: s?.playerId ? Number(s.playerId) : null,
+          gamertag: String(s?.gamertag ?? '').trim().slice(0, 120),
+          shirtNumber: num,
+          number: num,
+        }
+      }),
+      bench: bench
+        .filter((b: any) => Boolean(String(b?.gamertag ?? '').trim()))
+        .map((b: any, idx: number) => {
+          const pos = String(b?.position ?? b?.role ?? 'SUB').slice(0, 12)
+          const num = Math.min(
+            99,
+            Math.max(
+              1,
+              Number.parseInt(String(b?.shirtNumber ?? b?.number ?? idx + 12), 10) || idx + 12,
+            ),
+          )
+          return {
+            playerId: b?.playerId ? Number(b.playerId) : null,
+            gamertag: String(b?.gamertag ?? '').trim().slice(0, 120),
+            shirtNumber: num,
+            number: num,
+            position: pos,
+            role: pos,
+          }
+        }),
+      updatedAt: new Date().toISOString(),
+    }
+
+    await withTransaction(async (conn) => {
+      await conn.execute(
+        'UPDATE clubs SET starting_xi_json = ?, updated_at = NOW() WHERE id = ?',
+        [JSON.stringify(normalized), club.id],
+      )
+
+      // Sync customized jersey numbers back to the club's players
+      for (const item of [...normalized.starters, ...normalized.bench]) {
+        if (!item) continue
+        if (item.playerId && item.number >= 1 && item.number <= 99) {
+          await conn.execute(
+            'UPDATE players SET shirt_number = ?, updated_at = NOW() WHERE id = ? AND club_id = ?',
+            [item.number, item.playerId, club.id],
+          )
+        } else if (item.gamertag && item.number >= 1 && item.number <= 99) {
+          await conn.execute(
+            'UPDATE players SET shirt_number = ?, updated_at = NOW() WHERE LOWER(gamertag) = LOWER(?) AND club_id = ?',
+            [item.number, item.gamertag, club.id],
+          )
+        }
+      }
+    })
+
+    const updatedClub = await ownClub(req.user!.id)
+    res.json({ ok: true, club: updatedClub, starting_xi: normalized })
+  }),
+)
+
+/**
+ * Update a squad player's jersey number (1-99).
+ */
+manager.patch(
+  '/players/:playerId',
+  handler(async (req, res) => {
+    const club = await ownClub(req.user!.id)
+    const playerId = id(req.params.playerId, 'Player')
+    const rawShirt = req.body?.shirtNumber
+    let shirtNumber: number | null = null
+    if (rawShirt !== null && rawShirt !== undefined && String(rawShirt).trim() !== '') {
+      const n = Number.parseInt(String(rawShirt), 10)
+      if (!Number.isInteger(n) || n < 1 || n > 99) {
+        bad('Jersey number must be between 1 and 99.')
+      }
+      shirtNumber = n
+    }
+
+    await withTransaction(async (conn) => {
+      await conn.execute(
+        'UPDATE players SET shirt_number = ?, updated_at = NOW() WHERE id = ? AND club_id = ?',
+        [shirtNumber, playerId, club.id],
+      )
+
+      // Also sync starting_xi_json for this club
+      const [clubRows] = await conn.query(
+        'SELECT id, starting_xi_json FROM clubs WHERE id = ? FOR UPDATE',
+        [club.id],
+      )
+      const currentClub = (clubRows as any[])[0]
+      if (currentClub?.starting_xi_json) {
+        try {
+          const parsed = JSON.parse(currentClub.starting_xi_json)
+          let modified = false
+          if (Array.isArray(parsed.starters)) {
+            for (const s of parsed.starters) {
+              if (s && Number(s.playerId) === Number(playerId)) {
+                s.shirtNumber = shirtNumber ?? undefined
+                s.number = shirtNumber ?? undefined
+                modified = true
+              }
+            }
+          }
+          if (Array.isArray(parsed.bench)) {
+            for (const b of parsed.bench) {
+              if (b && Number(b.playerId) === Number(playerId)) {
+                b.shirtNumber = shirtNumber ?? undefined
+                b.number = shirtNumber ?? undefined
+                modified = true
+              }
+            }
+          }
+          if (modified) {
+            await conn.execute(
+              'UPDATE clubs SET starting_xi_json = ?, updated_at = NOW() WHERE id = ?',
+              [JSON.stringify(parsed), club.id],
+            )
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+    })
+    res.json({ ok: true, playerId, shirtNumber })
   }),
 )

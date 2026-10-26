@@ -27,6 +27,12 @@ import {
   type RolloverSetting,
 } from '../domain/rollover.js'
 import { clubSlug, gamertagKey } from '../domain/slug.js'
+import {
+  ALLOWED_SECTIONS,
+  loadSiteContent,
+  saveSiteContentSection,
+  type SiteSectionKey,
+} from '../domain/siteContent.js'
 
 export const admin = Router()
 
@@ -763,6 +769,14 @@ admin.post(
 
 /* ----------------------------------------------------------------- clubs */
 
+function clubLogoSql(alias = 'c'): string {
+  return `CASE
+    WHEN LEFT(COALESCE(${alias}.logo_local, ${alias}.logo_url, ''), 5) = 'data:'
+      THEN CONCAT('/api/clubs/', ${alias}.slug, '/logo?v=', COALESCE(UNIX_TIMESTAMP(${alias}.updated_at), 1))
+    ELSE COALESCE(${alias}.logo_local, ${alias}.logo_url)
+  END`
+}
+
 admin.get(
   '/clubs',
   handler(async (req, res) => {
@@ -773,23 +787,56 @@ admin.get(
       if (!Number.isSafeInteger(seasonId) || seasonId < 1) {
         return res.status(400).json({ error: 'seasonId must be a positive integer.' })
       }
+    } else {
+      const cur = await queryOne<{ id: number }>(
+        'SELECT id FROM seasons WHERE is_current = TRUE LIMIT 1',
+      )
+      seasonId = cur?.id ?? null
     }
 
     const clubs = await queryAll(
-      `SELECT c.id, c.name, c.slug, c.short_code, c.flag, c.logo_url, c.logo_local, c.status,
+      `SELECT c.id, c.name, c.slug, c.short_code, c.flag,
+              CASE
+                WHEN LEFT(COALESCE(c.logo_url, ''), 5) = 'data:' OR c.logo_url = c.logo_local
+                  THEN NULL
+                ELSE c.logo_url
+              END AS logo_url,
+              ${clubLogoSql('c')} AS logo_local,
+              c.status,
               c.is_featured,
-              (SELECT COUNT(*) FROM players p WHERE p.club_id = c.id) AS players,
-              (SELECT dc.division_id FROM division_clubs dc
-                JOIN divisions d ON d.id = dc.division_id
-                WHERE dc.club_id = c.id
-                  AND (? IS NULL OR d.season_id = ?)
-                  AND (? IS NOT NULL OR d.season_id = (
-                    SELECT id FROM seasons WHERE is_current = TRUE LIMIT 1
-                  ))
-                ORDER BY dc.id DESC LIMIT 1) AS division_id
+              mgr.id AS manager_user_id,
+              mgr.email AS manager_email,
+              mgr.display_name AS manager_name,
+              COALESCE(pc.players, 0) AS players,
+              div_assign.division_id
          FROM clubs c
+         LEFT JOIN (
+           SELECT club_id, COUNT(*) AS players
+             FROM players
+            WHERE club_id IS NOT NULL
+            GROUP BY club_id
+         ) pc ON pc.club_id = c.id
+         LEFT JOIN (
+           SELECT dc.club_id, MAX(dc.division_id) AS division_id
+             FROM division_clubs dc
+             JOIN divisions d ON d.id = dc.division_id
+            WHERE (? IS NOT NULL AND d.season_id = ?)
+            GROUP BY dc.club_id
+         ) div_assign ON div_assign.club_id = c.id
+         LEFT JOIN (
+           SELECT u1.club_id, u1.id, u1.email, u1.display_name
+             FROM users u1
+             JOIN (
+               SELECT club_id, MAX(id) AS max_id
+                 FROM users
+                WHERE club_id IS NOT NULL
+                  AND role IN ('club_manager', 'admin', 'owner')
+                  AND is_active = TRUE
+                GROUP BY club_id
+             ) u2 ON u2.club_id = u1.club_id AND u2.max_id = u1.id
+         ) mgr ON mgr.club_id = c.id
         ORDER BY c.name`,
-      [seasonId, seasonId, seasonId],
+      [seasonId, seasonId],
     )
     res.json({ clubs })
   }),
@@ -914,12 +961,18 @@ admin.patch(
       values.push(optionalString(req.body.flag, 16))
     }
     if ('logoUrl' in req.body) {
-      fields.push('logo_url = ?')
-      values.push(optionalString(req.body.logoUrl, 6_000_000))
+      const val = optionalString(req.body.logoUrl, 6_000_000)
+      if (!val || !val.startsWith('/api/clubs/')) {
+        fields.push('logo_url = ?')
+        values.push(val)
+      }
     }
     if ('logoLocal' in req.body) {
-      fields.push('logo_local = ?')
-      values.push(optionalString(req.body.logoLocal, 6_000_000))
+      const val = optionalString(req.body.logoLocal, 6_000_000)
+      if (!val || !val.startsWith('/api/clubs/')) {
+        fields.push('logo_local = ?')
+        values.push(val)
+      }
     }
     if ('status' in req.body) {
       const status = requiredString(req.body.status, 'status', 32)
@@ -944,6 +997,63 @@ admin.patch(
       return res.status(404).json({ error: 'Club not found.' })
     }
     res.json({ ok: true, slug })
+  }),
+)
+
+admin.put(
+  '/clubs/:slug/manager',
+  handler(async (req, res) => {
+    const slug = requiredString(req.params.slug, 'slug', 140)
+    const rawUserId = req.body?.userId
+    const userId =
+      rawUserId === null || rawUserId === undefined || rawUserId === ''
+        ? null
+        : Number(rawUserId)
+    if (userId !== null && (!Number.isSafeInteger(userId) || userId < 1)) {
+      return res.status(400).json({ error: 'userId must be a positive integer or null.' })
+    }
+
+    const result = await withTransaction(async (conn) => {
+      const [clubRows] = await conn.query('SELECT id, name FROM clubs WHERE slug = ? FOR UPDATE', [
+        slug,
+      ])
+      const club = (clubRows as Array<{ id: number; name: string }>)[0]
+      if (!club) return { error: 'Club not found.' as const, status: 404 }
+
+      if (userId !== null) {
+        const [userRows] = await conn.query(
+          'SELECT id, role FROM users WHERE id = ? FOR UPDATE',
+          [userId],
+        )
+        const targetUser = (userRows as Array<{ id: number; role: string }>)[0]
+        if (!targetUser) return { error: 'User account not found.' as const, status: 404 }
+
+        // Clear any other club_manager previously assigned to this club
+        await conn.execute(
+          `UPDATE users SET club_id = NULL, updated_at = NOW()
+            WHERE club_id = ? AND role = 'club_manager' AND id <> ?`,
+          [club.id, userId],
+        )
+
+        // Promote 'player' to 'club_manager' if they were a player, and link to this club
+        const nextRole = targetUser.role === 'player' ? 'club_manager' : targetUser.role
+        await conn.execute(
+          `UPDATE users SET club_id = ?, role = ?, updated_at = NOW() WHERE id = ?`,
+          [club.id, nextRole, userId],
+        )
+      } else {
+        await conn.execute(
+          `UPDATE users SET club_id = NULL, updated_at = NOW()
+            WHERE club_id = ? AND role = 'club_manager'`,
+          [club.id],
+        )
+      }
+
+      return { ok: true as const, clubId: club.id }
+    })
+
+    if ('error' in result) return res.status(result.status).json({ error: result.error })
+    res.json(result)
   }),
 )
 
@@ -1039,6 +1149,15 @@ admin.post(
   handler(async (req, res) => {
     const slug = requiredString(req.params.slug, 'slug', 140)
     const gamertag = requiredString(req.body.gamertag, 'gamertag', 120)
+    const rawShirt = req.body?.shirtNumber
+    let shirtNumber: number | null = null
+    if (rawShirt !== null && rawShirt !== undefined && String(rawShirt).trim() !== '') {
+      const n = Number.parseInt(String(rawShirt), 10)
+      if (!Number.isInteger(n) || n < 1 || n > 99) {
+        return res.status(400).json({ error: 'shirtNumber must be between 1 and 99.' })
+      }
+      shirtNumber = n
+    }
 
     const result = await withTransaction(async (conn) => {
       const [clubs] = await conn.query('SELECT id FROM clubs WHERE slug = ?', [slug])
@@ -1047,27 +1166,132 @@ admin.post(
 
       const key = gamertag.toLowerCase()
       const [existing] = await conn.query(
-        'SELECT id, gamertag, club_id FROM players WHERE gamertag_key = ?',
+        'SELECT id, gamertag, club_id, shirt_number FROM players WHERE gamertag_key = ? FOR UPDATE',
         [key],
       )
       const found = (existing as any[])[0]
       if (found) {
-        return {
-          error: `${found.gamertag} is already registered (club_id ${found.club_id ?? 'none'}).`,
-          status: 409,
+        if (found.club_id && Number(found.club_id) !== Number(club.id)) {
+          return {
+            error: `${found.gamertag} is already signed to another club.`,
+            status: 409,
+          }
         }
+        // Free agent or already on this club -> sign/update them onto this club
+        await conn.execute(
+          `UPDATE players
+              SET club_id = ?,
+                  is_free_agent = FALSE,
+                  shirt_number = COALESCE(?, shirt_number),
+                  updated_at = NOW()
+            WHERE id = ?`,
+          [club.id, shirtNumber, found.id],
+        )
+        return { ok: true, id: found.id }
       }
 
       const [ins] = await conn.query(
-        `INSERT INTO players (gamertag, gamertag_key, slug, avatar_url, club_id, is_free_agent, created_at, updated_at)
-         VALUES (?, ?, ?, NULL, ?, FALSE, NOW(), NOW())`,
-        [gamertag, key, gamertag.toLowerCase().replace(/\s+/g, '-'), club.id],
+        `INSERT INTO players (gamertag, gamertag_key, slug, shirt_number, avatar_url, club_id, is_free_agent, created_at, updated_at)
+         VALUES (?, ?, ?, ?, NULL, ?, FALSE, NOW(), NOW())`,
+        [gamertag, key, gamertag.toLowerCase().replace(/\s+/g, '-'), shirtNumber, club.id],
       )
       return { ok: true, id: (ins as any).insertId }
     })
 
     if ('error' in result) return res.status(result.status).json({ error: result.error })
     res.status(201).json(result)
+  }),
+)
+
+admin.put(
+  '/clubs/:slug/lineup',
+  handler(async (req, res) => {
+    const slug = requiredString(req.params.slug, 'slug', 140)
+    const lineup = req.body?.lineup ?? req.body
+    if (!lineup || typeof lineup !== 'object') {
+      return res.status(400).json({ error: 'lineup object is required.' })
+    }
+
+    const formation = String(lineup.formation ?? '4-3-3').trim()
+    const starters = Array.isArray(lineup.starters) ? lineup.starters : []
+    const bench = Array.isArray(lineup.bench) ? lineup.bench : []
+
+    const normalized = {
+      formation,
+      starters: starters.map((s: any, idx: number) => {
+        if (!s || !String(s?.gamertag ?? '').trim()) return null
+        const pos = String(s?.position ?? s?.role ?? '').slice(0, 12)
+        const num = Math.min(
+          99,
+          Math.max(
+            1,
+            Number.parseInt(String(s?.shirtNumber ?? s?.number ?? idx + 1), 10) || idx + 1,
+          ),
+        )
+        return {
+          slotIndex: Number.isInteger(s?.slotIndex) ? s.slotIndex : idx,
+          position: pos,
+          role: pos,
+          playerId: s?.playerId ? Number(s.playerId) : null,
+          gamertag: String(s?.gamertag ?? '').trim().slice(0, 120),
+          shirtNumber: num,
+          number: num,
+        }
+      }),
+      bench: bench
+        .filter((b: any) => Boolean(String(b?.gamertag ?? '').trim()))
+        .map((b: any, idx: number) => {
+          const pos = String(b?.position ?? b?.role ?? 'SUB').slice(0, 12)
+          const num = Math.min(
+            99,
+            Math.max(
+              1,
+              Number.parseInt(String(b?.shirtNumber ?? b?.number ?? idx + 12), 10) || idx + 12,
+            ),
+          )
+          return {
+            playerId: b?.playerId ? Number(b.playerId) : null,
+            gamertag: String(b?.gamertag ?? '').trim().slice(0, 120),
+            shirtNumber: num,
+            number: num,
+            position: pos,
+            role: pos,
+          }
+        }),
+      updatedAt: new Date().toISOString(),
+    }
+
+    const result = await withTransaction(async (conn) => {
+      const [clubRows] = await conn.query('SELECT id FROM clubs WHERE slug = ? FOR UPDATE', [slug])
+      const club = (clubRows as Array<{ id: number }>)[0]
+      if (!club) return { error: 'Club not found.' as const, status: 404 }
+
+      await conn.execute(
+        'UPDATE clubs SET starting_xi_json = ?, updated_at = NOW() WHERE id = ?',
+        [JSON.stringify(normalized), club.id],
+      )
+
+      // Sync customized jersey numbers back to the club's players
+      for (const item of [...normalized.starters, ...normalized.bench]) {
+        if (!item) continue
+        if (item.playerId && item.number >= 1 && item.number <= 99) {
+          await conn.execute(
+            'UPDATE players SET shirt_number = ?, updated_at = NOW() WHERE id = ? AND club_id = ?',
+            [item.number, item.playerId, club.id],
+          )
+        } else if (item.gamertag && item.number >= 1 && item.number <= 99) {
+          await conn.execute(
+            'UPDATE players SET shirt_number = ?, updated_at = NOW() WHERE LOWER(gamertag) = LOWER(?) AND club_id = ?',
+            [item.number, item.gamertag, club.id],
+          )
+        }
+      }
+
+      return { ok: true as const, starting_xi: normalized }
+    })
+
+    if ('error' in result) return res.status(result.status).json({ error: result.error })
+    res.json(result)
   }),
 )
 
@@ -1117,13 +1341,32 @@ admin.get(
   '/clubs/pending',
   handler(async (_req, res) => {
     const rows = await queryAll(
-      `SELECT c.id, c.name, c.slug, c.created_at,
-              u.id AS user_id, u.email, u.display_name,
+      `SELECT c.id, c.name, c.slug, c.short_code, c.flag,
+              ${clubLogoSql('c')} AS logo_local,
+              CASE
+                WHEN LEFT(COALESCE(c.logo_url, ''), 5) = 'data:' OR c.logo_url = c.logo_local
+                  THEN NULL
+                ELSE c.logo_url
+              END AS logo_url,
+              c.created_at,
+              (SELECT u.id FROM users u
+                WHERE u.club_id = c.id AND u.is_active = TRUE AND u.role IN ('club_manager', 'admin', 'owner')
+                ORDER BY u.id DESC LIMIT 1) AS user_id,
+              (SELECT u.email FROM users u
+                WHERE u.club_id = c.id AND u.is_active = TRUE AND u.role IN ('club_manager', 'admin', 'owner')
+                ORDER BY u.id DESC LIMIT 1) AS email,
+              (SELECT u.display_name FROM users u
+                WHERE u.club_id = c.id AND u.is_active = TRUE AND u.role IN ('club_manager', 'admin', 'owner')
+                ORDER BY u.id DESC LIMIT 1) AS display_name,
               (SELECT COUNT(*) FROM players p WHERE p.club_id = c.id) AS players
          FROM clubs c
-         LEFT JOIN users u ON u.club_id = c.id AND u.is_active = TRUE
         WHERE c.status = 'pending'
-          AND EXISTS (SELECT 1 FROM users m WHERE m.club_id = c.id)
+          AND EXISTS (
+            SELECT 1 FROM users m
+             WHERE m.club_id = c.id
+               AND m.is_active = TRUE
+               AND m.role IN ('club_manager', 'admin', 'owner')
+          )
         ORDER BY c.created_at DESC, c.id DESC`,
     )
     res.json({ clubs: rows })
@@ -1163,7 +1406,9 @@ admin.post(
     await execute('UPDATE clubs SET status = ?, updated_at = NOW() WHERE id = ?', [status, club.id])
 
     const owner = await queryOne<{ id: number }>(
-      'SELECT id FROM users WHERE club_id = ? AND is_active = TRUE LIMIT 1',
+      `SELECT id FROM users
+        WHERE club_id = ? AND is_active = TRUE AND role IN ('club_manager', 'admin', 'owner')
+        ORDER BY id DESC LIMIT 1`,
       [club.id],
     )
     if (owner) {
@@ -2421,13 +2666,14 @@ admin.post(
     const role = parseUserRole(req.body?.role)
     const isActive = req.body?.isActive === undefined ? true : Boolean(req.body.isActive)
     const rawClubId = req.body?.clubId
-    const clubId =
+    const parsedClubId =
       rawClubId === null || rawClubId === undefined || rawClubId === ''
         ? null
         : Number(rawClubId)
-    if (clubId !== null && (!Number.isSafeInteger(clubId) || clubId < 1)) {
+    if (parsedClubId !== null && (!Number.isSafeInteger(parsedClubId) || parsedClubId < 1)) {
       return res.status(400).json({ error: 'clubId must be a positive integer or null.' })
     }
+    const clubId = role === 'player' ? null : parsedClubId
     const gamertag = optionalString(req.body?.gamertag, 120)
 
     const hash = await hashPassword(plainPassword)
@@ -2512,13 +2758,14 @@ admin.put(
     const role = parseUserRole(req.body?.role)
     const isActive = req.body?.isActive === undefined ? true : Boolean(req.body.isActive)
     const rawClubId = req.body?.clubId
-    const clubId =
+    const parsedClubId =
       rawClubId === null || rawClubId === undefined || rawClubId === ''
         ? null
         : Number(rawClubId)
-    if (clubId !== null && (!Number.isSafeInteger(clubId) || clubId < 1)) {
+    if (parsedClubId !== null && (!Number.isSafeInteger(parsedClubId) || parsedClubId < 1)) {
       return res.status(400).json({ error: 'clubId must be a positive integer or null.' })
     }
+    const clubId = role === 'player' ? null : parsedClubId
     const gamertagProvided = Object.prototype.hasOwnProperty.call(req.body ?? {}, 'gamertag')
     const gamertag = optionalString(req.body?.gamertag, 120)
 
@@ -2653,13 +2900,24 @@ admin.delete(
 )
 
 const PLAYER_SELECT_SQL = `
-  SELECT p.id, p.gamertag, p.slug, p.club_id, p.is_free_agent, p.user_id, p.created_at,
+  SELECT p.id, p.gamertag, p.slug, p.shirt_number, p.club_id, p.is_free_agent, p.user_id, p.created_at,
          c.name AS club_name, c.slug AS club_slug, c.short_code AS club_code,
          u.email AS user_email, u.display_name AS user_name
     FROM players p
     LEFT JOIN clubs c ON c.id = p.club_id
     LEFT JOIN users u ON u.id = p.user_id
 `
+
+function parseOptionalShirtNumber(raw: unknown): number | null {
+  if (raw === null || raw === undefined || String(raw).trim() === '') return null
+  const n = Number.parseInt(String(raw), 10)
+  if (!Number.isInteger(n) || n < 1 || n > 99) {
+    throw Object.assign(new Error('Jersey number must be a whole number between 1 and 99.'), {
+      status: 400,
+    })
+  }
+  return n
+}
 
 admin.get(
   '/players',
@@ -2673,6 +2931,7 @@ admin.post(
   '/players',
   handler(async (req, res) => {
     const gamertag = requiredString(req.body?.gamertag, 'Gamertag', 120)
+    const shirtNumber = parseOptionalShirtNumber(req.body?.shirtNumber)
     const rawClubId = req.body?.clubId
     const clubId =
       rawClubId === null || rawClubId === undefined || rawClubId === ''
@@ -2710,9 +2969,9 @@ admin.post(
 
       const [inserted] = await conn.execute(
         `INSERT INTO players
-           (gamertag, gamertag_key, slug, club_id, is_free_agent, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, NOW(), NOW())`,
-        [gamertag, key, slug, clubId, clubId === null ? 1 : 0],
+           (gamertag, gamertag_key, slug, shirt_number, club_id, is_free_agent, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+        [gamertag, key, slug, shirtNumber, clubId, clubId === null ? 1 : 0],
       )
       return (inserted as any).insertId as number
     })
@@ -2730,6 +2989,8 @@ admin.put(
       return res.status(400).json({ error: 'Player id must be a positive integer.' })
     }
     const gamertag = requiredString(req.body?.gamertag, 'Gamertag', 120)
+    const shirtProvided = Object.prototype.hasOwnProperty.call(req.body ?? {}, 'shirtNumber')
+    const shirtNumber = shirtProvided ? parseOptionalShirtNumber(req.body?.shirtNumber) : undefined
     const rawClubId = req.body?.clubId
     const clubId =
       rawClubId === null || rawClubId === undefined || rawClubId === ''
@@ -2740,8 +3001,8 @@ admin.put(
     }
 
     const found = await withTransaction(async (conn) => {
-      const [rows] = await conn.query('SELECT id, slug FROM players WHERE id = ? FOR UPDATE', [id])
-      const current = (rows as Array<{ id: number; slug: string }>)[0]
+      const [rows] = await conn.query('SELECT id, slug, shirt_number FROM players WHERE id = ? FOR UPDATE', [id])
+      const current = (rows as Array<{ id: number; slug: string; shirt_number: number | null }>)[0]
       if (!current) return false
 
       const key = gamertagKey(gamertag)
@@ -2772,11 +3033,12 @@ admin.put(
         slug = `${clubSlug(gamertag) || key}-${suffix++}`
       }
 
+      const nextShirt = (shirtProvided ? shirtNumber : current.shirt_number) ?? null
       await conn.execute(
         `UPDATE players
-            SET gamertag = ?, gamertag_key = ?, slug = ?, club_id = ?, is_free_agent = ?, updated_at = NOW()
+            SET gamertag = ?, gamertag_key = ?, slug = ?, shirt_number = ?, club_id = ?, is_free_agent = ?, updated_at = NOW()
           WHERE id = ?`,
-        [gamertag, key, slug, clubId, clubId === null ? 1 : 0, id],
+        [gamertag, key, slug, nextShirt, clubId, clubId === null ? 1 : 0, id],
       )
       return true
     })
@@ -2965,6 +3227,251 @@ admin.delete(
     res.json({ ok: true, id })
   }),
 )
+
+/* ----------------------------------------------------- website content cms */
+
+admin.get(
+  '/site-content',
+  handler(async (_req, res) => {
+    const content = await loadSiteContent()
+    res.json(content)
+  }),
+)
+
+admin.put(
+  '/site-content/:section',
+  handler(async (req, res) => {
+    const section = String(req.params.section ?? '').trim() as SiteSectionKey
+    if (!ALLOWED_SECTIONS.has(section)) {
+      return res.status(400).json({ error: 'Invalid content section. Must be site, about, products, or news.' })
+    }
+    const payload = req.body?.content ?? req.body
+    if (payload === undefined || payload === null) {
+      return res.status(400).json({ error: 'Content payload is required.' })
+    }
+    if ((section === 'products' || section === 'news') && !Array.isArray(payload)) {
+      return res.status(400).json({ error: `${section} must be an array.` })
+    }
+    if ((section === 'site' || section === 'about') && (typeof payload !== 'object' || Array.isArray(payload))) {
+      return res.status(400).json({ error: `${section} must be an object.` })
+    }
+
+    const updated = await saveSiteContentSection(section, payload)
+    res.json({ ok: true, content: updated })
+  }),
+)
+
+/* ------------------------------------------------- leaderboards & stats cms */
+
+function playerCelebrationAdminSql(alias = 'p'): string {
+  return `CASE
+    WHEN LEFT(COALESCE(${alias}.celebration_image, ''), 5) = 'data:'
+      THEN CONCAT('/api/players/', ${alias}.slug, '/celebration?v=', COALESCE(UNIX_TIMESTAMP(${alias}.updated_at), 1))
+    ELSE COALESCE(${alias}.celebration_image, ${alias}.avatar_local)
+  END`
+}
+
+admin.get(
+  '/leaderboards',
+  handler(async (req, res) => {
+    const requestedSeasonId = req.query.seasonId
+    let seasonId: number | null = null
+    if (requestedSeasonId !== undefined && requestedSeasonId !== '') {
+      seasonId = Number(requestedSeasonId)
+      if (!Number.isSafeInteger(seasonId) || seasonId < 1) {
+        return res.status(400).json({ error: 'seasonId must be a positive integer.' })
+      }
+    } else {
+      const cur = await queryOne<{ id: number; name: string }>(
+        'SELECT id, name FROM seasons WHERE is_current = TRUE LIMIT 1',
+      )
+      seasonId = cur?.id ?? null
+    }
+
+    const [seasons, divisions, stats, players] = await Promise.all([
+      queryAll('SELECT id, name, year, is_current FROM seasons ORDER BY is_current DESC, year DESC, id DESC'),
+      queryAll(
+        `SELECT id, name, slug, sort_order FROM divisions
+          WHERE (? IS NULL OR season_id = ?) AND is_active = TRUE
+          ORDER BY sort_order, id`,
+        [seasonId, seasonId],
+      ),
+      queryAll(
+        `SELECT ps.id, ps.player_id, ps.season_id, ps.division_id,
+                ps.goals, ps.assists, ps.saves, ps.clean_sheets, ps.appearances,
+                ps.updated_at,
+                p.gamertag, p.slug AS player_slug,
+                ${playerCelebrationAdminSql('p')} AS celebration_image,
+                p.avatar_local,
+                c.id AS club_id, c.name AS club_name, c.slug AS club_slug, c.flag AS club_flag,
+                d.name AS division_name, d.slug AS division_slug
+           FROM player_season_stats ps
+           JOIN players p ON p.id = ps.player_id
+           LEFT JOIN clubs c ON c.id = p.club_id
+           LEFT JOIN divisions d ON d.id = ps.division_id
+          WHERE (? IS NULL OR ps.season_id = ?)
+          ORDER BY ps.goals DESC, ps.assists DESC, ps.saves DESC, p.gamertag ASC`,
+        [seasonId, seasonId],
+      ),
+      queryAll(
+        `SELECT p.id, p.gamertag, p.slug, p.shirt_number,
+                ${playerCelebrationAdminSql('p')} AS celebration_image,
+                p.avatar_local,
+                c.id AS club_id, c.name AS club_name, c.slug AS club_slug, c.flag AS club_flag
+           FROM players p
+           LEFT JOIN clubs c ON c.id = p.club_id
+          ORDER BY p.gamertag ASC`,
+      ),
+    ])
+
+    res.json({
+      seasons,
+      seasonId,
+      divisions,
+      stats,
+      players,
+    })
+  }),
+)
+
+admin.put(
+  '/leaderboards/stats',
+  handler(async (req, res) => {
+    const rawPlayerId = req.body?.playerId
+    const rawSeasonId = req.body?.seasonId
+    const rawDivisionId = req.body?.divisionId
+
+    const playerId = Number.parseInt(String(rawPlayerId), 10)
+    if (!Number.isSafeInteger(playerId) || playerId < 1) {
+      return res.status(400).json({ error: 'playerId must be a positive integer.' })
+    }
+
+    let seasonId: number
+    if (rawSeasonId == null || rawSeasonId === '') {
+      const cur = await queryOne<{ id: number }>('SELECT id FROM seasons WHERE is_current = TRUE LIMIT 1')
+      if (!cur) return res.status(400).json({ error: 'No active season found.' })
+      seasonId = cur.id
+    } else {
+      seasonId = Number.parseInt(String(rawSeasonId), 10)
+      if (!Number.isSafeInteger(seasonId) || seasonId < 1) {
+        return res.status(400).json({ error: 'seasonId must be a positive integer.' })
+      }
+    }
+
+    let divisionId: number
+    if (rawDivisionId == null || rawDivisionId === '') {
+      const clubDiv = await queryOne<{ division_id: number }>(
+        `SELECT dc.division_id FROM division_clubs dc
+           JOIN divisions d ON d.id = dc.division_id
+           JOIN players p ON p.club_id = dc.club_id
+          WHERE p.id = ? AND d.season_id = ?
+          ORDER BY dc.id DESC LIMIT 1`,
+        [playerId, seasonId],
+      )
+      if (clubDiv) {
+        divisionId = clubDiv.division_id
+      } else {
+        const firstDiv = await queryOne<{ id: number }>(
+          'SELECT id FROM divisions WHERE season_id = ? ORDER BY sort_order, id LIMIT 1',
+          [seasonId],
+        )
+        if (!firstDiv) return res.status(400).json({ error: 'No division found for this season.' })
+        divisionId = firstDiv.id
+      }
+    } else {
+      divisionId = Number.parseInt(String(rawDivisionId), 10)
+      if (!Number.isSafeInteger(divisionId) || divisionId < 1) {
+        return res.status(400).json({ error: 'divisionId must be a positive integer.' })
+      }
+    }
+
+    const goals = Math.max(0, Math.min(999, Number.parseInt(String(req.body?.goals ?? 0), 10) || 0))
+    const assists = Math.max(0, Math.min(999, Number.parseInt(String(req.body?.assists ?? 0), 10) || 0))
+    const saves = Math.max(0, Math.min(999, Number.parseInt(String(req.body?.saves ?? 0), 10) || 0))
+    const cleanSheets = Math.max(
+      0,
+      Math.min(999, Number.parseInt(String(req.body?.cleanSheets ?? req.body?.clean_sheets ?? 0), 10) || 0),
+    )
+    const appearances = Math.max(0, Math.min(999, Number.parseInt(String(req.body?.appearances ?? 0), 10) || 0))
+
+    await execute(
+      `INSERT INTO player_season_stats
+         (player_id, season_id, division_id, goals, assists, saves, clean_sheets, appearances, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
+       ON DUPLICATE KEY UPDATE
+         goals = VALUES(goals),
+         assists = VALUES(assists),
+         saves = VALUES(saves),
+         clean_sheets = VALUES(clean_sheets),
+         appearances = VALUES(appearances),
+         updated_at = NOW()`,
+      [playerId, seasonId, divisionId, goals, assists, saves, cleanSheets, appearances],
+    )
+
+    const updated = await queryOne(
+      `SELECT ps.id, ps.player_id, ps.season_id, ps.division_id,
+              ps.goals, ps.assists, ps.saves, ps.clean_sheets, ps.appearances,
+              ps.updated_at,
+              p.gamertag, p.slug AS player_slug,
+              ${playerCelebrationAdminSql('p')} AS celebration_image,
+              p.avatar_local,
+              c.id AS club_id, c.name AS club_name, c.slug AS club_slug, c.flag AS club_flag,
+              d.name AS division_name, d.slug AS division_slug
+         FROM player_season_stats ps
+         JOIN players p ON p.id = ps.player_id
+         LEFT JOIN clubs c ON c.id = p.club_id
+         LEFT JOIN divisions d ON d.id = ps.division_id
+        WHERE ps.player_id = ? AND ps.season_id = ? AND ps.division_id = ?
+        LIMIT 1`,
+      [playerId, seasonId, divisionId],
+    )
+
+    res.json({ ok: true, stats: updated })
+  }),
+)
+
+admin.patch(
+  '/players/:id/celebration',
+  handler(async (req, res) => {
+    const id = Number.parseInt(req.params.id, 10)
+    if (!Number.isSafeInteger(id) || id < 1) {
+      return res.status(400).json({ error: 'Player id must be a positive integer.' })
+    }
+
+    const raw = req.body?.celebrationImage ?? req.body?.celebration_image
+    let val: string | null = null
+    if (raw !== null && raw !== undefined && String(raw).trim() !== '') {
+      const s = String(raw).trim()
+      if (s.length > 6_000_000) {
+        return res.status(400).json({ error: 'Celebration image is too large (max ~4.5 MB).' })
+      }
+      val = s
+    }
+
+    const affected = await execute(
+      'UPDATE players SET celebration_image = ?, updated_at = NOW() WHERE id = ?',
+      [val, id],
+    )
+    if (affected === 0) return res.status(404).json({ error: 'Player not found.' })
+
+    res.json({ ok: true, playerId: id, celebrationImage: val })
+  }),
+)
+
+admin.delete(
+  '/leaderboards/stats/:id',
+  handler(async (req, res) => {
+    const id = Number.parseInt(req.params.id, 10)
+    if (!Number.isSafeInteger(id) || id < 1) {
+      return res.status(400).json({ error: 'Stats id must be a positive integer.' })
+    }
+
+    const affected = await execute('DELETE FROM player_season_stats WHERE id = ?', [id])
+    if (affected === 0) return res.status(404).json({ error: 'Stats row not found.' })
+    res.json({ ok: true, id })
+  }),
+)
+
 
 
 

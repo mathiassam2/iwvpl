@@ -7,67 +7,185 @@ import type { Match } from '@/types/site'
 /* ====================================================================== Pitch */
 
 /**
+ * SVG Football Jersey with player shirt number (1–99) rendered on the chest.
+ */
+export function JerseyIcon({
+  number,
+  isGk,
+  home,
+  empty,
+  selected,
+}: {
+  number: number | string
+  isGk?: boolean
+  home?: boolean
+  empty?: boolean
+  selected?: boolean
+}) {
+  const fill = empty
+    ? '#182128'
+    : isGk
+      ? '#f59e0b'
+      : home
+        ? '#11161d'
+        : '#f8fafc'
+  const stroke = selected
+    ? '#ffffff'
+    : empty
+      ? 'rgba(200, 255, 61, 0.55)'
+      : isGk
+        ? '#fde68a'
+        : home
+          ? '#c8ff3d'
+          : '#0b0d0f'
+  const textColor = empty
+    ? '#7f8c96'
+    : isGk
+      ? '#0c0f14'
+      : home
+        ? '#c8ff3d'
+        : '#0b0d0f'
+
+  return (
+    <svg
+      viewBox="0 0 48 44"
+      className={cx(
+        'mx-auto h-9 w-10 drop-shadow-[0_4px_8px_rgba(0,0,0,0.65)] transition-transform sm:h-11 sm:w-12',
+        selected && 'scale-110',
+      )}
+      aria-hidden
+    >
+      <path
+        d="M15 4 L3 11 L8 21 L14 18 L14 40 L34 40 L34 18 L40 21 L45 11 L33 4 L29 4 C28 7.5 20 7.5 19 4 Z"
+        fill={fill}
+        stroke={stroke}
+        strokeWidth={selected ? '2.5' : '2.1'}
+        strokeDasharray={empty ? '3 2' : undefined}
+        strokeLinejoin="round"
+      />
+      {/* Collar detail */}
+      <path
+        d="M19 4 C20 8.5 28 8.5 29 4"
+        fill="none"
+        stroke={stroke}
+        strokeWidth="1.5"
+      />
+      <text
+        x="24"
+        y="27.5"
+        textAnchor="middle"
+        fill={textColor}
+        fontSize={String(number).length > 2 ? '10.5' : '13.5'}
+        fontWeight="900"
+        fontFamily="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace"
+      >
+        {number}
+      </text>
+    </svg>
+  )
+}
+
+/**
  * Formation board. Positions arrive as percentages from lib/fixtures, so the
  * same eleven always renders in the same spots - an absolutely positioned
  * div rather than a fixed image, which keeps the names selectable and lets the
  * whole thing reflow on narrow screens without a second layout.
  */
-export function Pitch({ squad, home }: { squad: Squad; home: boolean }) {
+export function Pitch({
+  squad,
+  home,
+  activeSlotIndex,
+  onSelectSlot,
+  children,
+}: {
+  squad: Squad
+  home: boolean
+  activeSlotIndex?: number | null
+  onSelectSlot?: (idx: number) => void
+  children?: React.ReactNode
+}) {
   return (
     // Every child is absolutely positioned against percentage coordinates, so
     // the box needs an explicit ratio or it collapses to zero height.
-    <div className="relative aspect-[3/4] w-full overflow-hidden rounded-card">
-      {/* mown stripes - eight bands, alternating, behind the markings */}
-      <div aria-hidden className="absolute inset-0 flex flex-col">
-        {Array.from({ length: 8 }, (_, i) => (
-          <div
-            key={i}
-            className={cx('flex-1', i % 2 === 0 ? 'bg-[#0e2c18]' : 'bg-[#123823]')}
-          />
-        ))}
+    <div className="relative aspect-[3/4] w-full overflow-visible rounded-card border border-white/10 shadow-inner">
+      {/* mown stripes & markings clipped to rounded-card so floating popovers never clip */}
+      <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden rounded-card">
+        <div className="absolute inset-0 flex flex-col">
+          {Array.from({ length: 8 }, (_, i) => (
+            <div
+              key={i}
+              className={cx('flex-1', i % 2 === 0 ? 'bg-[#0e2c18]' : 'bg-[#123823]')}
+            />
+          ))}
+        </div>
+
+        {/* markings */}
+        <svg
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
+          className="absolute inset-0 h-full w-full"
+        >
+          <g fill="none" stroke="rgba(255,255,255,0.28)" strokeWidth="0.4" vectorEffect="non-scaling-stroke">
+            <rect x="1.5" y="1.5" width="97" height="97" />
+            <line x1="1.5" y1="50" x2="98.5" y2="50" />
+            <circle cx="50" cy="50" r="9" />
+            {/* penalty boxes, mirrored for the two goal ends */}
+            <rect x="22" y="1.5" width="56" height="13" />
+            <rect x="38" y="1.5" width="24" height="5" />
+            <rect x="22" y="85.5" width="56" height="13" />
+            <rect x="38" y="93.5" width="24" height="5" />
+          </g>
+        </svg>
       </div>
 
-      {/* markings */}
-      <svg
-        aria-hidden
-        viewBox="0 0 100 100"
-        preserveAspectRatio="none"
-        className="absolute inset-0 h-full w-full"
-      >
-        <g fill="none" stroke="rgba(255,255,255,0.28)" strokeWidth="0.4" vectorEffect="non-scaling-stroke">
-          <rect x="1.5" y="1.5" width="97" height="97" />
-          <line x1="1.5" y1="50" x2="98.5" y2="50" />
-          <circle cx="50" cy="50" r="9" />
-          {/* penalty boxes, mirrored for the two goal ends */}
-          <rect x="22" y="1.5" width="56" height="13" />
-          <rect x="38" y="1.5" width="24" height="5" />
-          <rect x="22" y="85.5" width="56" height="13" />
-          <rect x="38" y="93.5" width="24" height="5" />
-        </g>
-      </svg>
-
       {/* players */}
-      {squad.starters.map((p) => (
-        <div
-          key={p.number}
-          className="absolute -translate-x-1/2 -translate-y-1/2 text-center"
-          style={{ left: `${p.x}%`, top: `${p.y}%` }}
-        >
-          <span
+      {squad.starters.map((p, idx) => {
+        const isEmpty = !p.name || p.name === '—' || p.name === 'Unassigned'
+        const isSelected = activeSlotIndex === idx
+        const Tag = onSelectSlot ? 'button' : 'div'
+        return (
+          <Tag
+            key={`${idx}-${p.role}`}
+            type={onSelectSlot ? 'button' : undefined}
+            onClick={onSelectSlot ? () => onSelectSlot(idx) : undefined}
             className={cx(
-              'numeric mx-auto grid h-7 w-7 place-items-center rounded-full text-[11px] font-bold sm:h-9 sm:w-9 sm:text-sm',
-              home
-                ? 'bg-[var(--accent-solid)] text-[var(--on-volt)] ring-2 ring-black/25'
-                : 'bg-white text-[#111] ring-2 ring-black/25',
+              'absolute z-[3] -translate-x-1/2 -translate-y-1/2 text-center outline-none transition-transform',
+              onSelectSlot && 'cursor-pointer hover:scale-105 focus-visible:scale-105',
+              isSelected && 'z-[4] scale-110',
             )}
+            style={{ left: `${p.x}%`, top: `${p.y}%` }}
           >
-            {p.number}
-          </span>
-          <span className="mt-1 block max-w-[4.5rem] text-[9px] font-semibold leading-tight text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] sm:max-w-[5.5rem] sm:text-[11px]">
-            {p.name}
-          </span>
-        </div>
-      ))}
+            <JerseyIcon
+              number={isEmpty ? '+' : p.number}
+              isGk={p.role === 'GK' || idx === 0}
+              home={home}
+              empty={isEmpty}
+              selected={isSelected}
+            />
+            <div className="mt-0.5 flex flex-col items-center">
+              <span
+                className={cx(
+                  'max-w-[5.2rem] truncate rounded px-1.5 py-0.5 text-[9px] font-bold leading-tight shadow sm:max-w-[6.5rem] sm:text-[10.5px]',
+                  isSelected
+                    ? 'bg-[var(--accent-solid)] text-[var(--on-volt)] ring-2 ring-white'
+                    : isEmpty
+                      ? 'bg-black/55 text-white/65'
+                      : 'bg-black/80 text-white',
+                )}
+              >
+                {isEmpty ? p.role : p.name}
+              </span>
+              {!isEmpty && (
+                <span className="mt-0.5 text-[8.5px] font-extrabold uppercase tracking-wider text-[#c8ff3d] drop-shadow-[0_1px_2px_rgba(0,0,0,0.95)]">
+                  {p.role}
+                </span>
+              )}
+            </div>
+          </Tag>
+        )
+      })}
+
+      {children}
     </div>
   )
 }

@@ -1,22 +1,65 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { LeaderboardTable } from '@/components/league'
 import { LeaderboardPodium } from '@/components/league/LeaderboardPodium'
 import { Container, Section, Tabs } from '@/components/ui'
 import { siteData } from '@/data'
 import { useSeasonName } from '@/lib/season'
+import {
+  getLiveLeaderboardSummary,
+  peekLiveLeaderboards,
+  type LiveLeaderboardSummary,
+} from '@/lib/liveLeague'
+import type { Leaderboard } from '@/types/site'
 
 export default function LeaderboardPage() {
   const seasonName = useSeasonName()
-  const [active, setActive] = useState(siteData.leaderboards[0]?.title ?? '')
-  const board = siteData.leaderboards.find((b) => b.title === active) ?? siteData.leaderboards[0]
+  const [liveData, setLiveData] = useState<LiveLeaderboardSummary | null>(peekLiveLeaderboards())
+
+  useEffect(() => {
+    void getLiveLeaderboardSummary().then((res) => {
+      if (res) setLiveData(res)
+    })
+  }, [])
+
+  const effectiveBoards: Leaderboard[] = useMemo(() => {
+    if (liveData && liveData.boards.some((b) => b.rows.length > 0)) {
+      return liveData.boards.map((b) => ({
+        title: b.title,
+        rows: b.rows.map((r, idx) => ({
+          pos: idx + 1,
+          name: r.gamertag,
+          team: r.club_name || 'Free Agent',
+          team_flag: r.club_flag || '',
+          value: r.value,
+          avatar: r.avatar_local || '',
+          avatarLocal: r.avatar_local || '',
+          team_logo: r.club_logo || '',
+          teamLogoLocal: r.club_logo || '',
+          url: `/players/${r.slug}`,
+          celebrationImage: r.celebration_image || null,
+        })),
+      }))
+    }
+    return siteData.leaderboards
+  }, [liveData])
+
+  const [active, setActive] = useState(effectiveBoards[0]?.title ?? '')
+
+  useEffect(() => {
+    if (effectiveBoards.length > 0 && !effectiveBoards.some((b) => b.title === active)) {
+      setActive(effectiveBoards[0].title)
+    }
+  }, [effectiveBoards, active])
+
+  const board = effectiveBoards.find((b) => b.title === active) ?? effectiveBoards[0]
 
   return (
     <div className="page-enter">
       <PageHeader
         eyebrow="Individual honours"
         title="Leaderboard"
-        lede={`Top performers across the ${seasonName} IWVPL Pro Club League — goals, assists and goalkeeping.`}
+        lede={`Top performers across the ${liveData?.season?.name || seasonName} IWVPL Pro Club League — goals, assists and goalkeeping.`}
       />
 
       <Section>
@@ -24,7 +67,7 @@ export default function LeaderboardPage() {
           {/* bare tabs — no outer container */}
           <div className="mb-8 border-b border-[var(--border)]">
             <Tabs
-              tabs={siteData.leaderboards.map((b) => ({
+              tabs={effectiveBoards.map((b) => ({
                 id: b.title,
                 label: b.title.replace('TOP ', 'Top ').toLowerCase(),
                 count: b.rows.length,
@@ -54,7 +97,7 @@ export default function LeaderboardPage() {
 
           <p className="mt-6 text-xs leading-relaxed text-[var(--text-faint)]">
             Statistics are compiled from match reports submitted by team managers during{' '}
-            {seasonName}.
+            {liveData?.season?.name || seasonName}.
           </p>
         </Container>
       </Section>

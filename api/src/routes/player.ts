@@ -39,9 +39,10 @@ async function ownPlayer(userId: number): Promise<{
   id: number
   gamertag: string
   club_id: number | null
+  shirt_number: number | null
 }> {
-  const row = await queryOne<{ id: number; gamertag: string; club_id: number | null }>(
-    'SELECT id, gamertag, club_id FROM players WHERE user_id = ?',
+  const row = await queryOne<{ id: number; gamertag: string; club_id: number | null; shirt_number: number | null }>(
+    'SELECT id, gamertag, club_id, shirt_number FROM players WHERE user_id = ?',
     [userId],
   )
   if (!row) {
@@ -82,6 +83,82 @@ player.get(
     )
 
     res.json({ player: me, club, pending: Number(pending?.n ?? 0) })
+  }),
+)
+
+player.patch(
+  '/me',
+  requireRole('player'),
+  handler(async (req, res) => {
+    const me = await ownPlayer(req.user!.id)
+    const rawShirt = req.body?.shirtNumber
+    let shirtNumber: number | null = null
+    if (rawShirt !== null && rawShirt !== undefined && String(rawShirt).trim() !== '') {
+      const n = Number.parseInt(String(rawShirt), 10)
+      if (!Number.isInteger(n) || n < 1 || n > 99) {
+        bad('Jersey number must be a whole number between 1 and 99.')
+      }
+      shirtNumber = n
+    }
+
+    await withTransaction(async (conn) => {
+      await conn.execute('UPDATE players SET shirt_number = ?, updated_at = NOW() WHERE id = ?', [
+        shirtNumber,
+        me.id,
+      ])
+
+      // Synchronize clubs.starting_xi_json if player is attached to a club
+      if (me.club_id) {
+        const [clubRows] = await conn.query(
+          'SELECT id, starting_xi_json FROM clubs WHERE id = ? FOR UPDATE',
+          [me.club_id],
+        )
+        const club = (clubRows as any[])[0]
+        if (club?.starting_xi_json) {
+          try {
+            const parsed = JSON.parse(club.starting_xi_json)
+            let modified = false
+            if (Array.isArray(parsed.starters)) {
+              for (const s of parsed.starters) {
+                if (
+                  s &&
+                  ((s.playerId && Number(s.playerId) === Number(me.id)) ||
+                    (s.gamertag && s.gamertag.toLowerCase() === me.gamertag.toLowerCase()))
+                ) {
+                  s.shirtNumber = shirtNumber ?? undefined
+                  s.number = shirtNumber ?? undefined
+                  modified = true
+                }
+              }
+            }
+            if (Array.isArray(parsed.bench)) {
+              for (const b of parsed.bench) {
+                if (
+                  b &&
+                  ((b.playerId && Number(b.playerId) === Number(me.id)) ||
+                    (b.gamertag && b.gamertag.toLowerCase() === me.gamertag.toLowerCase()))
+                ) {
+                  b.shirtNumber = shirtNumber ?? undefined
+                  b.number = shirtNumber ?? undefined
+                  modified = true
+                }
+              }
+            }
+            if (modified) {
+              await conn.execute(
+                'UPDATE clubs SET starting_xi_json = ?, updated_at = NOW() WHERE id = ?',
+                [JSON.stringify(parsed), club.id],
+              )
+            }
+          } catch {
+            /* ignore malformed json */
+          }
+        }
+      }
+    })
+
+    const updated = await ownPlayer(req.user!.id)
+    res.json({ ok: true, player: updated })
   }),
 )
 

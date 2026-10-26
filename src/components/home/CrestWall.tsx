@@ -4,7 +4,7 @@ import { ButtonLink, Container, Section, SectionHead } from '@/components/ui'
 import { siteData } from '@/data'
 import { asset } from '@/lib/assets'
 import { CLUB_PLACEHOLDER, clubSlug, stripFlag } from '@/lib/format'
-import { getLiveClubs, liveLeagueEnabled } from '@/lib/liveLeague'
+import { getLiveClubs, liveLeagueEnabled, peekLiveClubs } from '@/lib/liveLeague'
 import type { Club } from '@/types/site'
 
 /**
@@ -24,7 +24,7 @@ import type { Club } from '@/types/site'
  * CSS, so this component is a list again.
  */
 export function CrestWall() {
-  const [liveClubs, setLiveClubs] = useState<Club[] | null>(null)
+  const [liveClubs, setLiveClubs] = useState<Club[] | null>(() => peekLiveClubs())
 
   useEffect(() => {
     if (!liveLeagueEnabled) return

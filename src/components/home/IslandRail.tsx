@@ -6,6 +6,7 @@ import {
   getLiveClubs,
   getLiveRegions,
   liveLeagueEnabled,
+  peekLiveClubs,
   type HomepageRegion,
 } from '@/lib/liveLeague'
 import { siteData } from '@/data'
@@ -89,7 +90,7 @@ function matchesRegion(clubFlag: string | undefined | null, region: HomepageRegi
 
 export function IslandRail() {
   const [liveRegions, setLiveRegions] = useState<HomepageRegion[] | null>(null)
-  const [liveClubs, setLiveClubs] = useState<Club[] | null>(null)
+  const [liveClubs, setLiveClubs] = useState<Club[] | null>(() => peekLiveClubs())
 
   useEffect(() => {
     if (!liveLeagueEnabled) return

@@ -9,6 +9,8 @@
  * SPA is served by the API itself.
  */
 
+import type { ClubLineup } from '@/lib/fixtures'
+
 const base = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '')
 
 /** True when the SPA is not served by the API, i.e. accounts need CORS. */
@@ -114,10 +116,12 @@ export const register = (payload: {
   password: string
   name?: string
   gamertag?: string
+  shirtNumber?: number | null
   clubName?: string
   /** Decorative table label, up to 8 characters. Uppercased server-side. */
   shortCode?: string
   region?: string
+  clubLogo?: string | null
 }) => post<{ user: User }>('/api/auth/register', payload)
 
 export const logout = () => post<{ ok: true }>('/api/auth/logout')
@@ -128,7 +132,38 @@ export const me = () => request<{ user: User | null }>('/api/auth/me')
 
 /* ---------------------------------------------------------------- manager */
 
-export const createClub = (name: string) => post<{ ok: true; clubId: number }>('/api/manager/club', { name })
+export interface ManagerClub {
+  id: number
+  name: string
+  slug: string
+  short_code: string | null
+  flag: string | null
+  logo_local: string | null
+  logo_url: string | null
+  status: string
+  starting_xi?: ClubLineup | null
+}
+
+export const createClub = (
+  name: string,
+  opts?: { shortCode?: string; region?: string; logo?: string | null },
+) =>
+  post<{ ok: true; clubId: number }>('/api/manager/club', {
+    name,
+    shortCode: opts?.shortCode,
+    region: opts?.region,
+    logo: opts?.logo,
+  })
+
+export const updateManagerClub = (patch: {
+  logo?: string | null
+  shortCode?: string | null
+  region?: string | null
+}) =>
+  request<{ ok: true; club: ManagerClub }>('/api/manager/club', {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  })
 
 export const searchPlayers = (q: string, signal?: AbortSignal) =>
   request<{
@@ -153,25 +188,50 @@ export const managerOffers = () => request<{ offers: Offer[] }>('/api/manager/of
 
 export const squad = () =>
   request<{
-    club: { id: number; name: string; slug: string }
+    club: ManagerClub
     squad: Array<{
       id: number
       gamertag: string
       slug: string
+      shirt_number?: number | null
       avatar_local: string | null
       is_free_agent: number
       pending: number
     }>
   }>('/api/manager/squad')
 
+export const saveManagerLineup = (lineup: ClubLineup) =>
+  request<{ ok: true; club: ManagerClub; starting_xi: ClubLineup }>('/api/manager/lineup', {
+    method: 'PUT',
+    body: JSON.stringify({ lineup }),
+  })
+
+export const updateSquadPlayerShirt = (playerId: number, shirtNumber: number | null) =>
+  request<{ ok: true; playerId: number; shirtNumber: number | null }>(
+    `/api/manager/players/${playerId}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ shirtNumber }),
+    },
+  )
+
 /* ----------------------------------------------------------------- player */
 
 export const playerOverview = () =>
   request<{
-    player: { id: number; gamertag: string; club_id: number | null }
+    player: { id: number; gamertag: string; club_id: number | null; shirt_number?: number | null }
     club: { id: number; name: string; slug: string } | null
     pending: number
   }>('/api/player/me')
+
+export const updateMyPlayerProfile = (patch: { shirtNumber: number | null }) =>
+  request<{
+    ok: true
+    player: { id: number; gamertag: string; club_id: number | null; shirt_number?: number | null }
+  }>('/api/player/me', {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  })
 
 export const incomingOffers = () => request<{ offers: Offer[] }>('/api/player/offers')
 

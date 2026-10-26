@@ -106,11 +106,13 @@ export interface LeaderboardRow {
   team: string
   team_flag: string
   value: number
-  avatar: string
-  team_logo: string
-  url: string
-  avatarLocal: string
-  teamLogoLocal: string
+  avatar?: string
+  team_logo?: string
+  url?: string
+  avatarLocal?: string
+  teamLogoLocal?: string
+  celebrationImage?: string | null
+  cleanSheets?: number
 }
 
 export interface Leaderboard {

@@ -9,6 +9,7 @@
 import { Router } from 'express'
 import { queryAll, queryOne, ping } from '../db.js'
 import type { Row } from '../db.js'
+import { loadSiteContent } from '../domain/siteContent.js'
 
 export const league = Router()
 
@@ -109,6 +110,22 @@ league.get(
 
 /* ------------------------------------------------------------------- clubs */
 
+function clubLogoSql(alias = 'c'): string {
+  return `CASE
+    WHEN LEFT(COALESCE(${alias}.logo_local, ${alias}.logo_url, ''), 5) = 'data:'
+      THEN CONCAT('/api/clubs/', ${alias}.slug, '/logo?v=', COALESCE(UNIX_TIMESTAMP(${alias}.updated_at), 1))
+    ELSE COALESCE(${alias}.logo_local, ${alias}.logo_url)
+  END`
+}
+
+function playerCelebrationSql(alias = 'p'): string {
+  return `CASE
+    WHEN LEFT(COALESCE(${alias}.celebration_image, ''), 5) = 'data:'
+      THEN CONCAT('/api/players/', ${alias}.slug, '/celebration?v=', COALESCE(UNIX_TIMESTAMP(${alias}.updated_at), 1))
+    ELSE COALESCE(${alias}.celebration_image, ${alias}.avatar_local)
+  END`
+}
+
 league.get(
   '/clubs',
   handler(async (req, res) => {
@@ -123,23 +140,42 @@ league.get(
       }
       const season = await queryOne<{ id: number }>('SELECT id FROM seasons WHERE id = ?', [seasonId])
       if (!season) return res.status(404).json({ error: 'Season not found.' })
+    } else {
+      const cur = await queryOne<{ id: number }>(
+        'SELECT id FROM seasons WHERE is_current = TRUE LIMIT 1',
+      )
+      seasonId = cur?.id ?? null
     }
 
     const clubs = await queryAll(
-      `SELECT c.id, c.name, c.slug, c.short_code, c.flag, c.logo_url, c.logo_local, c.status,
+      `SELECT c.id, c.name, c.slug, c.short_code, c.flag,
+              CASE
+                WHEN LEFT(COALESCE(c.logo_url, ''), 5) = 'data:' OR c.logo_url = c.logo_local
+                  THEN NULL
+                ELSE c.logo_url
+              END AS logo_url,
+              ${clubLogoSql('c')} AS logo_local,
+              c.status,
               c.is_featured,
-              (SELECT COUNT(*) FROM players p WHERE p.club_id = c.id) AS players,
-              (SELECT dc.division_id FROM division_clubs dc
-                JOIN divisions d ON d.id = dc.division_id
-                WHERE dc.club_id = c.id
-                  AND (? IS NULL OR d.season_id = ?)
-                  AND (? IS NOT NULL OR d.season_id = (
-                    SELECT id FROM seasons WHERE is_current = TRUE LIMIT 1
-                  ))
-                ORDER BY dc.id DESC LIMIT 1) AS division_id
-         FROM clubs c ${where}
+              COALESCE(pc.players, 0) AS players,
+              div_assign.division_id
+         FROM clubs c
+         LEFT JOIN (
+           SELECT club_id, COUNT(*) AS players
+             FROM players
+            WHERE club_id IS NOT NULL
+            GROUP BY club_id
+         ) pc ON pc.club_id = c.id
+         LEFT JOIN (
+           SELECT dc.club_id, MAX(dc.division_id) AS division_id
+             FROM division_clubs dc
+             JOIN divisions d ON d.id = dc.division_id
+            WHERE (? IS NOT NULL AND d.season_id = ?)
+            GROUP BY dc.club_id
+         ) div_assign ON div_assign.club_id = c.id
+         ${where}
         ORDER BY c.name`,
-      [seasonId, seasonId, seasonId],
+      [seasonId, seasonId],
     )
     res.json({ clubs })
   }),
@@ -180,14 +216,67 @@ league.get(
 )
 
 league.get(
+  '/clubs/:slug/logo',
+  handler(async (req, res) => {
+    const row = await queryOne<{ logo: string | null }>(
+      'SELECT COALESCE(logo_local, logo_url) AS logo FROM clubs WHERE slug = ? LIMIT 1',
+      [req.params.slug],
+    )
+    const logo = row?.logo
+    if (!logo) return res.status(404).end()
+
+    const match = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/is.exec(logo)
+    if (match) {
+      const mime = match[1]
+      const buf = Buffer.from(match[2], 'base64')
+      res.setHeader('Content-Type', mime)
+      res.setHeader('Cache-Control', 'public, max-age=86400')
+      res.send(buf)
+      return
+    }
+
+    if (logo.startsWith('/') || /^https?:\/\//i.test(logo)) {
+      res.setHeader('Cache-Control', 'public, max-age=86400')
+      res.redirect(302, logo)
+      return
+    }
+
+    res.status(404).end()
+  }),
+)
+
+league.get(
   '/clubs/:slug',
   handler(async (req, res) => {
-    const club = await queryOne<{ id: number }>(
-      `SELECT id, name, slug, short_code, flag, logo_url, logo_local, status, is_featured, source_url
-         FROM clubs WHERE slug = ?`,
+    const club = await queryOne<{
+      id: number
+      starting_xi_json: string | null
+      manager_name: string | null
+    }>(
+      `SELECT c.id, c.name, c.slug, c.short_code, c.flag,
+              CASE
+                WHEN LEFT(COALESCE(c.logo_url, ''), 5) = 'data:' OR c.logo_url = c.logo_local
+                  THEN NULL
+                ELSE c.logo_url
+              END AS logo_url,
+              ${clubLogoSql('c')} AS logo_local,
+              c.status, c.is_featured, c.source_url, c.starting_xi_json,
+              (SELECT COALESCE(u.display_name, u.email) FROM users u
+                WHERE u.club_id = c.id AND u.is_active = TRUE AND u.role IN ('club_manager', 'admin', 'owner')
+                ORDER BY u.id DESC LIMIT 1) AS manager_name
+         FROM clubs c WHERE c.slug = ?`,
       [req.params.slug],
     )
     if (!club) return res.status(404).json({ error: 'Club not found' })
+
+    let starting_xi = null
+    if (club.starting_xi_json) {
+      try {
+        starting_xi = JSON.parse(club.starting_xi_json)
+      } catch {
+        starting_xi = null
+      }
+    }
 
     const [division, players] = await Promise.all([
       queryOne(
@@ -199,13 +288,44 @@ league.get(
         [club.id],
       ),
       queryAll(
-        `SELECT id, gamertag, slug, avatar_local, is_free_agent
-           FROM players WHERE club_id = ? ORDER BY gamertag`,
+        `SELECT id, gamertag, slug, shirt_number, avatar_local, is_free_agent
+           FROM players WHERE club_id = ? ORDER BY COALESCE(shirt_number, 999), gamertag`,
         [club.id],
       ),
     ])
 
-    res.json({ ...club, division, players })
+    if (starting_xi) {
+      const playerMap = new Map<number, any>(players.map((p: any) => [p.id, p]))
+      const tagMap = new Map<string, any>(players.map((p: any) => [p.gamertag.toLowerCase(), p]))
+      if (Array.isArray(starting_xi.starters)) {
+        for (const s of starting_xi.starters) {
+          if (!s) continue
+          const matched =
+            (s.playerId && playerMap.get(Number(s.playerId))) ||
+            (s.gamertag && tagMap.get(s.gamertag.toLowerCase()))
+          if (matched && matched.shirt_number != null) {
+            s.shirtNumber = matched.shirt_number
+            s.number = matched.shirt_number
+          }
+        }
+      }
+      if (Array.isArray(starting_xi.bench)) {
+        for (const b of starting_xi.bench) {
+          if (!b) continue
+          const matched =
+            (b.playerId && playerMap.get(Number(b.playerId))) ||
+            (b.gamertag && tagMap.get(b.gamertag.toLowerCase()))
+          if (matched && matched.shirt_number != null) {
+            b.shirtNumber = matched.shirt_number
+            b.number = matched.shirt_number
+          }
+        }
+      }
+    }
+
+    const { starting_xi_json: _ignored, ...restClub } = club
+    res.setHeader('Cache-Control', 'no-cache, private')
+    res.json({ ...restClub, starting_xi, division, players })
   }),
 )
 
@@ -289,9 +409,9 @@ league.get(
         `SELECT m.id, m.kickoff, m.status, m.home_score, m.away_score, m.source_url,
                 m.venue, m.stream_url,
                 home.name AS home_name, home.slug AS home_slug, home.short_code AS home_code,
-                home.logo_local AS home_logo, home.flag AS home_flag,
+                ${clubLogoSql('home')} AS home_logo, home.flag AS home_flag,
                 away.name AS away_name, away.slug AS away_slug, away.short_code AS away_code,
-                away.logo_local AS away_logo, away.flag AS away_flag
+                ${clubLogoSql('away')} AS away_logo, away.flag AS away_flag
            FROM matches m
            JOIN clubs home ON home.id = m.home_club_id
            JOIN clubs away ON away.id = m.away_club_id
@@ -377,9 +497,9 @@ league.get(
       `SELECT m.id, m.kickoff, m.status, m.home_score, m.away_score, m.source_url,
               m.venue, m.stream_url,
               home.name AS home_name, home.slug AS home_slug, home.short_code AS home_code,
-              home.logo_local AS home_logo, home.flag AS home_flag,
+              ${clubLogoSql('home')} AS home_logo, home.flag AS home_flag,
               away.name AS away_name, away.slug AS away_slug, away.short_code AS away_code,
-              away.logo_local AS away_logo, away.flag AS away_flag
+              ${clubLogoSql('away')} AS away_logo, away.flag AS away_flag
          FROM matches m
          JOIN clubs home ON home.id = m.home_club_id
          JOIN clubs away ON away.id = m.away_club_id
@@ -400,8 +520,8 @@ league.get(
     const match = await queryOne<{ id: number }>(
       `SELECT m.id, m.kickoff, m.status, m.home_score, m.away_score,
               m.venue, m.stream_url, m.source_url,
-              home.name AS home_name, home.slug AS home_slug, home.logo_local AS home_logo,
-              away.name AS away_name, away.slug AS away_slug, away.logo_local AS away_logo
+              home.name AS home_name, home.slug AS home_slug, ${clubLogoSql('home')} AS home_logo,
+              away.name AS away_name, away.slug AS away_slug, ${clubLogoSql('away')} AS away_logo
          FROM matches m
          JOIN clubs home ON home.id = m.home_club_id
          JOIN clubs away ON away.id = m.away_club_id
@@ -461,7 +581,7 @@ league.get(
       `SELECT ROW_NUMBER() OVER (PARTITION BY d.id ORDER BY s.position) AS position,
               s.played, s.won, s.drawn, s.lost,
               s.goals_for, s.goals_against, s.goal_difference, s.points, s.form,
-              c.id AS club_id, c.name, c.slug, c.short_code, c.logo_local, c.flag,
+              c.id AS club_id, c.name, c.slug, c.short_code, ${clubLogoSql('c')} AS logo_local, c.flag,
               d.name AS division_name, d.slug AS division_slug,
               d.promotion_count, d.relegation_count, d.sort_order
          FROM standings_snapshot s
@@ -495,6 +615,36 @@ league.get(
 
 /* ------------------------------------------------------------ leaderboards */
 
+league.get(
+  '/players/:slug/celebration',
+  handler(async (req, res) => {
+    const row = await queryOne<{ image: string | null }>(
+      'SELECT COALESCE(celebration_image, avatar_local) AS image FROM players WHERE slug = ? LIMIT 1',
+      [req.params.slug],
+    )
+    const img = row?.image
+    if (!img) return res.status(404).end()
+
+    const match = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/is.exec(img)
+    if (match) {
+      const mime = match[1]
+      const buf = Buffer.from(match[2], 'base64')
+      res.setHeader('Content-Type', mime)
+      res.setHeader('Cache-Control', 'public, max-age=86400')
+      res.send(buf)
+      return
+    }
+
+    if (img.startsWith('/') || /^https?:\/\//i.test(img)) {
+      res.setHeader('Cache-Control', 'public, max-age=86400')
+      res.redirect(302, img)
+      return
+    }
+
+    res.status(404).end()
+  }),
+)
+
 /** Which leaderboard column a requested board name maps to. */
 const BOARDS: Record<string, 'goals' | 'assists' | 'saves'> = {
   scorer: 'goals',
@@ -504,6 +654,62 @@ const BOARDS: Record<string, 'goals' | 'assists' | 'saves'> = {
   assists: 'assists',
   saves: 'saves',
 }
+
+league.get(
+  '/leaderboards/summary',
+  handler(async (req, res) => {
+    const requestedSeasonId = req.query.seasonId
+    let seasonId: number | null = null
+    if (requestedSeasonId !== undefined) {
+      seasonId = Number(requestedSeasonId)
+      if (!Number.isSafeInteger(seasonId) || seasonId < 1) {
+        return res.status(400).json({ error: 'seasonId must be a positive integer.' })
+      }
+    } else {
+      const cur = await queryOne<{ id: number; name: string }>(
+        'SELECT id, name FROM seasons WHERE is_current = TRUE LIMIT 1',
+      )
+      seasonId = cur?.id ?? null
+    }
+
+    const currentSeason = await queryOne<{ id: number; name: string }>(
+      'SELECT id, name FROM seasons WHERE id = ?',
+      [seasonId],
+    )
+
+    const fetchBoard = async (col: 'goals' | 'assists' | 'saves') => {
+      return queryAll(
+        `SELECT ps.${col} AS value, p.id AS player_id, p.gamertag, p.slug,
+                ${playerCelebrationSql('p')} AS celebration_image,
+                p.avatar_local,
+                c.name AS club_name, c.slug AS club_slug, c.flag AS club_flag,
+                ${clubLogoSql('c')} AS club_logo
+           FROM player_season_stats ps
+           JOIN players p ON p.id = ps.player_id
+           LEFT JOIN clubs c ON c.id = p.club_id
+          WHERE (? IS NULL OR ps.season_id = ?) AND ps.${col} > 0
+          ORDER BY ps.${col} DESC, p.gamertag ASC
+          LIMIT 25`,
+        [seasonId, seasonId],
+      )
+    }
+
+    const [scorers, assists, saves] = await Promise.all([
+      fetchBoard('goals'),
+      fetchBoard('assists'),
+      fetchBoard('saves'),
+    ])
+
+    res.json({
+      season: currentSeason,
+      boards: [
+        { title: 'TOP SCORERS', key: 'goals', rows: scorers },
+        { title: 'TOP PLAYMAKERS', key: 'assists', rows: assists },
+        { title: 'TOP GOALKEEPERS', key: 'saves', rows: saves },
+      ],
+    })
+  }),
+)
 
 league.get(
   '/leaderboards',
@@ -520,7 +726,9 @@ league.get(
     const limit = intParam(req.query.limit, 10, 1, 100)
     const rows = await queryAll<Row>(
       `SELECT ps.${column} AS value, p.id AS player_id, p.gamertag, p.slug,
-              p.avatar_local, c.name AS club_name, c.slug AS club_slug
+              ${playerCelebrationSql('p')} AS celebration_image,
+              p.avatar_local, c.name AS club_name, c.slug AS club_slug, c.flag AS club_flag,
+              ${clubLogoSql('c')} AS club_logo
          FROM player_season_stats ps
          JOIN players p ON p.id = ps.player_id
          LEFT JOIN clubs c ON c.id = p.club_id
@@ -710,5 +918,15 @@ league.get(
         }),
       },
     })
+  }),
+)
+
+/* ----------------------------------------------------------- site content */
+
+league.get(
+  '/site-content',
+  handler(async (_req, res) => {
+    const content = await loadSiteContent()
+    res.json(content)
   }),
 )

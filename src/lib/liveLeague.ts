@@ -1,5 +1,6 @@
 import { asset } from '@/lib/assets'
 import { AVATAR_PLACEHOLDER } from '@/lib/format'
+import type { ClubLineup } from '@/lib/fixtures'
 import type { PlayerProfile } from '@/lib/players'
 import type { Club, Format, Match, StandingDivision } from '@/types/site'
 
@@ -107,12 +108,54 @@ export function featuredStandingDivision(
   )
 }
 
-async function get<T>(path: string, signal: AbortSignal): Promise<T> {
-  const response = await fetch(`${apiBase}${path}`, { cache: 'no-store', signal })
+const liveGetCache = new Map<string, { data: unknown; ts: number }>()
+const inFlightLiveGets = new Map<string, Promise<unknown>>()
+const LIVE_FRESH_MS = 25_000
+const LIVE_REVALIDATE_MS = 4_000
+
+async function fetchLiveJson<T>(path: string): Promise<T> {
+  const response = await fetch(`${apiBase}${path}`, { cache: 'no-store' })
   if (!response.ok) {
     throw new Error(`Live league data request failed (${response.status}).`)
   }
   return (await response.json()) as T
+}
+
+async function get<T>(path: string, _signal?: AbortSignal): Promise<T> {
+  const now = Date.now()
+  const cached = liveGetCache.get(path)
+  if (cached && now - cached.ts < LIVE_FRESH_MS) {
+    if (now - cached.ts > LIVE_REVALIDATE_MS && !inFlightLiveGets.has(path)) {
+      const bg = fetchLiveJson<T>(path)
+        .then((fresh) => {
+          liveGetCache.set(path, { data: fresh, ts: Date.now() })
+          return fresh
+        })
+        .catch(() => cached.data as T)
+        .finally(() => {
+          inFlightLiveGets.delete(path)
+        })
+      inFlightLiveGets.set(path, bg)
+    }
+    return cached.data as T
+  }
+
+  const existing = inFlightLiveGets.get(path)
+  if (existing) {
+    return existing as Promise<T>
+  }
+
+  const p = fetchLiveJson<T>(path)
+    .then((data) => {
+      liveGetCache.set(path, { data, ts: Date.now() })
+      return data
+    })
+    .finally(() => {
+      inFlightLiveGets.delete(path)
+    })
+
+  inFlightLiveGets.set(path, p)
+  return p
 }
 
 export async function getLiveSeason(signal: AbortSignal): Promise<LeagueSeason> {
@@ -322,23 +365,31 @@ export async function getLiveStandings(
  * crawl-backed list applies — a pending club is a claim nobody has approved
  * yet and has no business on the public site.
  */
-export async function getLiveClubs(signal: AbortSignal): Promise<Club[]> {
+let cachedLiveClubs: Club[] | null = null
+
+export function peekLiveClubs(): Club[] | null {
+  return cachedLiveClubs
+}
+
+export async function getLiveClubs(signal?: AbortSignal): Promise<Club[]> {
   const response = await get<{ clubs: ApiClub[] }>('/api/clubs', signal)
 
-  return response.clubs.map((c) => ({
+  const mapped = response.clubs.map((c) => ({
     name: c.name,
     slug: c.slug,
     flag: c.flag ?? '',
     code: c.short_code ?? '',
     // Internal detail page, never the original site.
     url: '',
-    logo: c.logo_url ?? '',
-    logoLocal: c.logo_local ?? '',
+    logo: c.logo_url || c.logo_local || '',
+    logoLocal: c.logo_local || c.logo_url || '',
     players: Number(c.players ?? 0),
-    status: (c.status === 'active' ? 'Active' : 'Pending') as Club['status'],
+    status: (c.status === 'active' ? 'Active' : 'Pending Approval') as Club['status'],
     raw: c.name,
     isFeatured: c.is_featured === undefined ? true : Boolean(c.is_featured),
   }))
+  cachedLiveClubs = mapped
+  return mapped
 }
 
 export interface HomepageRegion {
@@ -460,10 +511,33 @@ export async function getLivePlayer(
  * even though its row exists — it has not been approved, and exposing it would
  * publish an unapproved entry.
  */
+export type LiveClubDetail = Club & {
+  division: string | null
+  managerName: string | null
+  startingXi: ClubLineup | null
+  roster: Array<{ id: number; name: string; shirtNumber: number | null }>
+}
+
+const cachedLiveClubBySlug = new Map<string, LiveClubDetail>()
+
+export function peekLiveClub(slug: string): LiveClubDetail | undefined {
+  return cachedLiveClubBySlug.get(slug.toLowerCase())
+}
+
+export function invalidateLiveClubCache(slug?: string) {
+  if (slug) {
+    liveGetCache.delete(`/api/clubs/${encodeURIComponent(slug)}`)
+    cachedLiveClubBySlug.delete(slug.toLowerCase())
+  } else {
+    liveGetCache.clear()
+    cachedLiveClubBySlug.clear()
+  }
+}
+
 export async function getLiveClub(
   slug: string,
-  signal: AbortSignal,
-): Promise<(Club & { division: string | null; roster: Array<{ name: string }> }) | null> {
+  signal?: AbortSignal,
+): Promise<LiveClubDetail | null> {
   try {
     const response = await get<{
       id: number
@@ -474,25 +548,77 @@ export async function getLiveClub(
       logo_url: string | null
       logo_local: string | null
       status: string
+      manager_name?: string | null
+      starting_xi?: ClubLineup | null
       division: { name: string } | null
-      players: Array<{ gamertag: string }>
+      players: Array<{ id: number; gamertag: string; shirt_number?: number | null }>
     }>(`/api/clubs/${encodeURIComponent(slug)}`, signal)
 
     if (response.status !== 'active') return null
 
-    return {
+    const detail: LiveClubDetail = {
       name: response.name,
+      slug: response.slug,
       flag: response.flag ?? '',
       code: response.short_code ?? '',
       url: '',
-      logo: response.logo_url ?? '',
-      logoLocal: response.logo_local ?? '',
+      logo: response.logo_url || response.logo_local || '',
+      logoLocal: response.logo_local || response.logo_url || '',
       players: response.players.length,
       status: 'Active',
       raw: response.name,
       division: response.division?.name ?? null,
-      roster: response.players.map((p) => ({ name: p.gamertag })),
+      managerName: response.manager_name ?? null,
+      startingXi: response.starting_xi ?? null,
+      roster: response.players.map((p) => ({
+        id: p.id,
+        name: p.gamertag,
+        shirtNumber: p.shirt_number ?? null,
+      })),
     }
+    cachedLiveClubBySlug.set(slug.toLowerCase(), detail)
+    if (response.slug) cachedLiveClubBySlug.set(response.slug.toLowerCase(), detail)
+    return detail
+  } catch {
+    return null
+  }
+}
+
+/* ------------------------------------------------------------ leaderboards */
+
+export interface LiveLeaderboardRow {
+  value: number
+  player_id: number
+  gamertag: string
+  slug: string
+  celebration_image: string | null
+  avatar_local: string | null
+  club_name: string | null
+  club_slug: string | null
+  club_flag: string | null
+  club_logo: string | null
+}
+
+export interface LiveLeaderboardSummary {
+  season: { id: number; name: string } | null
+  boards: Array<{
+    title: string
+    key: 'goals' | 'assists' | 'saves'
+    rows: LiveLeaderboardRow[]
+  }>
+}
+
+let cachedLiveLeaderboards: LiveLeaderboardSummary | null = null
+
+export function peekLiveLeaderboards(): LiveLeaderboardSummary | null {
+  return cachedLiveLeaderboards
+}
+
+export async function getLiveLeaderboardSummary(signal?: AbortSignal): Promise<LiveLeaderboardSummary | null> {
+  try {
+    const res = await get<LiveLeaderboardSummary>('/api/leaderboards/summary', signal)
+    cachedLiveLeaderboards = res
+    return res
   } catch {
     return null
   }

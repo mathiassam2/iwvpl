@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Button, Container, Section, SectionHead, Select } from '@/components/ui'
 import { TermsDialog } from '@/components/ui/TermsDialog'
@@ -6,7 +6,7 @@ import { SITE, siteData } from '@/data'
 import { ApiError, register } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { useCart } from '@/lib/cart'
-import { cx, stripFlag } from '@/lib/format'
+import { CLUB_PLACEHOLDER, compressClubLogo, cx, stripFlag } from '@/lib/format'
 import { useSeasonName } from '@/lib/season'
 
 interface Fields {
@@ -14,6 +14,7 @@ interface Fields {
      a player entry creates a free-agent player row. */
   role: 'club_manager' | 'player'
   club: string
+  clubLogo: string | null
   /* Optional. Decorative rather than identity — codes are not unique and the
      slug is the real key — but a manager knows what to call their club and it
      saves an admin a round trip. */
@@ -22,6 +23,7 @@ interface Fields {
   format: string
   manager: string
   gamertag: string
+  shirtNumber: string
   email: string
   password: string
   /* Never sent to the API. Compared against `password` on the client only, so
@@ -44,11 +46,13 @@ const FORMATS = [
 const EMPTY: Fields = {
   role: 'club_manager',
   club: '',
+  clubLogo: null,
   shortCode: '',
   region: '',
   format: '',
   manager: '',
   gamertag: '',
+  shirtNumber: '',
   email: '',
   password: '',
   confirmPassword: '',
@@ -74,6 +78,12 @@ function validate(v: Fields): Errors {
     if (!v.discord.trim()) e.discord = 'Please provide a Discord username so we can reach you.'
   } else {
     if (!v.gamertag.trim()) e.gamertag = 'Please enter your in-game gamertag.'
+    if (v.shirtNumber.trim()) {
+      const n = Number.parseInt(v.shirtNumber.trim(), 10)
+      if (!Number.isInteger(n) || n < 1 || n > 99) {
+        e.shirtNumber = 'Jersey number must be between 1 and 99.'
+      }
+    }
   }
 
   if (!v.email.trim()) e.email = 'Please enter an email address.'
@@ -121,6 +131,8 @@ export default function RegisterPage() {
   const [termsOpen, setTermsOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const [logoError, setLogoError] = useState<string | null>(null)
+  const logoInputRef = useRef<HTMLInputElement | null>(null)
   // Only the panel opener survives here. Adding passes to the cart moved to
   // /entries, where they can be browsed without a form half-finished beside
   // them; the success panel still offers a shortcut to the cart.
@@ -146,6 +158,19 @@ export default function RegisterPage() {
     if (touched) setErrors(validate(next))
   }
 
+  const onLogoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setLogoError(null)
+    try {
+      const dataUrl = await compressClubLogo(file)
+      setValues((v) => ({ ...v, clubLogo: dataUrl }))
+    } catch (err) {
+      setLogoError(err instanceof Error ? err.message : 'Could not process image file.')
+    }
+  }
+
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setTouched(true)
@@ -167,9 +192,14 @@ export default function RegisterPage() {
         password: values.password,
         name: values.role === 'club_manager' ? values.manager.trim() : values.manager.trim() || values.gamertag.trim(),
         gamertag: values.role === 'player' ? values.gamertag.trim() : undefined,
+        shirtNumber:
+          values.role === 'player' && values.shirtNumber.trim()
+            ? Number.parseInt(values.shirtNumber.trim(), 10)
+            : undefined,
         clubName: values.role === 'club_manager' ? values.club.trim() : undefined,
         shortCode: values.role === 'club_manager' ? values.shortCode.trim() : undefined,
         region: values.role === 'club_manager' ? values.region.trim() : undefined,
+        clubLogo: values.role === 'club_manager' ? values.clubLogo : undefined,
       })
       setUser(user)
       // Snapshot what was created, then clear the form. The confirmation
@@ -447,11 +477,67 @@ export default function RegisterPage() {
                         type="text"
                         value={values.club}
                         onChange={set('club')}
-                        placeholder="e.g. KITA KITA VFC"
+                        placeholder="Enter your club name"
                         aria-invalid={Boolean(errorFor('club'))}
                         className={cx(inputCls, errorFor('club') ? 'border-[var(--danger-text)]' : 'border-[var(--border-strong)]')}
                       />
                     </Field>
+
+                    {/* Club Logo / Crest Upload */}
+                    <div>
+                      <span className="mb-2 block text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--text-faint)]">
+                        Club logo / crest
+                      </span>
+                      <div className="flex flex-wrap items-center gap-4 rounded-xl border border-[var(--border-strong)] bg-[var(--surface)] p-3.5">
+                        <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg)] p-1.5">
+                          <img
+                            src={values.clubLogo || CLUB_PLACEHOLDER}
+                            alt="Club logo preview"
+                            className="h-full w-full object-contain"
+                          />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-medium text-[var(--text-strong)]">
+                            {values.clubLogo ? 'Club logo selected' : 'Upload your club logo (optional)'}
+                          </p>
+                          <p className="mt-0.5 text-xs text-[var(--text-faint)]">
+                            PNG, JPG, WebP or SVG. Square transparent crest recommended. You can also update this later from your dashboard.
+                          </p>
+                          <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                            <input
+                              ref={logoInputRef}
+                              type="file"
+                              accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                              onChange={(e) => void onLogoFileChange(e)}
+                              className="hidden"
+                            />
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => logoInputRef.current?.click()}
+                            >
+                              {values.clubLogo ? 'Change logo' : 'Upload logo'}
+                            </Button>
+                            {values.clubLogo && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => setValues((v) => ({ ...v, clubLogo: null }))}
+                              >
+                                Remove
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      {logoError && (
+                        <p role="alert" className="mt-1.5 text-xs font-medium text-[var(--danger-text)]">
+                          {logoError}
+                        </p>
+                      )}
+                    </div>
 
                     <div className="grid gap-5 sm:grid-cols-2">
                       <Field
@@ -467,7 +553,7 @@ export default function RegisterPage() {
                           onChange={(e) =>
                             setValues((v) => ({ ...v, shortCode: e.target.value.toUpperCase() }))
                           }
-                          placeholder="e.g. KKV"
+                          placeholder="3-letter code (optional)"
                           maxLength={8}
                           autoCapitalize="characters"
                           spellCheck={false}
@@ -571,27 +657,51 @@ export default function RegisterPage() {
                     )}
 
                     {values.role === 'player' && (
-                      <Field
-                        label="Gamertag"
-                        error={errorFor('gamertag')}
-                        htmlFor="gamertag"
-                      >
-                        <input
-                          id="gamertag"
-                          name="gamertag"
-                          type="text"
-                          value={values.gamertag}
-                          onChange={set('gamertag')}
-                          placeholder="e.g. LethaL_ShoTs11"
-                          autoCapitalize="none"
-                          spellCheck={false}
-                          aria-invalid={Boolean(errorFor('gamertag'))}
-                          className={cx(inputCls, errorFor('gamertag') ? 'border-[var(--danger-text)]' : 'border-[var(--border-strong)]')}
-                        />
-                        <p className="mt-2 text-xs text-[var(--text-faint)]">
-                          Exactly as it appears in game, capitals and underscores included.
-                        </p>
-                      </Field>
+                      <>
+                        <Field
+                          label="Gamertag"
+                          error={errorFor('gamertag')}
+                          htmlFor="gamertag"
+                        >
+                          <input
+                            id="gamertag"
+                            name="gamertag"
+                            type="text"
+                            value={values.gamertag}
+                            onChange={set('gamertag')}
+                            placeholder="e.g. LethaL_ShoTs11"
+                            autoCapitalize="none"
+                            spellCheck={false}
+                            aria-invalid={Boolean(errorFor('gamertag'))}
+                            className={cx(inputCls, errorFor('gamertag') ? 'border-[var(--danger-text)]' : 'border-[var(--border-strong)]')}
+                          />
+                          <p className="mt-2 text-xs text-[var(--text-faint)]">
+                            Exactly as it appears in game, capitals and underscores included.
+                          </p>
+                        </Field>
+
+                        <Field
+                          label="Jersey / Shirt number"
+                          error={errorFor('shirtNumber')}
+                          htmlFor="shirtNumber"
+                        >
+                          <input
+                            id="shirtNumber"
+                            name="shirtNumber"
+                            type="number"
+                            min={1}
+                            max={99}
+                            value={values.shirtNumber}
+                            onChange={set('shirtNumber')}
+                            placeholder="e.g. 10 (1–99)"
+                            aria-invalid={Boolean(errorFor('shirtNumber'))}
+                            className={cx(inputCls, errorFor('shirtNumber') ? 'border-[var(--danger-text)]' : 'border-[var(--border-strong)]')}
+                          />
+                          <p className="mt-2 text-xs text-[var(--text-faint)]">
+                            Shown on your jersey on the Starting XI pitch. You or an admin can change it anytime.
+                          </p>
+                        </Field>
+                      </>
                     )}
 
                     {/* Password lives with the contact details because it is

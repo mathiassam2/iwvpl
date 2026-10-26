@@ -99,7 +99,7 @@ export async function runMigrations(dir = config.paths.migrations): Promise<Migr
       // migrations committed — which is correct, since DDL is not
       // transactional in TiDB and a partial rollback would be a lie.
       await conn.query(sql)
-      await conn.query(`INSERT INTO ${LEDGER} (filename, checksum, applied_at) VALUES (?, ?, ?)`, [
+      await conn.query(`INSERT IGNORE INTO ${LEDGER} (filename, checksum, applied_at) VALUES (?, ?, ?)`, [
         filename,
         checksum,
         now(),

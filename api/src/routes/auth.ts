@@ -97,6 +97,20 @@ auth.post(
     // be claimed here, so a collision is reported rather than silently
     // attaching an account to someone else's identity.
     const gamertag = role === 'player' ? clean(req.body?.gamertag, 'Gamertag', 120) : null
+    const rawShirtNumber = role === 'player' ? req.body?.shirtNumber : null
+    let shirtNumber: number | null = null
+    if (
+      role === 'player' &&
+      rawShirtNumber !== undefined &&
+      rawShirtNumber !== null &&
+      String(rawShirtNumber).trim() !== ''
+    ) {
+      const parsedShirt = Number.parseInt(String(rawShirtNumber), 10)
+      if (!Number.isInteger(parsedShirt) || parsedShirt < 1 || parsedShirt > 99) {
+        bad('Jersey number must be a whole number between 1 and 99.')
+      }
+      shirtNumber = parsedShirt
+    }
     const clubName = role === 'club_manager' ? clean(req.body?.clubName, 'Club name', 120) : null
 
     /* Optional. The code is decorative — it is not unique and slugs are the
@@ -130,6 +144,13 @@ auth.post(
       role === 'club_manager' && regionRaw
         ? REGION_FLAGS[regionRaw.toLowerCase()] ?? (regionRaw.length <= 16 ? regionRaw : null)
         : null
+
+    const clubLogoRaw =
+      role === 'club_manager' && req.body?.clubLogo ? String(req.body.clubLogo).trim() : ''
+    if (clubLogoRaw.length > 6_000_000) {
+      bad('Club logo image is too large.')
+    }
+    const clubLogo = clubLogoRaw || null
 
     if (gamertag) {
       const clash = await queryOne(
@@ -165,9 +186,9 @@ auth.post(
         // listed nowhere public and cannot play fixtures. GET /api/clubs
         // already filters on status, so pending needs no separate hiding.
         const [res] = await conn.execute(
-          `INSERT INTO clubs (name, slug, short_code, flag, status, created_at, updated_at)
-           VALUES (?, ?, ?, ?, 'pending', NOW(), NOW())`,
-          [clubName, clubSlug(clubName), shortCode, clubFlag],
+          `INSERT INTO clubs (name, slug, short_code, flag, logo_local, logo_url, status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, 'pending', NOW(), NOW())`,
+          [clubName, clubSlug(clubName), shortCode, clubFlag, clubLogo, clubLogo],
         )
         clubId = (res as any).insertId
       }
@@ -176,9 +197,9 @@ auth.post(
       if (gamertag) {
         const [res] = await conn.execute(
           `INSERT INTO players
-             (gamertag, gamertag_key, slug, club_id, is_free_agent, created_at, updated_at)
-           VALUES (?, ?, ?, NULL, TRUE, NOW(), NOW())`,
-          [gamertag, gamertagKey(gamertag), clubSlug(gamertag)],
+             (gamertag, gamertag_key, slug, shirt_number, club_id, is_free_agent, created_at, updated_at)
+           VALUES (?, ?, ?, ?, NULL, TRUE, NOW(), NOW())`,
+          [gamertag, gamertagKey(gamertag), clubSlug(gamertag), shirtNumber],
         )
         playerId = (res as any).insertId
       }

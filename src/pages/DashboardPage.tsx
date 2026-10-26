@@ -13,6 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { Pitch } from '@/components/club'
 import { Button, ButtonLink, Container, EmptyState, SmartImage } from '@/components/ui'
 import { useAuth } from '@/lib/auth'
 import { ApiError } from '@/lib/api'
@@ -24,12 +25,25 @@ import {
   leaveClub,
   managerOffers,
   playerOverview,
+  saveManagerLineup,
   searchPlayers,
   sendOffer,
   squad,
+  updateManagerClub,
+  updateMyPlayerProfile,
+  updateSquadPlayerShirt,
+  type ManagerClub,
   type Offer,
 } from '@/lib/api'
-import { cx } from '@/lib/format'
+import {
+  buildSquadFromLineup,
+  FORMATIONS,
+  type ClubLineup,
+  type ClubLineupBench,
+  type ClubLineupSlot,
+} from '@/lib/fixtures'
+import { CLUB_PLACEHOLDER, compressClubLogo, cx } from '@/lib/format'
+import { invalidateLiveClubCache } from '@/lib/liveLeague'
 
 /**
  * Panel.
@@ -94,25 +108,151 @@ function ManagerPanel() {
   const [busy, setBusy] = useState(false)
 
   const [clubName, setClubName] = useState('')
-  const [myClub, setMyClub] = useState<{ id: number; name: string; slug: string } | null>(null)
+  const [clubShortCode, setClubShortCode] = useState('')
+  const [clubLogoDraft, setClubLogoDraft] = useState<string | null>(null)
+  const createLogoRef = useRef<HTMLInputElement | null>(null)
+  const editLogoRef = useRef<HTMLInputElement | null>(null)
+
+  const [myClub, setMyClub] = useState<ManagerClub | null>(null)
+  const [editShortCode, setEditShortCode] = useState('')
   const [squadList, setSquadList] = useState<Awaited<ReturnType<typeof squad>>['squad']>([])
   const [offers, setOffers] = useState<Offer[]>([])
+
+  // Starting XI state
+  const [formation, setFormation] = useState<string>('4-3-3')
+  const [starters, setStarters] = useState<Array<ClubLineupSlot | null>>(Array(11).fill(null))
+  const [bench, setBench] = useState<ClubLineupBench[]>([])
+  const [activeSlotIdx, setActiveSlotIdx] = useState<number | null>(null)
+  const [slotSearch, setSlotSearch] = useState('')
+
+  const assignOrSwapSlot = (
+    targetIdx: number,
+    player: { id: number; gamertag: string; shirt_number?: number | null },
+  ) => {
+    const slots = (FORMATIONS[formation] || FORMATIONS['4-3-3']).slots
+    const targetCoord = slots[targetIdx]
+    if (!targetCoord) return
+    const targetPos = targetCoord[0]
+
+    setStarters((prev) => {
+      const next = [...prev]
+      const currentInTarget = next[targetIdx]
+      const existingIdx = next.findIndex(
+        (s, i) => i !== targetIdx && s && s.gamertag.toLowerCase() === player.gamertag.toLowerCase(),
+      )
+
+      if (existingIdx !== -1) {
+        const existingSlot = next[existingIdx]!
+        const existingPos = slots[existingIdx]?.[0] ?? existingSlot.position
+        const num = existingSlot.shirtNumber ?? existingSlot.number ?? player.shirt_number ?? targetIdx + 1
+        next[targetIdx] = {
+          position: targetPos,
+          role: targetPos,
+          playerId: player.id,
+          gamertag: player.gamertag,
+          shirtNumber: num,
+          number: num,
+        }
+        next[existingIdx] = currentInTarget
+          ? {
+              ...currentInTarget,
+              position: existingPos,
+              role: existingPos,
+            }
+          : null
+      } else {
+        const num =
+          currentInTarget?.shirtNumber ??
+          currentInTarget?.number ??
+          player.shirt_number ??
+          targetIdx + 1
+        next[targetIdx] = {
+          position: targetPos,
+          role: targetPos,
+          playerId: player.id,
+          gamertag: player.gamertag,
+          shirtNumber: num,
+          number: num,
+        }
+      }
+      return next
+    })
+
+    setBench((prev) =>
+      prev.filter((b) => b.gamertag.toLowerCase() !== player.gamertag.toLowerCase()),
+    )
+    setActiveSlotIdx(null)
+    setSlotSearch('')
+  }
 
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<Awaited<ReturnType<typeof searchPlayers>>['players']>([])
   const [searched, setSearched] = useState(false)
 
+  const initLineupState = useCallback(
+    (clubData: ManagerClub | null, players: Awaited<ReturnType<typeof squad>>['squad']) => {
+      const saved = clubData?.starting_xi
+      const fmtKey = saved?.formation && FORMATIONS[saved.formation] ? saved.formation : '4-3-3'
+      const slots = FORMATIONS[fmtKey].slots
+      setFormation(fmtKey)
+      setStarters(
+        slots.map(([pos], idx) => {
+          const s = saved?.starters?.[idx]
+          if (s && s.gamertag) {
+            const pMatch = players.find(
+              (p) =>
+                (s.playerId && p.id === s.playerId) ||
+                p.gamertag.toLowerCase() === s.gamertag.toLowerCase(),
+            )
+            const num = pMatch?.shirt_number ?? s.shirtNumber ?? s.number ?? idx + 1
+            return {
+              position: pos,
+              role: pos,
+              playerId: s.playerId ?? pMatch?.id ?? null,
+              gamertag: s.gamertag,
+              shirtNumber: num,
+              number: num,
+            }
+          }
+          return null
+        }),
+      )
+      setBench(
+        Array.isArray(saved?.bench)
+          ? saved.bench.map((b, idx) => {
+              const pMatch = players.find(
+                (p) =>
+                  (b.playerId && p.id === b.playerId) ||
+                  p.gamertag.toLowerCase() === b.gamertag.toLowerCase(),
+              )
+              const num = pMatch?.shirt_number ?? b.shirtNumber ?? b.number ?? 12 + idx
+              return {
+                playerId: b.playerId ?? pMatch?.id ?? null,
+                gamertag: b.gamertag,
+                shirtNumber: num,
+                number: num,
+                position: b.position || b.role || 'SUB',
+                role: b.position || b.role || 'SUB',
+              }
+            })
+          : [],
+      )
+    },
+    [],
+  )
 
   const loadClub = useCallback(async () => {
     try {
       const data = await squad()
       setMyClub(data.club)
+      setEditShortCode(data.club.short_code ?? '')
       setSquadList(data.squad)
+      initLineupState(data.club, data.squad)
     } catch {
       setMyClub(null)
       setSquadList([])
     }
-  }, [])
+  }, [initLineupState])
 
   const loadOffers = useCallback(async () => {
     try {
@@ -127,13 +267,78 @@ function ManagerPanel() {
     void loadOffers()
   }, [loadClub, loadOffers])
 
+  const onCreateLogoPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    try {
+      const dataUrl = await compressClubLogo(file)
+      setClubLogoDraft(dataUrl)
+    } catch (err) {
+      setNotice({ kind: 'error', text: err instanceof Error ? err.message : 'Could not read image.' })
+    }
+  }
+
+  const onUpdateClubLogo = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setBusy(true)
+    setNotice(null)
+    try {
+      const dataUrl = await compressClubLogo(file)
+      const res = await updateManagerClub({ logo: dataUrl })
+      setMyClub(res.club)
+      setNotice({ kind: 'ok', text: 'Club logo updated.' })
+    } catch (err) {
+      setNotice({ kind: 'error', text: msg(err) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const onRemoveClubLogo = async () => {
+    setBusy(true)
+    setNotice(null)
+    try {
+      const res = await updateManagerClub({ logo: null })
+      setMyClub(res.club)
+      setNotice({ kind: 'ok', text: 'Club logo removed.' })
+    } catch (err) {
+      setNotice({ kind: 'error', text: msg(err) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const onSaveShortCode = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setBusy(true)
+    setNotice(null)
+    try {
+      const res = await updateManagerClub({ shortCode: editShortCode.trim() || null })
+      setMyClub(res.club)
+      setEditShortCode(res.club.short_code ?? '')
+      setNotice({ kind: 'ok', text: 'Club short code saved.' })
+    } catch (err) {
+      setNotice({ kind: 'error', text: msg(err) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const onCreateClub = async (e: React.FormEvent) => {
     e.preventDefault()
     setBusy(true)
     setNotice(null)
     try {
-      await createClub(clubName.trim())
+      await createClub(clubName.trim(), {
+        shortCode: clubShortCode.trim() || undefined,
+        logo: clubLogoDraft,
+      })
       setClubName('')
+      setClubShortCode('')
+      setClubLogoDraft(null)
       setNotice({ kind: 'ok', text: 'Club created. An admin assigns it to a division before it can play.' })
       await Promise.all([loadClub(), refresh()])
     } catch (err) {
@@ -208,15 +413,66 @@ function ManagerPanel() {
           A club is created active but sits outside every division until a league admin assigns
           it. It will not appear in the standings until then.
         </p>
-        <form onSubmit={onCreateClub} className="flex flex-col gap-3 sm:flex-row">
-          <input
-            value={clubName}
-            onChange={(e) => setClubName(e.target.value)}
-            placeholder="e.g. KITA KITA VFC"
-            required
-            maxLength={120}
-            className={field}
-          />
+        <form onSubmit={onCreateClub} className="space-y-4">
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <input
+              value={clubName}
+              onChange={(e) => setClubName(e.target.value)}
+              placeholder="Enter your club name"
+              required
+              maxLength={120}
+              className={field}
+            />
+            <input
+              value={clubShortCode}
+              onChange={(e) => setClubShortCode(e.target.value.toUpperCase())}
+              placeholder="Short code (optional)"
+              maxLength={8}
+              className={cx(field, 'sm:w-48 uppercase')}
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg)] p-3">
+            <img
+              src={clubLogoDraft || CLUB_PLACEHOLDER}
+              alt="Club crest preview"
+              className="h-12 w-12 rounded-lg border border-[var(--border)] object-contain p-1"
+            />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold text-[var(--text-strong)]">
+                {clubLogoDraft ? 'Club logo ready' : 'Upload club logo (optional)'}
+              </p>
+              <p className="text-[11px] text-[var(--text-faint)]">
+                PNG, JPG, WebP or SVG crest image
+              </p>
+            </div>
+            <input
+              ref={createLogoRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/svg+xml"
+              onChange={(e) => void onCreateLogoPick(e)}
+              className="hidden"
+            />
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => createLogoRef.current?.click()}
+            >
+              {clubLogoDraft ? 'Change logo' : 'Upload logo'}
+            </Button>
+            {clubLogoDraft && (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => setClubLogoDraft(null)}
+              >
+                Remove
+              </Button>
+            )}
+          </div>
+
           <Button type="submit" disabled={busy || !clubName.trim()}>
             {busy ? 'Creating…' : 'Create club'}
           </Button>
@@ -255,6 +511,559 @@ function ManagerPanel() {
         </section>
       )}
 
+      {/* ---- club identity & logo ---- */}
+      <section className={card}>
+        <PanelHead
+          label="Club identity"
+          title={myClub?.name ?? user.clubName ?? 'Your club'}
+          action={
+            myClub?.slug && user.clubStatus === 'active' ? (
+              <ButtonLink to={`/clubs/${myClub.slug}`} variant="outline" size="sm">
+                Public page
+              </ButtonLink>
+            ) : undefined
+          }
+        />
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+          <div className="flex items-center gap-4">
+            <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[var(--border-strong)] bg-[var(--bg)] p-1.5">
+              <img
+                src={myClub?.logo_local || myClub?.logo_url || CLUB_PLACEHOLDER}
+                alt={myClub?.name || 'Club logo'}
+                className="h-full w-full object-contain"
+              />
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-[var(--text-strong)]">Club crest / logo</p>
+              <p className="mt-0.5 text-[12px] text-[var(--text-muted)]">
+                Shown on standings tables, fixtures, and your club profile.
+              </p>
+              <div className="mt-2.5 flex flex-wrap gap-2">
+                <input
+                  ref={editLogoRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                  onChange={(e) => void onUpdateClubLogo(e)}
+                  className="hidden"
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => editLogoRef.current?.click()}
+                >
+                  {myClub?.logo_local || myClub?.logo_url ? 'Change logo' : 'Upload logo'}
+                </Button>
+                {(myClub?.logo_local || myClub?.logo_url) && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    disabled={busy}
+                    onClick={() => void onRemoveClubLogo()}
+                  >
+                    Remove logo
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <form onSubmit={onSaveShortCode} className="flex items-end gap-2 sm:ml-auto">
+            <div>
+              <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-[var(--text-faint)]">
+                Short code
+              </label>
+              <input
+                value={editShortCode}
+                onChange={(e) => setEditShortCode(e.target.value.toUpperCase())}
+                placeholder="3-letter code"
+                maxLength={8}
+                className={cx(field, 'w-36 uppercase')}
+              />
+            </div>
+            <Button type="submit" size="sm" variant="outline" disabled={busy}>
+              Save
+            </Button>
+          </form>
+        </div>
+      </section>
+
+      {/* ---- starting xi & lineup ---- */}
+      <section className={card}>
+        <PanelHead
+          label="Lineup & formation"
+          title="Starting XI & Bench"
+          action={
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={formation}
+                onChange={(e) => {
+                  const nextFmt = e.target.value
+                  const slots = (FORMATIONS[nextFmt] || FORMATIONS['4-3-3']).slots
+                  setFormation(nextFmt)
+                  setStarters((prev) =>
+                    slots.map(([pos], idx) =>
+                      prev[idx] ? { ...prev[idx]!, position: pos, role: pos } : null,
+                    ),
+                  )
+                }}
+                className="h-9 rounded-lg border border-[var(--border-strong)] bg-[var(--bg)] px-2.5 text-xs font-bold text-[var(--text-strong)]"
+              >
+                {Object.keys(FORMATIONS).map((fmt) => (
+                  <option key={fmt} value={fmt}>
+                    Formation: {fmt}
+                  </option>
+                ))}
+              </select>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={busy || squadList.length === 0}
+                onClick={() => {
+                  const slots = (FORMATIONS[formation] || FORMATIONS['4-3-3']).slots
+                  setStarters(
+                    slots.map(([pos], idx) => {
+                      const p = squadList[idx]
+                      if (!p) return null
+                      const num = p.shirt_number ?? idx + 1
+                      return {
+                        position: pos,
+                        role: pos,
+                        playerId: p.id,
+                        gamertag: p.gamertag,
+                        shirtNumber: num,
+                        number: num,
+                      }
+                    }),
+                  )
+                  setBench(
+                    squadList.slice(11).map((p, idx) => ({
+                      playerId: p.id,
+                      gamertag: p.gamertag,
+                      shirtNumber: p.shirt_number ?? 12 + idx,
+                      number: p.shirt_number ?? 12 + idx,
+                      position: 'SUB',
+                      role: 'SUB',
+                    })),
+                  )
+                }}
+              >
+                Auto-fill from squad
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true)
+                  setNotice(null)
+                  try {
+                    const lineupPayload: ClubLineup = {
+                      formation,
+                      starters,
+                      bench,
+                    }
+                    await saveManagerLineup(lineupPayload)
+                    setNotice({ kind: 'ok', text: 'Starting XI saved and published to your club page.' })
+                    await loadClub()
+                  } catch (err) {
+                    setNotice({ kind: 'error', text: msg(err) })
+                  } finally {
+                    setBusy(false)
+                  }
+                }}
+              >
+                {busy ? 'Saving…' : 'Save Starting XI'}
+              </Button>
+            </div>
+          }
+        />
+
+        <div className="space-y-6">
+          <div className="mx-auto w-full max-w-[520px]">
+            <Pitch
+              home
+              squad={
+                buildSquadFromLineup({ formation, starters, bench }, user?.name) ?? {
+                  formation,
+                  manager: user?.name || 'Club Manager',
+                  starters: (FORMATIONS[formation] || FORMATIONS['4-3-3']).slots.map(
+                    ([role, x, y], idx) => ({
+                      number: idx + 1,
+                      name: 'Unassigned',
+                      role,
+                      x,
+                      y,
+                    }),
+                  ),
+                  bench: [],
+                }
+              }
+              activeSlotIndex={activeSlotIdx}
+              onSelectSlot={(idx) => {
+                if (activeSlotIdx === idx) {
+                  setActiveSlotIdx(null)
+                  setSlotSearch('')
+                } else {
+                  setActiveSlotIdx(idx)
+                  setSlotSearch('')
+                }
+              }}
+            >
+              {activeSlotIdx !== null && (
+                <>
+                  <div
+                    className="absolute inset-0 z-[6] rounded-card bg-black/25"
+                    onClick={() => {
+                      setActiveSlotIdx(null)
+                      setSlotSearch('')
+                    }}
+                  />
+                  {(() => {
+                    const slots = (FORMATIONS[formation] || FORMATIONS['4-3-3']).slots
+                    const activeCoord = slots[activeSlotIdx]
+                    if (!activeCoord) return null
+                    const [pos, x, y] = activeCoord
+                    const currentSlot = starters[activeSlotIdx]
+                    const q = slotSearch.trim().toLowerCase()
+                    const filtered = squadList.filter((p) =>
+                      q ? p.gamertag.toLowerCase().includes(q) : true,
+                    )
+                    const openAbove = y > 54
+
+                    return (
+                      <div
+                        className="absolute z-[12] w-[min(296px,calc(100%-16px))] -translate-x-1/2 overflow-hidden rounded-xl border border-[#c8ff3d]/45 bg-[#0c1014]/95 shadow-[0_20px_44px_rgba(0,0,0,0.8)] backdrop-blur-md"
+                        style={{
+                          left: `clamp(156px, ${x}%, calc(100% - 156px))`,
+                          ...(openAbove
+                            ? { bottom: `${Math.max(6, 100 - y + 7)}%` }
+                            : { top: `${Math.min(62, y + 7)}%` }),
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {/* Header */}
+                        <div className="flex items-center justify-between gap-2 border-b border-white/10 bg-white/[0.03] px-3 py-2">
+                          <div className="flex min-w-0 flex-1 items-center gap-2">
+                            <span className="shrink-0 rounded bg-[#c8ff3d] px-1.5 py-0.5 font-mono text-[10.5px] font-black text-[#0b0f05]">
+                              {pos}
+                            </span>
+                            <strong className="truncate text-xs font-bold text-white">
+                              {currentSlot ? currentSlot.gamertag : 'Empty Position'}
+                            </strong>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-1.5">
+                            {currentSlot && (
+                              <>
+                                <label
+                                  className="inline-flex h-6 items-center gap-0.5 rounded border border-white/20 bg-black/50 px-1.5 font-mono text-[11px] font-extrabold text-[#c8ff3d]"
+                                  title="Jersey Number (1–99)"
+                                >
+                                  <span>#</span>
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    max={99}
+                                    value={currentSlot.shirtNumber ?? currentSlot.number ?? ''}
+                                    onChange={(e) => {
+                                      const val = e.target.value ? Number(e.target.value) : null
+                                      if (val != null && val >= 1 && val <= 99) {
+                                        setStarters((prev) => {
+                                          const next = [...prev]
+                                          if (next[activeSlotIdx]) {
+                                            next[activeSlotIdx] = {
+                                              ...next[activeSlotIdx]!,
+                                              shirtNumber: val,
+                                              number: val,
+                                            }
+                                          }
+                                          return next
+                                        })
+                                      }
+                                    }}
+                                    className="w-7 bg-transparent text-center font-mono text-[11px] font-extrabold text-white outline-none"
+                                  />
+                                </label>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setStarters((prev) => {
+                                      const next = [...prev]
+                                      next[activeSlotIdx] = null
+                                      return next
+                                    })
+                                  }}
+                                  className="h-6 rounded border border-red-400/35 bg-red-500/15 px-2 text-[10px] font-bold text-red-300 hover:bg-red-500/25 hover:text-white"
+                                >
+                                  Clear
+                                </button>
+                              </>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveSlotIdx(null)
+                                setSlotSearch('')
+                              }}
+                              className="grid h-6 w-6 place-items-center rounded bg-white/10 text-sm text-white/75 hover:bg-white/20 hover:text-white"
+                              aria-label="Close picker"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Search input */}
+                        <div className="border-b border-white/10 p-2">
+                          <input
+                            type="search"
+                            autoFocus
+                            value={slotSearch}
+                            onChange={(e) => setSlotSearch(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Escape') {
+                                setActiveSlotIdx(null)
+                                setSlotSearch('')
+                              } else if (e.key === 'Enter' && filtered.length > 0) {
+                                e.preventDefault()
+                                assignOrSwapSlot(activeSlotIdx, filtered[0])
+                              }
+                            }}
+                            placeholder="Search squad player…"
+                            className="h-8 w-full rounded-lg border border-white/20 bg-black/55 px-2.5 text-xs text-white placeholder:text-white/45 focus:border-[#c8ff3d] focus:outline-none"
+                          />
+                        </div>
+
+                        {/* Player list */}
+                        <div className="max-h-44 space-y-1 overflow-y-auto p-1.5">
+                          {filtered.length === 0 ? (
+                            <p className="px-2 py-3 text-center text-[11px] text-white/60">
+                              {squadList.length === 0
+                                ? 'No signed squad players yet. Sign players below first.'
+                                : 'No squad players match your search.'}
+                            </p>
+                          ) : (
+                            filtered.map((p, pIdx) => {
+                              const isCurrent =
+                                currentSlot?.gamertag.toLowerCase() === p.gamertag.toLowerCase()
+                              const otherIdx = starters.findIndex(
+                                (s, idx) =>
+                                  idx !== activeSlotIdx &&
+                                  s &&
+                                  s.gamertag.toLowerCase() === p.gamertag.toLowerCase(),
+                              )
+                              const otherPos = otherIdx !== -1 ? slots[otherIdx]?.[0] : null
+                              const isOnBench = bench.some(
+                                (b) => b.gamertag.toLowerCase() === p.gamertag.toLowerCase(),
+                              )
+                              const displayNum =
+                                (isCurrent
+                                  ? currentSlot?.shirtNumber ?? currentSlot?.number
+                                  : null) ??
+                                (otherIdx !== -1
+                                  ? starters[otherIdx]?.shirtNumber ?? starters[otherIdx]?.number
+                                  : null) ??
+                                p.shirt_number ??
+                                pIdx + 1
+
+                              return (
+                                <button
+                                  key={p.id}
+                                  type="button"
+                                  onClick={() => assignOrSwapSlot(activeSlotIdx, p)}
+                                  className={cx(
+                                    'flex w-full items-center gap-2 rounded-lg border px-2 py-1.5 text-left text-xs transition',
+                                    isCurrent
+                                      ? 'border-[#c8ff3d]/45 bg-[#c8ff3d]/15 text-white'
+                                      : 'border-transparent text-white hover:border-white/15 hover:bg-white/10',
+                                  )}
+                                >
+                                  <span className="min-w-[28px] rounded bg-white/10 px-1.5 py-0.5 text-center font-mono text-[10.5px] font-extrabold text-[#c8ff3d]">
+                                    #{displayNum}
+                                  </span>
+                                  <span className="min-w-0 flex-1 truncate font-semibold">
+                                    {p.gamertag}
+                                  </span>
+                                  {isCurrent ? (
+                                    <span className="rounded bg-[#c8ff3d] px-1.5 py-0.5 text-[10px] font-bold text-[#0b0f05]">
+                                      ✓ Current
+                                    </span>
+                                  ) : otherPos ? (
+                                    <span className="rounded border border-sky-400/35 bg-sky-400/15 px-1.5 py-0.5 text-[10px] font-bold text-sky-300">
+                                      ⇄ Swap {otherPos}
+                                    </span>
+                                  ) : isOnBench ? (
+                                    <span className="rounded border border-amber-400/35 bg-amber-400/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-300">
+                                      ↑ From Bench
+                                    </span>
+                                  ) : (
+                                    <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-bold text-white/75">
+                                      Assign
+                                    </span>
+                                  )}
+                                </button>
+                              )
+                            })
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })()}
+                </>
+              )}
+            </Pitch>
+            <p className="mt-2.5 text-center text-xs leading-relaxed text-[var(--text-faint)]">
+              Click any jersey on the pitch to open the smart player dropdown — search your squad,
+              swap positions, or edit jersey numbers directly on the field.
+            </p>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            {/* Bench / Substitutes */}
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--bg)] p-3.5">
+              <div className="mb-2.5 flex items-center justify-between">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-faint)]">
+                  Bench / Substitutes ({bench.length})
+                </p>
+                <select
+                  value=""
+                  onChange={(e) => {
+                    const tag = e.target.value
+                    if (!tag) return
+                    const p = squadList.find((sp) => sp.gamertag === tag)
+                    if (!p) return
+                    if (bench.some((b) => b.gamertag.toLowerCase() === tag.toLowerCase())) return
+                    setBench((prev) => [
+                      ...prev,
+                      {
+                        playerId: p.id,
+                        gamertag: p.gamertag,
+                        shirtNumber: p.shirt_number ?? 12 + prev.length,
+                        position: 'SUB',
+                      },
+                    ])
+                  }}
+                  className="h-7 rounded border border-[var(--border-strong)] bg-[var(--surface)] px-2 text-[11px] font-semibold text-[var(--text-strong)]"
+                >
+                  <option value="">+ Add Substitute…</option>
+                  {squadList.map((p) => (
+                    <option key={p.id} value={p.gamertag}>
+                      {p.gamertag}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {bench.length === 0 ? (
+                <p className="text-xs text-[var(--text-faint)]">No substitutes added yet.</p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {bench.map((b, bIdx) => (
+                    <li
+                      key={`${b.gamertag}-${bIdx}`}
+                      className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-xs"
+                    >
+                      <input
+                        type="number"
+                        min={1}
+                        max={99}
+                        value={b.shirtNumber ?? ''}
+                        onChange={(e) => {
+                          const n = Number(e.target.value)
+                          setBench((prev) =>
+                            prev.map((item, i) =>
+                              i === bIdx && n >= 1 && n <= 99 ? { ...item, shirtNumber: n } : item,
+                            ),
+                          )
+                        }}
+                        className="h-7 w-12 rounded border border-[var(--border-strong)] bg-[var(--bg)] px-1 text-center font-mono text-xs font-bold text-[var(--text-strong)]"
+                      />
+                      <span className="min-w-0 flex-1 truncate font-semibold text-[var(--text-strong)]">
+                        {b.gamertag}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setBench((prev) => prev.filter((_, i) => i !== bIdx))}
+                        className="text-xs font-bold text-[var(--danger-text)] hover:underline"
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            {/* Signed Squad Lineup Status */}
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--bg)] p-3.5">
+              <div className="mb-2.5 flex items-center justify-between">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--accent-text)]">
+                  Squad Lineup Status ({starters.filter(Boolean).length} / 11 Starters)
+                </p>
+                {starters.some(Boolean) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStarters(Array(11).fill(null))
+                      setBench([])
+                    }}
+                    className="text-[11px] font-semibold text-[var(--text-faint)] hover:text-[var(--text-strong)]"
+                  >
+                    Clear Pitch
+                  </button>
+                )}
+              </div>
+              {squadList.length === 0 ? (
+                <p className="text-xs text-[var(--text-faint)]">
+                  Sign players to your squad below to place them on the pitch.
+                </p>
+              ) : (
+                <ul className="max-h-64 space-y-1.5 overflow-y-auto pr-1">
+                  {squadList.map((p, idx) => {
+                    const starterIdx = starters.findIndex(
+                      (s) => s && s.gamertag.toLowerCase() === p.gamertag.toLowerCase(),
+                    )
+                    const starterPos =
+                      starterIdx !== -1
+                        ? (FORMATIONS[formation] || FORMATIONS['4-3-3']).slots[starterIdx]?.[0]
+                        : null
+                    const isSub = bench.some(
+                      (b) => b.gamertag.toLowerCase() === p.gamertag.toLowerCase(),
+                    )
+                    return (
+                      <li
+                        key={p.id}
+                        className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-xs"
+                      >
+                        <span className="rounded bg-[var(--bg)] px-1.5 py-0.5 font-mono text-[10.5px] font-bold text-[var(--text-muted)]">
+                          #{p.shirt_number ?? idx + 1}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate font-semibold text-[var(--text-strong)]">
+                          {p.gamertag}
+                        </span>
+                        {starterPos ? (
+                          <span className="rounded bg-[var(--accent-tint)] px-2 py-0.5 font-mono text-[10px] font-extrabold text-[var(--accent-text)]">
+                            XI: {starterPos}
+                          </span>
+                        ) : isSub ? (
+                          <span className="rounded bg-[var(--surface-2)] px-2 py-0.5 text-[10px] font-bold text-[var(--text-muted)]">
+                            SUB
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-[var(--text-faint)]">Reserve</span>
+                        )}
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* ---- squad ---- */}
       <section className={card}>
         <PanelHead label="Squad" title={myClub?.name ?? 'Your squad'} />
@@ -276,6 +1085,31 @@ function ManagerPanel() {
                 >
                   {p.gamertag}
                 </Link>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-faint)]">
+                    Jersey #
+                  </span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={99}
+                    defaultValue={p.shirt_number ?? ''}
+                    placeholder="—"
+                    onBlur={async (e) => {
+                      const raw = e.target.value.trim()
+                      const nextNum = raw === '' ? null : Number(raw)
+                      if (nextNum === (p.shirt_number ?? null)) return
+                      try {
+                        await updateSquadPlayerShirt(p.id, nextNum)
+                        setNotice({ kind: 'ok', text: `Updated jersey number for ${p.gamertag}.` })
+                        await loadClub()
+                      } catch (err) {
+                        setNotice({ kind: 'error', text: msg(err) })
+                      }
+                    }}
+                    className="h-8 w-14 rounded-lg border border-[var(--border-strong)] bg-[var(--bg)] px-2 text-center font-mono text-xs font-bold text-[var(--text-strong)]"
+                  />
+                </div>
                 {p.pending > 0 && (
                   <span className="rounded-full bg-[var(--accent-tint)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--accent-text)]">
                     Awaiting reply
@@ -398,12 +1232,14 @@ function PlayerPanel() {
   const [notice, setNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
   const [club, setClub] = useState<{ id: number; name: string; slug: string } | null>(null)
+  const [shirtNumber, setShirtNumber] = useState<string>('')
   const [offers, setOffers] = useState<Offer[]>([])
 
   const load = useCallback(async () => {
     try {
       const overview = await playerOverview()
       setClub(overview.club)
+      setShirtNumber(overview.player.shirt_number != null ? String(overview.player.shirt_number) : '')
       setOffers((await incomingOffers()).offers)
     } catch (err) {
       setNotice({ kind: 'error', text: msg(err) })
@@ -413,6 +1249,23 @@ function PlayerPanel() {
   useEffect(() => {
     void load()
   }, [load])
+
+  const onSaveShirtNumber = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setBusy(true)
+    setNotice(null)
+    try {
+      const parsed = shirtNumber.trim() === '' ? null : Number(shirtNumber)
+      await updateMyPlayerProfile({ shirtNumber: parsed })
+      invalidateLiveClubCache()
+      setNotice({ kind: 'ok', text: 'Jersey number updated.' })
+      await load()
+    } catch (err) {
+      setNotice({ kind: 'error', text: msg(err) })
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const onDecide = async (id: number, decision: 'accept' | 'reject') => {
     setBusy(true)
@@ -474,6 +1327,26 @@ function PlayerPanel() {
             </Button>
           </div>
         )}
+
+        <form onSubmit={onSaveShirtNumber} className="mt-5 flex flex-wrap items-end gap-3 border-t border-[var(--border)] pt-4">
+          <div>
+            <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-[var(--text-faint)]">
+              Jersey / Shirt Number (1–99)
+            </label>
+            <input
+              type="number"
+              min={1}
+              max={99}
+              value={shirtNumber}
+              onChange={(e) => setShirtNumber(e.target.value)}
+              placeholder="e.g. 10"
+              className={cx(field, 'w-32 font-mono font-bold')}
+            />
+          </div>
+          <Button type="submit" size="sm" variant="outline" disabled={busy}>
+            Save Number
+          </Button>
+        </form>
       </section>
 
       <section className={card}>

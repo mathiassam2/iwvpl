@@ -46,65 +46,208 @@ export interface PitchPlayer {
   /** Percentages within the pitch box. */
   x: number
   y: number
+  playerId?: number | null
 }
 
 export interface Squad {
   formation: string
   starters: PitchPlayer[]
-  bench: { number: number; name: string; role: string }[]
+  bench: { number: number; name: string; role: string; playerId?: number | null }[]
   manager: string
 }
 
+export interface ClubLineupSlot {
+  slotIndex?: number
+  position?: string
+  role?: string
+  x?: number
+  y?: number
+  playerId: number | null
+  gamertag: string
+  shirtNumber?: number
+  number?: number
+}
+
+export interface ClubLineupBench {
+  playerId: number | null
+  gamertag: string
+  shirtNumber?: number
+  number?: number
+  position?: string
+  role?: string
+}
+
+export interface ClubLineup {
+  formation: string
+  starters: Array<ClubLineupSlot | null>
+  bench: ClubLineupBench[]
+  updatedAt?: string
+}
+
 /** x/y are percentages; y=100 is the goal the team defends. */
-const FORMATIONS: Record<string, { shape: string; slots: [role: string, x: number, y: number][] }> = {
+export const FORMATIONS: Record<string, { shape: string; slots: [role: string, x: number, y: number][] }> = {
   '4-3-3': {
     shape: '4-3-3',
     slots: [
       ['GK', 50, 91],
-      ['LB', 11, 76],
+      ['LB', 12, 75],
       ['CB', 37, 80],
       ['CB', 63, 80],
-      ['RB', 89, 76],
-      ['CM', 25, 56],
-      ['CM', 50, 49],
-      ['CM', 75, 56],
-      ['LW', 15, 22],
-      ['ST', 50, 13],
-      ['RW', 85, 22],
+      ['RB', 88, 75],
+      ['CM', 25, 55],
+      ['CM', 50, 48],
+      ['CM', 75, 55],
+      ['LW', 16, 22],
+      ['ST', 50, 14],
+      ['RW', 84, 22],
     ],
   },
   '4-2-3-1': {
     shape: '4-2-3-1',
     slots: [
       ['GK', 50, 91],
-      ['LB', 11, 76],
+      ['LB', 12, 75],
       ['CB', 37, 80],
       ['CB', 63, 80],
-      ['RB', 89, 76],
-      ['CDM', 38, 62],
-      ['CDM', 62, 62],
-      ['LM', 17, 41],
-      ['AM', 50, 37],
-      ['RM', 83, 41],
-      ['ST', 50, 13],
+      ['RB', 88, 75],
+      ['CDM', 36, 61],
+      ['CDM', 64, 61],
+      ['LM', 17, 39],
+      ['CAM', 50, 36],
+      ['RM', 83, 39],
+      ['ST', 50, 14],
+    ],
+  },
+  '4-4-2': {
+    shape: '4-4-2',
+    slots: [
+      ['GK', 50, 91],
+      ['LB', 12, 75],
+      ['CB', 37, 80],
+      ['CB', 63, 80],
+      ['RB', 88, 75],
+      ['LM', 14, 50],
+      ['CM', 38, 53],
+      ['CM', 62, 53],
+      ['RM', 86, 50],
+      ['ST', 36, 16],
+      ['ST', 64, 16],
     ],
   },
   '3-5-2': {
     shape: '3-5-2',
     slots: [
       ['GK', 50, 91],
-      ['CB', 25, 78],
-      ['CB', 50, 82],
-      ['CB', 75, 78],
-      ['LWB', 9, 57],
-      ['CM', 35, 56],
-      ['CM', 50, 45],
-      ['CM', 65, 56],
-      ['RWB', 91, 57],
-      ['ST', 36, 17],
-      ['ST', 64, 17],
+      ['CB', 24, 78],
+      ['CB', 50, 81],
+      ['CB', 76, 78],
+      ['LWB', 11, 54],
+      ['CDM', 35, 58],
+      ['CAM', 50, 42],
+      ['CDM', 65, 58],
+      ['RWB', 89, 54],
+      ['ST', 36, 16],
+      ['ST', 64, 16],
     ],
   },
+  '4-1-2-1-2': {
+    shape: '4-1-2-1-2',
+    slots: [
+      ['GK', 50, 91],
+      ['LB', 12, 75],
+      ['CB', 37, 80],
+      ['CB', 63, 80],
+      ['RB', 88, 75],
+      ['CDM', 50, 63],
+      ['LCM', 24, 48],
+      ['RCM', 76, 48],
+      ['CAM', 50, 34],
+      ['ST', 36, 15],
+      ['ST', 64, 15],
+    ],
+  },
+  '3-4-3': {
+    shape: '3-4-3',
+    slots: [
+      ['GK', 50, 91],
+      ['CB', 24, 78],
+      ['CB', 50, 81],
+      ['CB', 76, 78],
+      ['LM', 13, 52],
+      ['CM', 38, 55],
+      ['CM', 62, 55],
+      ['RM', 87, 52],
+      ['LW', 18, 22],
+      ['ST', 50, 14],
+      ['RW', 82, 22],
+    ],
+  },
+  '5-3-2': {
+    shape: '5-3-2',
+    slots: [
+      ['GK', 50, 91],
+      ['LWB', 10, 70],
+      ['CB', 30, 79],
+      ['CB', 50, 82],
+      ['CB', 70, 79],
+      ['RWB', 90, 70],
+      ['CM', 27, 52],
+      ['CM', 50, 46],
+      ['CM', 73, 52],
+      ['ST', 36, 16],
+      ['ST', 64, 16],
+    ],
+  },
+}
+
+export function buildSquadFromLineup(
+  lineup: ClubLineup | null | undefined,
+  managerName = 'Club Manager',
+  roster?: Array<{ id?: number | null; name: string; shirtNumber: number | null }>,
+): Squad | null {
+  if (!lineup || !Array.isArray(lineup.starters)) return null
+  const hasAnyStarter = lineup.starters.some((s) => Boolean(s?.gamertag?.trim()))
+  if (!hasAnyStarter) return null
+
+  const shapeKey = FORMATIONS[lineup.formation] ? lineup.formation : '4-3-3'
+  const templateSlots = FORMATIONS[shapeKey].slots
+  const rosterMap = roster
+    ? new Map(roster.map((r) => [r.name.toLowerCase(), r.shirtNumber]))
+    : null
+
+  const starters: PitchPlayer[] = templateSlots.map(([defaultRole, defaultX, defaultY], idx) => {
+    const saved = lineup.starters[idx]
+    const liveNum = (saved?.gamertag && rosterMap?.get(saved.gamertag.toLowerCase())) ?? null
+    return {
+      number: liveNum ?? saved?.shirtNumber ?? saved?.number ?? idx + 1,
+      name: saved?.gamertag?.trim() || '—',
+      role: saved?.position || saved?.role || defaultRole,
+      x: defaultX,
+      y: defaultY,
+      playerId: saved?.playerId ?? null,
+    }
+  })
+
+  const bench = Array.isArray(lineup.bench)
+    ? lineup.bench
+        .filter((b) => Boolean(b?.gamertag?.trim()))
+        .map((b, idx) => {
+          const liveNum = (b?.gamertag && rosterMap?.get(b.gamertag.toLowerCase())) ?? null
+          return {
+            number: liveNum ?? b.shirtNumber ?? b.number ?? idx + 12,
+            name: b.gamertag.trim(),
+            role: b.position || b.role || 'SUB',
+            playerId: b.playerId ?? null,
+          }
+        })
+    : []
+
+  return {
+    formation: shapeKey,
+    starters,
+    bench,
+    manager: managerName || 'Club Manager',
+  }
 }
 
 const FIRST = [

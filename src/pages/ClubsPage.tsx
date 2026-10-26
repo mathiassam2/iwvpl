@@ -5,7 +5,7 @@ import { Container, EmptyState, Section, Select, Tabs } from '@/components/ui'
 import { SITE, siteData } from '@/data'
 import type { ClubStatus } from '@/types/site'
 import { stripFlag } from '@/lib/format'
-import { getLiveClubs, liveLeagueEnabled } from '@/lib/liveLeague'
+import { getLiveClubs, liveLeagueEnabled, peekLiveClubs } from '@/lib/liveLeague'
 import { useSeasonName } from '@/lib/season'
 import type { Club } from '@/types/site'
 
@@ -32,7 +32,7 @@ export default function ClubsPage() {
    * build with no VITE_API_BASE_URL — the crawl renders exactly as before,
    * because a page that shows nothing is worse than one that shows yesterday.
    */
-  const [clubs, setClubs] = useState<Club[]>(siteData.clubs)
+  const [clubs, setClubs] = useState<Club[]>(() => peekLiveClubs() ?? siteData.clubs)
 
   useEffect(() => {
     if (!liveLeagueEnabled) return

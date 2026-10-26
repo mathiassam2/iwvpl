@@ -158,3 +158,53 @@ export function clubSlug(name: string): string {
 export function clubHref(name: string): string {
   return `/clubs/${clubSlug(stripFlag(name))}`
 }
+
+/**
+ * Compress & resize an uploaded club logo image to a square-friendly WebP/PNG data URL
+ * (max 256x256) so it stores cleanly in the database and loads fast everywhere.
+ */
+export async function compressClubLogo(file: File): Promise<string> {
+  if (!file.type.startsWith('image/')) {
+    throw new Error('Please choose a valid image file (PNG, JPG, WebP, or SVG).')
+  }
+  if (file.size > 8 * 1024 * 1024) {
+    throw new Error('Image file is too large (max 8 MB).')
+  }
+
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(new Error('Could not read the selected image file.'))
+    reader.onload = () => {
+      const dataUrl = String(reader.result ?? '')
+      if (file.type === 'image/svg+xml' && dataUrl.length < 300_000) {
+        resolve(dataUrl)
+        return
+      }
+      const img = new Image()
+      img.onerror = () => reject(new Error('Could not decode the selected image.'))
+      img.onload = () => {
+        const maxDim = 256
+        const scale = Math.min(1, maxDim / Math.max(img.width || 1, img.height || 1))
+        const w = Math.max(1, Math.round(img.width * scale))
+        const h = Math.max(1, Math.round(img.height * scale))
+        const canvas = document.createElement('canvas')
+        canvas.width = w
+        canvas.height = h
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          resolve(dataUrl)
+          return
+        }
+        ctx.clearRect(0, 0, w, h)
+        ctx.drawImage(img, 0, 0, w, h)
+        let out = canvas.toDataURL('image/webp', 0.88)
+        if (!out.startsWith('data:image/webp')) {
+          out = canvas.toDataURL('image/png')
+        }
+        resolve(out)
+      }
+      img.src = dataUrl
+    }
+    reader.readAsDataURL(file)
+  })
+}

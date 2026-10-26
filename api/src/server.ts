@@ -23,6 +23,7 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import cookieParser from 'cookie-parser'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { gzipSync } from 'node:zlib'
 import { config } from './config.js'
 import { closePool, queryOne } from './db.js'
 import { runMigrations } from './migrate.js'
@@ -45,6 +46,27 @@ app.disable('x-powered-by')
 
 app.use(express.json({ limit: '10mb' }))
 app.use(cookieParser())
+
+// Compress JSON API responses (>1KB) with gzip so large club/CMS payloads transfer 4-6x faster.
+app.use((req, res, next) => {
+  const accept = req.headers['accept-encoding'] ?? ''
+  if (!accept.includes('gzip')) return next()
+  const origJson = res.json.bind(res)
+  res.json = ((body: unknown) => {
+    if (res.headersSent) return origJson(body)
+    const jsonStr = JSON.stringify(body)
+    if (!jsonStr || jsonStr.length < 1024) {
+      return origJson(body)
+    }
+    const compressed = gzipSync(Buffer.from(jsonStr, 'utf8'), { level: 6 })
+    res.setHeader('Content-Type', 'application/json; charset=utf-8')
+    res.setHeader('Content-Encoding', 'gzip')
+    res.setHeader('Vary', 'Accept-Encoding')
+    res.setHeader('Content-Length', String(compressed.length))
+    return res.end(compressed)
+  }) as typeof res.json
+  next()
+})
 
 /* --------------------------------------------------------------- logging */
 

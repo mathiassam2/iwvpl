@@ -16,8 +16,8 @@ import { NextMatchCard, Pitch, TableSnippet, TeamFormStrip } from '@/components/
 import { SITE, siteData } from '@/data'
 import { AVATAR_PLACEHOLDER, CLUB_PLACEHOLDER, clubSlug, cx, stripFlag } from '@/lib/format'
 import { matchIndexOf } from '@/lib/match'
-import { getLiveClub, liveLeagueEnabled } from '@/lib/liveLeague'
-import { squadFor } from '@/lib/fixtures'
+import { getLiveClub, liveLeagueEnabled, peekLiveClub, peekLiveClubs } from '@/lib/liveLeague'
+import { buildSquadFromLineup } from '@/lib/fixtures'
 
 const STATUS_TONE = {
   Active: 'volt',
@@ -45,31 +45,35 @@ export default function ClubDetailPage() {
    * new club and correctly so.
    */
   const [liveClub, setLiveClub] = useState<Awaited<ReturnType<typeof getLiveClub>> | undefined>(
-    undefined,
+    () => (slug ? peekLiveClub(slug) : undefined),
   )
 
   useEffect(() => {
     if (!liveLeagueEnabled || !slug) return
     const controller = new AbortController()
+    const cached = peekLiveClub(slug)
+    if (cached) setLiveClub(cached)
 
     void (async () => {
       try {
         setLiveClub(await getLiveClub(slug, controller.signal))
       } catch {
-        setLiveClub(null)
+        if (!cached) setLiveClub(null)
       }
     })()
 
     return () => controller.abort()
   }, [slug])
 
-  const crawled = useMemo(
-    () => siteData.clubs.find((c) => clubSlug(stripFlag(c.name)) === clubSlug(slug)),
-    [slug],
-  )
-
-  /** Whether the crawl knows this club at all. Everything below is crawl data. */
-  const inCrawl = Boolean(crawled)
+  const crawled = useMemo(() => {
+    const target = clubSlug(slug)
+    const fromLiveList = peekLiveClubs()?.find(
+      (c) => (c.slug ? c.slug.toLowerCase() === slug.toLowerCase() : false) || clubSlug(stripFlag(c.name)) === target,
+    )
+    if (fromLiveList) return { ...fromLiveList, status: 'Active' as const }
+    const found = siteData.clubs.find((c) => clubSlug(stripFlag(c.name)) === target)
+    return found ? { ...found, status: 'Active' as const } : undefined
+  }, [slug])
 
   const club = liveClub === undefined ? crawled : (liveClub ?? crawled)
 
@@ -93,17 +97,13 @@ export default function ClubDetailPage() {
         rows: board.rows.filter((r) => sameClub(r.team, club.name)),
       }))
       .filter((g) => g.rows.length > 0)
-    /*
-     * `squadFor` is a seeded random-name generator, not a lookup — it invents
-     * a plausible 22 for any key it is given. For a club in the crawl that is
-     * harmless dressing; for a club created through an account it would print
-     * a starting XI of strangers under its name, which is a fabricated fact
-     * about a real club. A live-only club gets its actual roster instead, and
-     * no invented one.
-     */
-    const squad = inCrawl ? squadFor(club.name) : null
+    const squad = buildSquadFromLineup(
+      liveClub?.startingXi,
+      liveClub?.managerName || 'Club Manager',
+      liveClub?.roster,
+    )
     return { standing, matches: played, next, last, transfers, scorers, squad }
-  }, [club, inCrawl])
+  }, [club, liveClub])
 
   if (!club || !data) {
     return (
@@ -165,17 +165,15 @@ export default function ClubDetailPage() {
               <span className="font-semibold text-[var(--text-muted)]">{data.squad.manager}</span>
               {' · '}
               <span className="text-[var(--text-faint)]">
-                Lineup is placeholder data until squads are registered.
+                Official Starting XI ({data.squad.formation})
               </span>
             </p>
           </>
         ) : (
-          /* A club the crawl has never heard of has no lineup, and inventing
-             one would be inventing a fact about it. Say so instead. */
           <div className="p-5 sm:p-6">
             <EmptyState
-              title="No starting XI yet"
-              hint="Once your manager signs players and fixtures are played, the lineup appears here."
+              title="No starting XI set yet"
+              hint="Once the club manager or league admin sets the Starting XI, the formation and jerseys appear here."
             />
           </div>
         )}
@@ -221,8 +219,11 @@ export default function ClubDetailPage() {
       {liveClub && liveClub.roster.length > 0 ? (
         <ul className="divide-y divide-[var(--border)]">
           {liveClub.roster.map((p) => (
-            <li key={p.name} className="px-5 py-2.5 text-sm text-[var(--text)]">
-              {p.name}
+            <li key={p.name} className="flex items-center gap-3 px-5 py-2.5 text-sm text-[var(--text)]">
+              <span className="numeric grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[var(--surface-2)] text-[11px] font-bold text-[var(--accent-text)]">
+                {p.shirtNumber ?? '—'}
+              </span>
+              <span className="font-medium">{p.name}</span>
             </li>
           ))}
         </ul>
@@ -236,48 +237,75 @@ export default function ClubDetailPage() {
       )}
     </Card>
   ) : (
-    <div className="grid gap-6 lg:grid-cols-2">
-      <Card className="p-0">
-        <p className="border-b border-[var(--border)] bg-[var(--surface-2)] px-5 py-3 text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--accent-text)]">
-          Starting XI · {data.squad.formation}
-        </p>
-        <ul className="divide-y divide-[var(--border)]">
-          {data.squad.starters.map((p) => (
-            <li key={p.number} className="flex items-center gap-3 px-5 py-2.5">
-              <span className="numeric grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[var(--accent-tint)] text-[11px] font-bold text-[var(--accent-text)]">
-                {p.number}
-              </span>
-              <span className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--text)]">
-                {p.name}
-              </span>
-              <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-[var(--text-faint)]">
-                {p.role}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </Card>
+    <div className="space-y-6">
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card className="p-0">
+          <p className="border-b border-[var(--border)] bg-[var(--surface-2)] px-5 py-3 text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--accent-text)]">
+            Starting XI · {data.squad.formation}
+          </p>
+          <ul className="divide-y divide-[var(--border)]">
+            {data.squad.starters.map((p, idx) => (
+              <li key={`${idx}-${p.role}`} className="flex items-center gap-3 px-5 py-2.5">
+                <span className="numeric grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[var(--accent-tint)] text-[11px] font-bold text-[var(--accent-text)]">
+                  {p.number}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--text)]">
+                  {p.name}
+                </span>
+                <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-[var(--text-faint)]">
+                  {p.role}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Card>
 
-      <Card className="p-0">
-        <p className="border-b border-[var(--border)] bg-[var(--surface-2)] px-5 py-3 text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--text-faint)]">
-          Bench
-        </p>
-        <ul className="divide-y divide-[var(--border)]">
-          {data.squad.bench.map((p) => (
-            <li key={p.number} className="flex items-center gap-3 px-5 py-2.5">
-              <span className="numeric grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[var(--surface-2)] text-[11px] font-bold text-[var(--text-muted)]">
-                {p.number}
-              </span>
-              <span className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--text)]">
-                {p.name}
-              </span>
-              <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-[var(--text-faint)]">
-                {p.role}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </Card>
+        <Card className="p-0">
+          <p className="border-b border-[var(--border)] bg-[var(--surface-2)] px-5 py-3 text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--text-faint)]">
+            Bench ({data.squad.bench.length})
+          </p>
+          {data.squad.bench.length === 0 ? (
+            <p className="px-5 py-4 text-xs text-[var(--text-faint)]">No substitutes listed.</p>
+          ) : (
+            <ul className="divide-y divide-[var(--border)]">
+              {data.squad.bench.map((p, idx) => (
+                <li key={`${idx}-${p.name}`} className="flex items-center gap-3 px-5 py-2.5">
+                  <span className="numeric grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[var(--surface-2)] text-[11px] font-bold text-[var(--text-muted)]">
+                    {p.number}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--text)]">
+                    {p.name}
+                  </span>
+                  <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-[var(--text-faint)]">
+                    {p.role}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      </div>
+
+      {liveClub && liveClub.roster.length > 0 && (
+        <Card className="p-0">
+          <p className="border-b border-[var(--border)] bg-[var(--surface-2)] px-5 py-3 text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+            Full Signed Squad ({liveClub.roster.length})
+          </p>
+          <ul className="grid divide-y divide-[var(--border)] sm:grid-cols-2 sm:divide-y-0">
+            {liveClub.roster.map((p) => (
+              <li
+                key={p.name}
+                className="flex items-center gap-3 border-b border-[var(--border)] px-5 py-2.5 text-sm text-[var(--text)]"
+              >
+                <span className="numeric grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[var(--surface-2)] text-[11px] font-bold text-[var(--accent-text)]">
+                  {p.shirtNumber ?? '—'}
+                </span>
+                <span className="truncate font-medium">{p.name}</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
     </div>
   )
 
