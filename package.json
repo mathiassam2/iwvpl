@@ -8,12 +8,13 @@
     "build": "tsc -b --noCheck && node scripts/audit-iw-mark.mjs && vite build",
     "build:ghpages": "tsc -b --noCheck && node scripts/audit-iw-mark.mjs && vite build",
     "preview": "vite preview --port 3000 --host",
-    "typecheck": "tsc -b && node scripts/audit-iw-mark.mjs && node scripts/audit-arbitrary.mjs"
+    "typecheck": "tsc -b && node scripts/audit-iw-mark.mjs && node scripts/audit-arbitrary.mjs",
+    "deploy:beta": "node scripts/deploy-cpanel.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.28.0"
+    "react-router-dom": "^6.30.6"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",

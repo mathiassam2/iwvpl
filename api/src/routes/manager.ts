@@ -9,7 +9,7 @@
  */
 
 import { Router } from 'express'
-import { queryAll, queryOne, withTransaction } from '../db.js'
+import { execute, queryAll, queryOne, withTransaction } from '../db.js'
 import { requireAuth, requireManager } from '../middleware/auth.js'
 import { clubSlug } from '../domain/slug.js'
 import { notify } from '../domain/auth.js'
@@ -59,6 +59,7 @@ async function ownClub(userId: number): Promise<{
     starting_xi_json: string | null
   }>(
     'SELECT id, name, slug, short_code, flag, logo_local, logo_url, status, starting_xi_json FROM clubs WHERE id = (SELECT club_id FROM users WHERE id = ?)',
+
     [userId],
   )
   if (!club) {
@@ -385,11 +386,13 @@ manager.get(
     const club = await ownClub(req.user!.id)
     const rows = await queryAll(
       `SELECT p.id, p.gamertag, p.slug, p.shirt_number, p.avatar_local, p.is_free_agent,
+
               (SELECT COUNT(*) FROM transfer_requests tr
                 WHERE tr.player_id = p.id AND tr.to_club_id = ? AND tr.status = 'pending') AS pending
          FROM players p
         WHERE p.club_id = ?
         ORDER BY COALESCE(p.shirt_number, 999), p.gamertag`,
+
       [club.id, club.id],
     )
     res.json({ club, squad: rows })
@@ -550,3 +553,24 @@ manager.patch(
     res.json({ ok: true, playerId, shirtNumber })
   }),
 )
+
+
+/**
+ * Update the manager's club description.
+ */
+manager.patch(
+  '/club/description',
+  handler(async (req, res) => {
+    const club = await ownClub(req.user!.id)
+    const raw = req.body?.description
+    const description = raw === null || raw === undefined ? null : String(raw).trim().slice(0, 1000)
+
+    await execute('UPDATE clubs SET description = ?, updated_at = NOW() WHERE id = ?', [
+      description || null,
+      club.id,
+    ])
+
+    res.json({ ok: true, description: description || null })
+  }),
+)
+

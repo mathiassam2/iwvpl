@@ -532,11 +532,13 @@ export function invalidateLiveClubCache(slug?: string) {
     liveGetCache.clear()
     cachedLiveClubBySlug.clear()
   }
+
 }
 
 export async function getLiveClub(
   slug: string,
   signal?: AbortSignal,
+
 ): Promise<LiveClubDetail | null> {
   try {
     const response = await get<{
@@ -552,11 +554,13 @@ export async function getLiveClub(
       starting_xi?: ClubLineup | null
       division: { name: string } | null
       players: Array<{ id: number; gamertag: string; shirt_number?: number | null }>
+
     }>(`/api/clubs/${encodeURIComponent(slug)}`, signal)
 
     if (response.status !== 'active') return null
 
     const detail: LiveClubDetail = {
+
       name: response.name,
       slug: response.slug,
       flag: response.flag ?? '',
@@ -567,6 +571,9 @@ export async function getLiveClub(
       players: response.players.length,
       status: 'Active',
       raw: response.name,
+      description: response.description ?? null,
+      formation: response.formation ?? null,
+      manager: response.manager ?? null,
       division: response.division?.name ?? null,
       managerName: response.manager_name ?? null,
       startingXi: response.starting_xi ?? null,
@@ -575,6 +582,7 @@ export async function getLiveClub(
         name: p.gamertag,
         shirtNumber: p.shirt_number ?? null,
       })),
+
     }
     cachedLiveClubBySlug.set(slug.toLowerCase(), detail)
     if (response.slug) cachedLiveClubBySlug.set(response.slug.toLowerCase(), detail)

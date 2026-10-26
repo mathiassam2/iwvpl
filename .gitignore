@@ -1,8 +1,12 @@
 # Dependencies
 node_modules/
 
-# API
+# Environment and secrets
+.env
+.env.*
 api/.env
+
+# API
 api/dist/
 api/certs/
 admin/dist/
@@ -28,3 +32,5 @@ Thumbs.db
 .idea/
 .commandcode/
 *-reference.json
+powershell.cmd
+powershell.exe

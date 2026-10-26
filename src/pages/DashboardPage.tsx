@@ -33,6 +33,7 @@ import {
   updateMyPlayerProfile,
   updateSquadPlayerShirt,
   type ManagerClub,
+
   type Offer,
 } from '@/lib/api'
 import {
@@ -115,6 +116,7 @@ function ManagerPanel() {
 
   const [myClub, setMyClub] = useState<ManagerClub | null>(null)
   const [editShortCode, setEditShortCode] = useState('')
+
   const [squadList, setSquadList] = useState<Awaited<ReturnType<typeof squad>>['squad']>([])
   const [offers, setOffers] = useState<Offer[]>([])
 
@@ -261,6 +263,21 @@ function ManagerPanel() {
       setOffers([])
     }
   }, [])
+
+  const onSaveDescription = async (newDesc: string) => {
+    setBusy(true)
+    setNotice(null)
+    try {
+      await updateClubDescription(newDesc)
+      setMyClub((cur) => (cur ? { ...cur, description: newDesc || null } : null))
+      setEditingDesc(false)
+      setNotice({ kind: 'ok', text: newDesc ? 'Club description updated.' : 'Club description removed.' })
+    } catch (err) {
+      setNotice({ kind: 'error', text: msg(err) })
+    } finally {
+      setBusy(false)
+    }
+  }
 
   useEffect(() => {
     void loadClub()
@@ -1062,6 +1079,7 @@ function ManagerPanel() {
             </div>
           </div>
         </div>
+
       </section>
 
       {/* ---- squad ---- */}

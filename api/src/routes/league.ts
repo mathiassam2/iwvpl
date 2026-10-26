@@ -260,11 +260,12 @@ league.get(
                 ELSE c.logo_url
               END AS logo_url,
               ${clubLogoSql('c')} AS logo_local,
-              c.status, c.is_featured, c.source_url, c.starting_xi_json,
+              c.status, c.is_featured, c.description, c.formation, c.source_url, c.starting_xi_json,
               (SELECT COALESCE(u.display_name, u.email) FROM users u
                 WHERE u.club_id = c.id AND u.is_active = TRUE AND u.role IN ('club_manager', 'admin', 'owner')
                 ORDER BY u.id DESC LIMIT 1) AS manager_name
          FROM clubs c WHERE c.slug = ?`,
+
       [req.params.slug],
     )
     if (!club) return res.status(404).json({ error: 'Club not found' })
@@ -279,6 +280,7 @@ league.get(
     }
 
     const [division, players] = await Promise.all([
+
       queryOne(
         `SELECT d.id, d.name, d.slug
            FROM divisions d
@@ -290,6 +292,7 @@ league.get(
       queryAll(
         `SELECT id, gamertag, slug, shirt_number, avatar_local, is_free_agent
            FROM players WHERE club_id = ? ORDER BY COALESCE(shirt_number, 999), gamertag`,
+
         [club.id],
       ),
     ])
@@ -326,6 +329,7 @@ league.get(
     const { starting_xi_json: _ignored, ...restClub } = club
     res.setHeader('Cache-Control', 'no-cache, private')
     res.json({ ...restClub, starting_xi, division, players })
+
   }),
 )
 

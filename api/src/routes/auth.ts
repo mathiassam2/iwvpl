@@ -29,8 +29,22 @@ import {
 } from '../domain/auth.js'
 import { clubSlug, gamertagKey } from '../domain/slug.js'
 import { config } from '../config.js'
+import { createRateLimiter } from '../middleware/rateLimit.js'
 
 export const auth = Router()
+
+// Rate limiters to prevent brute-force attacks and credential stuffing
+const loginLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 15,
+  message: 'Too many login attempts. Please wait 15 minutes before trying again.',
+})
+
+const registerLimiter = createRateLimiter({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 10,
+  message: 'Too many accounts created from this IP. Please try again later.',
+})
 
 function handler(fn: (req: any, res: any) => Promise<void>) {
   return (req: any, res: any, next: any) => fn(req, res).catch(next)
@@ -72,6 +86,7 @@ function password(value: unknown): string {
 
 auth.post(
   '/register',
+  registerLimiter,
   handler(async (req, res) => {
     const role = String(req.body?.role ?? '')
     if (role !== 'player' && role !== 'club_manager') {
@@ -243,6 +258,7 @@ auth.post(
 
 auth.post(
   '/login',
+  loginLimiter,
   handler(async (req, res) => {
     const identifier = String(req.body?.email ?? '').trim()
     const secret = String(req.body?.password ?? '')

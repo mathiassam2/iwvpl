@@ -150,6 +150,7 @@ export const FORMATIONS: Record<string, { shape: string; slots: [role: string, x
       ['ST', 64, 16],
     ],
   },
+
   '4-1-2-1-2': {
     shape: '4-1-2-1-2',
     slots: [
@@ -180,6 +181,7 @@ export const FORMATIONS: Record<string, { shape: string; slots: [role: string, x
       ['LW', 18, 22],
       ['ST', 50, 14],
       ['RW', 82, 22],
+
     ],
   },
   '5-3-2': {
@@ -249,6 +251,7 @@ export function buildSquadFromLineup(
     manager: managerName || 'Club Manager',
   }
 }
+
 
 const FIRST = [
   'Aiman', 'Danish', 'Faisal', 'Hafiz', 'Irvin', 'Johan', 'Kamal', 'Luqman',
