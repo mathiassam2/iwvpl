@@ -13,7 +13,7 @@
  */
 
 import { Router } from 'express'
-import { searchEaClubs, getCandidateMatchesForFixture } from '../domain/eaSports.js'
+import { searchEaClubs, getCandidateMatchesForFixture, fetchEaClubDeepProfile, autoMatchClubs } from '../domain/eaSports.js'
 import { execute, queryAll, queryOne, withTransaction, type Params } from '../db.js'
 import {
   previewFixtures,
@@ -525,6 +525,59 @@ admin.get(
     }
     const clubs = await searchEaClubs(q)
     res.json({ ok: true, clubs })
+  }),
+)
+
+admin.get(
+  '/ea/clubs/deep-profile',
+  handler(async (req, res) => {
+    const clubId = typeof req.query.clubId === 'string' ? req.query.clubId.trim() : ''
+    if (!clubId) {
+      return res.status(400).json({ error: 'clubId query parameter is required.' })
+    }
+    const profile = await fetchEaClubDeepProfile(clubId)
+    if (!profile) {
+      return res.status(404).json({ error: 'Could not fetch EA Pro Clubs profile for this club.' })
+    }
+    res.json({ ok: true, profile })
+  }),
+)
+
+admin.post(
+  '/ea/clubs/auto-match',
+  handler(async (req, res) => {
+    const clubsList: any[] = Array.isArray(req.body.clubs) ? req.body.clubs : []
+    if (clubsList.length === 0) {
+      return res.json({ ok: true, matches: [] })
+    }
+    const matches = await autoMatchClubs(clubsList)
+    res.json({ ok: true, matches })
+  }),
+)
+
+admin.post(
+  '/ea/clubs/bulk-link',
+  handler(async (req, res) => {
+    const links: any[] = Array.isArray(req.body.links) ? req.body.links : []
+    if (links.length === 0) {
+      return res.status(400).json({ error: 'No club links provided.' })
+    }
+
+    await withTransaction(async (conn) => {
+      for (const item of links) {
+        const clubId = Number.parseInt(String(item.clubId), 10)
+        if (!Number.isSafeInteger(clubId) || clubId < 1) continue
+        const eaClubId = optionalString(item.eaClubId, 32)
+        const eaClubName = optionalString(item.eaClubName, 120)
+
+        await conn.execute(
+          `UPDATE clubs SET ea_club_id = ?, ea_club_name = ?, updated_at = NOW() WHERE id = ?`,
+          [eaClubId, eaClubName, clubId],
+        )
+      }
+    })
+
+    res.json({ ok: true, count: links.length })
   }),
 )
 

@@ -309,3 +309,235 @@ export async function getCandidateMatchesForFixture(
 
   return candidates
 }
+
+export interface EaClubDeepProfile {
+  clubId: string
+  name: string
+  stats: {
+    gamesPlayed: number
+    wins: number
+    draws: number
+    losses: number
+    goalsFor: number
+    goalsAgainst: number
+    goalDifference: number
+    skillRating: number
+    bestDivision: string
+    winStreak: number
+    unbeatenStreak: number
+  }
+  roster: Array<{
+    gamertag: string
+    proName: string
+    position: string
+    overallRating: number
+    gamesPlayed: number
+    goals: number
+    assists: number
+    ratingAve: number
+  }>
+  recentMatches: Array<{
+    matchId: string
+    timestamp: number
+    dateFormatted: string
+    opponentName: string
+    goalsFor: number
+    goalsAgainst: number
+    result: 'W' | 'D' | 'L'
+  }>
+}
+
+export interface AutoMatchItem {
+  clubId: number
+  clubName: string
+  clubSlug: string
+  currentEaClubId: string | null
+  currentEaClubName: string | null
+  matchStatus: 'exact' | 'high' | 'multiple' | 'none'
+  selectedCandidate: EaClubSearchResult | null
+  candidates: EaClubSearchResult[]
+}
+
+/**
+ * Fetch comprehensive deep profile for an EA Pro Clubs team.
+ */
+export async function fetchEaClubDeepProfile(
+  clubId: string,
+  platform = 'common-gen5',
+): Promise<EaClubDeepProfile | null> {
+  const cid = String(clubId).trim()
+  if (!cid) return null
+
+  try {
+    const [statsRes, membersRes, matchesRes] = await Promise.all([
+      fetch(`https://proclubs.ea.com/api/fc/clubs/overallStats?clubIds=${cid}&platform=${platform}`, { headers: EA_HEADERS }),
+      fetch(`https://proclubs.ea.com/api/fc/members/stats?clubId=${cid}&platform=${platform}`, { headers: EA_HEADERS }),
+      fetch(`https://proclubs.ea.com/api/fc/clubs/matches?clubIds=${cid}&platform=${platform}&matchType=leagueMatch`, { headers: EA_HEADERS }),
+    ])
+
+    const statsData = statsRes.ok ? ((await statsRes.json()) as any[]) : []
+    const membersData = membersRes.ok ? ((await membersRes.json()) as any) : {}
+    const matchesData = matchesRes.ok ? ((await matchesRes.json()) as any[]) : []
+
+    const st = Array.isArray(statsData) && statsData.length > 0 ? statsData[0] : {}
+    const gamesPlayed = Number(st.gamesPlayed ?? 0)
+    const wins = Number(st.wins ?? 0)
+    const draws = Number(st.ties ?? 0)
+    const losses = Number(st.losses ?? 0)
+    const goalsFor = Number(st.goals ?? 0)
+    const goalsAgainst = Number(st.goalsAgainst ?? 0)
+    const goalDifference = goalsFor - goalsAgainst
+    const skillRating = Number(st.skillRating ?? 0)
+    const bestDivision = String(st.bestDivision ?? 'Unranked')
+    const winStreak = Number(st.wstreak ?? 0)
+    const unbeatenStreak = Number(st.unbeatenstreak ?? 0)
+
+    const rawMembers: any[] = Array.isArray(membersData.members) ? membersData.members : []
+    const roster = rawMembers.map((m) => ({
+      gamertag: String(m.name ?? '').trim(),
+      proName: String(m.proName ?? '').trim(),
+      position: String(m.favoritePosition ?? m.proPos ?? 'Midfielder'),
+      overallRating: Number(m.proOverall ?? 0),
+      gamesPlayed: Number(m.gamesPlayed ?? 0),
+      goals: Number(m.goals ?? 0),
+      assists: Number(m.assists ?? 0),
+      ratingAve: Number.parseFloat(String(m.ratingAve ?? '0.0')) || 0,
+    }))
+
+    const rawMatches: any[] = Array.isArray(matchesData) ? matchesData : []
+    const recentMatches = rawMatches.slice(0, 10).map((m) => {
+      const clubsObj = m.clubs ?? {}
+      const clubIds = Object.keys(clubsObj)
+      const myData = clubsObj[cid] ?? {}
+      const oppId = clubIds.find((id) => id !== cid) ?? ''
+      const oppData = oppId ? clubsObj[oppId] ?? {} : {}
+
+      const gf = Number(myData.goals ?? 0)
+      const ga = Number(oppData.goals ?? 0)
+      const resChar: 'W' | 'D' | 'L' = gf > ga ? 'W' : gf === ga ? 'D' : 'L'
+      const ts = Number(m.timestamp) || 0
+      const dateFormatted = ts
+        ? new Date(ts * 1000).toLocaleString('en-GB', {
+            timeZone: 'UTC',
+            dateStyle: 'short',
+            timeStyle: 'short',
+          })
+        : 'Unknown Date'
+
+      return {
+        matchId: String(m.matchId),
+        timestamp: ts,
+        dateFormatted,
+        opponentName: oppData.details?.name ?? oppData.name ?? `Club #${oppId}`,
+        goalsFor: gf,
+        goalsAgainst: ga,
+        result: resChar,
+      }
+    })
+
+    const clubName =
+      recentMatches[0]?.opponentName && rawMatches[0]?.clubs?.[cid]?.details?.name
+        ? rawMatches[0].clubs[cid].details.name
+        : `Club #${cid}`
+
+    return {
+      clubId: cid,
+      name: clubName,
+      stats: {
+        gamesPlayed,
+        wins,
+        draws,
+        losses,
+        goalsFor,
+        goalsAgainst,
+        goalDifference,
+        skillRating,
+        bestDivision,
+        winStreak,
+        unbeatenStreak,
+      },
+      roster,
+      recentMatches,
+    }
+  } catch (err) {
+    console.error(`fetchEaClubDeepProfile error for clubId ${cid}:`, err)
+    return null
+  }
+}
+
+/**
+ * Auto-match a list of IWVPL clubs against EA Pro Clubs directory.
+ */
+export async function autoMatchClubs(
+  clubs: Array<{
+    id: number
+    name: string
+    slug: string
+    ea_club_id?: string | null
+    ea_club_name?: string | null
+  }>,
+): Promise<AutoMatchItem[]> {
+  const results: AutoMatchItem[] = []
+
+  for (const club of clubs) {
+    const rawName = club.name.trim()
+    const candidates = await searchEaClubs(rawName)
+
+    // Cleaned name search if no candidates (strip VFC, FC, ESPORTS)
+    let extraCandidates: EaClubSearchResult[] = []
+    if (candidates.length === 0) {
+      const cleaned = rawName
+        .replace(/\b(VFC|FC|ESPORTS|XI|CLUB)\b/gi, '')
+        .replace(/[^a-zA-Z0-9 ]/g, '')
+        .trim()
+      if (cleaned.length >= 3 && cleaned.toLowerCase() !== rawName.toLowerCase()) {
+        extraCandidates = await searchEaClubs(cleaned)
+      }
+    }
+
+    const allCandidates = [...candidates]
+    for (const ec of extraCandidates) {
+      if (!allCandidates.some((c) => c.clubId === ec.clubId)) {
+        allCandidates.push(ec)
+      }
+    }
+
+    const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
+    const targetNorm = norm(rawName)
+
+    let matchStatus: 'exact' | 'high' | 'multiple' | 'none' = 'none'
+    let selectedCandidate: EaClubSearchResult | null = null
+
+    // Exact match check
+    const exact = allCandidates.find((c) => norm(c.name) === targetNorm)
+    if (exact) {
+      matchStatus = 'exact'
+      selectedCandidate = exact
+    } else if (allCandidates.length === 1) {
+      matchStatus = 'high'
+      selectedCandidate = allCandidates[0]
+    } else if (allCandidates.length > 1) {
+      const startsWith = allCandidates.find((c) => norm(c.name).startsWith(targetNorm) || targetNorm.startsWith(norm(c.name)))
+      if (startsWith) {
+        matchStatus = 'high'
+        selectedCandidate = startsWith
+      } else {
+        matchStatus = 'multiple'
+        selectedCandidate = allCandidates[0]
+      }
+    }
+
+    results.push({
+      clubId: club.id,
+      clubName: club.name,
+      clubSlug: club.slug,
+      currentEaClubId: club.ea_club_id ?? null,
+      currentEaClubName: club.ea_club_name ?? null,
+      matchStatus,
+      selectedCandidate,
+      candidates: allCandidates,
+    })
+  }
+
+  return results
+}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { EaBulkLinkWizardModal } from './EaBulkLinkWizardModal'
 import {
   addPlayer,
   assignClubManager,
@@ -1381,13 +1382,25 @@ export function ClubsView({
             ))}
           </div>
 
-          <button
-            type="button"
-            className="adm-btn adm-btn-primary"
-            onClick={() => setCreateOpen(true)}
-          >
-            + Add New Club
-          </button>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className="adm-btn adm-btn-secondary"
+              onClick={() => setBulkWizardOpen(true)}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 700 }}
+              title="Bulk link multiple clubs to EA Sports FC Pro Clubs with live roster & box score previews"
+            >
+              <span>⚡</span>
+              <span>Bulk Link EA Clubs</span>
+            </button>
+            <button
+              type="button"
+              className="adm-btn adm-btn-primary"
+              onClick={() => setCreateOpen(true)}
+            >
+              + Add New Club
+            </button>
+          </div>
         </div>
 
         {/* Search & Filter Controls */}

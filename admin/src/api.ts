@@ -1259,3 +1259,78 @@ export const applyEaMatchResult = (
       body: JSON.stringify(data),
     },
   )
+
+export interface EaClubDeepProfile {
+  clubId: string
+  name: string
+  stats: {
+    gamesPlayed: number
+    wins: number
+    draws: number
+    losses: number
+    goalsFor: number
+    goalsAgainst: number
+    goalDifference: number
+    skillRating: number
+    bestDivision: string
+    winStreak: number
+    unbeatenStreak: number
+  }
+  roster: Array<{
+    gamertag: string
+    proName: string
+    position: string
+    overallRating: number
+    gamesPlayed: number
+    goals: number
+    assists: number
+    ratingAve: number
+  }>
+  recentMatches: Array<{
+    matchId: string
+    timestamp: number
+    dateFormatted: string
+    opponentName: string
+    goalsFor: number
+    goalsAgainst: number
+    result: 'W' | 'D' | 'L'
+  }>
+}
+
+export interface AutoMatchItem {
+  clubId: number
+  clubName: string
+  clubSlug: string
+  currentEaClubId: string | null
+  currentEaClubName: string | null
+  matchStatus: 'exact' | 'high' | 'multiple' | 'none'
+  selectedCandidate: EaClubSearchResult | null
+  candidates: EaClubSearchResult[]
+}
+
+export const getEaClubDeepProfile = (clubId: string) =>
+  request<{ ok: true; profile: EaClubDeepProfile }>(
+    `/api/admin/ea/clubs/deep-profile?clubId=${encodeURIComponent(clubId)}`,
+  ).then((r) => r.profile)
+
+export const autoMatchEaClubs = (
+  clubs: Array<{
+    id: number
+    name: string
+    slug: string
+    ea_club_id?: string | null
+    ea_club_name?: string | null
+  }>,
+) =>
+  request<{ ok: true; matches: AutoMatchItem[] }>('/api/admin/ea/clubs/auto-match', {
+    method: 'POST',
+    body: JSON.stringify({ clubs }),
+  }).then((r) => r.matches)
+
+export const bulkLinkEaClubs = (
+  links: Array<{ clubId: number; eaClubId: string; eaClubName: string }>,
+) =>
+  request<{ ok: true; count: number }>('/api/admin/ea/clubs/bulk-link', {
+    method: 'POST',
+    body: JSON.stringify({ links }),
+  })
