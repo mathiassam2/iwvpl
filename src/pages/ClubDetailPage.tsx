@@ -132,7 +132,7 @@ export default function ClubDetailPage() {
   }
 
   const name = stripFlag(club.name)
-  const lastHref = data.last ? `/matches/${matchIndexOf(data.last)}` : '/results'
+  const lastHref = data.last ? `/matches/${matchIndexOf(data.last)}` : '/matches'
 
   const overview = (
     <div className="space-y-6">
@@ -195,7 +195,7 @@ export default function ClubDetailPage() {
           eyebrow="Fixtures"
           title="Matches played"
           action={
-            <ButtonLink to="/results" variant="outline">
+            <ButtonLink to="/matches" variant="outline">
               All results
             </ButtonLink>
           }
@@ -612,7 +612,7 @@ export default function ClubDetailPage() {
                     Team form
                   </p>
                   <Link
-                    to="/results"
+                    to="/matches"
                     className="text-xs font-semibold text-[var(--text-muted)] transition-colors hover:text-[var(--accent-text)]"
                   >
                     All results →

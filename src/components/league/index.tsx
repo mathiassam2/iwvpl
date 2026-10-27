@@ -342,7 +342,7 @@ export function MatchRow({
   const played = match.hs !== '' && match.as !== ''
   return (
     <Link
-      to={index === undefined ? '/results' : matchHref(index)}
+      to={index === undefined ? '/matches' : matchHref(index)}
       /* `.match-tpl` rather than an arbitrary grid-cols: Tailwind v4 emits no
          rule for `grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]` here, so the
          class landed in the DOM and did nothing. */

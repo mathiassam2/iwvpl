@@ -68,6 +68,10 @@ export interface StandingDivision {
 }
 
 export interface Match {
+  id?: number
+  kickoff?: string | null
+  rawDate?: string | null
+  status?: string
   date: string
   time: string
   home: string

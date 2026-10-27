@@ -8,8 +8,8 @@ const ESSENTIAL = [
   { label: 'About Us', href: '/about' },
   { label: 'Contact', href: '/contact' },
   { label: 'Standings', href: '/standings' },
-  { label: 'Results', href: '/results' },
-  { label: 'Schedule', href: '/schedule' },
+  { label: 'Matches', href: '/matches' },
+
   { label: 'Leaderboard', href: '/leaderboard' },
   { label: 'Clubs', href: '/clubs' },
   { label: 'Transfer', href: '/transfer' },
@@ -20,8 +20,8 @@ const ESSENTIAL = [
 
 const LEAGUES = [
   { label: 'Standings', href: '/standings' },
-  { label: 'Results', href: '/results' },
-  { label: 'Schedule', href: '/schedule' },
+  { label: 'Matches', href: '/matches' },
+
   { label: 'Leaderboard', href: '/leaderboard' },
   { label: 'Clubs', href: '/clubs' },
   { label: 'Transfer', href: '/transfer' },

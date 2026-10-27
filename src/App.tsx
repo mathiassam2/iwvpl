@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect } from 'react'
-import { HashRouter, Route, Routes, useLocation } from 'react-router-dom'
+import { HashRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AppShell } from '@/components/layout/AppShell'
 import HomePage from '@/pages/HomePage'
 import { useParallax } from '@/hooks/useParallax'
@@ -9,8 +9,9 @@ import { SeasonProvider } from '@/lib/season'
 import { SiteContentProvider } from '@/data'
 
 const StandingsPage = lazy(() => import('@/pages/StandingsPage'))
-const ResultsPage = lazy(() => import('@/pages/ResultsPage'))
-const SchedulePage = lazy(() => import('@/pages/SchedulePage'))
+const MatchesPage = lazy(() => import('@/pages/MatchesPage'))
+
+
 const LeaderboardPage = lazy(() => import('@/pages/LeaderboardPage'))
 const ClubsPage = lazy(() => import('@/pages/ClubsPage'))
 const TransferPage = lazy(() => import('@/pages/TransferPage'))
@@ -85,8 +86,9 @@ export default function App() {
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/standings" element={<StandingsPage />} />
-            <Route path="/results" element={<ResultsPage />} />
-            <Route path="/schedule" element={<SchedulePage />} />
+            <Route path="/matches" element={<MatchesPage />} />
+            <Route path="/results" element={<Navigate to="/matches?tab=results" replace />} />
+            <Route path="/schedule" element={<Navigate to="/matches?tab=upcoming" replace />} />
             <Route path="/leaderboard" element={<LeaderboardPage />} />
             <Route path="/clubs" element={<ClubsPage />} />
             <Route path="/matches/:id" element={<MatchPage />} />

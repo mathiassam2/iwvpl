@@ -186,7 +186,7 @@ export default function MatchPage() {
             hint="That fixture is not in the current season's results."
           />
           <div className="mt-6 flex justify-center">
-            <ButtonLink to="/results" size="lg">
+            <ButtonLink to="/matches" size="lg">
               All results
             </ButtonLink>
           </div>
@@ -320,8 +320,8 @@ export default function MatchPage() {
           <nav aria-label="Breadcrumb" className="mb-6">
             <ol className="flex items-center gap-2 text-xs text-[var(--text-faint)]">
               <li>
-                <Link to="/results" className="transition-colors hover:text-[var(--text)]">
-                  Results
+                <Link to="/matches" className="transition-colors hover:text-[var(--text)]">
+                  Matches
                 </Link>
               </li>
               <li aria-hidden>/</li>
@@ -382,10 +382,10 @@ export default function MatchPage() {
           </div>
 
           <div className="mt-10 flex flex-wrap justify-center gap-3">
-            <ButtonLink to="/results" variant="outline">
+            <ButtonLink to="/matches?tab=results" variant="outline">
               All results
             </ButtonLink>
-            <ButtonLink to="/schedule">Full schedule</ButtonLink>
+            <ButtonLink to="/matches?tab=upcoming">Full schedule</ButtonLink>
           </div>
         </Container>
       </Section>

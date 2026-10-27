@@ -12,8 +12,8 @@ import AccountMenu from '@/components/layout/AccountMenu'
 
 const LEAGUE_LINKS = [
   { label: 'Standings', href: '/standings', desc: 'League tables & form guides' },
-  { label: 'Results', href: '/results', desc: 'Every completed fixture' },
-  { label: 'Schedule', href: '/schedule', desc: 'Upcoming kick-off times' },
+  { label: 'Matches', href: '/matches', desc: 'Fixtures, schedules & results' },
+
   { label: 'Leaderboard', href: '/leaderboard', desc: 'Top scorers, assists & saves' },
   { label: 'Clubs', href: '/clubs', desc: 'Registered clubs & rosters' },
   { label: 'Transfer', href: '/transfer', desc: 'Signings, releases & moves' },

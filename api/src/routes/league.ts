@@ -341,9 +341,9 @@ league.get(
 league.get(
   '/matches',
   handler(async (req, res) => {
-    const limit = intParam(req.query.limit, 50, 1, 200)
+    const limit = intParam(req.query.limit, 50, 1, 500)
     const offset = intParam(req.query.offset, 0, 0, 100000)
-    const status = typeof req.query.status === 'string' ? req.query.status : null
+    const status = typeof req.query.status === 'string' && req.query.status !== 'all' ? req.query.status : null
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
     res.setHeader('Pragma', 'no-cache')
     res.setHeader('Expires', '0')

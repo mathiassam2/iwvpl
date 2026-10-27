@@ -28,7 +28,7 @@ interface ApiFormat {
 
 interface ApiMatch {
   id: number
-  kickoff: string
+  kickoff: string | null
   status: string
   home_score: number | null
   away_score: number | null
@@ -178,21 +178,48 @@ export async function getLiveSeasonClubs(
   return response.clubs
 }
 
-function toMatch(match: ApiMatch): Match {
-  const [datePart, timePart = ''] = match.kickoff.split(' ')
-  const date = new Date(`${datePart}T00:00:00`)
-  const formattedDate = Number.isNaN(date.getTime())
-    ? datePart
-    : date.toLocaleDateString('en-GB', {
-        weekday: 'long',
-        day: '2-digit',
-        month: 'long',
-        year: 'numeric',
-      })
-
+export function formatMatchKickoff(kickoff: string | null | undefined): {
+  date: string
+  time: string
+  rawDate: string | null
+} {
+  if (!kickoff) {
+    return { date: 'Unscheduled / TBD', time: '', rawDate: null }
+  }
+  const clean = kickoff.replace(' ', 'T')
+  const dateObj = new Date(clean)
+  if (Number.isNaN(dateObj.getTime())) {
+    const [d = '', t = ''] = kickoff.split(/[ T]/)
+    return { date: d || 'Unscheduled', time: t.slice(0, 5), rawDate: d || null }
+  }
+  const formattedDate = dateObj.toLocaleDateString('en-GB', {
+    weekday: 'long',
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  })
+  const hours = String(dateObj.getHours()).padStart(2, '0')
+  const minutes = String(dateObj.getMinutes()).padStart(2, '0')
+  const time = `${hours}:${minutes}`
+  const year = dateObj.getFullYear()
+  const month = String(dateObj.getMonth() + 1).padStart(2, '0')
+  const day = String(dateObj.getDate()).padStart(2, '0')
   return {
     date: formattedDate,
-    time: timePart.slice(0, 5),
+    time,
+    rawDate: `${year}-${month}-${day}`,
+  }
+}
+
+export function toMatch(match: ApiMatch): Match {
+  const { date, time, rawDate } = formatMatchKickoff(match.kickoff)
+  return {
+    id: match.id,
+    date,
+    time,
+    rawDate,
+    kickoff: match.kickoff,
+    status: match.status,
     home: match.home_name,
     home_flag: '',
     home_logo: '',
@@ -221,6 +248,43 @@ export async function getLiveResults(
     offset: 0,
   })
   return page.matches
+}
+
+export async function getLiveMatches(
+  signal: AbortSignal,
+  opts?: {
+    seasonId?: number
+    clubSlug?: string
+    status?: string
+    result?: 'all' | 'pending' | 'completed'
+    sort?: 'latest' | 'priority'
+    limit?: number
+    offset?: number
+  },
+): Promise<{ matches: Match[]; total: number; pendingTotal: number; completedTotal: number }> {
+  const params = new URLSearchParams({
+    limit: String(opts?.limit ?? 500),
+    offset: String(opts?.offset ?? 0),
+  })
+  if (opts?.seasonId != null) params.set('seasonId', String(opts.seasonId))
+  if (opts?.clubSlug) params.set('clubSlug', opts.clubSlug)
+  if (opts?.status && opts.status !== 'all') params.set('status', opts.status)
+  if (opts?.result && opts.result !== 'all') params.set('result', opts.result)
+  if (opts?.sort) params.set('sort', opts.sort)
+
+  const response = await get<{
+    matches: ApiMatch[]
+    total: number
+    pendingTotal?: number
+    completedTotal?: number
+  }>(`/api/matches?${params}`, signal)
+
+  return {
+    matches: response.matches.map(toMatch),
+    total: response.total,
+    pendingTotal: response.pendingTotal ?? 0,
+    completedTotal: response.completedTotal ?? 0,
+  }
 }
 
 export async function getLiveResultsPage(

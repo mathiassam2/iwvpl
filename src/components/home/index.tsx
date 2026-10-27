@@ -922,7 +922,7 @@ export function ResultsPreview() {
               eyebrow="Match results"
               title="Latest scorelines"
               action={
-                <ButtonLink to="/results" variant="outline">
+                <ButtonLink to="/matches?tab=results" variant="outline">
                   All results
                 </ButtonLink>
               }
