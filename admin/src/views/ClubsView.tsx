@@ -266,6 +266,20 @@ function SearchableManagerPicker({
           Showing {filtered.length} matching account{filtered.length === 1 ? '' : 's'}
         </small>
       )}
+
+      {/* Bulk EA FC Pro Clubs Linking Wizard Modal */}
+      <EaBulkLinkWizardModal
+        isOpen={bulkWizardOpen}
+        onClose={() => setBulkWizardOpen(false)}
+        onSuccess={(msg) => {
+          report('ok', msg)
+          void loadClubs()
+        }}
+        clubs={clubs}
+        divisions={divisions}
+        guard={guard}
+        report={report}
+      />
     </div>
   )
 }
@@ -320,6 +334,7 @@ export function ClubsView({
 
   // Create Club modal
   const [createOpen, setCreateOpen] = useState(initialSub === 'create')
+  const [bulkWizardOpen, setBulkWizardOpen] = useState(false)
   const [newClubName, setNewClubName] = useState('')
   const [newClubCode, setNewClubCode] = useState('')
   const [newClubFlag, setNewClubFlag] = useState('')
