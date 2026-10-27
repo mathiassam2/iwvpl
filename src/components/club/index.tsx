@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { Card, SmartImage } from '@/components/ui'
-import { CLUB_PLACEHOLDER, cx, stripFlag } from '@/lib/format'
+import { CLUB_PLACEHOLDER, clubHref, clubSlug, cx, stripFlag } from '@/lib/format'
 import type { Squad } from '@/lib/fixtures'
 import type { Match } from '@/types/site'
 
@@ -278,13 +278,18 @@ export function TeamFormStrip({ matches, club }: { matches: Match[]; club: strin
     )
   }
 
+  const norm = (s: string) => clubSlug(stripFlag(s))
+  const clubTarget = norm(club)
+
   return (
     <ul className="grid grid-cols-5 gap-1.5">
       {matches.slice(0, 5).map((m, i) => {
         const hs = Number(m.hs)
         const as = Number(m.as)
         const played = Number.isFinite(hs) && Number.isFinite(as)
-        const clubIsHome = stripFlag(m.home) === stripFlag(club)
+        const clubIsHome =
+          norm(m.home) === clubTarget ||
+          stripFlag(m.home).toLowerCase() === stripFlag(club).toLowerCase()
         const gf = clubIsHome ? hs : as
         const ga = clubIsHome ? as : hs
         const outcome = !played ? null : gf > ga ? 'W' : gf < ga ? 'L' : 'D'
@@ -331,7 +336,6 @@ export function TeamFormStrip({ matches, club }: { matches: Match[]; club: strin
 
 /* ================================================================ TableSnippet */
 
-/** Compact table around the club - the PL-style "position" panel. */
 export function TableSnippet({
   rows,
   highlight,
@@ -349,9 +353,15 @@ export function TableSnippet({
   }>
   highlight: string
 }) {
-  const idx = rows.findIndex((r) => stripFlag(r.team) === highlight)
+  const norm = (s: string) => clubSlug(stripFlag(s))
+  const target = norm(highlight)
+  const idx = rows.findIndex(
+    (r) =>
+      norm(r.team) === target ||
+      stripFlag(r.team).toLowerCase() === stripFlag(highlight).toLowerCase(),
+  )
   if (idx < 0) return null
-  const start = Math.max(0, Math.min(idx - 2, rows.length - 5))
+  const start = Math.max(0, Math.min(idx - 2, Math.max(0, rows.length - 5)))
   const window = rows.slice(start, start + 5)
 
   return (
@@ -370,7 +380,9 @@ export function TableSnippet({
 
       <ul className="min-w-0 flex-1">
         {window.map((r) => {
-          const on = stripFlag(r.team) === highlight
+          const on =
+            norm(r.team) === target ||
+            stripFlag(r.team).toLowerCase() === stripFlag(highlight).toLowerCase()
           return (
             <li
               key={r.team}
@@ -396,10 +408,7 @@ export function TableSnippet({
                 className="object-contain"
               />
               <Link
-                to={`/clubs/${r.team
-                  .toLowerCase()
-                  .replace(/[^a-z0-9]+/g, '-')
-                  .replace(/^-|-$/g, '')}`}
+                to={clubHref(r.team)}
                 className="min-w-0 flex-1 truncate text-xs font-semibold text-[var(--text)] hover:underline"
               >
                 {stripFlag(r.team)}

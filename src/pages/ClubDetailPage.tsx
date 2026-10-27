@@ -16,7 +16,16 @@ import { NextMatchCard, Pitch, TableSnippet, TeamFormStrip } from '@/components/
 import { SITE, siteData } from '@/data'
 import { AVATAR_PLACEHOLDER, CLUB_PLACEHOLDER, clubSlug, cx, stripFlag } from '@/lib/format'
 import { matchIndexOf } from '@/lib/match'
-import { getLiveClub, liveLeagueEnabled, peekLiveClub, peekLiveClubs } from '@/lib/liveLeague'
+import {
+  getLiveClub,
+  getLiveMatches,
+  getLiveStandings,
+  liveLeagueEnabled,
+  peekLiveClub,
+  peekLiveClubs,
+  type LiveStandings,
+} from '@/lib/liveLeague'
+import type { Match, Standing } from '@/types/site'
 import { buildSquadFromLineup } from '@/lib/fixtures'
 import { useAuth } from '@/lib/auth'
 import { updateClubDescription } from '@/lib/api'
@@ -54,6 +63,8 @@ export default function ClubDetailPage() {
   const [liveClub, setLiveClub] = useState<Awaited<ReturnType<typeof getLiveClub>> | undefined>(
     () => (slug ? peekLiveClub(slug) : undefined),
   )
+  const [liveStandings, setLiveStandings] = useState<LiveStandings | null>(null)
+  const [liveMatches, setLiveMatches] = useState<Match[] | null>(null)
 
   useEffect(() => {
     if (!liveLeagueEnabled || !slug) return
@@ -63,7 +74,25 @@ export default function ClubDetailPage() {
 
     void (async () => {
       try {
-        setLiveClub(await getLiveClub(slug, controller.signal))
+        const [clubRes, standingsRes, matchesRes] = await Promise.allSettled([
+          getLiveClub(slug, controller.signal),
+          getLiveStandings(controller.signal),
+          getLiveMatches(controller.signal, { clubSlug: slug, limit: 200 }),
+        ])
+
+        if (clubRes.status === 'fulfilled') {
+          setLiveClub(clubRes.value)
+        } else if (!cached) {
+          setLiveClub(null)
+        }
+
+        if (standingsRes.status === 'fulfilled') {
+          setLiveStandings(standingsRes.value)
+        }
+
+        if (matchesRes.status === 'fulfilled') {
+          setLiveMatches(matchesRes.value.matches)
+        }
       } catch {
         if (!cached) setLiveClub(null)
       }
@@ -86,15 +115,70 @@ export default function ClubDetailPage() {
 
   const data = useMemo(() => {
     if (!club) return null
-    const standing = siteData.standings.find((s) => sameClub(s.team, club.name))
-    const all = siteData.results.filter(
-      (m) => sameClub(m.home, club.name) || sameClub(m.away, club.name),
-    )
-    const played = all.filter((m) => m.hs !== '' && m.as !== '')
-    const next = all.find((m) => m.hs === '' || m.as === '')
-    const last = played.length
-      ? [...played].sort((a, b) => b.date.localeCompare(a.date))[0]
-      : undefined
+
+    // Find live standing row and division table
+    let liveStanding: Standing | undefined
+    let divisionTable: Standing[] = []
+    if (liveStandings) {
+      for (const div of Object.values(liveStandings.divisions)) {
+        const found = div.rows.find(
+          (r) =>
+            sameClub(r.team, club.name) ||
+            clubSlug(stripFlag(r.team)) === clubSlug(stripFlag(slug)) ||
+            (club.slug && clubSlug(stripFlag(r.team)) === clubSlug(stripFlag(club.slug))),
+        )
+        if (found) {
+          liveStanding = found
+          divisionTable = div.rows
+          break
+        }
+      }
+    }
+
+    const crawlStanding = siteData.standings.find((s) => sameClub(s.team, club.name))
+    const standing = liveStanding ?? crawlStanding
+
+    // Matches
+    let played: Match[]
+    let next: Match | undefined
+    let last: Match | undefined
+
+    if (liveMatches !== null) {
+      const sortedPlayed = liveMatches
+        .filter((m) => (m.hs !== '' && m.as !== '') || m.status === 'finished')
+        .sort((a, b) => {
+          const dateA = a.rawDate || a.date
+          const dateB = b.rawDate || b.date
+          const cmp = dateB.localeCompare(dateA)
+          if (cmp !== 0) return cmp
+          return (b.id ?? 0) - (a.id ?? 0)
+        })
+
+      const sortedPending = liveMatches
+        .filter((m) => m.status !== 'finished' && (m.hs === '' || m.as === ''))
+        .sort((a, b) => {
+          const dateA = a.rawDate || a.date
+          const dateB = b.rawDate || b.date
+          const cmp = dateA.localeCompare(dateB)
+          if (cmp !== 0) return cmp
+          return (a.id ?? 0) - (b.id ?? 0)
+        })
+
+      played = sortedPlayed
+      next = sortedPending[0]
+      last = sortedPlayed[0]
+    } else {
+      const all = siteData.results.filter(
+        (m) => sameClub(m.home, club.name) || sameClub(m.away, club.name),
+      )
+      const crawlPlayed = all
+        .filter((m) => m.hs !== '' && m.as !== '')
+        .sort((a, b) => b.date.localeCompare(a.date))
+      played = crawlPlayed
+      next = all.find((m) => m.hs === '' || m.as === '')
+      last = crawlPlayed[0]
+    }
+
     const transfers = siteData.transfers
       .filter((t) => sameClub(t.from.name, club.name) || sameClub(t.to.name, club.name))
       .slice(0, 8)
@@ -109,9 +193,8 @@ export default function ClubDetailPage() {
       liveClub?.managerName || 'Club Manager',
       liveClub?.roster,
     )
-    return { standing, matches: played, next, last, transfers, scorers, squad }
-  }, [club, liveClub])
-
+    return { standing, divisionTable, matches: played, next, last, transfers, scorers, squad }
+  }, [club, liveClub, liveStandings, liveMatches, slug])
 
   if (!club || !data) {
     return (
@@ -132,7 +215,22 @@ export default function ClubDetailPage() {
   }
 
   const name = stripFlag(club.name)
-  const lastHref = data.last ? `/matches/${matchIndexOf(data.last)}` : '/matches'
+  const lastHref = data.last
+    ? data.last.id != null
+      ? `/matches/${data.last.id}`
+      : matchIndexOf(data.last) >= 0
+        ? `/matches/${matchIndexOf(data.last)}`
+        : '/matches'
+    : '/matches'
+
+  const nextMatchTarget = data.next ?? data.last
+  const nextMatchHref = nextMatchTarget
+    ? nextMatchTarget.id != null
+      ? `/matches/${nextMatchTarget.id}`
+      : matchIndexOf(nextMatchTarget) >= 0
+        ? `/matches/${matchIndexOf(nextMatchTarget)}`
+        : '/matches'
+    : '/matches'
 
   const overview = (
     <div className="space-y-6">
@@ -604,7 +702,7 @@ export default function ClubDetailPage() {
 
             {/* right rail */}
             <div className="space-y-6 lg:order-2">
-              <NextMatchCard next={data.next} last={data.last} href={lastHref} />
+              <NextMatchCard next={data.next} last={data.last} href={nextMatchHref} />
 
               <Card className="p-0">
                 <div className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-5 py-3.5">
@@ -637,7 +735,7 @@ export default function ClubDetailPage() {
                     </Link>
                   </div>
                   <div className="p-5">
-                    <TableSnippet rows={siteData.standings} highlight={name} />
+                    <TableSnippet rows={data.divisionTable.length > 0 ? data.divisionTable : siteData.standings} highlight={name} />
                   </div>
                 </Card>
               )}

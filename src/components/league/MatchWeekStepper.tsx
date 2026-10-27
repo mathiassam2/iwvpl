@@ -196,34 +196,6 @@ export function MatchWeekStepper({
             </button>
           </div>
 
-          {/* Quick Number Grid */}
-          {numberedWeeks.length > 0 && (
-            <div className="mb-4">
-              <span className="mb-2 block text-[11px] font-semibold text-[var(--text-muted)]">
-                Quick Select ({numberedWeeks.length} Weeks):
-              </span>
-              <div className="grid grid-cols-6 gap-1.5 sm:grid-cols-8 md:grid-cols-11">
-                {numberedWeeks.map((w) => {
-                  const isCurrent = selectedWeekId === w.id
-                  return (
-                    <button
-                      key={w.id}
-                      type="button"
-                      onClick={() => handleSelect(w.id)}
-                      className={`grid h-8 place-items-center rounded-lg text-xs font-bold transition-all ${
-                        isCurrent
-                          ? 'bg-[var(--accent-solid)] text-[var(--on-volt)] shadow-md shadow-[var(--accent-solid)]/20'
-                          : 'border border-[var(--border)] bg-[var(--surface-2)] text-[var(--text-muted)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-3)] hover:text-[var(--text-strong)]'
-                      }`}
-                      title={`${w.label} (${w.dateRange})`}
-                    >
-                      {w.weekNum}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          )}
 
           {/* Detailed Scrollable List */}
           <div>
