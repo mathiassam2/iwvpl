@@ -18,6 +18,8 @@ import { AVATAR_PLACEHOLDER, CLUB_PLACEHOLDER, clubSlug, cx, stripFlag } from '@
 import { matchIndexOf } from '@/lib/match'
 import { getLiveClub, liveLeagueEnabled, peekLiveClub, peekLiveClubs } from '@/lib/liveLeague'
 import { buildSquadFromLineup } from '@/lib/fixtures'
+import { useAuth } from '@/lib/auth'
+import { updateClubDescription } from '@/lib/api'
 
 
 const STATUS_TONE = {

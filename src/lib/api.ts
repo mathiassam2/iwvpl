@@ -165,6 +165,12 @@ export const updateManagerClub = (patch: {
     body: JSON.stringify(patch),
   })
 
+export const updateClubDescription = (description: string) =>
+  request<{ ok: true; description: string | null }>('/api/manager/club/description', {
+    method: 'PATCH',
+    body: JSON.stringify({ description }),
+  })
+
 export const searchPlayers = (q: string, signal?: AbortSignal) =>
   request<{
     players: Array<{

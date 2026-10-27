@@ -264,20 +264,7 @@ function ManagerPanel() {
     }
   }, [])
 
-  const onSaveDescription = async (newDesc: string) => {
-    setBusy(true)
-    setNotice(null)
-    try {
-      await updateClubDescription(newDesc)
-      setMyClub((cur) => (cur ? { ...cur, description: newDesc || null } : null))
-      setEditingDesc(false)
-      setNotice({ kind: 'ok', text: newDesc ? 'Club description updated.' : 'Club description removed.' })
-    } catch (err) {
-      setNotice({ kind: 'error', text: msg(err) })
-    } finally {
-      setBusy(false)
-    }
-  }
+
 
   useEffect(() => {
     void loadClub()

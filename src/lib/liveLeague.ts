@@ -512,6 +512,7 @@ export async function getLivePlayer(
  * publish an unapproved entry.
  */
 export type LiveClubDetail = Club & {
+  id?: number
   division: string | null
   managerName: string | null
   startingXi: ClubLineup | null
@@ -550,6 +551,8 @@ export async function getLiveClub(
       logo_url: string | null
       logo_local: string | null
       status: string
+      description?: string | null
+      formation?: string | null
       manager_name?: string | null
       starting_xi?: ClubLineup | null
       division: { name: string } | null
@@ -561,6 +564,7 @@ export async function getLiveClub(
 
     const detail: LiveClubDetail = {
 
+      id: response.id,
       name: response.name,
       slug: response.slug,
       flag: response.flag ?? '',
@@ -573,7 +577,7 @@ export async function getLiveClub(
       raw: response.name,
       description: response.description ?? null,
       formation: response.formation ?? null,
-      manager: response.manager ?? null,
+
       division: response.division?.name ?? null,
       managerName: response.manager_name ?? null,
       startingXi: response.starting_xi ?? null,
