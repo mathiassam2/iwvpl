@@ -267,19 +267,7 @@ function SearchableManagerPicker({
         </small>
       )}
 
-      {/* Bulk EA FC Pro Clubs Linking Wizard Modal */}
-      <EaBulkLinkWizardModal
-        isOpen={bulkWizardOpen}
-        onClose={() => setBulkWizardOpen(false)}
-        onSuccess={(msg) => {
-          report('ok', msg)
-          void loadClubs()
-        }}
-        clubs={clubs}
-        divisions={divisions}
-        guard={guard}
-        report={report}
-      />
+
     </div>
   )
 }
@@ -2850,6 +2838,20 @@ export function ClubsView({
           </aside>
         </div>
       )}
+
+      {/* Bulk EA FC Pro Clubs Linking Wizard Modal */}
+      <EaBulkLinkWizardModal
+        isOpen={bulkWizardOpen}
+        onClose={() => setBulkWizardOpen(false)}
+        onSuccess={(msg) => {
+          report('ok', msg)
+          void loadClubs()
+        }}
+        clubs={clubs}
+        divisions={divisions}
+        guard={guard}
+        report={report}
+      />
     </div>
   )
 }
