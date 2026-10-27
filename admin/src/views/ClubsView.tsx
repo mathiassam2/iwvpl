@@ -15,6 +15,7 @@ import {
   invalidateAdminCache,
   removePlayer,
   saveClubLineup,
+  searchEaClubs,
   setFeaturedClubs,
   updateClub,
   type AdminUser,
@@ -23,6 +24,7 @@ import {
   type ClubLineupBench,
   type ClubLineupSlot,
   type Division,
+  type EaClubSearchResult,
   type HomepageRegion,
   type PendingClub,
 } from '../api'
