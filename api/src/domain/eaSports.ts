@@ -59,74 +59,148 @@ export interface EaMatchCandidate {
   awayPlayers: EaPlayerStatItem[]
 }
 
+const searchCache = new Map<string, { timestamp: number; results: EaClubSearchResult[] }>()
+const SEARCH_CACHE_TTL_MS = 10 * 60 * 1000 // 10 minutes
+
 /**
- * Search clubs by name via EA Pro Clubs discovery endpoint.
+ * Search clubs by name directly via official EA Pro Clubs API endpoints,
+ * with multi-tier fallback (All-Time Leaderboard -> Season Leaderboard -> Community Cache).
  */
-export async function searchEaClubs(name: string): Promise<EaClubSearchResult[]> {
+export async function searchEaClubs(name: string, platform = 'common-gen5'): Promise<EaClubSearchResult[]> {
   const trimmed = name.trim()
   if (!trimmed || trimmed.length < 2) return []
 
-  try {
-    const url = `https://fc.kedai.com.my/api/public/club-check?name=${encodeURIComponent(trimmed)}`
-    const res = await fetch(url, { headers: { 'User-Agent': EA_HEADERS['User-Agent'], Accept: 'application/json' } })
-    if (!res.ok) return []
-    const data = (await res.json()) as any
-
-    const results: EaClubSearchResult[] = []
-    const seen = new Set<string>()
-
-    if (Array.isArray(data.ea?.results)) {
-      for (const c of data.ea.results) {
-        const cid = String(c.clubId)
-        if (!seen.has(cid)) {
-          seen.add(cid)
-          results.push({
-            clubId: cid,
-            name: c.name ?? 'Unknown Club',
-            wins: Number(c.wins ?? 0),
-            draws: Number(c.draws ?? 0),
-            losses: Number(c.losses ?? 0),
-          })
-        }
-      }
-    }
-
-    if (Array.isArray(data.found)) {
-      for (const c of data.found) {
-        const cid = String(c.clubId)
-        if (!seen.has(cid)) {
-          seen.add(cid)
-          results.push({
-            clubId: cid,
-            name: c.name ?? 'Unknown Club',
-            matches: Number(c.matches ?? 0),
-            wins: Number(c.wins ?? 0),
-            draws: Number(c.draws ?? 0),
-            losses: Number(c.losses ?? 0),
-          })
-        }
-      }
-    }
-
-    if (Array.isArray(data.near)) {
-      for (const c of data.near) {
-        const cid = String(c.clubId)
-        if (!seen.has(cid)) {
-          seen.add(cid)
-          results.push({
-            clubId: cid,
-            name: c.name ?? 'Unknown Club',
-            matches: Number(c.matches ?? 0),
-          })
-        }
-      }
-    }
-
-    return results
-  } catch (err) {
-    console.error('searchEaClubs error:', err)
-    return []
+  const cacheKey = `${platform}:${trimmed.toLowerCase()}`
+  const cached = searchCache.get(cacheKey)
+  if (cached && Date.now() - cached.timestamp < SEARCH_CACHE_TTL_MS) {
+    return cached.results
   }
+
+  const results: EaClubSearchResult[] = []
+  const seen = new Set<string>()
+
+  // 1. Primary: Direct official EA Sports FC Pro Clubs Leaderboard Search
+  try {
+    const url = `https://proclubs.ea.com/api/fc/allTimeLeaderboard/search?clubName=${encodeURIComponent(trimmed)}&platform=${platform}`
+    const res = await fetch(url, { headers: EA_HEADERS })
+    if (res.ok) {
+      const data = (await res.json()) as any[]
+      if (Array.isArray(data)) {
+        for (const c of data) {
+          const cid = String(c.clubId ?? c.clubInfo?.clubId ?? '')
+          if (cid && !seen.has(cid)) {
+            seen.add(cid)
+            results.push({
+              clubId: cid,
+              name: c.clubName ?? c.clubInfo?.name ?? `Club #${cid}`,
+              wins: Number(c.wins ?? 0),
+              draws: Number(c.ties ?? c.draws ?? 0),
+              losses: Number(c.losses ?? 0),
+              matches: Number(c.gamesPlayed ?? 0),
+            })
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Direct EA all-time search warning:', err)
+  }
+
+  // 2. Secondary fallback: Current season leaderboard search if no all-time results
+  if (results.length === 0) {
+    try {
+      const url = `https://proclubs.ea.com/api/fc/currentSeasonLeaderboard/search?clubName=${encodeURIComponent(trimmed)}&platform=${platform}`
+      const res = await fetch(url, { headers: EA_HEADERS })
+      if (res.ok) {
+        const data = (await res.json()) as any[]
+        if (Array.isArray(data)) {
+          for (const c of data) {
+            const cid = String(c.clubId ?? c.clubInfo?.clubId ?? '')
+            if (cid && !seen.has(cid)) {
+              seen.add(cid)
+              results.push({
+                clubId: cid,
+                name: c.clubName ?? c.clubInfo?.name ?? `Club #${cid}`,
+                wins: Number(c.wins ?? 0),
+                draws: Number(c.ties ?? c.draws ?? 0),
+                losses: Number(c.losses ?? 0),
+                matches: Number(c.gamesPlayed ?? 0),
+              })
+            }
+          }
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // 3. Tertiary fallback: Community indexed directory (fc.kedai.com.my)
+  if (results.length === 0) {
+    try {
+      const url = `https://fc.kedai.com.my/api/public/club-check?name=${encodeURIComponent(trimmed)}`
+      const res = await fetch(url, { headers: { 'User-Agent': EA_HEADERS['User-Agent'], Accept: 'application/json' } })
+      if (res.ok) {
+        const data = (await res.json()) as any
+
+        if (Array.isArray(data.ea?.results)) {
+          for (const c of data.ea.results) {
+            const cid = String(c.clubId)
+            if (!seen.has(cid)) {
+              seen.add(cid)
+              results.push({
+                clubId: cid,
+                name: c.name ?? 'Unknown Club',
+                wins: Number(c.wins ?? 0),
+                draws: Number(c.draws ?? 0),
+                losses: Number(c.losses ?? 0),
+              })
+            }
+          }
+        }
+
+        if (Array.isArray(data.found)) {
+          for (const c of data.found) {
+            const cid = String(c.clubId)
+            if (!seen.has(cid)) {
+              seen.add(cid)
+              results.push({
+                clubId: cid,
+                name: c.name ?? 'Unknown Club',
+                matches: Number(c.matches ?? 0),
+                wins: Number(c.wins ?? 0),
+                draws: Number(c.draws ?? 0),
+                losses: Number(c.losses ?? 0),
+              })
+            }
+          }
+        }
+
+        if (Array.isArray(data.near)) {
+          for (const c of data.near) {
+            const cid = String(c.clubId)
+            if (!seen.has(cid)) {
+              seen.add(cid)
+              results.push({
+                clubId: cid,
+                name: c.name ?? 'Unknown Club',
+                matches: Number(c.matches ?? 0),
+              })
+            }
+          }
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // Cache results
+  if (results.length > 0) {
+    searchCache.set(cacheKey, { timestamp: Date.now(), results })
+  }
+
+  return results
 }
 
 /**
