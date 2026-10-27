@@ -329,6 +329,7 @@ export function ClubsView({
 
   // Slide-over Side Drawer for Club Details + Crest Upload + Manager Assignment + Squad Roster
   const [drawerClubSlug, setDrawerClubSlug] = useState<string | null>(null)
+  const currentClub = clubs.find((c) => c.slug === drawerClubSlug)
   const [drawerDetail, setDrawerDetail] = useState<ClubDetailResponse | null>(null)
   const [drawerLoading, setDrawerLoading] = useState(false)
   const [editName, setEditName] = useState('')
@@ -709,7 +710,6 @@ export function ClubsView({
   const handleSaveDrawerClub = async (e: FormEvent) => {
     e.preventDefault()
     if (!drawerClubSlug) return
-    const currentClub = clubs.find((c) => c.slug === drawerClubSlug)
     if (!currentClub) return
 
     setDrawerBusy(true)
@@ -967,7 +967,6 @@ export function ClubsView({
 
   const handleDeleteClub = async () => {
     if (!drawerClubSlug) return
-    const currentClub = clubs.find((c) => c.slug === drawerClubSlug)
     if (
       !window.confirm(
         `Delete ${currentClub?.name ?? drawerClubSlug} permanently? This removes its fixtures and standings rows and releases its players to free agency.`,
