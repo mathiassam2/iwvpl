@@ -152,6 +152,8 @@ league.get(
 
     const clubs = await queryAll(
       `SELECT c.id, c.name, c.slug, c.short_code, c.flag,
+              c.ea_club_id, c.ea_club_name,
+              c.ea_club_id, c.ea_club_name,
               CASE
                 WHEN LEFT(COALESCE(c.logo_url, ''), 5) = 'data:' OR c.logo_url = c.logo_local
                   THEN NULL
@@ -417,10 +419,12 @@ league.get(
     const [rows, count, summary] = await Promise.all([
       queryAll(
         `SELECT m.id, m.kickoff, m.status, m.home_score, m.away_score, m.source_url,
-                m.venue, m.stream_url,
-                home.name AS home_name, home.slug AS home_slug, home.short_code AS home_code,
+                m.venue, m.stream_url, m.ea_match_id,
+                home.id AS home_club_id, home.name AS home_name, home.slug AS home_slug, home.short_code AS home_code,
+                home.ea_club_id AS home_ea_club_id, home.ea_club_name AS home_ea_club_name,
                 ${clubLogoSql('home')} AS home_logo, home.flag AS home_flag,
-                away.name AS away_name, away.slug AS away_slug, away.short_code AS away_code,
+                away.id AS away_club_id, away.name AS away_name, away.slug AS away_slug, away.short_code AS away_code,
+                away.ea_club_id AS away_ea_club_id, away.ea_club_name AS away_ea_club_name,
                 ${clubLogoSql('away')} AS away_logo, away.flag AS away_flag
            FROM matches m
            JOIN clubs home ON home.id = m.home_club_id
@@ -529,9 +533,13 @@ league.get(
   handler(async (req, res) => {
     const match = await queryOne<{ id: number }>(
       `SELECT m.id, m.kickoff, m.status, m.home_score, m.away_score,
-              m.venue, m.stream_url, m.source_url,
-              home.name AS home_name, home.slug AS home_slug, ${clubLogoSql('home')} AS home_logo,
-              away.name AS away_name, away.slug AS away_slug, ${clubLogoSql('away')} AS away_logo
+              m.venue, m.stream_url, m.source_url, m.ea_match_id,
+              home.id AS home_club_id, home.name AS home_name, home.slug AS home_slug, home.short_code AS home_code,
+              home.ea_club_id AS home_ea_club_id, home.ea_club_name AS home_ea_club_name,
+              ${clubLogoSql('home')} AS home_logo, home.flag AS home_flag,
+              away.id AS away_club_id, away.name AS away_name, away.slug AS away_slug, away.short_code AS away_code,
+              away.ea_club_id AS away_ea_club_id, away.ea_club_name AS away_ea_club_name,
+              ${clubLogoSql('away')} AS away_logo, away.flag AS away_flag
          FROM matches m
          JOIN clubs home ON home.id = m.home_club_id
          JOIN clubs away ON away.id = m.away_club_id
@@ -540,7 +548,12 @@ league.get(
     )
     if (!match) return res.status(404).json({ error: 'Match not found' })
 
-    const [events, stats] = await Promise.all([
+    const [events, stats, playerStats] = await Promise.all([
+      queryAll(
+        `SELECT id, player_id, club_id, gamertag, rating, goals, assists, shots, passes, tackles, saves, clean_sheet, is_mom
+           FROM match_player_stats WHERE match_id = ? ORDER BY club_id, gamertag`,
+        [match.id],
+      ),
       queryAll(
         `SELECT minute, type, team_side, player_name, detail, score
            FROM match_events WHERE match_id = ? ORDER BY minute, id`,
@@ -549,7 +562,7 @@ league.get(
       queryOne('SELECT * FROM match_stats WHERE match_id = ?', [match.id]),
     ])
 
-    res.json({ ...match, events, stats: stats ?? null })
+    res.json({ ...match, events, stats: stats ?? null, playerStats: playerStats ?? [] })
   }),
 )
 

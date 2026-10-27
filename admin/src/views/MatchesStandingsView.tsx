@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { GenerateRoundRobinWizardModal } from './GenerateRoundRobinWizardModal'
+import { EaMatchResultModal } from './EaMatchResultModal'
 import {
   createMatch,
   deleteMatch,
@@ -85,6 +86,7 @@ export function MatchesStandingsView({
   const [scheduleTarget, setScheduleTarget] = useState<Match | null>(null)
   const [scheduleValue, setScheduleValue] = useState('')
   const [scheduleBusy, setScheduleBusy] = useState(false)
+  const [eaModalMatch, setEaModalMatch] = useState<Match | null>(null)
 
   // Standings state
   const [standings, setStandings] = useState<Standing[]>([])
@@ -588,6 +590,24 @@ export function MatchesStandingsView({
                             >
                               {isBusy ? '…' : hasResult ? 'Update' : 'Save'}
                             </button>
+                            <button
+                              type="button"
+                              className="adm-btn adm-btn-secondary adm-btn-sm"
+                              title="Fetch match score and player stats from EA Sports Pro Clubs"
+                              onClick={() => setEaModalMatch(m)}
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}
+                            >
+                              ⚡ EA
+                            </button>
+                            {m.ea_match_id && (
+                              <span
+                                className="adm-code-pill"
+                                title={`Linked EA Match #${m.ea_match_id}`}
+                                style={{ color: '#38bdf8', border: '1px solid rgba(56,189,248,0.4)', fontSize: '0.72rem' }}
+                              >
+                                🎮 EA
+                              </span>
+                            )}
                           </div>
                         </td>
                         <td>
@@ -895,6 +915,32 @@ export function MatchesStandingsView({
         }}
         seasonId={selectedSeasonId ?? undefined}
         divisions={divisions}
+      />
+
+      {/* EA FC Pro Clubs Match Result Modal */}
+      <EaMatchResultModal
+        isOpen={eaModalMatch !== null}
+        match={eaModalMatch}
+        onClose={() => setEaModalMatch(null)}
+        onSuccess={(msg) => {
+          report('ok', msg)
+          void loadMatches()
+        }}
+        guard={guard}
+        report={report}
+      />
+
+      {/* EA FC Pro Clubs Match Result Modal */}
+      <EaMatchResultModal
+        isOpen={eaModalMatch !== null}
+        match={eaModalMatch}
+        onClose={() => setEaModalMatch(null)}
+        onSuccess={(msg) => {
+          report('ok', msg)
+          void loadMatches()
+        }}
+        guard={guard}
+        report={report}
       />
 
       {/* Edit Kickoff Modal */}

@@ -128,14 +128,21 @@ export interface Match {
   status: string
   home_score: number | null
   away_score: number | null
+  home_club_id?: number
   home_name: string
   home_slug: string
   home_code: string | null
   home_logo: string | null
+  home_ea_club_id?: string | null
+  home_ea_club_name?: string | null
+  away_club_id?: number
   away_name: string
   away_slug: string
   away_code: string | null
   away_logo: string | null
+  away_ea_club_id?: string | null
+  away_ea_club_name?: string | null
+  ea_match_id?: string | null
 }
 
 export interface Club {
@@ -144,6 +151,8 @@ export interface Club {
   slug: string
   short_code: string | null
   flag: string | null
+  ea_club_id?: string | null
+  ea_club_name?: string | null
   logo_local: string | null
   logo_url: string | null
   status: string
@@ -745,6 +754,8 @@ export const updateClub = (
     logoLocal?: string | null
     logoUrl?: string | null
     status?: string
+    eaClubId?: string | null
+    eaClubName?: string | null
   },
 ) =>
   request<{ ok: true }>(`/api/admin/clubs/${slug}`, {
@@ -1158,4 +1169,93 @@ export const deleteAdminPlayerStat = (statId: number) =>
 
 
 
-
+
+/* ----------------------------------------------------- ea fc pro clubs api */
+
+export interface EaClubSearchResult {
+  clubId: string
+  name: string
+  wins?: number
+  draws?: number
+  losses?: number
+  matches?: number
+}
+
+export interface EaPlayerStatItem {
+  gamertag: string
+  pos: string
+  rating: number
+  goals: number
+  assists: number
+  shots: number
+  passes: number
+  tackles: number
+  saves: number
+  cleanSheet: boolean
+  isMom: boolean
+}
+
+export interface EaMatchCandidate {
+  matchId: string
+  timestamp: number
+  dateFormatted: string
+  isDirectMatch: boolean
+  clubA: {
+    id: string
+    name: string
+    goals: number
+  }
+  clubB: {
+    id: string
+    name: string
+    goals: number
+  }
+  suggestedHomeScore: number | null
+  suggestedAwayScore: number | null
+  homePlayers: EaPlayerStatItem[]
+  awayPlayers: EaPlayerStatItem[]
+}
+
+export const searchEaClubs = (query: string) =>
+  request<{ ok: true; clubs: EaClubSearchResult[] }>(
+    `/api/admin/ea/clubs/search?q=${encodeURIComponent(query)}`,
+  ).then((r) => r.clubs)
+
+export const getMatchEaCandidates = (matchId: number) =>
+  request<{
+    ok: true
+    matchId: number
+    homeClub: { id: number; name: string; eaClubId: string | null; eaClubName: string | null }
+    awayClub: { id: number; name: string; eaClubId: string | null; eaClubName: string | null }
+    candidates: EaMatchCandidate[]
+  }>(`/api/admin/matches/${matchId}/ea-candidates`)
+
+export const applyEaMatchResult = (
+  matchId: number,
+  data: {
+    homeScore: number
+    awayScore: number
+    eaMatchId?: string
+    players: Array<{
+      clubId: number
+      gamertag: string
+      pos?: string
+      rating?: number
+      goals: number
+      assists: number
+      shots?: number
+      passes?: number
+      tackles?: number
+      saves: number
+      cleanSheet: boolean
+      isMom: boolean
+    }>
+  },
+) =>
+  request<{ ok: true; matchId: number; homeScore: number; awayScore: number }>(
+    `/api/admin/matches/${matchId}/ea-result`,
+    {
+      method: 'POST',
+      body: JSON.stringify(data),
+    },
+  )

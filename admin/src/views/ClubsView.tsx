@@ -338,6 +338,12 @@ export function ClubsView({
   const [editDivisionId, setEditDivisionId] = useState<string>('')
   const [editManagerUserId, setEditManagerUserId] = useState<string>('')
   const [editLogo, setEditLogo] = useState<string | null>(null)
+  const [editEaClubId, setEditEaClubId] = useState<string>('')
+  const [editEaClubName, setEditEaClubName] = useState<string>('')
+  const [eaSearchOpen, setEaSearchOpen] = useState(false)
+  const [eaSearchQuery, setEaSearchQuery] = useState('')
+  const [eaSearchResults, setEaSearchResults] = useState<EaClubSearchResult[]>([])
+  const [eaSearching, setEaSearching] = useState(false)
   const [drawerBusy, setDrawerBusy] = useState(false)
   const [newPlayerTag, setNewPlayerTag] = useState('')
   const drawerLogoRef = useRef<HTMLInputElement | null>(null)
@@ -443,6 +449,10 @@ export function ClubsView({
       setEditDivisionId(club.division_id != null ? String(club.division_id) : '')
       setEditManagerUserId(club.manager_user_id != null ? String(club.manager_user_id) : '')
       setEditLogo(club.logo_local || club.logo_url || null)
+      setEditEaClubId(club.ea_club_id ?? '')
+      setEditEaClubName(club.ea_club_name ?? '')
+      setEaSearchOpen(false)
+      setEaSearchResults([])
       setDrawerLoading(true)
       try {
         const detail = await guard(() => getClubDetail(club.slug), 'Could not load club details')
@@ -675,6 +685,26 @@ export function ClubsView({
     }
   }
 
+  const handleEaSearch = async () => {
+    const q = eaSearchQuery.trim() || editName.trim()
+    if (!q || q.length < 2) {
+      report('error', 'Type at least 2 characters to search EA clubs.')
+      return
+    }
+    setEaSearching(true)
+    try {
+      const results = await guard(() => searchEaClubs(q), 'Failed to search EA clubs')
+      setEaSearchResults(results)
+      if (results.length === 0) {
+        report('ok', `No EA Pro Clubs found matching "${q}".`)
+      }
+    } catch {
+      /* reported */
+    } finally {
+      setEaSearching(false)
+    }
+  }
+
   // Save Club in Drawer
   const handleSaveDrawerClub = async (e: FormEvent) => {
     e.preventDefault()
@@ -693,6 +723,8 @@ export function ClubsView({
             shortCode: editCode.trim().toUpperCase() || null,
             flag: editFlag || null,
             status: editStatus,
+            eaClubId: editEaClubId.trim() || null,
+            eaClubName: editEaClubName.trim() || null,
             ...(logoChanged ? { logoLocal: editLogo, logoUrl: editLogo } : {}),
           }),
         'Could not save club details',
@@ -1464,6 +1496,11 @@ export function ClubsView({
                                 <strong>{club.name}</strong>
                                 {club.short_code && (
                                   <span className="adm-code-pill">{club.short_code}</span>
+                                )}
+                                {club.ea_club_id && (
+                                  <span className="adm-code-pill" style={{ border: '1px solid rgba(56,189,248,0.4)', color: '#38bdf8' }} title={`EA Club: ${club.ea_club_name || club.ea_club_id}`}>
+                                    🎮 #{club.ea_club_id}
+                                  </span>
                                 )}
                               </div>
                               {managerEmail ? (

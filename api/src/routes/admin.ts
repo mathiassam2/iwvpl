@@ -13,6 +13,7 @@
  */
 
 import { Router } from 'express'
+import { searchEaClubs, getCandidateMatchesForFixture } from '../domain/eaSports.js'
 import { execute, queryAll, queryOne, withTransaction, type Params } from '../db.js'
 import {
   previewFixtures,
@@ -472,8 +473,36 @@ admin.delete(
         awayScore: match.away_score,
       })
 
+      const [oldStatsRows] = await conn.query(
+        `SELECT player_id, goals, assists, saves, clean_sheet
+           FROM match_player_stats WHERE match_id = ? FOR UPDATE`,
+        [id],
+      )
+      for (const os of oldStatsRows as any[]) {
+        await conn.execute(
+          `UPDATE player_season_stats
+              SET appearances = GREATEST(0, CAST(appearances AS SIGNED) - 1),
+                  goals = GREATEST(0, CAST(goals AS SIGNED) - ?),
+                  assists = GREATEST(0, CAST(assists AS SIGNED) - ?),
+                  saves = GREATEST(0, CAST(saves AS SIGNED) - ?),
+                  clean_sheets = GREATEST(0, CAST(clean_sheets AS SIGNED) - ?),
+                  updated_at = NOW()
+            WHERE player_id = ? AND season_id = ? AND division_id = ?`,
+          [
+            os.goals,
+            os.assists,
+            os.saves,
+            os.clean_sheet ? 1 : 0,
+            os.player_id,
+            match.season_id,
+            match.division_id,
+          ],
+        )
+      }
+      await conn.execute('DELETE FROM match_player_stats WHERE match_id = ?', [id])
+
       await conn.execute(
-        `UPDATE matches SET home_score = NULL, away_score = NULL,
+        `UPDATE matches SET home_score = NULL, away_score = NULL, ea_match_id = NULL,
                 status = IF(kickoff IS NULL, 'unscheduled', 'scheduled'), updated_at = NOW()
           WHERE id = ?`,
         [id],
@@ -486,6 +515,261 @@ admin.delete(
     res.json({ ok: true, matchId: id })
   }),
 )
+
+admin.get(
+  '/ea/clubs/search',
+  handler(async (req, res) => {
+    const q = typeof req.query.q === 'string' ? req.query.q.trim() : ''
+    if (!q || q.length < 2) {
+      return res.json({ ok: true, clubs: [] })
+    }
+    const clubs = await searchEaClubs(q)
+    res.json({ ok: true, clubs })
+  }),
+)
+
+admin.get(
+  '/matches/:id/ea-candidates',
+  handler(async (req, res) => {
+    const id = Number.parseInt(req.params.id, 10)
+    if (!Number.isSafeInteger(id) || id < 1) {
+      return res.status(400).json({ error: 'Match id must be a positive integer.' })
+    }
+
+    const match = await queryOne<{
+      id: number
+      home_club_id: number
+      away_club_id: number
+      home_name: string
+      away_name: string
+      home_ea_club_id: string | null
+      home_ea_club_name: string | null
+      away_ea_club_id: string | null
+      away_ea_club_name: string | null
+    }>(
+      `SELECT m.id, m.home_club_id, m.away_club_id,
+              home.name AS home_name, home.ea_club_id AS home_ea_club_id, home.ea_club_name AS home_ea_club_name,
+              away.name AS away_name, away.ea_club_id AS away_ea_club_id, away.ea_club_name AS away_ea_club_name
+         FROM matches m
+         JOIN clubs home ON home.id = m.home_club_id
+         JOIN clubs away ON away.id = m.away_club_id
+        WHERE m.id = ?`,
+      [id],
+    )
+    if (!match) return res.status(404).json({ error: 'Match not found.' })
+
+    const candidates = await getCandidateMatchesForFixture(
+      match.home_ea_club_id,
+      match.away_ea_club_id,
+    )
+
+    res.json({
+      ok: true,
+      matchId: id,
+      homeClub: {
+        id: match.home_club_id,
+        name: match.home_name,
+        eaClubId: match.home_ea_club_id,
+        eaClubName: match.home_ea_club_name,
+      },
+      awayClub: {
+        id: match.away_club_id,
+        name: match.away_name,
+        eaClubId: match.away_ea_club_id,
+        eaClubName: match.away_ea_club_name,
+      },
+      candidates,
+    })
+  }),
+)
+
+admin.post(
+  '/matches/:id/ea-result',
+  handler(async (req, res) => {
+    const id = Number.parseInt(req.params.id, 10)
+    if (!Number.isInteger(id)) {
+      return res.status(400).json({ error: 'Match id must be an integer.' })
+    }
+
+    const homeScore = parseScore(req.body.homeScore, 'homeScore')
+    const awayScore = parseScore(req.body.awayScore, 'awayScore')
+    const eaMatchId = optionalString(req.body.eaMatchId, 64)
+    const playersList: any[] = Array.isArray(req.body.players) ? req.body.players : []
+
+    const result = await withTransaction(async (conn) => {
+      const [rows] = await conn.query(
+        `SELECT id, season_id, division_id, home_club_id, away_club_id, home_score, away_score
+           FROM matches WHERE id = ? FOR UPDATE`,
+        [id],
+      )
+      const match = (rows as any[])[0]
+      if (!match) return { error: 'Match not found.' as const, status: 404 }
+
+      const ids = { seasonId: match.season_id, divisionId: match.division_id }
+      const wasPlayed = match.home_score !== null && match.away_score !== null
+      const previous = wasPlayed
+        ? {
+            homeClubId: match.home_club_id,
+            awayClubId: match.away_club_id,
+            homeScore: match.home_score,
+            awayScore: match.away_score,
+          }
+        : null
+
+      await setResult(
+        conn,
+        ids,
+        {
+          homeClubId: match.home_club_id,
+          awayClubId: match.away_club_id,
+          homeScore,
+          awayScore,
+        },
+        previous,
+      )
+
+      await conn.execute(
+        `UPDATE matches
+            SET home_score = ?, away_score = ?, ea_match_id = ?, status = 'finished', updated_at = NOW()
+          WHERE id = ?`,
+        [homeScore, awayScore, eaMatchId, id] as Params,
+      )
+
+      // 1. Roll back previous match_player_stats contribution if any existed for this match
+      const [oldStatsRows] = await conn.query(
+        `SELECT player_id, goals, assists, saves, clean_sheet
+           FROM match_player_stats WHERE match_id = ? FOR UPDATE`,
+        [id],
+      )
+      const oldStats = oldStatsRows as Array<{
+        player_id: number
+        goals: number
+        assists: number
+        saves: number
+        clean_sheet: number | boolean
+      }>
+
+      for (const os of oldStats) {
+        await conn.execute(
+          `UPDATE player_season_stats
+              SET appearances = GREATEST(0, CAST(appearances AS SIGNED) - 1),
+                  goals = GREATEST(0, CAST(goals AS SIGNED) - ?),
+                  assists = GREATEST(0, CAST(assists AS SIGNED) - ?),
+                  saves = GREATEST(0, CAST(saves AS SIGNED) - ?),
+                  clean_sheets = GREATEST(0, CAST(clean_sheets AS SIGNED) - ?),
+                  updated_at = NOW()
+            WHERE player_id = ? AND season_id = ? AND division_id = ?`,
+          [
+            os.goals,
+            os.assists,
+            os.saves,
+            os.clean_sheet ? 1 : 0,
+            os.player_id,
+            match.season_id,
+            match.division_id,
+          ],
+        )
+      }
+
+      await conn.execute('DELETE FROM match_player_stats WHERE match_id = ?', [id])
+
+      // 2. Insert new match_player_stats and update player_season_stats
+      for (const p of playersList) {
+        const rawGamertag = String(p.gamertag ?? '').trim()
+        if (!rawGamertag) continue
+
+        const clubId = Number.parseInt(String(p.clubId), 10)
+        const validClubId =
+          clubId === match.home_club_id || clubId === match.away_club_id ? clubId : match.home_club_id
+
+        const gKey = gamertagKey(rawGamertag)
+
+        // Find or create player
+        const [existingPlayerRows] = await conn.query(
+          'SELECT id FROM players WHERE gamertag_key = ? LIMIT 1 FOR UPDATE',
+          [gKey],
+        )
+        let playerId = (existingPlayerRows as any[])[0]?.id
+
+        if (!playerId) {
+          const pSlug = clubSlug(rawGamertag) || `player-${Date.now()}`
+          const [ins] = await conn.execute(
+            `INSERT INTO players (gamertag, gamertag_key, slug, club_id, created_at, updated_at)
+             VALUES (?, ?, ?, ?, NOW(), NOW())`,
+            [rawGamertag, gKey, pSlug, validClubId],
+          )
+          playerId = (ins as any).insertId
+        } else {
+          // If player has no club assigned, link them to this club
+          await conn.execute(
+            'UPDATE players SET club_id = COALESCE(club_id, ?), updated_at = NOW() WHERE id = ?',
+            [validClubId, playerId],
+          )
+        }
+
+        const rating = Math.max(0, Math.min(10, Number.parseFloat(String(p.rating ?? 0)) || 0))
+        const goals = Math.max(0, Number.parseInt(String(p.goals ?? 0), 10) || 0)
+        const assists = Math.max(0, Number.parseInt(String(p.assists ?? 0), 10) || 0)
+        const shots = Math.max(0, Number.parseInt(String(p.shots ?? 0), 10) || 0)
+        const passes = Math.max(0, Number.parseInt(String(p.passes ?? 0), 10) || 0)
+        const tackles = Math.max(0, Number.parseInt(String(p.tackles ?? 0), 10) || 0)
+        const saves = Math.max(0, Number.parseInt(String(p.saves ?? 0), 10) || 0)
+        const cleanSheet = Boolean(p.cleanSheet)
+        const isMom = Boolean(p.isMom)
+
+        await conn.execute(
+          `INSERT INTO match_player_stats
+             (match_id, player_id, club_id, gamertag, rating, goals, assists, shots, passes, tackles, saves, clean_sheet, is_mom, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+          [
+            id,
+            playerId,
+            validClubId,
+            rawGamertag,
+            rating,
+            goals,
+            assists,
+            shots,
+            passes,
+            tackles,
+            saves,
+            cleanSheet ? 1 : 0,
+            isMom ? 1 : 0,
+          ],
+        )
+
+        // Increment player_season_stats strictly for this official season & division
+        await conn.execute(
+          `INSERT INTO player_season_stats
+             (player_id, season_id, division_id, appearances, goals, assists, saves, clean_sheets, updated_at)
+           VALUES (?, ?, ?, 1, ?, ?, ?, ?, NOW())
+           ON DUPLICATE KEY UPDATE
+             appearances = appearances + 1,
+             goals = goals + VALUES(goals),
+             assists = assists + VALUES(assists),
+             saves = saves + VALUES(saves),
+             clean_sheets = clean_sheets + VALUES(clean_sheets),
+             updated_at = NOW()`,
+          [
+            playerId,
+            match.season_id,
+            match.division_id,
+            goals,
+            assists,
+            saves,
+            cleanSheet ? 1 : 0,
+          ],
+        )
+      }
+
+      return { ids, wasPlayed }
+    })
+
+    if ('error' in result) return res.status(result.status).json({ error: result.error })
+    res.json({ ok: true, matchId: id, homeScore, awayScore, eaMatchId })
+  }),
+)
+
 
 /**
  * Delete every fixture that has no kickoff date.
@@ -712,6 +996,7 @@ admin.get(
 
     const clubs = await queryAll(
       `SELECT c.id, c.name, c.slug, c.short_code, c.flag,
+              c.ea_club_id, c.ea_club_name,
               CASE
                 WHEN LEFT(COALESCE(c.logo_url, ''), 5) = 'data:' OR c.logo_url = c.logo_local
                   THEN NULL
@@ -908,6 +1193,14 @@ admin.patch(
     if ('formation' in req.body) {
       fields.push('formation = ?')
       values.push(optionalString(req.body.formation, 16) ?? '4-3-3')
+    }
+    if ('eaClubId' in req.body) {
+      fields.push('ea_club_id = ?')
+      values.push(optionalString(req.body.eaClubId, 32))
+    }
+    if ('eaClubName' in req.body) {
+      fields.push('ea_club_name = ?')
+      values.push(optionalString(req.body.eaClubName, 120))
     }
 
     if (fields.length === 0) {
