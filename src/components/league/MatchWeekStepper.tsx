@@ -63,9 +63,9 @@ export function MatchWeekStepper({
   }
 
   return (
-    <div className="relative mb-6">
+    <div className="relative mx-auto mb-8 w-full max-w-xl">
       {/* Top Header Label */}
-      <div className="mb-2 flex items-center justify-between">
+      <div className="mb-2 flex items-center justify-between px-1">
         <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-faint)]">
           Match Week Navigation
         </span>
