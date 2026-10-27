@@ -2582,6 +2582,163 @@ export function ClubsView({
                       <option value="withdrawn">Withdrawn</option>
                     </select>
                   </label>
+
+                  {/* EA FC Pro Clubs Integration */}
+                  <div className="adm-ea-section" style={{
+                    gridColumn: '1 / -1',
+                    background: 'rgba(56, 189, 248, 0.05)',
+                    border: '1px solid rgba(56, 189, 248, 0.25)',
+                    borderRadius: 8,
+                    padding: '14px 16px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 12,
+                    marginTop: 6
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: '1.2rem' }}>🎮</span>
+                        <div>
+                          <strong style={{ fontSize: '0.98rem', display: 'block' }}>EA Sports FC Pro Clubs Link</strong>
+                          <span style={{ fontSize: '0.78rem', color: 'var(--adm-muted)' }}>
+                            Link to in-game club to fetch scores and player stats automatically
+                          </span>
+                        </div>
+                      </div>
+                      {editEaClubId ? (
+                        <span className="adm-code-pill" style={{ background: '#0284c7', color: '#fff', border: 'none', padding: '3px 8px' }}>
+                          Linked: #{editEaClubId}
+                        </span>
+                      ) : (
+                        <span className="adm-code-pill" style={{ color: '#eab308', border: '1px solid rgba(234,179,8,0.4)', padding: '3px 8px' }}>
+                          Not Linked
+                        </span>
+                      )}
+                    </div>
+                    
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                      <label className="adm-field">
+                        <span style={{ fontSize: '0.82rem' }}>EA Club ID</span>
+                        <input
+                          type="text"
+                          value={editEaClubId}
+                          onChange={(e) => setEditEaClubId(e.target.value.trim())}
+                          placeholder="e.g. 590308"
+                          className="adm-input"
+                        />
+                      </label>
+                      <label className="adm-field">
+                        <span style={{ fontSize: '0.82rem' }}>EA Club In-Game Name</span>
+                        <input
+                          type="text"
+                          value={editEaClubName}
+                          onChange={(e) => setEditEaClubName(e.target.value)}
+                          placeholder="e.g. Acousticsss FC"
+                          className="adm-input"
+                        />
+                      </label>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        className="adm-btn adm-btn-secondary adm-btn-sm"
+                        onClick={() => {
+                          setEaSearchOpen(!eaSearchOpen)
+                          if (!eaSearchOpen && !eaSearchQuery) {
+                            setEaSearchQuery(editName)
+                          }
+                        }}
+                      >
+                        {eaSearchOpen ? 'Close EA Search' : '🔍 Search Live on EA Sports'}
+                      </button>
+                      {editEaClubId && (
+                        <button
+                          type="button"
+                          className="adm-btn adm-btn-ghost adm-btn-sm"
+                          onClick={() => {
+                            setEditEaClubId('')
+                            setEditEaClubName('')
+                          }}
+                        >
+                          Unlink EA Club
+                        </button>
+                      )}
+                    </div>
+
+                    {eaSearchOpen && (
+                      <div style={{
+                        background: 'rgba(0,0,0,0.4)',
+                        border: '1px solid var(--adm-border)',
+                        borderRadius: 6,
+                        padding: 12,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 10
+                      }}>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <input
+                            type="text"
+                            value={eaSearchQuery}
+                            onChange={(e) => setEaSearchQuery(e.target.value)}
+                            placeholder="Type EA Club name to search..."
+                            className="adm-input"
+                            style={{ flex: 1 }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault()
+                                void handleEaSearch()
+                              }
+                            }}
+                          />
+                          <button
+                            type="button"
+                            className="adm-btn adm-btn-primary adm-btn-sm"
+                            disabled={eaSearching}
+                            onClick={() => void handleEaSearch()}
+                          >
+                            {eaSearching ? 'Searching…' : 'Search EA'}
+                          </button>
+                        </div>
+
+                        {eaSearchResults.length > 0 && (
+                          <div style={{ maxHeight: 200, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            {eaSearchResults.map((ec) => (
+                              <div
+                                key={ec.clubId}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  padding: '8px 12px',
+                                  background: 'rgba(255,255,255,0.04)',
+                                  borderRadius: 4,
+                                  border: '1px solid rgba(255,255,255,0.08)',
+                                  cursor: 'pointer'
+                                }}
+                                onClick={() => {
+                                  setEditEaClubId(ec.clubId)
+                                  setEditEaClubName(ec.name)
+                                  setEaSearchOpen(false)
+                                  report('ok', `Selected EA Club "${ec.name}" (#${ec.clubId})`)
+                                }}
+                              >
+                                <div>
+                                  <strong style={{ fontSize: '0.92rem' }}>{ec.name}</strong>
+                                  <div style={{ fontSize: '0.78rem', color: 'var(--adm-muted)' }}>
+                                    ID: #{ec.clubId} {ec.wins !== undefined ? `· Record: ${ec.wins}W ${ec.draws || 0}D ${ec.losses || 0}L` : ''}
+                                  </div>
+                                </div>
+                                <button type="button" className="adm-btn adm-btn-secondary adm-btn-xs">
+                                  Select Club
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div className="adm-row-actions">
