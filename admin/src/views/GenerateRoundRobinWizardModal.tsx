@@ -1,4 +1,4 @@
-import { useState, useEffect, useId } from 'react'
+import { useState, useEffect, useId, useRef, useMemo } from 'react'
 import {
   previewFixtures,
   generateFixtures,
@@ -55,7 +55,7 @@ export function GenerateRoundRobinWizardModal({
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1)
 
   // Step 1: Divisions & Format
-  const activeDivs = divisions.filter((d) => Boolean(d.is_active))
+  const activeDivs = useMemo(() => divisions.filter((d) => Boolean(d.is_active)), [divisions])
   const [selectedDivIds, setSelectedDivIds] = useState<Set<number>>(() => new Set())
   const [rounds, setRounds] = useState<1 | 2>(2)
 
@@ -83,17 +83,18 @@ export function GenerateRoundRobinWizardModal({
   const [commitError, setCommitError] = useState<string | null>(null)
   const [roundFilter, setRoundFilter] = useState<string>('all')
 
-  // Initialize selected division IDs when modal opens
+  // Initialize state only when modal transitions from closed to open
+  const prevOpenRef = useRef(false)
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !prevOpenRef.current) {
       setStep(1)
       setCommitError(null)
       setPreviewError(null)
-      if (activeDivs.length > 0 && selectedDivIds.size === 0) {
-        setSelectedDivIds(new Set(activeDivs.map((d) => d.id)))
-      }
+      const currentActive = divisions.filter((d) => Boolean(d.is_active))
+      setSelectedDivIds(new Set(currentActive.map((d) => d.id)))
     }
-  }, [isOpen, activeDivs])
+    prevOpenRef.current = isOpen
+  }, [isOpen, divisions])
 
   // Automatically fetch preview when entering Step 4
   useEffect(() => {
