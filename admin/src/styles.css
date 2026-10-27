@@ -4905,13 +4905,28 @@ input:checked + .adm-slider:before {
   padding: 8px 0;
 }
 
+.adm-preview-filter-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.adm-preview-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .adm-preview-rounds-container {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  max-height: 380px;
+  max-height: 480px;
   overflow-y: auto;
-  padding-right: 4px;
+  padding-right: 6px;
 }
 
 .adm-preview-round-card {
@@ -4919,6 +4934,24 @@ input:checked + .adm-slider:before {
   border: 1px solid var(--border);
   border-radius: 10px;
   overflow: hidden;
+  flex-shrink: 0;
+  min-height: min-content;
+  transition: border-color 0.15s ease;
+}
+
+.adm-preview-round-card:hover {
+  border-color: var(--border-strong);
+}
+
+.adm-round-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.adm-collapse-arrow {
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .adm-preview-round-header {

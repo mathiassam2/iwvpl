@@ -82,6 +82,23 @@ export function GenerateRoundRobinWizardModal({
   const [commitLoading, setCommitLoading] = useState(false)
   const [commitError, setCommitError] = useState<string | null>(null)
   const [roundFilter, setRoundFilter] = useState<string>('all')
+  const [collapsedRounds, setCollapsedRounds] = useState<Set<number>>(() => new Set())
+
+  const toggleRoundCollapse = (roundNum: number) => {
+    setCollapsedRounds((prev) => {
+      const next = new Set(prev)
+      if (next.has(roundNum)) next.delete(roundNum)
+      else next.add(roundNum)
+      return next
+    })
+  }
+
+  const expandAllRounds = () => setCollapsedRounds(new Set())
+  const collapseAllRounds = () => {
+    if (activeDivPreview) {
+      setCollapsedRounds(new Set(activeDivPreview.rounds.map((r) => r.roundNumber)))
+    }
+  }
 
   // Initialize state only when modal transitions from closed to open
   const prevOpenRef = useRef(false)
@@ -889,94 +906,130 @@ export function GenerateRoundRobinWizardModal({
                         ))}
                       </select>
                     </div>
-                    <button
-                      type="button"
-                      onClick={loadPreview}
-                      className="adm-btn adm-btn-ghost adm-btn-sm"
-                      title="Re-compute preview"
-                    >
-                      ↻ Refresh
-                    </button>
+
+                    <div className="adm-preview-actions">
+                      {roundFilter === 'all' && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={expandAllRounds}
+                            className="adm-btn adm-btn-ghost adm-btn-sm"
+                          >
+                            Expand All
+                          </button>
+                          <button
+                            type="button"
+                            onClick={collapseAllRounds}
+                            className="adm-btn adm-btn-ghost adm-btn-sm"
+                          >
+                            Collapse All
+                          </button>
+                        </>
+                      )}
+                      <button
+                        type="button"
+                        onClick={loadPreview}
+                        className="adm-btn adm-btn-ghost adm-btn-sm"
+                        title="Re-compute preview"
+                      >
+                        ↻ Refresh
+                      </button>
+                    </div>
                   </div>
 
                   {/* Rounds Preview List */}
                   <div className="adm-preview-rounds-container">
-                    {displayedRounds.map((rnd) => (
-                      <div key={rnd.roundNumber} className="adm-preview-round-card">
-                        <div className="adm-preview-round-header">
-                          <div className="adm-round-title">
-                            <span className="adm-round-badge">Round {rnd.roundNumber}</span>
-                            {rnd.date ? (
-                              <span className="adm-round-date">
-                                📅 {rnd.dayName}, {rnd.date}
-                              </span>
-                            ) : (
-                              <span className="adm-round-date adm-text-muted">
-                                ⚪ Unscheduled Kickoff
-                              </span>
-                            )}
-                          </div>
-                          <span className="adm-round-count">{rnd.matches.length} fixtures</span>
-                        </div>
-
-                        <div className="adm-preview-matches-list">
-                          {rnd.matches.map((m, idx) => (
-                            <div
-                              key={`${m.homeClubId}-${m.awayClubId}-${idx}`}
-                              className={`adm-preview-match-row ${m.isDuplicate ? 'duplicate' : ''}`}
-                            >
-                              <div className="adm-preview-time-badge">
-                                {m.time ? `🕐 ${m.time}` : '—'}
-                              </div>
-
-                              <div className="adm-preview-pairing">
-                                <div className="adm-team-cell home">
-                                  <span className="adm-team-name">{m.homeClubName}</span>
-                                  {m.homeClubLogo ? (
-                                    <img
-                                      src={m.homeClubLogo}
-                                      alt=""
-                                      className="adm-team-avatar"
-                                    />
-                                  ) : (
-                                    <span className="adm-team-avatar-ph">
-                                      {m.homeClubName.slice(0, 2).toUpperCase()}
-                                    </span>
-                                  )}
-                                </div>
-
-                                <span className="adm-vs-pill">VS</span>
-
-                                <div className="adm-team-cell away">
-                                  {m.awayClubLogo ? (
-                                    <img
-                                      src={m.awayClubLogo}
-                                      alt=""
-                                      className="adm-team-avatar"
-                                    />
-                                  ) : (
-                                    <span className="adm-team-avatar-ph">
-                                      {m.awayClubName.slice(0, 2).toUpperCase()}
-                                    </span>
-                                  )}
-                                  <span className="adm-team-name">{m.awayClubName}</span>
-                                </div>
-                              </div>
-
-                              <div className="adm-preview-status">
-                                {m.isDuplicate ? (
-                                  <span className="adm-pill adm-pill-warning" title="Already exists in this season">
-                                    Skipped (Exists)
-                                  </span>
-                                ) : (
-                                  <span className="adm-pill adm-pill-success">Ready</span>
-                                )}
-                              </div>
+                    {displayedRounds.map((rnd) => {
+                      const isCollapsed = collapsedRounds.has(rnd.roundNumber) && roundFilter === 'all'
+                      return (
+                        <div key={rnd.roundNumber} className="adm-preview-round-card">
+                          <div
+                            className="adm-preview-round-header"
+                            onClick={() => toggleRoundCollapse(rnd.roundNumber)}
+                            style={{ cursor: roundFilter === 'all' ? 'pointer' : 'default' }}
+                            title={roundFilter === 'all' ? (isCollapsed ? 'Click to expand' : 'Click to collapse') : undefined}
+                          >
+                            <div className="adm-round-title">
+                              <span className="adm-round-badge">Round {rnd.roundNumber}</span>
+                              {rnd.date ? (
+                                <span className="adm-round-date">
+                                  📅 {rnd.dayName}, {rnd.date}
+                                </span>
+                              ) : (
+                                <span className="adm-round-date adm-text-muted">
+                                  ⚪ Unscheduled Kickoff
+                                </span>
+                              )}
                             </div>
-                          ))}
+                            <div className="adm-round-header-right">
+                              <span className="adm-round-count">{rnd.matches.length} fixtures</span>
+                              {roundFilter === 'all' && (
+                                <span className="adm-collapse-arrow">{isCollapsed ? '▼' : '▲'}</span>
+                              )}
+                            </div>
+                          </div>
+
+                          {!isCollapsed && (
+                            <div className="adm-preview-matches-list">
+                              {rnd.matches.map((m, idx) => (
+                                <div
+                                  key={`${m.homeClubId}-${m.awayClubId}-${idx}`}
+                                  className={`adm-preview-match-row ${m.isDuplicate ? 'duplicate' : ''}`}
+                                >
+                                  <div className="adm-preview-time-badge">
+                                    {m.time ? `🕐 ${m.time}` : '—'}
+                                  </div>
+
+                                  <div className="adm-preview-pairing">
+                                    <div className="adm-team-cell home">
+                                      <span className="adm-team-name">{m.homeClubName}</span>
+                                      {m.homeClubLogo ? (
+                                        <img
+                                          src={m.homeClubLogo}
+                                          alt=""
+                                          className="adm-team-avatar"
+                                        />
+                                      ) : (
+                                        <span className="adm-team-avatar-ph">
+                                          {m.homeClubName.slice(0, 2).toUpperCase()}
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    <span className="adm-vs-pill">VS</span>
+
+                                    <div className="adm-team-cell away">
+                                      {m.awayClubLogo ? (
+                                        <img
+                                          src={m.awayClubLogo}
+                                          alt=""
+                                          className="adm-team-avatar"
+                                        />
+                                      ) : (
+                                        <span className="adm-team-avatar-ph">
+                                          {m.awayClubName.slice(0, 2).toUpperCase()}
+                                        </span>
+                                      )}
+                                      <span className="adm-team-name">{m.awayClubName}</span>
+                                    </div>
+                                  </div>
+
+                                  <div className="adm-preview-status">
+                                    {m.isDuplicate ? (
+                                      <span className="adm-pill adm-pill-warning" title="Already exists in this season">
+                                        Skipped (Exists)
+                                      </span>
+                                    ) : (
+                                      <span className="adm-pill adm-pill-success">Ready</span>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    ))}
+                      )
+                    })}
 
                     {displayedRounds.length === 0 && (
                       <div className="adm-preview-empty">
