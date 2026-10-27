@@ -379,19 +379,77 @@ export const getClubs = (seasonId?: number) =>
  * for the admin to date. Pairs that already exist in that season are skipped
  * rather than duplicated.
  */
-export const generateFixtures = ({
-  seasonId,
-  divisionIds,
-  rounds,
-}: {
+export interface GenerateScheduleConfig {
+  autoSchedule?: boolean
+  startDate?: string
+  matchDays?: number[]
+  timeMode?: 'fixed' | 'slots' | 'interval'
+  fixedTime?: string
+  timeSlots?: string[]
+  startTime?: string
+  intervalMinutes?: number
+  concurrentMatches?: number
+}
+
+export interface PreviewMatch {
+  homeClubId: number
+  homeClubName: string
+  homeClubLogo: string | null
+  awayClubId: number
+  awayClubName: string
+  awayClubLogo: string | null
+  kickoff: string | null
+  time: string | null
+  isDuplicate: boolean
+}
+
+export interface PreviewRound {
+  roundNumber: number
+  date: string | null
+  dayName: string | null
+  matches: PreviewMatch[]
+}
+
+export interface PreviewDivision {
+  divisionId: number
+  divisionName: string
+  totalRounds: number
+  totalMatches: number
+  newMatches: number
+  skippedMatches: number
+  rounds: PreviewRound[]
+}
+
+export interface FixturePreviewResult {
+  preview: true
+  totalRounds: number
+  totalMatches: number
+  newMatches: number
+  skippedMatches: number
+  divisions: PreviewDivision[]
+}
+
+export interface GenerateFixturesParams {
   seasonId?: number
   divisionIds: number[]
   rounds: number
-}) =>
-  request<{ created: number; skipped: number; missing: number }>('/api/admin/matches/generate', {
+  schedule?: GenerateScheduleConfig
+}
+
+export const previewFixtures = (params: GenerateFixturesParams) =>
+  request<FixturePreviewResult>('/api/admin/matches/generate', {
     method: 'POST',
-    body: JSON.stringify({ seasonId, divisionIds, rounds }),
+    body: JSON.stringify({ ...params, preview: true }),
   })
+
+export const generateFixtures = (params: GenerateFixturesParams) =>
+  request<{ created: number; skipped: number; missing: number; scheduled?: number }>(
+    '/api/admin/matches/generate',
+    {
+      method: 'POST',
+      body: JSON.stringify(params),
+    },
+  )
 
 export const scheduleMatch = (matchId: number, kickoff: string | null) =>
   request<{ ok: true; kickoff: string | null }>(`/api/admin/matches/${matchId}/schedule`, {

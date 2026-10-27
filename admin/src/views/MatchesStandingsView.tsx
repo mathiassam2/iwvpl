@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { GenerateRoundRobinWizardModal } from './GenerateRoundRobinWizardModal'
 import {
   createMatch,
   deleteMatch,
@@ -79,9 +80,6 @@ export function MatchesStandingsView({
 
   // Auto-generate Round-Robin modal
   const [genOpen, setGenOpen] = useState(false)
-  const [genDivisionIds, setGenDivisionIds] = useState<Set<number>>(new Set())
-  const [genRounds, setGenRounds] = useState<1 | 2>(2)
-  const [genBusy, setGenBusy] = useState(false)
 
   // Edit kickoff modal
   const [scheduleTarget, setScheduleTarget] = useState<Match | null>(null)
@@ -119,14 +117,11 @@ export function MatchesStandingsView({
       if (activeDivs.length > 0 && !createDivisionId) {
         setCreateDivisionId(String(activeDivs[0].id))
       }
-      if (activeDivs.length > 0 && genDivisionIds.size === 0) {
-        setGenDivisionIds(new Set(activeDivs.map((d) => d.id)))
-      }
       setClubs(clubsList)
     } catch {
       /* reported */
     }
-  }, [guard, selectedSeasonId, createDivisionId, genDivisionIds.size])
+  }, [guard, selectedSeasonId, createDivisionId])
 
   useEffect(() => {
     void loadMeta()
@@ -298,34 +293,7 @@ export function MatchesStandingsView({
     }
   }
 
-  const handleGenerateFixtures = async (e: FormEvent) => {
-    e.preventDefault()
-    if (genDivisionIds.size === 0) {
-      report('error', 'Select at least one division.')
-      return
-    }
-    setGenBusy(true)
-    try {
-      const res = await guard(
-        () =>
-          generateFixtures({
-            divisionIds: [...genDivisionIds],
-            rounds: genRounds,
-          }),
-        'Could not generate fixtures',
-      )
-      report(
-        'ok',
-        `Generated ${res.created} fixture(s)${res.skipped ? ` (${res.skipped} existing skipped)` : ''}.`,
-      )
-      setGenOpen(false)
-      await loadMatches()
-    } catch {
-      /* reported */
-    } finally {
-      setGenBusy(false)
-    }
-  }
+
 
   const handleSaveKickoff = async (e: FormEvent) => {
     e.preventDefault()
@@ -876,74 +844,17 @@ export function MatchesStandingsView({
         </div>
       )}
 
-      {/* Auto-Generate Round Robin Modal */}
-      {genOpen && (
-        <div className="adm-modal-backdrop" onClick={() => setGenOpen(false)}>
-          <div className="adm-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="adm-modal-head">
-              <h3>Auto-Generate Round-Robin Fixtures</h3>
-              <button type="button" className="adm-close-btn" onClick={() => setGenOpen(false)}>
-                ×
-              </button>
-            </div>
-            <form onSubmit={handleGenerateFixtures} className="adm-form-stack">
-              <p className="adm-text-muted">
-                Generates balanced round-robin pairings for the selected divisions. Fixtures are
-                created unscheduled so you can set dates when ready, and any existing pairings are
-                automatically skipped.
-              </p>
-
-              <div className="adm-field">
-                <span>Select Divisions</span>
-                <div className="adm-check-list">
-                  {activeDivisions.map((d) => (
-                    <label key={d.id} className="adm-check-row">
-                      <input
-                        type="checkbox"
-                        checked={genDivisionIds.has(d.id)}
-                        onChange={() => {
-                          setGenDivisionIds((prev) => {
-                            const next = new Set(prev)
-                            if (next.has(d.id)) next.delete(d.id)
-                            else next.add(d.id)
-                            return next
-                          })
-                        }}
-                      />
-                      <span>{d.name}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              <label className="adm-field">
-                <span>Format</span>
-                <select
-                  value={genRounds}
-                  onChange={(e) => setGenRounds(Number(e.target.value) as 1 | 2)}
-                  className="adm-select"
-                >
-                  <option value={1}>Single Round-Robin (each pair meets once)</option>
-                  <option value={2}>Home & Away Double Round-Robin (each pair meets twice)</option>
-                </select>
-              </label>
-
-              <div className="adm-modal-foot">
-                <button
-                  type="button"
-                  className="adm-btn adm-btn-ghost"
-                  onClick={() => setGenOpen(false)}
-                >
-                  Cancel
-                </button>
-                <button type="submit" className="adm-btn adm-btn-primary" disabled={genBusy}>
-                  {genBusy ? 'Generating…' : 'Generate Fixtures'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* Auto-Generate Round Robin Wizard Modal */}
+      <GenerateRoundRobinWizardModal
+        isOpen={genOpen}
+        onClose={() => setGenOpen(false)}
+        onSuccess={(msg) => {
+          report('ok', msg)
+          void loadMatches()
+        }}
+        seasonId={selectedSeasonId ?? undefined}
+        divisions={divisions}
+      />
 
       {/* Edit Kickoff Modal */}
       {scheduleTarget && (

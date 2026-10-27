@@ -14,6 +14,12 @@
 
 import { Router } from 'express'
 import { execute, queryAll, queryOne, withTransaction, type Params } from '../db.js'
+import {
+  previewFixtures,
+  executeGenerateFixtures,
+  roundRobinLegs,
+  roundRobinRounds,
+} from '../domain/generateFixtures.js'
 import { clearResult, setResult } from '../domain/applyResult.js'
 import { hashPassword, MAX_PASSWORD_BYTES, notify } from '../domain/auth.js'
 import {
@@ -270,141 +276,35 @@ admin.post(
     }
 
     const rounds = Number(req.body?.rounds)
-    // Capped at 2 on purpose. A round robin is one complete set of pairings;
-    // repeating it a third time would produce the same fixtures again, and
-    // generating genuinely different third and fourth rounds is a real
-    // scheduling problem rather than a loop. One leg and home-and-away are the
-    // two formats a league actually plays.
     if (!Number.isSafeInteger(rounds) || rounds < 1 || rounds > 2) {
       return res.status(400).json({ error: 'rounds must be 1 (single round robin) or 2 (home and away).' })
     }
 
-    const result = await withTransaction(async (conn) => {
-      const [existingMatches] = await conn.query(
-        `SELECT home_club_id, away_club_id
-           FROM matches
-          WHERE season_id = ?
-            AND home_club_id IN (
-              SELECT dc.club_id
-                FROM division_clubs dc
-                JOIN divisions d ON d.id = dc.division_id
-               WHERE d.season_id = ? AND d.id IN (?)
-            )`,
-        [seasonId, seasonId, [divisionIds]],
-      )
-      // Two sets, because "have these two clubs met" and "does this exact
-      // fixture exist" are different questions and conflating them is what made
-      // rounds=2 silently behave as rounds=1.
-      //
-      // existingFixtures is oriented — home:away — so a league already holding
-      // A-home-to-B does not block generating B-home-to-A, which is the whole
-      // point of a second leg. metPairs is order-independent, so the first leg
-      // is skipped when the pairing exists in either direction.
-      const existingFixtures = new Set(
-        (existingMatches as Array<{ home_club_id: number; away_club_id: number }>).map(
-          (m) => fixtureKey(m.home_club_id, m.away_club_id),
-        ),
-      )
-      const metPairs = new Set(
-        (existingMatches as Array<{ home_club_id: number; away_club_id: number }>).map((m) =>
-          pairKey(m.home_club_id, m.away_club_id),
-        ),
-      )
+    const isPreview = Boolean(req.body?.preview)
+    const schedule = req.body?.schedule
 
-      const created: number[] = []
-      let skipped = 0
-      let missing = 0
+    if (isPreview) {
+      const previewResult = await previewFixtures({
+        seasonId,
+        divisionIds,
+        rounds,
+        schedule,
+      })
+      return res.json(previewResult)
+    }
 
-      for (const divisionId of divisionIds) {
-        const [clubRows] = await conn.query(
-          `SELECT c.id
-             FROM division_clubs dc
-             JOIN divisions d ON d.id = dc.division_id
-             JOIN clubs c ON c.id = dc.club_id
-            WHERE d.id = ? AND d.season_id = ?
-            ORDER BY c.id`,
-          [divisionId, seasonId],
-        )
-        const clubIds = (clubRows as Array<{ id: number }>).map((row) => row.id)
-
-        // Two clubs cannot play each other, so there is nothing to schedule.
-        if (clubIds.length < 2) {
-          missing += 1
-          continue
-        }
-
-        const singleRound = roundRobinLegs(clubIds)
-        for (let leg = 0; leg < rounds; leg += 1) {
-          for (const [a, b] of singleRound) {
-            // Swap ends on later legs so nobody plays every home match.
-            const [homeId, awayId] = leg % 2 === 0 ? [a, b] : [b, a]
-            const exact = fixtureKey(homeId, awayId)
-            const pairAlreadyPlayed = metPairs.has(pairKey(homeId, awayId))
-            // The first leg skips if the pairing exists either way round; later
-            // legs only skip on the exact same fixture, which is what lets the
-            // return leg through.
-            const duplicate =
-              existingFixtures.has(exact) || (leg === 0 && pairAlreadyPlayed)
-            if (duplicate) {
-              skipped += 1
-              continue
-            }
-            await conn.execute(
-              `INSERT INTO matches
-                 (division_id, season_id, home_club_id, away_club_id, kickoff, status,
-                  home_score, away_score, created_at, updated_at)
-               VALUES (?, ?, ?, ?, NULL, 'unscheduled', NULL, NULL, NOW(), NOW())`,
-              [divisionId, seasonId, homeId, awayId],
-            )
-            existingFixtures.add(exact)
-            metPairs.add(pairKey(homeId, awayId))
-            created.push(0)
-          }
-        }
-      }
-
-      return { created: created.length, skipped, missing }
+    const result = await executeGenerateFixtures({
+      seasonId,
+      divisionIds,
+      rounds,
+      schedule,
     })
 
     res.status(201).json(result)
   }),
 )
 
-/** Oriented identity of one fixture: A at home to B. */
-function fixtureKey(home: number, away: number): string {
-  return `${home}:${away}`
-}
-
-/** Order-independent identity of a pairing: "these two have met". */
-function pairKey(a: number, b: number): string {
-  return `${Math.min(a, b)}:${Math.max(a, b)}`
-}
-
-/**
- * One full single round of fixtures, each club appearing exactly once.
- *
- * The circle method: the first club is held still and everything else rotates
- * around it, which is the standard way to get a balanced schedule where every
- * pair meets exactly once. An odd number of clubs gets a null bye.
- */
-function roundRobinLegs(clubIds: number[]): Array<[number, number]> {
-  const teams = [...clubIds]
-  if (teams.length % 2 !== 0) teams.push(0)
-  const n = teams.length
-  const rounds = n - 1
-  const legs: Array<[number, number]> = []
-  for (let r = 0; r < rounds; r += 1) {
-    for (let i = 0; i < n / 2; i += 1) {
-      const home = teams[i]
-      const away = teams[n - 1 - i]
-      if (home === 0 || away === 0) continue
-      legs.push([home, away])
-    }
-    // Rotate everyone but the first entry.
-    teams.splice(1, 0, teams.pop() as number)
-  }
-  return legs
-}
+export { roundRobinLegs, roundRobinRounds }
 
 admin.patch(
   '/matches/:id/schedule',
