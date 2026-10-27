@@ -272,7 +272,7 @@ function SearchableManagerPicker({
   )
 }
 
-type ClubFilter = 'all' | 'pending' | 'active' | 'unassigned' | 'withdrawn' | 'featured'
+type ClubFilter = 'all' | 'active' | 'pending' | 'withdrawn'
 
 export function ClubsView({
   guard,
@@ -295,12 +295,23 @@ export function ClubsView({
 
   const [filter, setFilter] = useState<ClubFilter>(() => {
     if (initialSub === 'pending') return 'pending'
-    if (initialSub === 'unassigned') return 'unassigned'
     return 'all'
   })
   const [search, setSearch] = useState('')
-  const [divisionFilter, setDivisionFilter] = useState<string>('all')
+  const [divisionFilter, setDivisionFilter] = useState<string>(() => {
+    if (initialSub === 'unassigned') return 'unassigned'
+    return 'all'
+  })
   const [regionFilter, setRegionFilter] = useState<string>('all')
+  const [featuredFilter, setFeaturedFilter] = useState<'all' | 'featured' | 'standard'>('all')
+
+  // Action Menu state for table rows
+  const [actionMenu, setActionMenu] = useState<{
+    slug: string
+    club: Club
+    top: number
+    right: number
+  } | null>(null)
 
   // Pagination state
   const [pendingPage, setPendingPage] = useState(1)
@@ -414,7 +425,10 @@ export function ClubsView({
 
   useEffect(() => {
     if (initialSub === 'pending') setFilter('pending')
-    else if (initialSub === 'unassigned') setFilter('unassigned')
+    else if (initialSub === 'unassigned') {
+      setFilter('all')
+      setDivisionFilter('unassigned')
+    }
     else if (initialSub === 'create') setCreateOpen(true)
   }, [initialSub])
 
@@ -972,6 +986,24 @@ export function ClubsView({
     }
   }
 
+  const handleSingleDeleteClub = async (slug: string, name: string) => {
+    if (
+      !window.confirm(
+        `Delete ${name} permanently? This removes its fixtures and standings rows and releases its players to free agency.`,
+      )
+    ) {
+      return
+    }
+    try {
+      await guard(() => deleteAdminClub(slug), 'Could not delete club')
+      report('ok', `Deleted ${name}.`)
+      if (drawerClubSlug === slug) closeDrawer()
+      await loadData()
+    } catch {
+      /* reported */
+    }
+  }
+
   const handleDeleteClub = async () => {
     if (!drawerClubSlug) return
     if (
@@ -1056,10 +1088,10 @@ export function ClubsView({
   const filteredClubs = clubs.filter((club) => {
     if (filter === 'pending' && club.status !== 'pending') return false
     if (filter === 'active' && club.status !== 'active') return false
-    if (filter === 'unassigned' && (club.status !== 'active' || club.division_id !== null))
-      return false
     if (filter === 'withdrawn' && club.status !== 'withdrawn') return false
-    if (filter === 'featured' && !Boolean(club.is_featured)) return false
+
+    if (featuredFilter === 'featured' && !Boolean(club.is_featured)) return false
+    if (featuredFilter === 'standard' && Boolean(club.is_featured)) return false
 
     if (divisionFilter === 'unassigned' && club.division_id !== null) return false
     if (
@@ -1093,7 +1125,39 @@ export function ClubsView({
   // Reset clubPage when filters change
   useEffect(() => {
     setClubPage(1)
-  }, [filter, divisionFilter, regionFilter, search])
+  }, [filter, divisionFilter, regionFilter, featuredFilter, search])
+
+  // Close action menu on scroll, resize, or Escape key
+  useEffect(() => {
+    if (!actionMenu) return
+    const handleClose = () => setActionMenu(null)
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setActionMenu(null)
+    }
+    window.addEventListener('scroll', handleClose, true)
+    window.addEventListener('resize', handleClose)
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('scroll', handleClose, true)
+      window.removeEventListener('resize', handleClose)
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [actionMenu])
+
+  const handleToggleActionMenu = (club: Club, e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation()
+    if (actionMenu?.slug === club.slug) {
+      setActionMenu(null)
+      return
+    }
+    const rect = e.currentTarget.getBoundingClientRect()
+    setActionMenu({
+      slug: club.slug,
+      club,
+      top: rect.bottom + 4,
+      right: Math.max(12, window.innerWidth - rect.right),
+    })
+  }
 
   const totalClubPages = Math.max(1, Math.ceil(filteredClubs.length / clubPageSize))
   const safeClubPage = Math.min(clubPage, totalClubPages)
@@ -1366,12 +1430,7 @@ export function ClubsView({
               [
                 { id: 'all', label: `All Clubs (${clubs.length})` },
                 { id: 'active', label: `Active (${clubs.filter((c) => c.status === 'active').length})` },
-                {
-                  id: 'unassigned',
-                  label: `Unassigned (${clubs.filter((c) => c.status === 'active' && c.division_id === null).length})`,
-                },
                 { id: 'pending', label: `Pending (${clubs.filter((c) => c.status === 'pending').length})` },
-                { id: 'featured', label: `★ Featured (${clubs.filter((c) => Boolean(c.is_featured)).length})` },
                 { id: 'withdrawn', label: `Withdrawn (${clubs.filter((c) => c.status === 'withdrawn').length})` },
               ] as const
             ).map((tab) => (
@@ -1423,7 +1482,9 @@ export function ClubsView({
             aria-label="Filter by division"
           >
             <option value="all">All Divisions</option>
-            <option value="unassigned">Unassigned to Division</option>
+            <option value="unassigned">
+              Unassigned ({clubs.filter((c) => c.status === 'active' && c.division_id === null).length})
+            </option>
             {divisions.map((d) => (
               <option key={d.id} value={String(d.id)}>
                 {d.name} {!Boolean(d.is_active) ? '(Paused)' : ''}
@@ -1443,6 +1504,18 @@ export function ClubsView({
                 {r.flag} {r.name}
               </option>
             ))}
+          </select>
+          <select
+            value={featuredFilter}
+            onChange={(e) => setFeaturedFilter(e.target.value as 'all' | 'featured' | 'standard')}
+            className="adm-select"
+            aria-label="Filter by featured showcase status"
+          >
+            <option value="all">All Showcase Status</option>
+            <option value="featured">
+              ★ Featured ({clubs.filter((c) => Boolean(c.is_featured)).length})
+            </option>
+            <option value="standard">Standard (Not Featured)</option>
           </select>
         </div>
 
@@ -1468,12 +1541,14 @@ export function ClubsView({
                       />
                     </th>
                     <th>Club & Manager</th>
-                    <th>Region</th>
-                    <th>Division (Inline)</th>
-                    <th>Status</th>
-                    <th>Crest Wall</th>
-                    <th>Starting XI / Squad</th>
-                    <th style={{ textAlign: 'right' }}>Actions</th>
+                    <th style={{ width: 70 }}>Region</th>
+                    <th>Division</th>
+                    <th style={{ width: 95 }}>Status</th>
+                    <th style={{ width: 44, textAlign: 'center' }} title="Featured on Homepage Crest Wall">
+                      ★
+                    </th>
+                    <th style={{ width: 110 }}>Squad</th>
+                    <th style={{ width: 80, textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1483,8 +1558,13 @@ export function ClubsView({
                     const managerEmail = club.manager_email || pendingInfo?.email || null
                     const managerName = club.manager_name || pendingInfo?.display_name || null
                     return (
-                      <tr key={club.id} className={selectedSlugs.has(club.slug) ? 'is-selected' : ''}>
-                        <td>
+                      <tr
+                        key={club.id}
+                        className={`adm-table-row ${selectedSlugs.has(club.slug) ? 'is-selected' : ''}`}
+                        onClick={() => void openClubDrawer(club)}
+                        title={`Click row to edit ${club.name}`}
+                      >
+                        <td onClick={(e) => e.stopPropagation()}>
                           <input
                             type="checkbox"
                             checked={selectedSlugs.has(club.slug)}
@@ -1493,15 +1573,7 @@ export function ClubsView({
                           />
                         </td>
                         <td>
-                          <div
-                            className="adm-club-cell"
-                            onClick={() => void openClubDrawer(club)}
-                            role="button"
-                            tabIndex={0}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' || e.key === ' ') void openClubDrawer(club)
-                            }}
-                          >
+                          <div className="adm-club-cell">
                             {logo ? (
                               <img src={logo} alt={club.name} className="adm-crest-sm" />
                             ) : (
@@ -1516,17 +1588,22 @@ export function ClubsView({
                                   <span className="adm-code-pill">{club.short_code}</span>
                                 )}
                                 {club.ea_club_id && (
-                                  <span className="adm-code-pill" style={{ border: '1px solid rgba(56,189,248,0.4)', color: '#38bdf8' }} title={`EA Club: ${club.ea_club_name || club.ea_club_id}`}>
+                                  <span
+                                    className="adm-code-pill"
+                                    style={{ border: '1px solid rgba(56,189,248,0.4)', color: '#38bdf8' }}
+                                    title={`EA Club: ${club.ea_club_name || club.ea_club_id}`}
+                                  >
                                     EA #{club.ea_club_id}
                                   </span>
                                 )}
                               </div>
                               {managerEmail ? (
-                                <small className="adm-club-manager-sub">
-                                  Manager: {managerName ? `${managerName} (${managerEmail})` : managerEmail}
+                                <small className="adm-club-manager-sub" title={`Manager Email: ${managerEmail}`}>
+                                  Manager: {managerName ? managerName : managerEmail}
+                                  {managerName && <span className="adm-mgr-email-muted"> · {managerEmail}</span>}
                                 </small>
                               ) : (
-                                <small className="adm-club-manager-sub" style={{ opacity: 0.6 }}>
+                                <small className="adm-club-manager-sub is-empty">
                                   No manager assigned
                                 </small>
                               )}
@@ -1540,14 +1617,15 @@ export function ClubsView({
                             <span className="adm-text-muted">—</span>
                           )}
                         </td>
-                        <td>
+                        <td onClick={(e) => e.stopPropagation()}>
                           <select
                             value={club.division_id != null ? String(club.division_id) : ''}
                             onChange={(e) => void handleInlineDivision(club, e.target.value)}
-                            className="adm-select adm-select-inline"
+                            className="adm-clean-select"
                             aria-label={`Division for ${club.name}`}
+                            title="Click to change division"
                           >
-                            <option value="">Unassigned</option>
+                            <option value="">— Unassigned —</option>
                             {activeDivisions.map((d) => {
                               const count = clubs.filter((c) => c.status === 'active' && c.division_id === d.id).length
                               const isCurrent = club.division_id === d.id
@@ -1561,48 +1639,70 @@ export function ClubsView({
                           </select>
                         </td>
                         <td>
-                          <span className={`adm-status-badge status-${club.status}`}>
-                            {club.status}
-                          </span>
+                          {club.status === 'active' ? (
+                            <span className="adm-status-badge status-active">Active</span>
+                          ) : club.status === 'pending' ? (
+                            <span className="adm-status-text status-pending">
+                              <span className="adm-status-dot dot-pending" />
+                              Pending
+                            </span>
+                          ) : (
+                            <span className="adm-status-text status-withdrawn">
+                              <span className="adm-status-dot dot-withdrawn" />
+                              Withdrawn
+                            </span>
+                          )}
                         </td>
-                        <td>
+                        <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
                           <button
                             type="button"
-                            className={`adm-star-btn ${Boolean(club.is_featured) ? 'is-featured' : ''}`}
+                            className={`adm-star-toggle ${Boolean(club.is_featured) ? 'is-active' : ''}`}
                             onClick={() => void handleToggleFeatured(club)}
-                            title="Toggle Homepage Featured Crest Wall"
+                            title={
+                              Boolean(club.is_featured)
+                                ? '★ Featured on Homepage (click to remove)'
+                                : '☆ Feature on Homepage'
+                            }
+                            aria-label={
+                              Boolean(club.is_featured)
+                                ? `Remove ${club.name} from featured`
+                                : `Feature ${club.name}`
+                            }
                           >
-                            {Boolean(club.is_featured) ? '★ Featured' : '☆ Feature'}
+                            {Boolean(club.is_featured) ? '★' : '☆'}
                           </button>
                         </td>
-                        <td>
+                        <td onClick={(e) => e.stopPropagation()}>
                           <button
                             type="button"
-                            className="adm-squad-btn"
+                            className="adm-link-count"
                             onClick={() => void openSquadModal(club)}
                             title={`Open ${club.name} Starting XI & Squad Modal`}
                           >
-                            <span>⚽ Squad / XI</span>
-                            <span className="adm-code-pill">{club.players}</span>
+                            {club.players ?? 0} {club.players === 1 ? 'Player' : 'Players'}
                           </button>
                         </td>
-                        <td style={{ textAlign: 'right' }}>
-                          <div className="adm-row-actions" style={{ justifyContent: 'flex-end' }}>
+                        <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
+                          <div className="adm-row-actions" style={{ justifyContent: 'flex-end', gap: 6 }}>
                             {club.status === 'pending' && (
                               <button
                                 type="button"
                                 className="adm-btn adm-btn-success adm-btn-sm"
                                 onClick={() => void handleDecision(club.slug, club.name, 'approve')}
+                                title="Quick approve application"
+                                style={{ padding: '3px 8px', fontSize: 11.5 }}
                               >
                                 Approve
                               </button>
                             )}
                             <button
                               type="button"
-                              className="adm-btn adm-btn-secondary adm-btn-sm"
-                              onClick={() => void openClubDrawer(club)}
+                              className={`adm-action-dots-btn ${actionMenu?.slug === club.slug ? 'is-active' : ''}`}
+                              onClick={(e) => handleToggleActionMenu(club, e)}
+                              title="More actions"
+                              aria-label={`More actions for ${club.name}`}
                             >
-                              Edit Club →
+                              •••
                             </button>
                           </div>
                         </td>
@@ -1612,6 +1712,85 @@ export function ClubsView({
                 </tbody>
               </table>
             </div>
+
+            {/* Action Popover Menu (anchored fixed to avoid overflow clipping) */}
+            {actionMenu && (
+              <>
+                <div
+                  className="adm-menu-backdrop"
+                  onClick={() => setActionMenu(null)}
+                />
+                <div
+                  className="adm-action-popover"
+                  style={{
+                    position: 'fixed',
+                    top: actionMenu.top,
+                    right: actionMenu.right,
+                    zIndex: 1000,
+                  }}
+                >
+                  <button
+                    type="button"
+                    className="adm-action-popover-item"
+                    onClick={() => {
+                      const c = clubs.find((x) => x.slug === actionMenu.slug)
+                      setActionMenu(null)
+                      if (c) void openClubDrawer(c)
+                    }}
+                  >
+                    <span>✏️</span> Edit Club Details
+                  </button>
+                  <button
+                    type="button"
+                    className="adm-action-popover-item"
+                    onClick={() => {
+                      const c = clubs.find((x) => x.slug === actionMenu.slug)
+                      setActionMenu(null)
+                      if (c) void openSquadModal(c)
+                    }}
+                  >
+                    <span>⚽</span> Starting XI & Squad
+                  </button>
+                  <button
+                    type="button"
+                    className="adm-action-popover-item"
+                    onClick={() => {
+                      const c = clubs.find((x) => x.slug === actionMenu.slug)
+                      setActionMenu(null)
+                      if (c) void handleToggleFeatured(c)
+                    }}
+                  >
+                    <span>{actionMenu.club.is_featured ? '☆' : '★'}</span>
+                    {actionMenu.club.is_featured ? 'Remove from Featured' : 'Feature on Homepage'}
+                  </button>
+                  {actionMenu.club.status === 'pending' && (
+                    <button
+                      type="button"
+                      className="adm-action-popover-item is-success"
+                      onClick={() => {
+                        const { slug, name } = actionMenu.club
+                        setActionMenu(null)
+                        void handleDecision(slug, name, 'approve')
+                      }}
+                    >
+                      <span>✓</span> Approve Application
+                    </button>
+                  )}
+                  <div className="adm-action-popover-divider" />
+                  <button
+                    type="button"
+                    className="adm-action-popover-item is-danger"
+                    onClick={() => {
+                      const { slug, name } = actionMenu.club
+                      setActionMenu(null)
+                      void handleSingleDeleteClub(slug, name)
+                    }}
+                  >
+                    <span>🗑️</span> Delete Club
+                  </button>
+                </div>
+              </>
+            )}
 
             {/* Pagination Footer */}
             {filteredClubs.length > clubPageSize && (
