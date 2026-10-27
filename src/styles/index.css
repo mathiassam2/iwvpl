@@ -757,7 +757,7 @@
 
 @keyframes fade-up {
   from { opacity: 0; transform: translateY(14px); }
-  to   { opacity: 1; transform: translateY(0); }
+  to   { opacity: 1; transform: none; }
 }
 
 @keyframes score-pop {
@@ -898,7 +898,7 @@
 
 @keyframes sd-rise {
   from { opacity: 0; transform: translateY(22px); }
-  to   { opacity: 1; transform: translateY(0); }
+  to   { opacity: 1; transform: none; }
 }
 @keyframes sd-rise-soft {
   from { opacity: 0; transform: translateY(46px) scale(0.985); }
@@ -1094,7 +1094,7 @@
     align-items: center;
     /* Top padding clears the sticky site header, which floats over the rail.
        Without it the panel index gets sliced by the header as it travels. */
-    padding-block: 5.5rem 1.75rem;
+    padding-block: 8.5rem 1.75rem;
     overflow-x: auto;
     overscroll-behavior-x: contain;
     scrollbar-width: none;
@@ -1660,13 +1660,21 @@
    duplicated in the DOM, so the second half is aria-hidden.
    ------------------------------------------------------------ */
 .marquee {
-  position: relative;
+  position: sticky;
+  top: 4rem;
+  z-index: 40;
   overflow: hidden;
   padding-block: 1.15rem;
   border-block: 1px solid var(--border);
   /* --surface-2, not --bg-raised: against --bg the raised token is only a
      couple of values lighter and the ticker disappeared into the page. */
   background: var(--surface-2);
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.4);
+}
+@media (min-width: 1024px) {
+  .marquee {
+    top: 4.5rem;
+  }
 }
 .marquee__track {
   display: flex;
