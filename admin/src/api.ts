@@ -612,6 +612,19 @@ export const setFeaturedDivision = (seasonId: number, divisionId: number | null)
     body: JSON.stringify({ divisionId }),
   }).then((r) => r.season)
 
+export interface ResetSeasonOptions {
+  confirmSeasonName: string
+  deleteFixtures?: boolean
+  resetStandings?: boolean
+  resetPlayerStats?: boolean
+}
+
+export const resetSeason = (id: number, options: ResetSeasonOptions) =>
+  request<{ ok: true; message: string }>('/api/admin/seasons/' + id + '/reset', {
+    method: 'POST',
+    body: JSON.stringify(options),
+  })
+
 export const createSeason = (name: string, year: number) =>
   request<{ season: AdminSeason; divisions: Array<Omit<Division, 'season'>> }>('/api/admin/seasons', {
     method: 'POST',

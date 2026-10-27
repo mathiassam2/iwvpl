@@ -1599,6 +1599,116 @@ admin.put(
  * again — flipping the flag alone would leave two seasons and the movement
  * between them still applied.
  */
+/**
+ * Reset a season back to an initial state.
+ *
+ * Resets standings to 0, clears player season stats, and either clears match scores/events
+ * back to scheduled (unplayed) or wipes all match fixtures entirely.
+ */
+admin.post(
+  '/seasons/:id/reset',
+  handler(async (req, res) => {
+    const id = Number.parseInt(req.params.id, 10)
+    if (!Number.isSafeInteger(id) || id < 1) {
+      return res.status(400).json({ error: 'Season id must be a positive integer.' })
+    }
+
+    const confirmName = typeof req.body?.confirmSeasonName === 'string' ? req.body.confirmSeasonName.trim() : ''
+    const deleteFixtures = Boolean(req.body?.deleteFixtures)
+    const resetStandings = req.body?.resetStandings !== false
+    const resetPlayerStats = req.body?.resetPlayerStats !== false
+
+    const result = await withTransaction(async (conn) => {
+      const [seasonRows] = await conn.query(
+        'SELECT id, name FROM seasons WHERE id = ? FOR UPDATE',
+        [id],
+      )
+      const season = (seasonRows as Array<{ id: number; name: string }>)[0]
+      if (!season) {
+        throw Object.assign(new Error('Season not found.'), { status: 404 })
+      }
+
+      if (confirmName.toLowerCase() !== season.name.trim().toLowerCase()) {
+        throw Object.assign(
+          new Error(`Confirmation season name does not match "${season.name}".`),
+          { status: 400 },
+        )
+      }
+
+      // 1. Get all matches for this season
+      const [matchRows] = await conn.query(
+        'SELECT id FROM matches WHERE season_id = ?',
+        [id],
+      )
+      const matchIds = (matchRows as Array<{ id: number }>).map((m) => m.id)
+
+      if (matchIds.length > 0) {
+        for (let i = 0; i < matchIds.length; i += 500) {
+          const chunk = matchIds.slice(i, i + 500)
+          await conn.query('DELETE FROM match_events WHERE match_id IN (?)', [chunk])
+          await conn.query('DELETE FROM match_stats WHERE match_id IN (?)', [chunk])
+        }
+
+        if (deleteFixtures) {
+          await conn.execute('DELETE FROM matches WHERE season_id = ?', [id])
+        } else {
+          await conn.execute(
+            "UPDATE matches SET home_score = NULL, away_score = NULL, status = 'scheduled' WHERE season_id = ?",
+            [id],
+          )
+        }
+      }
+
+      // 2. Reset standings snapshot
+      if (resetStandings) {
+        await conn.execute(
+          `UPDATE standings_snapshot
+              SET played = 0, won = 0, drawn = 0, lost = 0,
+                  goals_for = 0, goals_against = 0, goal_difference = 0, points = 0,
+                  form = '', updated_at = NOW()
+            WHERE season_id = ?`,
+          [id],
+        )
+
+        await conn.execute(
+          `UPDATE standings_snapshot s
+             JOIN (
+               SELECT s2.id,
+                      ROW_NUMBER() OVER (PARTITION BY s2.division_id ORDER BY c.name ASC) AS new_pos
+                 FROM standings_snapshot s2
+                 JOIN clubs c ON c.id = s2.club_id
+                WHERE s2.season_id = ?
+             ) ranked ON ranked.id = s.id
+             SET s.position = ranked.new_pos, s.updated_at = NOW()
+           WHERE s.season_id = ?`,
+          [id, id],
+        )
+      }
+
+      // 3. Reset player stats for this season
+      if (resetPlayerStats) {
+        await conn.execute('DELETE FROM player_season_stats WHERE season_id = ?', [id])
+      }
+
+      return {
+        seasonId: id,
+        seasonName: season.name,
+        deleteFixtures,
+        resetStandings,
+        resetPlayerStats,
+      }
+    })
+
+    res.json({
+      ok: true,
+      result,
+      message: deleteFixtures
+        ? `Season "${result.seasonName}" reset: all fixtures, match results, standings, and player stats have been cleared.`
+        : `Season "${result.seasonName}" reset: match scores, events, stats, standings, and player stats have been reset back to unplayed.`,
+    })
+  }),
+)
+
 admin.put(
   '/seasons/:id/current',
   handler(async (req, res) => {

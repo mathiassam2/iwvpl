@@ -14,6 +14,7 @@ import {
   updateDivision,
   updateDivisionOrder,
   updateSeason,
+  resetSeason,
   type AdminSeason,
   type Club,
   type Division,
@@ -42,6 +43,13 @@ export function SeasonsDivisionsView({
   const [newSeasonName, setNewSeasonName] = useState('')
   const [newSeasonYear, setNewSeasonYear] = useState(String(new Date().getFullYear()))
   const [rolloverWizardOpen, setRolloverWizardOpen] = useState(false)
+  // Reset Season modal state
+  const [resetModalOpen, setResetModalOpen] = useState(false)
+  const [resetSeasonTarget, setResetSeasonTarget] = useState<AdminSeason | null>(null)
+  const [resetConfirmName, setResetConfirmName] = useState('')
+  const [resetDeleteFixtures, setResetDeleteFixtures] = useState(false)
+  const [resetStandings, setResetStandings] = useState(true)
+  const [resetPlayerStats, setResetPlayerStats] = useState(true)
 
   // Division modal / drawer
   const [createDivOpen, setCreateDivOpen] = useState(false)
@@ -88,6 +96,46 @@ export function SeasonsDivisionsView({
     try {
       const s = await guard(() => setCurrentSeason(seasonId), 'Could not switch active season')
       report('ok', `Active season switched to ${s.name}.`)
+      await loadAll()
+    } catch {
+      /* reported */
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleOpenResetModal = (target: AdminSeason) => {
+    setResetSeasonTarget(target)
+    setResetConfirmName('')
+    setResetDeleteFixtures(false)
+    setResetStandings(true)
+    setResetPlayerStats(true)
+    setResetModalOpen(true)
+  }
+
+  const handleResetSeasonSubmit = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!resetSeasonTarget) return
+
+    if (resetConfirmName.trim().toLowerCase() !== resetSeasonTarget.name.trim().toLowerCase()) {
+      report('error', `Please type "${resetSeasonTarget.name}" exactly to confirm.`)
+      return
+    }
+
+    setBusy(true)
+    try {
+      const res = await guard(
+        () =>
+          resetSeason(resetSeasonTarget.id, {
+            confirmSeasonName: resetConfirmName.trim(),
+            deleteFixtures: resetDeleteFixtures,
+            resetStandings,
+            resetPlayerStats,
+          }),
+        'Could not reset season',
+      )
+      report('ok', res.message || `Season "${resetSeasonTarget.name}" reset successfully.`)
+      setResetModalOpen(false)
       await loadAll()
     } catch {
       /* reported */
@@ -289,16 +337,25 @@ export function SeasonsDivisionsView({
           </div>
           <div className="adm-row-actions">
             {currentSeason && (
-              <button
-                type="button"
-                className="adm-btn adm-btn-secondary adm-btn-sm"
-                onClick={() => {
-                  setRenameValue(currentSeason.name)
-                  setRenameOpen(true)
-                }}
-              >
-                Rename Season
-              </button>
+              <>
+                <button
+                  type="button"
+                  className="adm-btn adm-btn-secondary adm-btn-sm"
+                  onClick={() => {
+                    setRenameValue(currentSeason.name)
+                    setRenameOpen(true)
+                  }}
+                >
+                  Rename Season
+                </button>
+                <button
+                  type="button"
+                  className="adm-btn adm-btn-danger adm-btn-sm"
+                  onClick={() => handleOpenResetModal(currentSeason)}
+                >
+                  ⚠️ Reset Season
+                </button>
+              </>
             )}
             <button
               type="button"
@@ -729,6 +786,184 @@ export function SeasonsDivisionsView({
                 </button>
                 <button type="submit" className="adm-btn adm-btn-primary" disabled={busy}>
                   Save Division
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Reset Season Modal */}
+      {resetModalOpen && resetSeasonTarget && (
+        <div className="adm-modal-backdrop" onClick={() => setResetModalOpen(false)}>
+          <div className="adm-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 560 }}>
+            <div className="adm-modal-head">
+              <h3 style={{ color: 'var(--adm-danger, #ef4444)' }}>
+                ⚠️ Reset Season: {resetSeasonTarget.name}
+              </h3>
+              <button
+                type="button"
+                className="adm-close-btn"
+                onClick={() => setResetModalOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+            <form onSubmit={handleResetSeasonSubmit} className="adm-form-stack">
+              <div
+                style={{
+                  padding: '12px 16px',
+                  borderRadius: '8px',
+                  backgroundColor: 'rgba(239, 68, 68, 0.08)',
+                  border: '1px solid rgba(239, 68, 68, 0.25)',
+                  color: 'var(--adm-text, #f1f5f9)',
+                  fontSize: '13px',
+                  lineHeight: '1.5',
+                }}
+              >
+                <strong>Warning:</strong> Resetting this season will restore standings and match results back to their initial unplayed state. This operation cannot be undone.
+              </div>
+
+              {seasons.length > 1 && (
+                <label className="adm-field">
+                  <span>Target Season to Reset</span>
+                  <select
+                    value={resetSeasonTarget.id}
+                    onChange={(e) => {
+                      const found = seasons.find((s) => s.id === Number(e.target.value))
+                      if (found) {
+                        setResetSeasonTarget(found)
+                        setResetConfirmName('')
+                      }
+                    }}
+                    className="adm-select"
+                  >
+                    {seasons.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} ({s.year}) {Boolean(s.is_current) ? '· (Active Season)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+
+              <div className="adm-field">
+                <span>Fixtures & Schedule Handling</span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' }}>
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '10px',
+                      padding: '10px 12px',
+                      borderRadius: '8px',
+                      border: !resetDeleteFixtures ? '1px solid var(--adm-accent, #3b82f6)' : '1px solid var(--adm-border, #334155)',
+                      backgroundColor: !resetDeleteFixtures ? 'rgba(59, 130, 246, 0.06)' : 'transparent',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="resetFixturesMode"
+                      checked={!resetDeleteFixtures}
+                      onChange={() => setResetDeleteFixtures(false)}
+                      style={{ marginTop: '2px' }}
+                    />
+                    <div>
+                      <strong style={{ display: 'block', fontSize: '13px', color: 'var(--adm-text, #f1f5f9)' }}>
+                        Keep scheduled fixtures (Reset results only)
+                      </strong>
+                      <span style={{ fontSize: '12px', color: 'var(--adm-muted, #94a3b8)' }}>
+                        Keeps all match kickoff dates, times, and rounds, but resets match scores, events, and status back to unplayed (0-0 scheduled).
+                      </span>
+                    </div>
+                  </label>
+
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '10px',
+                      padding: '10px 12px',
+                      borderRadius: '8px',
+                      border: resetDeleteFixtures ? '1px solid #ef4444' : '1px solid var(--adm-border, #334155)',
+                      backgroundColor: resetDeleteFixtures ? 'rgba(239, 68, 68, 0.06)' : 'transparent',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="resetFixturesMode"
+                      checked={resetDeleteFixtures}
+                      onChange={() => setResetDeleteFixtures(true)}
+                      style={{ marginTop: '2px' }}
+                    />
+                    <div>
+                      <strong style={{ display: 'block', fontSize: '13px', color: 'var(--adm-text, #f1f5f9)' }}>
+                        Completely wipe match schedule & fixtures
+                      </strong>
+                      <span style={{ fontSize: '12px', color: 'var(--adm-muted, #94a3b8)' }}>
+                        Deletes every fixture/match row in this season so you can generate a brand new round-robin schedule from scratch.
+                      </span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              <div className="adm-field">
+                <span>Standings & Player Stats</span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={resetStandings}
+                      onChange={(e) => setResetStandings(e.target.checked)}
+                    />
+                    <span>Reset division standings to 0 (0 Played, 0 Won, 0 Drawn, 0 Lost, 0 Points)</span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={resetPlayerStats}
+                      onChange={(e) => setResetPlayerStats(e.target.checked)}
+                    />
+                    <span>Reset player season leaderboards/stats (goals, assists, saves, clean sheets)</span>
+                  </label>
+                </div>
+              </div>
+
+              <label className="adm-field">
+                <span>
+                  To confirm, type <strong>{resetSeasonTarget.name}</strong>:
+                </span>
+                <input
+                  type="text"
+                  required
+                  placeholder={resetSeasonTarget.name}
+                  value={resetConfirmName}
+                  onChange={(e) => setResetConfirmName(e.target.value)}
+                  className="adm-input"
+                  autoFocus
+                />
+              </label>
+
+              <div className="adm-modal-foot">
+                <button
+                  type="button"
+                  className="adm-btn adm-btn-ghost"
+                  onClick={() => setResetModalOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="adm-btn adm-btn-danger"
+                  disabled={
+                    busy ||
+                    resetConfirmName.trim().toLowerCase() !== resetSeasonTarget.name.trim().toLowerCase()
+                  }
+                >
+                  {busy ? 'Resetting Season…' : 'Confirm & Reset Season'}
                 </button>
               </div>
             </form>
