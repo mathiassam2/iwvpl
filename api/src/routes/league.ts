@@ -800,7 +800,7 @@ league.get(
     const includeInactive = _req.query.includeInactive === 'true'
     const rows = await queryAll(
       `SELECT d.id, d.name, d.slug, s.id AS season_id, s.name AS season,
-              d.sort_order, d.promotion_count, d.relegation_count, d.is_active
+              d.sort_order, d.promotion_count, d.relegation_count, d.is_active, d.max_teams
          FROM divisions d
          JOIN seasons s ON s.id = d.season_id
         WHERE s.id = ?

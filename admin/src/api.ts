@@ -503,6 +503,7 @@ export interface Division {
   sort_order: number
   promotion_count: number | null
   relegation_count: number | null
+  max_teams?: number | null
   /** False once an admin pauses the league. See `setDivisionActive`. */
   is_active: boolean | number
 }

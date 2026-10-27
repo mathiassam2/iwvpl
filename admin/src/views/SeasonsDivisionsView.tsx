@@ -56,11 +56,13 @@ export function SeasonsDivisionsView({
   const [divName, setDivName] = useState('')
   const [divPromo, setDivPromo] = useState('')
   const [divReleg, setDivReleg] = useState('')
+  const [divMaxTeams, setDivMaxTeams] = useState('')
 
   const [editingDiv, setEditingDiv] = useState<Division | null>(null)
   const [editDivName, setEditDivName] = useState('')
   const [editDivPromo, setEditDivPromo] = useState('')
   const [editDivReleg, setEditDivReleg] = useState('')
+  const [editDivMaxTeams, setEditDivMaxTeams] = useState('')
 
   const [busy, setBusy] = useState(false)
 
@@ -239,6 +241,7 @@ export function SeasonsDivisionsView({
             name: divName.trim(),
             promotion_count: divPromo ? Number(divPromo) : null,
             relegation_count: divReleg ? Number(divReleg) : null,
+            max_teams: divMaxTeams ? Number(divMaxTeams) : null,
           }),
         'Could not create division',
       )
@@ -246,6 +249,7 @@ export function SeasonsDivisionsView({
       setDivName('')
       setDivPromo('')
       setDivReleg('')
+      setDivMaxTeams('')
       setCreateDivOpen(false)
       await loadAll()
     } catch {
@@ -266,6 +270,7 @@ export function SeasonsDivisionsView({
             name: editDivName.trim(),
             promotion_count: editDivPromo ? Number(editDivPromo) : null,
             relegation_count: editDivReleg ? Number(editDivReleg) : null,
+            max_teams: editDivMaxTeams ? Number(editDivMaxTeams) : null,
           }),
         'Could not update division',
       )
@@ -502,6 +507,9 @@ export function SeasonsDivisionsView({
                           setEditDivReleg(
                             div.relegation_count != null ? String(div.relegation_count) : '',
                           )
+                          setEditDivMaxTeams(
+                            div.max_teams != null ? String(div.max_teams) : '',
+                          )
                         }}
                       >
                         Edit Rules
@@ -519,7 +527,15 @@ export function SeasonsDivisionsView({
 
                   <div className="adm-div-meta">
                     <span>
-                      <strong>{divClubs.length}</strong> active clubs
+                      <strong>{divClubs.length}</strong>{div.max_teams ? ` / ${div.max_teams}` : ''} active clubs
+                      {div.max_teams && divClubs.length >= div.max_teams ? (
+                        <span style={{ marginLeft: 6, color: '#ef4444', fontWeight: 'bold', fontSize: '11px' }}>
+                          (FULL)
+                        </span>
+                      ) : null}
+                    </span>
+                    <span>
+                      Capacity: <strong>{div.max_teams ? `${div.max_teams} teams max` : 'Unlimited'}</strong>
                     </span>
                     <span>
                       Promotion: <strong>{div.promotion_count ? `Top ${div.promotion_count}` : 'None'}</strong>
@@ -712,6 +728,21 @@ export function SeasonsDivisionsView({
                   />
                 </label>
               </div>
+              <label className="adm-field">
+                <span>Max Division Size (Teams)</span>
+                <input
+                  type="number"
+                  min={2}
+                  max={100}
+                  placeholder="e.g. 18 (leave blank for unlimited)"
+                  value={divMaxTeams}
+                  onChange={(e) => setDivMaxTeams(e.target.value)}
+                  className="adm-input"
+                />
+                <span className="adm-field-hint" style={{ fontSize: '11px', color: 'var(--adm-muted, #94a3b8)', marginTop: '4px' }}>
+                  Leave blank or 0 for unlimited clubs. Common league sizes: 16, 18, 20.
+                </span>
+              </label>
               <div className="adm-modal-foot">
                 <button
                   type="button"
@@ -776,6 +807,21 @@ export function SeasonsDivisionsView({
                   />
                 </label>
               </div>
+              <label className="adm-field">
+                <span>Max Division Size (Teams)</span>
+                <input
+                  type="number"
+                  min={2}
+                  max={100}
+                  placeholder="e.g. 18 (leave blank for unlimited)"
+                  value={editDivMaxTeams}
+                  onChange={(e) => setEditDivMaxTeams(e.target.value)}
+                  className="adm-input"
+                />
+                <span className="adm-field-hint" style={{ fontSize: '11px', color: 'var(--adm-muted, #94a3b8)', marginTop: '4px' }}>
+                  Leave blank or 0 for unlimited clubs.
+                </span>
+              </label>
               <div className="adm-modal-foot">
                 <button
                   type="button"

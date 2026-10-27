@@ -95,6 +95,20 @@ function parseDivisionMovement(body: Record<string, unknown> | undefined): Divis
   }
 }
 
+function parseMaxTeams(value: unknown): number | null {
+  if (value === null || value === undefined || value === '' || value === 0 || value === '0') {
+    return null
+  }
+  const n = Number(value)
+  if (!Number.isInteger(n) || n < 2 || n > 100) {
+    throw Object.assign(
+      new Error('max_teams must be a whole number between 2 and 100 (or blank for unlimited).'),
+      { status: 400 },
+    )
+  }
+  return n
+}
+
 /** How a club changed league. 'transfer' is a league chosen by hand. */
 type MovementType = 'promotion' | 'relegation' | 'transfer'
 
@@ -1884,6 +1898,7 @@ admin.post(
   handler(async (req, res) => {
     const name = requiredString(req.body?.name, 'name', 64)
     const movement = parseDivisionMovement(req.body)
+    const maxTeams = parseMaxTeams(req.body?.max_teams ?? req.body?.maxTeams)
     const division = await withTransaction(async (conn) => {
       const [seasonRows] = await conn.query(
         'SELECT id, name, year FROM seasons WHERE is_current = TRUE LIMIT 1 FOR UPDATE',
@@ -1916,8 +1931,8 @@ admin.post(
       const sortOrder = Number((orderRows as Array<{ sort_order: number }>)[0]?.sort_order ?? 0)
       const [inserted] = await conn.execute(
         `INSERT INTO divisions
-           (season_id, name, slug, sort_order, promotion_count, relegation_count, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+           (season_id, name, slug, sort_order, promotion_count, relegation_count, max_teams, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
         [
           season.id,
           name,
@@ -1925,6 +1940,7 @@ admin.post(
           sortOrder,
           movement.promotion_count,
           movement.relegation_count,
+          maxTeams,
         ],
       )
       const id = (inserted as { insertId: number }).insertId
@@ -1939,6 +1955,7 @@ admin.post(
         // thing, but the response is assembled by hand and must not disagree
         // with the row.
         is_active: 1,
+        max_teams: maxTeams,
         ...movement,
       }
     })
@@ -2004,6 +2021,7 @@ admin.put(
     }
     const name = requiredString(req.body?.name, 'name', 64)
     const movement = parseDivisionMovement(req.body)
+    const maxTeams = parseMaxTeams(req.body?.max_teams ?? req.body?.maxTeams)
     const division = await withTransaction(async (conn) => {
       const [divisionRows] = await conn.query(
           `SELECT d.id, d.name, d.slug, d.season_id, d.sort_order, d.is_active,
@@ -2049,15 +2067,31 @@ admin.put(
           slug = `${baseSlug}-${current.year}-${suffix++}`
         }
       }
+      if (maxTeams !== null) {
+        const [countRows] = await conn.query(
+          'SELECT COUNT(*) AS count FROM division_clubs WHERE division_id = ?',
+          [id],
+        )
+        const currentCount = Number((countRows as Array<{ count: number }>)[0]?.count ?? 0)
+        if (currentCount > maxTeams) {
+          throw Object.assign(
+            new Error(
+              `Cannot set max division size to ${maxTeams} because ${currentCount} clubs are currently entered in this division.`,
+            ),
+            { status: 400 },
+          )
+        }
+      }
       await conn.execute(
         `UPDATE divisions
-            SET name = ?, slug = ?, promotion_count = ?, relegation_count = ?
+            SET name = ?, slug = ?, promotion_count = ?, relegation_count = ?, max_teams = ?
           WHERE id = ?`,
         [
           name,
           slug,
           movement.promotion_count,
           movement.relegation_count,
+          maxTeams,
           id,
         ],
       )
@@ -2071,6 +2105,7 @@ admin.put(
         // Editing a league never changes whether it is active: the toggle has
         // its own route so the two decisions cannot overwrite each other.
         is_active: current.is_active,
+        max_teams: maxTeams,
         ...movement,
       }
     })
@@ -2408,9 +2443,9 @@ admin.post(
       return res.json({ ok: true, divisionId: null, divisionName: null })
     }
 
-    const division = await queryOne<SeasonDivision & { is_active: number }>(
+    const division = await queryOne<SeasonDivision & { is_active: number; max_teams: number | null }>(
       `SELECT d.id, d.name, d.season_id, d.sort_order, d.promotion_count, d.relegation_count,
-              d.is_active
+              d.is_active, d.max_teams
          FROM divisions d
          JOIN seasons s ON s.id = d.season_id AND s.is_current = TRUE
         WHERE d.id = ?`,
@@ -2421,6 +2456,20 @@ admin.post(
       return res
         .status(400)
         .json({ error: `${division.name} is paused. Switch it back on before moving a club into it.` })
+    }
+
+    if (division.max_teams !== null && division.max_teams > 0) {
+      const currentCount = await queryOne<{ count: number }>(
+        `SELECT COUNT(*) AS count
+           FROM division_clubs dc
+          WHERE dc.division_id = ? AND dc.club_id <> ?`,
+        [division.id, club.id],
+      )
+      if ((currentCount?.count ?? 0) >= division.max_teams) {
+        return res.status(400).json({
+          error: `${division.name} is full (maximum capacity of ${division.max_teams} clubs reached).`,
+        })
+      }
     }
 
     const moved = await withTransaction(async (conn) => {

@@ -1493,11 +1493,16 @@ export function ClubsView({
                             aria-label={`Division for ${club.name}`}
                           >
                             <option value="">Unassigned</option>
-                            {activeDivisions.map((d) => (
-                              <option key={d.id} value={String(d.id)}>
-                                {d.name}
-                              </option>
-                            ))}
+                            {activeDivisions.map((d) => {
+                              const count = clubs.filter((c) => c.status === 'active' && c.division_id === d.id).length
+                              const isCurrent = club.division_id === d.id
+                              const isFull = d.max_teams != null && d.max_teams > 0 && count >= d.max_teams && !isCurrent
+                              return (
+                                <option key={d.id} value={String(d.id)} disabled={isFull}>
+                                  {d.name} ({count}{d.max_teams ? `/${d.max_teams}` : ''}){isFull ? ' - FULL' : ''}
+                                </option>
+                              )
+                            })}
                           </select>
                         </td>
                         <td>
@@ -2517,11 +2522,16 @@ export function ClubsView({
                       className="adm-select"
                     >
                       <option value="">Unassigned</option>
-                      {activeDivisions.map((d) => (
-                        <option key={d.id} value={String(d.id)}>
-                          {d.name}
-                        </option>
-                      ))}
+                      {activeDivisions.map((d) => {
+                        const count = clubs.filter((c) => c.status === 'active' && c.division_id === d.id).length
+                        const isCurrent = currentClub?.division_id === d.id
+                        const isFull = d.max_teams != null && d.max_teams > 0 && count >= d.max_teams && !isCurrent
+                        return (
+                          <option key={d.id} value={String(d.id)} disabled={isFull}>
+                            {d.name} ({count}{d.max_teams ? `/${d.max_teams}` : ''}){isFull ? ' - FULL' : ''}
+                          </option>
+                        )
+                      })}
                     </select>
                   </label>
                   <label className="adm-field">
