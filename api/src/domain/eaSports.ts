@@ -465,6 +465,14 @@ export async function fetchEaClubDeepProfile(
   }
 }
 
+function cleanClubName(name: string): string {
+  return name
+    .replace(/\b(VFC|FC|ESPORTS|E-SPORTS|ESPORT|XI|CLUB|UNITED|CITY)\b/gi, '')
+    .replace(/[^a-zA-Z0-9 ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 /**
  * Auto-match a list of IWVPL clubs against EA Pro Clubs directory.
  */
@@ -477,19 +485,27 @@ export async function autoMatchClubs(
     ea_club_name?: string | null
   }>,
 ): Promise<AutoMatchItem[]> {
-  const results: AutoMatchItem[] = []
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
+  const cleanNorm = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/\b(vfc|fc|esports|esport|xi|club|united|city|team)\b/g, '')
+      .replace(/[^a-z0-9]/g, '')
 
-  for (const club of clubs) {
+  const matchSingleClub = async (club: {
+    id: number
+    name: string
+    slug: string
+    ea_club_id?: string | null
+    ea_club_name?: string | null
+  }): Promise<AutoMatchItem> => {
     const rawName = club.name.trim()
     const candidates = await searchEaClubs(rawName)
 
-    // Cleaned name search if no candidates (strip VFC, FC, ESPORTS)
+    // Cleaned name search if no candidates or single candidate doesn't match raw name
     let extraCandidates: EaClubSearchResult[] = []
-    if (candidates.length === 0) {
-      const cleaned = rawName
-        .replace(/\b(VFC|FC|ESPORTS|XI|CLUB)\b/gi, '')
-        .replace(/[^a-zA-Z0-9 ]/g, '')
-        .trim()
+    const cleaned = cleanClubName(rawName)
+    if (candidates.length === 0 || (candidates.length === 1 && norm(candidates[0].name) !== norm(rawName))) {
       if (cleaned.length >= 3 && cleaned.toLowerCase() !== rawName.toLowerCase()) {
         extraCandidates = await searchEaClubs(cleaned)
       }
@@ -502,32 +518,47 @@ export async function autoMatchClubs(
       }
     }
 
-    const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
     const targetNorm = norm(rawName)
+    const targetCleanNorm = cleanNorm(rawName)
 
     let matchStatus: 'exact' | 'high' | 'multiple' | 'none' = 'none'
     let selectedCandidate: EaClubSearchResult | null = null
 
-    // Exact match check
+    // 1. Exact match check
     const exact = allCandidates.find((c) => norm(c.name) === targetNorm)
     if (exact) {
       matchStatus = 'exact'
       selectedCandidate = exact
-    } else if (allCandidates.length === 1) {
-      matchStatus = 'high'
-      selectedCandidate = allCandidates[0]
-    } else if (allCandidates.length > 1) {
-      const startsWith = allCandidates.find((c) => norm(c.name).startsWith(targetNorm) || targetNorm.startsWith(norm(c.name)))
-      if (startsWith) {
+    } else {
+      // 2. High confidence: clean name match
+      const cleanExact = allCandidates.find(
+        (c) => targetCleanNorm.length >= 3 && cleanNorm(c.name) === targetCleanNorm,
+      )
+      if (cleanExact) {
         matchStatus = 'high'
-        selectedCandidate = startsWith
-      } else {
-        matchStatus = 'multiple'
+        selectedCandidate = cleanExact
+      } else if (allCandidates.length === 1) {
+        matchStatus = 'high'
         selectedCandidate = allCandidates[0]
+      } else if (allCandidates.length > 1) {
+        const startsWith = allCandidates.find(
+          (c) =>
+            norm(c.name).startsWith(targetNorm) ||
+            targetNorm.startsWith(norm(c.name)) ||
+            (targetCleanNorm.length >= 3 &&
+              (cleanNorm(c.name).startsWith(targetCleanNorm) || targetCleanNorm.startsWith(cleanNorm(c.name)))),
+        )
+        if (startsWith) {
+          matchStatus = 'high'
+          selectedCandidate = startsWith
+        } else {
+          matchStatus = 'multiple'
+          selectedCandidate = allCandidates[0]
+        }
       }
     }
 
-    results.push({
+    return {
       clubId: club.id,
       clubName: club.name,
       clubSlug: club.slug,
@@ -536,7 +567,16 @@ export async function autoMatchClubs(
       matchStatus,
       selectedCandidate,
       candidates: allCandidates,
-    })
+    }
+  }
+
+  // Execute in batches of 4 to accelerate search
+  const results: AutoMatchItem[] = []
+  const batchSize = 4
+  for (let i = 0; i < clubs.length; i += batchSize) {
+    const chunk = clubs.slice(i, i + batchSize)
+    const chunkResults = await Promise.all(chunk.map((c) => matchSingleClub(c)))
+    results.push(...chunkResults)
   }
 
   return results

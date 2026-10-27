@@ -45,6 +45,7 @@ export function EaBulkLinkWizardModal({
   const [matching, setMatching] = useState(false)
   const [matchItems, setMatchItems] = useState<AutoMatchItem[]>([])
   const [confirmedClubIds, setConfirmedClubIds] = useState<Set<number>>(new Set())
+  const [step2Filter, setStep2Filter] = useState<'all' | 'high_exact' | 'multiple' | 'none'>('all')
 
   // Deep inspection preview state
   const [previewClubId, setPreviewClubId] = useState<string | null>(null)
@@ -74,6 +75,7 @@ export function EaBulkLinkWizardModal({
     // Default select all unlinked active clubs
     const unlinked = clubs.filter((c) => c.status === 'active' && !c.ea_club_id).map((c) => c.id)
     setSelectedClubIds(new Set(unlinked))
+    setStep2Filter('all')
   }, [isOpen, clubs])
 
   // Filtered clubs for Step 1
@@ -123,6 +125,7 @@ export function EaBulkLinkWizardModal({
     }
 
     setMatching(true)
+    setConfirmedClubIds(new Set())
     setStep(2)
 
     try {
@@ -142,7 +145,7 @@ export function EaBulkLinkWizardModal({
 
       setMatchItems(items)
 
-      // Auto check clubs with exact or high match
+      // Auto check clubs with exact or high confidence match
       const toConfirm = new Set<number>()
       for (const item of items) {
         if (item.selectedCandidate && (item.matchStatus === 'exact' || item.matchStatus === 'high')) {
@@ -155,6 +158,30 @@ export function EaBulkLinkWizardModal({
     } finally {
       setMatching(false)
     }
+  }
+
+  const selectAllHighAndExact = () => {
+    const next = new Set<number>()
+    for (const item of matchItems) {
+      if (item.selectedCandidate && (item.matchStatus === 'exact' || item.matchStatus === 'high')) {
+        next.add(item.clubId)
+      }
+    }
+    setConfirmedClubIds(next)
+  }
+
+  const selectAllMatches = () => {
+    const next = new Set<number>()
+    for (const item of matchItems) {
+      if (item.selectedCandidate) {
+        next.add(item.clubId)
+      }
+    }
+    setConfirmedClubIds(next)
+  }
+
+  const deselectAllMatches = () => {
+    setConfirmedClubIds(new Set())
   }
 
   // Open Deep Profile preview
@@ -326,9 +353,12 @@ export function EaBulkLinkWizardModal({
               borderBottom: step === 1 ? '3px solid #38bdf8' : '3px solid transparent',
               color: step === 1 ? '#38bdf8' : 'var(--adm-text)',
               fontWeight: step === 1 ? 700 : 500,
-              cursor: 'pointer',
+              cursor: matching ? 'not-allowed' : 'pointer',
+              opacity: matching ? 0.6 : 1,
             }}
-            onClick={() => setStep(1)}
+            onClick={() => {
+              if (!matching) setStep(1)
+            }}
           >
             <span
               style={{
@@ -358,11 +388,11 @@ export function EaBulkLinkWizardModal({
               borderBottom: step === 2 ? '3px solid #38bdf8' : '3px solid transparent',
               color: step === 2 ? '#38bdf8' : 'var(--adm-text)',
               fontWeight: step === 2 ? 700 : 500,
-              cursor: matchItems.length > 0 ? 'pointer' : 'default',
-              opacity: matchItems.length > 0 ? 1 : 0.6,
+              cursor: matchItems.length > 0 && !matching ? 'pointer' : 'not-allowed',
+              opacity: matchItems.length > 0 && !matching ? 1 : 0.6,
             }}
             onClick={() => {
-              if (matchItems.length > 0) setStep(2)
+              if (matchItems.length > 0 && !matching) setStep(2)
             }}
           >
             <span
@@ -381,7 +411,7 @@ export function EaBulkLinkWizardModal({
             >
               2
             </span>
-            <span>2. Auto-Match & Live Preview</span>
+            <span>2. Auto-Match & Review</span>
           </div>
 
           <div
@@ -393,11 +423,11 @@ export function EaBulkLinkWizardModal({
               borderBottom: step === 3 ? '3px solid #38bdf8' : '3px solid transparent',
               color: step === 3 ? '#38bdf8' : 'var(--adm-text)',
               fontWeight: step === 3 ? 700 : 500,
-              cursor: matchItems.length > 0 ? 'pointer' : 'default',
-              opacity: matchItems.length > 0 ? 1 : 0.6,
+              cursor: matchItems.length > 0 && confirmedClubIds.size > 0 && !matching ? 'pointer' : 'not-allowed',
+              opacity: matchItems.length > 0 && confirmedClubIds.size > 0 && !matching ? 1 : 0.6,
             }}
             onClick={() => {
-              if (matchItems.length > 0) setStep(3)
+              if (matchItems.length > 0 && confirmedClubIds.size > 0 && !matching) setStep(3)
             }}
           >
             <span
@@ -559,52 +589,157 @@ export function EaBulkLinkWizardModal({
           {step === 2 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               {matching ? (
-                <div style={{ padding: 60, textAlign: 'center' }}>
-                  <div style={{ fontSize: '2rem', marginBottom: 12 }}>⚡</div>
-                  <h4 style={{ margin: '0 0 6px' }}>Searching EA Sports Pro Clubs Directory…</h4>
-                  <p style={{ margin: 0, color: 'var(--adm-muted)', fontSize: '0.9rem' }}>
-                    Matching {selectedClubIds.size} clubs and verifying team names, records, and rosters.
+                <div
+                  style={{
+                    padding: '60px 20px',
+                    textAlign: 'center',
+                    background: 'rgba(56,189,248,0.03)',
+                    border: '1px solid rgba(56,189,248,0.2)',
+                    borderRadius: 12,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 12,
+                  }}
+                >
+                  <div style={{ fontSize: '2.5rem' }}>⚡</div>
+                  <h4 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#38bdf8' }}>
+                    Searching EA Sports Pro Clubs Directory…
+                  </h4>
+                  <p style={{ margin: 0, color: 'var(--adm-muted)', fontSize: '0.9rem', maxWidth: 500 }}>
+                    Cross-referencing {selectedClubIds.size} club(s) against official EA FC Pro Clubs databases. Exact and
+                    high-confidence matches will be pre-selected for your review.
                   </p>
+                  <div
+                    style={{
+                      marginTop: 8,
+                      fontSize: '0.8rem',
+                      color: 'var(--adm-muted)',
+                      background: 'rgba(0,0,0,0.3)',
+                      padding: '4px 14px',
+                      borderRadius: 16,
+                      border: '1px solid var(--adm-border)',
+                    }}
+                  >
+                    Please wait, querying live EA servers in parallel…
+                  </div>
                 </div>
               ) : (
                 <>
-                  {/* Summary bar */}
+                  {/* Summary & Filter Bar */}
                   <div
                     style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
                       background: 'rgba(255,255,255,0.02)',
-                      padding: '10px 14px',
+                      padding: '12px 16px',
                       borderRadius: 8,
                       border: '1px solid var(--adm-border)',
-                      fontSize: '0.85rem',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 10,
                     }}
                   >
-                    <div>
-                      Scanned <strong>{matchItems.length}</strong> clubs:
-                      <span style={{ color: '#22c55e', marginLeft: 10 }}>
-                        ● {matchItems.filter((i) => i.matchStatus === 'exact').length} Exact Matches
-                      </span>
-                      <span style={{ color: '#38bdf8', marginLeft: 10 }}>
-                        ● {matchItems.filter((i) => i.matchStatus === 'high').length} High Confidence
-                      </span>
-                      <span style={{ color: '#eab308', marginLeft: 10 }}>
-                        ● {matchItems.filter((i) => i.matchStatus === 'multiple').length} Multiple Candidates
-                      </span>
-                      <span style={{ color: '#ef4444', marginLeft: 10 }}>
-                        ● {matchItems.filter((i) => i.matchStatus === 'none').length} No Match
-                      </span>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        flexWrap: 'wrap',
+                        gap: 10,
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--adm-muted)' }}>
+                          FILTER:
+                        </span>
+                        <button
+                          type="button"
+                          className={`adm-btn adm-btn-xs ${step2Filter === 'all' ? 'adm-btn-primary' : 'adm-btn-secondary'}`}
+                          onClick={() => setStep2Filter('all')}
+                        >
+                          All ({matchItems.length})
+                        </button>
+                        <button
+                          type="button"
+                          className={`adm-btn adm-btn-xs ${step2Filter === 'high_exact' ? 'adm-btn-primary' : 'adm-btn-secondary'}`}
+                          onClick={() => setStep2Filter('high_exact')}
+                          style={{
+                            color: step2Filter === 'high_exact' ? '#000' : '#86efac',
+                            fontWeight: 700,
+                          }}
+                        >
+                          ● High & Exact (
+                          {
+                            matchItems.filter((i) => i.matchStatus === 'exact' || i.matchStatus === 'high')
+                              .length
+                          }
+                          )
+                        </button>
+                        <button
+                          type="button"
+                          className={`adm-btn adm-btn-xs ${step2Filter === 'multiple' ? 'adm-btn-primary' : 'adm-btn-secondary'}`}
+                          onClick={() => setStep2Filter('multiple')}
+                          style={{
+                            color: step2Filter === 'multiple' ? '#000' : '#fde047',
+                          }}
+                        >
+                          ● Multiple Candidates ({matchItems.filter((i) => i.matchStatus === 'multiple').length})
+                        </button>
+                        <button
+                          type="button"
+                          className={`adm-btn adm-btn-xs ${step2Filter === 'none' ? 'adm-btn-primary' : 'adm-btn-secondary'}`}
+                          onClick={() => setStep2Filter('none')}
+                          style={{
+                            color: step2Filter === 'none' ? '#000' : '#fca5a5',
+                          }}
+                        >
+                          ● No Match ({matchItems.filter((i) => i.matchStatus === 'none').length})
+                        </button>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          className="adm-btn adm-btn-ghost adm-btn-xs"
+                          onClick={selectAllHighAndExact}
+                          title="Select all exact and high-confidence matches"
+                        >
+                          ✓ Auto-Select High & Exact
+                        </button>
+                        <button
+                          type="button"
+                          className="adm-btn adm-btn-ghost adm-btn-xs"
+                          onClick={selectAllMatches}
+                        >
+                          Select All Matches
+                        </button>
+                        <button
+                          type="button"
+                          className="adm-btn adm-btn-ghost adm-btn-xs"
+                          onClick={deselectAllMatches}
+                        >
+                          Deselect All
+                        </button>
+                      </div>
                     </div>
 
-                    <div style={{ color: 'var(--adm-muted)', fontSize: '0.8rem' }}>
-                      Click <strong>👁️ Preview EA Data</strong> to inspect real in-game rosters & recent match box scores.
+                    <div style={{ fontSize: '0.8rem', color: 'var(--adm-muted)' }}>
+                      💡 Tip: Exact and High Confidence matches are automatically checked. Admin can review each match, switch candidate dropdowns, search manually, or click <strong>👁️ Preview EA Data</strong> to inspect live rosters & match histories.
                     </div>
                   </div>
 
                   {/* Matches List */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 440, overflowY: 'auto' }}>
-                    {matchItems.map((item) => {
+                    {matchItems
+                      .filter((item) => {
+                        if (step2Filter === 'high_exact') {
+                          return item.matchStatus === 'exact' || item.matchStatus === 'high'
+                        }
+                        if (step2Filter === 'multiple') return item.matchStatus === 'multiple'
+                        if (step2Filter === 'none') return item.matchStatus === 'none'
+                        return true
+                      })
+                      .map((item) => {
                       const cand = item.selectedCandidate
                       const isConfirmed = confirmedClubIds.has(item.clubId)
                       return (
@@ -666,7 +801,7 @@ export function EaBulkLinkWizardModal({
                                         borderRadius: 4,
                                       }}
                                     >
-                                      EXACT NAME MATCH
+                                      ✓ EXACT NAME MATCH
                                     </span>
                                   )}
                                   {item.matchStatus === 'high' && (
@@ -680,7 +815,7 @@ export function EaBulkLinkWizardModal({
                                         borderRadius: 4,
                                       }}
                                     >
-                                      HIGH CONFIDENCE
+                                      ⚡ HIGH CONFIDENCE
                                     </span>
                                   )}
                                   {item.matchStatus === 'multiple' && (
@@ -694,7 +829,7 @@ export function EaBulkLinkWizardModal({
                                         borderRadius: 4,
                                       }}
                                     >
-                                      MULTIPLE CHOICES
+                                      ⚠️ MULTIPLE CHOICES (REVIEW)
                                     </span>
                                   )}
                                 </div>
@@ -881,35 +1016,68 @@ export function EaBulkLinkWizardModal({
         >
           {step === 1 ? (
             <>
-              <button type="button" className="adm-btn adm-btn-ghost adm-btn-sm" onClick={onClose}>
+              <button
+                type="button"
+                className="adm-btn adm-btn-ghost adm-btn-sm"
+                onClick={onClose}
+                disabled={matching}
+              >
                 Cancel
               </button>
               <button
                 type="button"
                 className="adm-btn adm-btn-primary"
-                disabled={selectedClubIds.size === 0}
+                disabled={selectedClubIds.size === 0 || matching}
                 onClick={handleStartAutoMatch}
               >
-                Scan & Auto-Match on EA ({selectedClubIds.size}) ➔
+                {matching ? (
+                  <>⚡ Searching EA Pro Clubs…</>
+                ) : (
+                  <>Scan & Auto-Match on EA ({selectedClubIds.size}) ➔</>
+                )}
               </button>
             </>
           ) : step === 2 ? (
             <>
-              <button type="button" className="adm-btn adm-btn-secondary adm-btn-sm" onClick={() => setStep(1)}>
-                ← Back to Club Selection
-              </button>
               <button
                 type="button"
-                className="adm-btn adm-btn-primary"
-                disabled={confirmedClubIds.size === 0}
-                onClick={() => setStep(3)}
+                className="adm-btn adm-btn-secondary adm-btn-sm"
+                disabled={matching}
+                onClick={() => setStep(1)}
               >
-                Review & Confirm ({confirmedClubIds.size} Matched) ➔
+                ← Back to Club Selection
               </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                {matching && (
+                  <span style={{ fontSize: '0.84rem', color: '#38bdf8', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    ⚡ Querying EA Sports API in parallel…
+                  </span>
+                )}
+                <button
+                  type="button"
+                  className="adm-btn adm-btn-primary"
+                  disabled={matching || confirmedClubIds.size === 0}
+                  onClick={() => setStep(3)}
+                  style={{ minWidth: 230 }}
+                >
+                  {matching ? (
+                    '⏳ Processing Match Scan…'
+                  ) : confirmedClubIds.size === 0 ? (
+                    'Select Clubs to Proceed ➔'
+                  ) : (
+                    `Review & Confirm (${confirmedClubIds.size} Matched) ➔`
+                  )}
+                </button>
+              </div>
             </>
           ) : (
             <>
-              <button type="button" className="adm-btn adm-btn-secondary adm-btn-sm" onClick={() => setStep(2)}>
+              <button
+                type="button"
+                className="adm-btn adm-btn-secondary adm-btn-sm"
+                disabled={saving}
+                onClick={() => setStep(2)}
+              >
                 ← Back to Matches
               </button>
               <button
