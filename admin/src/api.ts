@@ -383,7 +383,7 @@ export interface GenerateScheduleConfig {
   autoSchedule?: boolean
   startDate?: string
   matchDays?: number[]
-  timeMode?: 'fixed' | 'slots' | 'interval'
+  timeMode?: 'fixed' | 'slots' | 'interval' | 'unscheduled'
   fixedTime?: string
   timeSlots?: string[]
   startTime?: string

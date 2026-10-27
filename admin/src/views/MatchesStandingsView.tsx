@@ -257,6 +257,22 @@ export function MatchesStandingsView({
     }
   }
 
+  const handleBulkUnschedule = async () => {
+    if (selectedMatchIds.size === 0) return
+    if (!window.confirm(`Set ${selectedMatchIds.size} selected fixture(s) to unscheduled?`)) return
+    try {
+      await guard(
+        () => Promise.all([...selectedMatchIds].map((id) => scheduleMatch(id, null))),
+        'Could not update some fixtures',
+      )
+      report('ok', `Set ${selectedMatchIds.size} fixture(s) to unscheduled.`)
+      setSelectedMatchIds(new Set())
+      await loadMatches()
+    } catch {
+      /* reported */
+    }
+  }
+
   const handleClearUnscheduled = async () => {
     if (!window.confirm('Delete ALL unscheduled fixtures (fixtures without a kickoff date)?')) return
     try {
@@ -294,6 +310,24 @@ export function MatchesStandingsView({
   }
 
 
+
+  const handleSetUnscheduled = async () => {
+    if (!scheduleTarget) return
+    setScheduleBusy(true)
+    try {
+      await guard(
+        () => scheduleMatch(scheduleTarget.id, null),
+        'Could not update kickoff time',
+      )
+      report('ok', `Set ${scheduleTarget.home_name} vs ${scheduleTarget.away_name} to unscheduled.`)
+      setScheduleTarget(null)
+      await loadMatches()
+    } catch {
+      /* reported */
+    } finally {
+      setScheduleBusy(false)
+    }
+  }
 
   const handleSaveKickoff = async (e: FormEvent) => {
     e.preventDefault()
@@ -627,6 +661,13 @@ export function MatchesStandingsView({
               <strong>{selectedMatchIds.size} fixture(s) selected</strong>
               <button
                 type="button"
+                className="adm-btn adm-btn-secondary adm-btn-sm"
+                onClick={() => void handleBulkUnschedule()}
+              >
+                Set Unscheduled
+              </button>
+              <button
+                type="button"
                 className="adm-btn adm-btn-danger adm-btn-sm"
                 onClick={() => void handleBulkDelete()}
               >
@@ -882,17 +923,32 @@ export function MatchesStandingsView({
                   className="adm-input"
                 />
               </label>
-              <div className="adm-modal-foot">
+              <div className="adm-modal-foot" style={{ justifyContent: 'space-between' }}>
                 <button
                   type="button"
-                  className="adm-btn adm-btn-ghost"
-                  onClick={() => setScheduleValue('')}
+                  className="adm-btn adm-btn-danger adm-btn-sm"
+                  onClick={() => void handleSetUnscheduled()}
+                  disabled={scheduleBusy}
                 >
-                  Set Unscheduled
+                  ✕ Set Unscheduled
                 </button>
-                <button type="submit" className="adm-btn adm-btn-primary" disabled={scheduleBusy}>
-                  {scheduleBusy ? 'Saving…' : 'Save Kickoff'}
-                </button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    type="button"
+                    className="adm-btn adm-btn-ghost adm-btn-sm"
+                    onClick={() => setScheduleTarget(null)}
+                    disabled={scheduleBusy}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="adm-btn adm-btn-primary adm-btn-sm"
+                    disabled={scheduleBusy}
+                  >
+                    {scheduleBusy ? 'Saving…' : 'Save Kickoff'}
+                  </button>
+                </div>
               </div>
             </form>
           </div>

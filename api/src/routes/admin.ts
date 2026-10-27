@@ -332,14 +332,16 @@ admin.patch(
       }>)[0]
       if (!match) return { error: 'Match not found.' as const, status: 404 }
 
-      const [duplicates] = await conn.query(
-        `SELECT id FROM matches
-          WHERE id <> ? AND season_id = ? AND home_club_id = ? AND away_club_id = ? AND kickoff <=> ?
-          LIMIT 1`,
-        [id, match.season_id, match.home_club_id, match.away_club_id, kickoff],
-      )
-      if ((duplicates as unknown[]).length > 0) {
-        return { error: 'Another fixture already has that kickoff time.' as const, status: 409 }
+      if (kickoff !== null) {
+        const [duplicates] = await conn.query(
+          `SELECT id FROM matches
+            WHERE id <> ? AND season_id = ? AND home_club_id = ? AND away_club_id = ? AND kickoff = ?
+            LIMIT 1`,
+          [id, match.season_id, match.home_club_id, match.away_club_id, kickoff],
+        )
+        if ((duplicates as unknown[]).length > 0) {
+          return { error: 'Another fixture already has that kickoff time.' as const, status: 409 }
+        }
       }
 
       const status =

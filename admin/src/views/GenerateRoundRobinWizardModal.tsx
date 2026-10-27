@@ -65,7 +65,7 @@ export function GenerateRoundRobinWizardModal({
   const [matchDays, setMatchDays] = useState<number[]>([5, 6]) // Default Friday & Saturday
 
   // Step 3: Kick-off Times & Concurrency
-  const [timeMode, setTimeMode] = useState<'fixed' | 'slots' | 'interval'>('fixed')
+  const [timeMode, setTimeMode] = useState<'fixed' | 'slots' | 'interval' | 'unscheduled'>('fixed')
   const [fixedTime, setFixedTime] = useState('21:00')
   const [timeSlots, setTimeSlots] = useState<string[]>(['20:00', '20:45', '21:30', '22:15'])
   const [newSlotInput, setNewSlotInput] = useState('23:00')
@@ -236,6 +236,7 @@ export function GenerateRoundRobinWizardModal({
   const canProceedStep2 = !autoSchedule || (Boolean(startDate) && matchDays.length > 0)
   const canProceedStep3 =
     !autoSchedule ||
+    timeMode === 'unscheduled' ||
     (timeMode === 'fixed' && Boolean(fixedTime)) ||
     (timeMode === 'slots' && timeSlots.length > 0) ||
     (timeMode === 'interval' && Boolean(startTime) && intervalMinutes > 0)
@@ -694,6 +695,26 @@ export function GenerateRoundRobinWizardModal({
                               </div>
                             </div>
                           )}
+                        </div>
+                      </label>
+
+                      {/* Unscheduled Kickoff Mode */}
+                      <label className={`adm-radio-card ${timeMode === 'unscheduled' ? 'selected' : ''}`}>
+                        <input
+                          type="radio"
+                          name="timeMode"
+                          checked={timeMode === 'unscheduled'}
+                          onChange={() => setTimeMode('unscheduled')}
+                        />
+                        <div className="adm-radio-card-content">
+                          <div className="adm-radio-card-head">
+                            <span className="adm-radio-icon">⚪</span>
+                            <strong>Leave Unscheduled (TBA)</strong>
+                            <span className="adm-pill">No Time</span>
+                          </div>
+                          <p>
+                            Schedule round match dates, but leave kickoff times unscheduled.
+                          </p>
                         </div>
                       </label>
 

@@ -4,7 +4,7 @@ export interface GenerateScheduleConfig {
   autoSchedule?: boolean
   startDate?: string
   matchDays?: number[]
-  timeMode?: 'fixed' | 'slots' | 'interval'
+  timeMode?: 'fixed' | 'slots' | 'interval' | 'unscheduled'
   fixedTime?: string
   timeSlots?: string[]
   startTime?: string
@@ -163,6 +163,9 @@ export function computeMatchKickoff(
   }
 
   const mode = schedule.timeMode || 'fixed'
+  if (mode === 'unscheduled') {
+    return { kickoff: null, date, time: null }
+  }
   const concurrency = Math.max(0, Number(schedule.concurrentMatches) || 0)
   const slotIdx = concurrency > 0 ? Math.floor(matchIdxInRound / concurrency) : 0
 
