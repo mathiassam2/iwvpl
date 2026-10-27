@@ -18,17 +18,12 @@ import { matchIndexOf } from '@/lib/match'
 import { useSeasonName } from '@/lib/season'
 import type { Match } from '@/types/site'
 
-type StatusFilter = 'all' | 'upcoming' | 'results'
-
 export default function MatchesPage() {
   const seasonName = useSeasonName()
   const [searchParams, setSearchParams] = useSearchParams()
 
-  // Filter query params: ?tab=results | upcoming, ?week=week-1
-  const initialStatus = (searchParams.get('tab') as StatusFilter) || 'all'
+  // Filter query params: ?week=week-1
   const initialWeek = searchParams.get('week') || ''
-
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>(initialStatus)
   const [selectedWeekId, setSelectedWeekId] = useState<string>(initialWeek)
   const [team, setTeam] = useState('all')
 
@@ -152,7 +147,7 @@ export default function MatchesPage() {
       }))
   }, [seasonClubs])
 
-  // Filter matches by week, status, and team
+  // Filter matches by week and team
   const filteredMatches = useMemo(() => {
     let result = allMatches
 
@@ -164,14 +159,7 @@ export default function MatchesPage() {
       }
     }
 
-    // 2. Status filter
-    if (statusFilter === 'upcoming') {
-      result = result.filter((m) => m.hs === '' || m.as === '')
-    } else if (statusFilter === 'results') {
-      result = result.filter((m) => m.hs !== '' && m.as !== '')
-    }
-
-    // 3. Team filter
+    // 2. Team filter
     if (team !== 'all') {
       const target = team.toLowerCase()
       result = result.filter((m) => {
@@ -187,7 +175,7 @@ export default function MatchesPage() {
     }
 
     return result
-  }, [allMatches, selectedWeekId, byWeekId, statusFilter, team])
+  }, [allMatches, selectedWeekId, byWeekId, team])
 
   // Group filtered matches by date
   const grouped = useMemo(() => groupByDate(filteredMatches), [filteredMatches])
@@ -208,13 +196,7 @@ export default function MatchesPage() {
     setSearchParams(nextParams, { replace: true })
   }
 
-  const handleStatusSelect = (status: StatusFilter) => {
-    setStatusFilter(status)
-    const nextParams = new URLSearchParams(searchParams)
-    if (status !== 'all') nextParams.set('tab', status)
-    else nextParams.delete('tab')
-    setSearchParams(nextParams, { replace: true })
-  }
+
 
   return (
     <div className="page-enter">
@@ -233,43 +215,12 @@ export default function MatchesPage() {
             <StatTile label="Completed Results" value={totalCompleted} hint="Scores recorded" />
           </div>
 
-          {/* Primary Controls Bar: Season, Team & Status */}
+          {/* Primary Controls Bar: Season & Club */}
           <div className="mb-6 flex flex-wrap items-center justify-between gap-4 border-b border-[var(--border)] pb-6">
-            {/* Status pills: All / Upcoming / Results */}
-            <div className="flex items-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-1">
-              <button
-                type="button"
-                onClick={() => handleStatusSelect('all')}
-                className={`rounded-lg px-3.5 py-1.5 text-xs font-bold transition-all ${
-                  statusFilter === 'all'
-                    ? 'bg-[var(--accent-solid)] text-[var(--on-volt)] shadow-sm'
-                    : 'text-[var(--text-muted)] hover:text-[var(--text-strong)]'
-                }`}
-              >
-                All Matches ({allMatches.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => handleStatusSelect('upcoming')}
-                className={`rounded-lg px-3.5 py-1.5 text-xs font-bold transition-all ${
-                  statusFilter === 'upcoming'
-                    ? 'bg-[var(--accent-solid)] text-[var(--on-volt)] shadow-sm'
-                    : 'text-[var(--text-muted)] hover:text-[var(--text-strong)]'
-                }`}
-              >
-                Upcoming ({totalUpcoming})
-              </button>
-              <button
-                type="button"
-                onClick={() => handleStatusSelect('results')}
-                className={`rounded-lg px-3.5 py-1.5 text-xs font-bold transition-all ${
-                  statusFilter === 'results'
-                    ? 'bg-[var(--accent-solid)] text-[var(--on-volt)] shadow-sm'
-                    : 'text-[var(--text-muted)] hover:text-[var(--text-strong)]'
-                }`}
-              >
-                Results ({totalCompleted})
-              </button>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-faint)]">
+                All Matches (Upcoming & Results)
+              </span>
             </div>
 
             {/* Dropdowns: Season & Club */}
@@ -325,10 +276,8 @@ export default function MatchesPage() {
             <EmptyState
               title="No matches found"
               hint={
-                statusFilter === 'upcoming'
-                  ? 'No upcoming fixtures scheduled in this selection.'
-                  : statusFilter === 'results'
-                  ? 'No completed match results recorded for this selection yet.'
+                team !== 'all'
+                  ? `No fixtures found for ${team} in this matchweek.`
                   : 'No fixtures match the selected filters.'
               }
             />
