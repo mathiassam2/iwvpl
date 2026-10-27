@@ -187,17 +187,17 @@ export function EaMatchResultModal({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="adm-modal-head" style={{ borderBottom: '1px solid var(--adm-border)', paddingBottom: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: '1.4rem' }}>⚡</span>
-            <div>
-              <h3 style={{ margin: 0, fontSize: '1.15rem' }}>
-                Fetch Match Result from EA Sports FC
-              </h3>
-              <p style={{ margin: '2px 0 0', fontSize: '0.82rem', color: 'var(--adm-muted)' }}>
-                {match.home_name} vs {match.away_name}
-              </p>
-            </div>
+        <div className="adm-modal-head" style={{ borderBottom: '1px solid var(--adm-border)', paddingBottom: 14 }}>
+          <div>
+            <span className="adm-eyebrow" style={{ color: '#38bdf8', letterSpacing: '0.08em', fontWeight: 700 }}>
+              EA SPORTS FC · FIXTURE RESULT
+            </span>
+            <h3 style={{ margin: '2px 0 0', fontSize: '1.2rem', fontWeight: 800 }}>
+              Import Official Match Score & Stats
+            </h3>
+            <p style={{ margin: '2px 0 0', fontSize: '0.85rem', color: 'var(--adm-muted)' }}>
+              {match.home_name} vs {match.away_name}
+            </p>
           </div>
           <button type="button" className="adm-close-btn" onClick={onClose}>
             ×
@@ -225,12 +225,12 @@ export function EaMatchResultModal({
               <strong style={{ fontSize: '0.95rem' }}>{match.home_name}</strong>
               <div style={{ marginTop: 4 }}>
                 {homeClubInfo?.eaClubId ? (
-                  <span className="adm-code-pill" style={{ color: '#38bdf8', border: '1px solid rgba(56,189,248,0.4)' }}>
-                    🎮 EA #{homeClubInfo.eaClubId} {homeClubInfo.eaClubName ? `(${homeClubInfo.eaClubName})` : ''}
+                  <span className="adm-code-pill" style={{ color: '#38bdf8', border: '1px solid rgba(56,189,248,0.3)', background: 'rgba(56,189,248,0.08)' }}>
+                    EA #{homeClubInfo.eaClubId} {homeClubInfo.eaClubName ? `(${homeClubInfo.eaClubName})` : ''}
                   </span>
                 ) : (
-                  <span className="adm-code-pill" style={{ color: '#eab308', border: '1px solid rgba(234,179,8,0.4)' }}>
-                    ⚠️ Not linked to EA
+                  <span className="adm-code-pill" style={{ color: '#eab308', border: '1px solid rgba(234,179,8,0.3)', background: 'rgba(234,179,8,0.08)' }}>
+                    Not Linked
                   </span>
                 )}
               </div>
@@ -243,12 +243,12 @@ export function EaMatchResultModal({
               <strong style={{ fontSize: '0.95rem' }}>{match.away_name}</strong>
               <div style={{ marginTop: 4 }}>
                 {awayClubInfo?.eaClubId ? (
-                  <span className="adm-code-pill" style={{ color: '#38bdf8', border: '1px solid rgba(56,189,248,0.4)' }}>
-                    🎮 EA #{awayClubInfo.eaClubId} {awayClubInfo.eaClubName ? `(${awayClubInfo.eaClubName})` : ''}
+                  <span className="adm-code-pill" style={{ color: '#38bdf8', border: '1px solid rgba(56,189,248,0.3)', background: 'rgba(56,189,248,0.08)' }}>
+                    EA #{awayClubInfo.eaClubId} {awayClubInfo.eaClubName ? `(${awayClubInfo.eaClubName})` : ''}
                   </span>
                 ) : (
-                  <span className="adm-code-pill" style={{ color: '#eab308', border: '1px solid rgba(234,179,8,0.4)' }}>
-                    ⚠️ Not linked to EA
+                  <span className="adm-code-pill" style={{ color: '#eab308', border: '1px solid rgba(234,179,8,0.3)', background: 'rgba(234,179,8,0.08)' }}>
+                    Not Linked
                   </span>
                 )}
               </div>
@@ -311,26 +311,30 @@ export function EaMatchResultModal({
                         {cand.isDirectMatch ? (
                           <span
                             style={{
-                              background: '#16a34a',
-                              color: '#fff',
-                              fontSize: '0.72rem',
+                              background: 'rgba(34,197,94,0.15)',
+                              color: '#4ade80',
+                              border: '1px solid rgba(34,197,94,0.3)',
+                              fontSize: '0.7rem',
                               fontWeight: 700,
+                              letterSpacing: '0.04em',
                               padding: '2px 8px',
                               borderRadius: 4,
                             }}
                           >
-                            DIRECT HEAD-TO-HEAD
+                            HEAD-TO-HEAD
                           </span>
                         ) : (
                           <span
                             style={{
-                              background: 'rgba(255,255,255,0.1)',
-                              fontSize: '0.72rem',
+                              background: 'rgba(255,255,255,0.06)',
+                              color: 'var(--adm-muted)',
+                              border: '1px solid var(--adm-border)',
+                              fontSize: '0.7rem',
                               padding: '2px 6px',
                               borderRadius: 4,
                             }}
                           >
-                            Recent Match
+                            Recent Fixture
                           </span>
                         )}
 
@@ -351,8 +355,9 @@ export function EaMatchResultModal({
                           e.stopPropagation()
                           applyCandidate(cand)
                         }}
+                        style={{ fontWeight: 600, minWidth: 80 }}
                       >
-                        {isSelected ? '✓ Selected' : 'Select'}
+                        {isSelected ? 'Selected' : 'Select'}
                       </button>
                     </div>
                   )
@@ -410,10 +415,10 @@ export function EaMatchResultModal({
             {/* Isolation Guarantee Notice */}
             <div
               style={{
-                padding: '8px 12px',
+                padding: '10px 14px',
                 borderRadius: 6,
-                background: 'rgba(56,189,248,0.08)',
-                border: '1px solid rgba(56,189,248,0.25)',
+                background: 'rgba(56,189,248,0.04)',
+                border: '1px solid rgba(56,189,248,0.2)',
                 fontSize: '0.82rem',
                 color: '#bae6fd',
                 display: 'flex',
@@ -421,9 +426,8 @@ export function EaMatchResultModal({
                 gap: 8,
               }}
             >
-              <span>🔒</span>
               <div>
-                <strong>IWVPL Official Fixture Isolation:</strong> Player stats below will only be recorded for this specific league match. Non-IWVPL casual games are strictly excluded.
+                <strong>Official Fixture Isolation:</strong> Player statistics below will only be recorded for this specific official league fixture. Non-IWVPL casual games are strictly excluded.
               </div>
             </div>
 
@@ -742,7 +746,7 @@ export function EaMatchResultModal({
             disabled={submitting || homeScore === '' || awayScore === ''}
             style={{ fontWeight: 700, padding: '8px 20px' }}
           >
-            {submitting ? 'Applying Result & Stats…' : '✓ Confirm & Apply Result & Stats'}
+            {submitting ? 'Applying Result & Stats…' : 'Confirm & Apply Result'}
           </button>
         </div>
       </div>

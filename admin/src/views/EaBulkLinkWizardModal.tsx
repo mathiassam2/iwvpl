@@ -316,17 +316,15 @@ export function EaBulkLinkWizardModal({
           }}
         >
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: '1.4rem' }}>⚡</span>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>
-                  Bulk EA FC Pro Clubs Linking Wizard
-                </h3>
-                <p style={{ margin: '2px 0 0', fontSize: '0.82rem', color: 'var(--adm-muted)' }}>
-                  Auto-match IWVPL clubs against real EA FC Pro Clubs profiles and preview full squad & match box scores
-                </p>
-              </div>
-            </div>
+            <span className="adm-eyebrow" style={{ color: '#38bdf8', letterSpacing: '0.08em', fontWeight: 700 }}>
+              EA SPORTS FC PRO CLUBS
+            </span>
+            <h3 style={{ margin: '2px 0 0', fontSize: '1.25rem', fontWeight: 800 }}>
+              Bulk Club Linking Wizard
+            </h3>
+            <p style={{ margin: '2px 0 0', fontSize: '0.82rem', color: 'var(--adm-muted)' }}>
+              Auto-match IWVPL clubs with official EA FC in-game profiles and verify squad rosters
+            </p>
           </div>
 
           <button type="button" className="adm-close-btn" onClick={onClose}>
@@ -571,7 +569,7 @@ export function EaBulkLinkWizardModal({
                           style={{ color: '#38bdf8', border: '1px solid rgba(56,189,248,0.4)', fontSize: '0.72rem' }}
                           title={`Linked EA Club #${club.ea_club_id}`}
                         >
-                          🎮 #{club.ea_club_id}
+                          EA #{club.ea_club_id}
                         </span>
                       ) : (
                         <span className="adm-code-pill" style={{ fontSize: '0.72rem', opacity: 0.6 }}>
@@ -603,7 +601,16 @@ export function EaBulkLinkWizardModal({
                     gap: 12,
                   }}
                 >
-                  <div style={{ fontSize: '2.5rem' }}>⚡</div>
+                  <div
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: '50%',
+                      border: '3px solid rgba(56,189,248,0.2)',
+                      borderTopColor: '#38bdf8',
+                      margin: '0 auto 12px',
+                    }}
+                  />
                   <h4 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#38bdf8' }}>
                     Searching EA Sports Pro Clubs Directory…
                   </h4>
@@ -649,7 +656,7 @@ export function EaBulkLinkWizardModal({
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--adm-muted)' }}>
+                        <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--adm-muted)', letterSpacing: '0.04em' }}>
                           FILTER:
                         </span>
                         <button
@@ -668,7 +675,7 @@ export function EaBulkLinkWizardModal({
                             fontWeight: 700,
                           }}
                         >
-                          ● High & Exact (
+                          High & Exact (
                           {
                             matchItems.filter((i) => i.matchStatus === 'exact' || i.matchStatus === 'high')
                               .length
@@ -683,7 +690,7 @@ export function EaBulkLinkWizardModal({
                             color: step2Filter === 'multiple' ? '#000' : '#fde047',
                           }}
                         >
-                          ● Multiple Candidates ({matchItems.filter((i) => i.matchStatus === 'multiple').length})
+                          Multiple Candidates ({matchItems.filter((i) => i.matchStatus === 'multiple').length})
                         </button>
                         <button
                           type="button"
@@ -693,7 +700,7 @@ export function EaBulkLinkWizardModal({
                             color: step2Filter === 'none' ? '#000' : '#fca5a5',
                           }}
                         >
-                          ● No Match ({matchItems.filter((i) => i.matchStatus === 'none').length})
+                          No Match ({matchItems.filter((i) => i.matchStatus === 'none').length})
                         </button>
                       </div>
 
@@ -704,7 +711,7 @@ export function EaBulkLinkWizardModal({
                           onClick={selectAllHighAndExact}
                           title="Select all exact and high-confidence matches"
                         >
-                          ✓ Auto-Select High & Exact
+                          Auto-Select High & Exact
                         </button>
                         <button
                           type="button"
@@ -724,7 +731,7 @@ export function EaBulkLinkWizardModal({
                     </div>
 
                     <div style={{ fontSize: '0.8rem', color: 'var(--adm-muted)' }}>
-                      💡 Tip: Exact and High Confidence matches are automatically checked. Admin can review each match, switch candidate dropdowns, search manually, or click <strong>👁️ Preview EA Data</strong> to inspect live rosters & match histories.
+                      Tip: Exact and High Confidence matches are automatically checked. Admin can review each match, switch candidate dropdowns, search manually, or click <strong>Preview Data</strong> to inspect live rosters & match histories.
                     </div>
                   </div>
 
@@ -777,7 +784,7 @@ export function EaBulkLinkWizardModal({
                               </div>
                             </div>
 
-                            <span style={{ color: 'var(--adm-muted)', fontSize: '1.2rem' }}>➔</span>
+                            <span style={{ color: 'var(--adm-muted)', fontSize: '1rem', padding: '0 4px' }}>→</span>
 
                             {/* Center: Matched EA Club */}
                             <div style={{ flex: 1, minWidth: 260 }}>
@@ -793,49 +800,55 @@ export function EaBulkLinkWizardModal({
                                   {item.matchStatus === 'exact' && (
                                     <span
                                       style={{
-                                        background: '#16a34a',
-                                        color: '#fff',
-                                        fontSize: '0.7rem',
+                                        background: 'rgba(34,197,94,0.15)',
+                                        color: '#4ade80',
+                                        border: '1px solid rgba(34,197,94,0.3)',
+                                        fontSize: '0.68rem',
                                         fontWeight: 700,
-                                        padding: '2px 6px',
+                                        letterSpacing: '0.04em',
+                                        padding: '2px 8px',
                                         borderRadius: 4,
                                       }}
                                     >
-                                      ✓ EXACT NAME MATCH
+                                      EXACT MATCH
                                     </span>
                                   )}
                                   {item.matchStatus === 'high' && (
                                     <span
                                       style={{
-                                        background: '#0284c7',
-                                        color: '#fff',
-                                        fontSize: '0.7rem',
+                                        background: 'rgba(56,189,248,0.15)',
+                                        color: '#38bdf8',
+                                        border: '1px solid rgba(56,189,248,0.3)',
+                                        fontSize: '0.68rem',
                                         fontWeight: 700,
-                                        padding: '2px 6px',
+                                        letterSpacing: '0.04em',
+                                        padding: '2px 8px',
                                         borderRadius: 4,
                                       }}
                                     >
-                                      ⚡ HIGH CONFIDENCE
+                                      HIGH CONFIDENCE
                                     </span>
                                   )}
                                   {item.matchStatus === 'multiple' && (
                                     <span
                                       style={{
-                                        background: '#ca8a04',
-                                        color: '#fff',
-                                        fontSize: '0.7rem',
+                                        background: 'rgba(234,179,8,0.15)',
+                                        color: '#facc15',
+                                        border: '1px solid rgba(234,179,8,0.3)',
+                                        fontSize: '0.68rem',
                                         fontWeight: 700,
-                                        padding: '2px 6px',
+                                        letterSpacing: '0.04em',
+                                        padding: '2px 8px',
                                         borderRadius: 4,
                                       }}
                                     >
-                                      ⚠️ MULTIPLE CHOICES (REVIEW)
+                                      MULTIPLE CHOICES
                                     </span>
                                   )}
                                 </div>
                               ) : (
-                                <div style={{ color: '#ef4444', fontSize: '0.88rem', fontWeight: 600 }}>
-                                  ⚠️ No automatic match found on EA
+                                <div style={{ color: '#ef4444', fontSize: '0.85rem', fontWeight: 600 }}>
+                                  No automatic match found
                                 </div>
                               )}
 
@@ -871,7 +884,7 @@ export function EaBulkLinkWizardModal({
                                   onClick={() => handleOpenDeepProfile(cand.clubId, cand.name)}
                                   title="Inspect full EA Pro Clubs roster, stats & match history"
                                 >
-                                  👁️ Preview EA Data
+                                  Preview Data
                                 </button>
                               )}
                               <button
@@ -879,7 +892,7 @@ export function EaBulkLinkWizardModal({
                                 className="adm-btn adm-btn-ghost adm-btn-xs"
                                 onClick={() => handleOpenOverrideSearch(item.clubId, item.clubName)}
                               >
-                                🔍 Search
+                                Search EA
                               </button>
                             </div>
                           </div>
@@ -922,7 +935,7 @@ export function EaBulkLinkWizardModal({
                   onClick={handleCommitBulkLink}
                   style={{ fontWeight: 800, padding: '8px 24px', fontSize: '0.95rem' }}
                 >
-                  {saving ? 'Linking Clubs…' : `✓ Link ${confirmedClubIds.size} Clubs in Bulk`}
+                  {saving ? 'Linking Clubs…' : `Link ${confirmedClubIds.size} Clubs`}
                 </button>
               </div>
 
@@ -989,7 +1002,7 @@ export function EaBulkLinkWizardModal({
                                 className="adm-btn adm-btn-secondary adm-btn-xs"
                                 onClick={() => handleOpenDeepProfile(cand.clubId, cand.name)}
                               >
-                                👁️ Preview
+                                Preview
                               </button>
                             )}
                           </td>
@@ -1031,9 +1044,9 @@ export function EaBulkLinkWizardModal({
                 onClick={handleStartAutoMatch}
               >
                 {matching ? (
-                  <>⚡ Searching EA Pro Clubs…</>
+                  <>Searching EA Pro Clubs…</>
                 ) : (
-                  <>Scan & Auto-Match on EA ({selectedClubIds.size}) ➔</>
+                  <>Scan & Auto-Match ({selectedClubIds.size}) →</>
                 )}
               </button>
             </>
@@ -1045,12 +1058,12 @@ export function EaBulkLinkWizardModal({
                 disabled={matching}
                 onClick={() => setStep(1)}
               >
-                ← Back to Club Selection
+                Back to Selection
               </button>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 {matching && (
-                  <span style={{ fontSize: '0.84rem', color: '#38bdf8', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    ⚡ Querying EA Sports API in parallel…
+                  <span style={{ fontSize: '0.82rem', color: '#38bdf8' }}>
+                    Scanning EA Sports API in parallel…
                   </span>
                 )}
                 <button
@@ -1061,11 +1074,11 @@ export function EaBulkLinkWizardModal({
                   style={{ minWidth: 230 }}
                 >
                   {matching ? (
-                    '⏳ Processing Match Scan…'
+                    'Scanning EA Clubs…'
                   ) : confirmedClubIds.size === 0 ? (
-                    'Select Clubs to Proceed ➔'
+                    'Select Clubs to Proceed →'
                   ) : (
-                    `Review & Confirm (${confirmedClubIds.size} Matched) ➔`
+                    `Review & Confirm (${confirmedClubIds.size} Matched) →`
                   )}
                 </button>
               </div>
@@ -1078,7 +1091,7 @@ export function EaBulkLinkWizardModal({
                 disabled={saving}
                 onClick={() => setStep(2)}
               >
-                ← Back to Matches
+                Back to Matches
               </button>
               <button
                 type="button"
@@ -1086,7 +1099,7 @@ export function EaBulkLinkWizardModal({
                 disabled={saving || confirmedClubIds.size === 0}
                 onClick={handleCommitBulkLink}
               >
-                {saving ? 'Linking Clubs…' : `✓ Link ${confirmedClubIds.size} Clubs in Bulk`}
+                {saving ? 'Linking Clubs…' : `Link ${confirmedClubIds.size} Clubs`}
               </button>
             </>
           )}
@@ -1180,7 +1193,7 @@ export function EaBulkLinkWizardModal({
                       }}
                     >
                       <strong style={{ fontSize: '0.88rem' }}>
-                        👥 Squad Roster ({deepProfile.roster.length} Players on EA)
+                        Squad Roster ({deepProfile.roster.length} Players on EA)
                       </strong>
                       <span style={{ fontSize: '0.78rem', color: 'var(--adm-muted)' }}>
                         Cross-check these gamertags against your registered players
@@ -1237,7 +1250,7 @@ export function EaBulkLinkWizardModal({
                       }}
                     >
                       <strong style={{ fontSize: '0.88rem' }}>
-                        📅 Recent League Box Scores ({deepProfile.recentMatches.length} Matches)
+                        Recent League Box Scores ({deepProfile.recentMatches.length} Matches)
                       </strong>
                     </div>
 

@@ -597,7 +597,7 @@ export function MatchesStandingsView({
                               onClick={() => setEaModalMatch(m)}
                               style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}
                             >
-                              ⚡ EA
+                              EA Sync
                             </button>
                             {m.ea_match_id && (
                               <span
@@ -605,7 +605,7 @@ export function MatchesStandingsView({
                                 title={`Linked EA Match #${m.ea_match_id}`}
                                 style={{ color: '#38bdf8', border: '1px solid rgba(56,189,248,0.4)', fontSize: '0.72rem' }}
                               >
-                                🎮 EA
+                                EA Linked
                               </span>
                             )}
                           </div>
@@ -917,18 +917,7 @@ export function MatchesStandingsView({
         divisions={divisions}
       />
 
-      {/* EA FC Pro Clubs Match Result Modal */}
-      <EaMatchResultModal
-        isOpen={eaModalMatch !== null}
-        match={eaModalMatch}
-        onClose={() => setEaModalMatch(null)}
-        onSuccess={(msg) => {
-          report('ok', msg)
-          void loadMatches()
-        }}
-        guard={guard}
-        report={report}
-      />
+
 
       {/* EA FC Pro Clubs Match Result Modal */}
       <EaMatchResultModal

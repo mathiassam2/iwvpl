@@ -1393,7 +1393,7 @@ export function ClubsView({
               style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 700 }}
               title="Bulk link multiple clubs to EA Sports FC Pro Clubs with live roster & box score previews"
             >
-              <span>⚡</span>
+
               <span>Bulk Link EA Clubs</span>
             </button>
             <button
@@ -1516,7 +1516,7 @@ export function ClubsView({
                                 )}
                                 {club.ea_club_id && (
                                   <span className="adm-code-pill" style={{ border: '1px solid rgba(56,189,248,0.4)', color: '#38bdf8' }} title={`EA Club: ${club.ea_club_name || club.ea_club_id}`}>
-                                    🎮 #{club.ea_club_id}
+                                    EA #{club.ea_club_id}
                                   </span>
                                 )}
                               </div>
@@ -2615,7 +2615,7 @@ export function ClubsView({
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ fontSize: '1.2rem' }}>🎮</span>
+
                         <div>
                           <strong style={{ fontSize: '0.98rem', display: 'block' }}>EA Sports FC Pro Clubs Link</strong>
                           <span style={{ fontSize: '0.78rem', color: 'var(--adm-muted)' }}>
@@ -2668,7 +2668,7 @@ export function ClubsView({
                           }
                         }}
                       >
-                        {eaSearchOpen ? 'Close EA Search' : '🔍 Search Live on EA Sports'}
+                        {eaSearchOpen ? 'Close Search' : 'Search Live on EA Sports'}
                       </button>
                       {editEaClubId && (
                         <button
