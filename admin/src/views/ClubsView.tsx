@@ -459,6 +459,7 @@ export function ClubsView({
       setEditEaClubId(club.ea_club_id ?? '')
       setEditEaClubName(club.ea_club_name ?? '')
       setEaSearchOpen(false)
+      setEaSearchQuery(club.name)
       setEaSearchResults([])
       setDrawerLoading(true)
       try {
@@ -2663,8 +2664,9 @@ export function ClubsView({
                         className="adm-btn adm-btn-secondary adm-btn-sm"
                         onClick={() => {
                           setEaSearchOpen(!eaSearchOpen)
-                          if (!eaSearchOpen && !eaSearchQuery) {
+                          if (!eaSearchOpen) {
                             setEaSearchQuery(editName)
+                            void handleEaSearch(editName)
                           }
                         }}
                       >
@@ -2845,7 +2847,7 @@ export function ClubsView({
         onClose={() => setBulkWizardOpen(false)}
         onSuccess={(msg) => {
           report('ok', msg)
-          void loadClubs()
+          void loadData()
         }}
         clubs={clubs}
         divisions={divisions}
