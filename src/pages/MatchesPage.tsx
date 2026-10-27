@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/PageHeader'
-import { MatchRow, StatTile } from '@/components/league'
+import { MatchRow, MatchWeekStepper, StatTile } from '@/components/league'
 import { Button, Container, EmptyState, Section, Select } from '@/components/ui'
 import { SITE, siteData } from '@/data'
 import { groupByDate, stripFlag } from '@/lib/format'
@@ -195,11 +195,6 @@ export default function MatchesPage() {
   // Active week group object
   const activeWeekGroup = byWeekId.get(selectedWeekId)
 
-  // Week navigation index
-  const numberedWeeks = useMemo(() => weeks.filter((w) => w.weekNum !== null), [weeks])
-  const activeWeekIndex = numberedWeeks.findIndex((w) => w.id === selectedWeekId)
-  const prevWeek = activeWeekIndex > 0 ? numberedWeeks[activeWeekIndex - 1] : null
-  const nextWeek = activeWeekIndex !== -1 && activeWeekIndex < numberedWeeks.length - 1 ? numberedWeeks[activeWeekIndex + 1] : null
 
   // Overall stats
   const totalCompleted = useMemo(() => allMatches.filter((m) => m.hs !== '' && m.as !== '').length, [allMatches])
@@ -301,101 +296,13 @@ export default function MatchesPage() {
             </div>
           </div>
 
-          {/* Week Navigation Picker Strip */}
-          <div className="mb-6">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-faint)]">
-                Match Week Navigation
-              </span>
-              {activeWeekGroup && selectedWeekId !== 'all' && (
-                <span className="text-xs font-medium text-[var(--accent-text)]">
-                  {activeWeekGroup.dateRange}
-                </span>
-              )}
-            </div>
-
-            {/* Scrollable horizontal week tabs */}
-            <div className="no-scrollbar -mx-4 flex items-center gap-2 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0">
-              <button
-                type="button"
-                onClick={() => handleWeekSelect('all')}
-                className={`shrink-0 rounded-xl px-4 py-2 text-xs font-bold transition-all ${
-                  selectedWeekId === 'all'
-                    ? 'border border-[var(--accent-ring)] bg-[var(--accent-tint)] text-[var(--accent-text)]'
-                    : 'border border-[var(--border)] bg-[var(--surface-2)] text-[var(--text-muted)] hover:border-[var(--border-strong)] hover:text-[var(--text-strong)]'
-                }`}
-              >
-                All Weeks
-              </button>
-
-              {weeks.map((w) => {
-                const isSelected = selectedWeekId === w.id
-                return (
-                  <button
-                    key={w.id}
-                    type="button"
-                    onClick={() => handleWeekSelect(w.id)}
-                    className={`flex shrink-0 items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition-all ${
-                      isSelected
-                        ? 'border border-[var(--accent-ring)] bg-[var(--accent-tint)] text-[var(--accent-text)]'
-                        : 'border border-[var(--border)] bg-[var(--surface-2)] text-[var(--text-muted)] hover:border-[var(--border-strong)] hover:text-[var(--text-strong)]'
-                    }`}
-                  >
-                    <span>{w.label}</span>
-                    <span
-                      className={`grid h-4 min-w-4 place-items-center rounded-full px-1 text-[10px] font-bold ${
-                        isSelected
-                          ? 'bg-[var(--accent-solid)] text-[var(--on-volt)]'
-                          : 'bg-[var(--border-strong)] text-[var(--text-faint)]'
-                      }`}
-                    >
-                      {w.matches.length}
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Active Week Quick Jumper Banner */}
-          {activeWeekGroup && selectedWeekId !== 'all' && (
-            <div className="mb-8 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-5 py-3.5">
-              <div className="flex items-center gap-3">
-                <span className="grid h-8 w-8 place-items-center rounded-lg bg-[var(--accent-tint)] text-xs font-bold text-[var(--accent-text)]">
-                  {activeWeekGroup.weekNum ? `W${activeWeekGroup.weekNum}` : '—'}
-                </span>
-                <div>
-                  <h3 className="text-sm font-extrabold text-[var(--text-strong)]">
-                    {activeWeekGroup.label}
-                  </h3>
-                  <p className="text-xs text-[var(--text-muted)]">{activeWeekGroup.dateRange}</p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                {prevWeek && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleWeekSelect(prevWeek.id)}
-                    className="text-xs"
-                  >
-                    ← {prevWeek.label}
-                  </Button>
-                )}
-                {nextWeek && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleWeekSelect(nextWeek.id)}
-                    className="text-xs"
-                  >
-                    {nextWeek.label} →
-                  </Button>
-                )}
-              </div>
-            </div>
-          )}
+          {/* Match Week Stepper with Quick Jump Dropdown */}
+          <MatchWeekStepper
+            weeks={weeks}
+            selectedWeekId={selectedWeekId}
+            onSelectWeek={handleWeekSelect}
+            totalMatches={allMatches.length}
+          />
 
           {/* Matches List */}
           {loading ? (
