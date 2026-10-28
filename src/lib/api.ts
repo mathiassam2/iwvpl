@@ -366,3 +366,37 @@ export const getMyOrders = () =>
 export const getOrderSession = (sessionId: string) =>
   request<OrderSessionResult>(`/api/payments/session/${encodeURIComponent(sessionId)}`)
 
+
+export interface JoinRequest {
+  id: number
+  status: 'pending' | 'accepted' | 'rejected' | 'cancelled'
+  message: string | null
+  created_at: string
+  responded_at: string | null
+  club_id?: number
+  club_name?: string
+  club_slug?: string
+  logo_local?: string | null
+  logo_url?: string | null
+  player_id?: number
+  gamertag?: string
+  slug?: string
+  avatar_local?: string | null
+  shirt_number?: number | null
+  current_club_name?: string | null
+}
+
+export const requestJoinClub = (clubId: number, message?: string | null) =>
+  post<{ ok: true; id: number }>('/api/player/join-requests', { clubId, message })
+
+export const cancelJoinRequest = (id: number) =>
+  request<{ ok: true }>(`/api/player/join-requests/${id}`, { method: 'DELETE' })
+
+export const getPlayerJoinRequests = () =>
+  request<{ requests: JoinRequest[] }>('/api/player/join-requests')
+
+export const getManagerJoinRequests = () =>
+  request<{ requests: JoinRequest[] }>('/api/manager/join-requests')
+
+export const decideJoinRequest = (id: number, decision: 'accept' | 'reject') =>
+  post<{ ok: true; accepted: boolean }>(`/api/manager/join-requests/${id}/${decision}`, {})

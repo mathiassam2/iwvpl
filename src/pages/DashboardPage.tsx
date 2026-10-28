@@ -36,6 +36,11 @@ import {
   updateSquadPlayerShirt,
   releaseSquadPlayer,
   getMyOrders,
+  getManagerJoinRequests,
+  decideJoinRequest,
+  getPlayerJoinRequests,
+  cancelJoinRequest,
+  type JoinRequest,
   type UserOrder,
   type ManagerClub,
 
@@ -273,12 +278,40 @@ function ManagerPanel() {
     }
   }, [])
 
+  const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([])
 
+  const loadJoinRequests = useCallback(async () => {
+    try {
+      const data = await getManagerJoinRequests()
+      setJoinRequests(data.requests)
+    } catch {
+      setJoinRequests([])
+    }
+  }, [])
 
   useEffect(() => {
     void loadClub()
     void loadOffers()
-  }, [loadClub, loadOffers])
+    void loadJoinRequests()
+  }, [loadClub, loadOffers, loadJoinRequests])
+
+  const handleDecideJoinRequest = async (id: number, decision: 'accept' | 'reject') => {
+    setBusy(true)
+    setNotice(null)
+    try {
+      await decideJoinRequest(id, decision)
+      setNotice({
+        kind: 'ok',
+        text: decision === 'accept' ? 'Player accepted and added to your squad!' : 'Join request declined.',
+      })
+      await Promise.all([loadClub(), loadJoinRequests()])
+      await refresh()
+    } catch (err: unknown) {
+      setNotice({ kind: 'error', text: msg(err) })
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const [showClaimSelf, setShowClaimSelf] = useState(false)
   const [selfGamertag, setSelfGamertag] = useState(user?.gamertag || user?.name || '')
@@ -1105,6 +1138,99 @@ function ManagerPanel() {
 
       </section>
 
+      {/* ---- join requests ---- */}
+      {(() => {
+        const pendingCount = joinRequests.filter((r) => r.status === 'pending').length
+        return (
+          <section className={card}>
+            <PanelHead
+              label="Applications"
+              title="Join Requests"
+              badge={pendingCount > 0 ? `${pendingCount} Pending` : undefined}
+            />
+            {joinRequests.length === 0 ? (
+              <EmptyState
+                title="No join requests yet"
+                hint="When players request to join your club, their applications will appear here."
+              />
+            ) : (
+              <ul className="divide-y divide-[var(--border)]">
+                {joinRequests.map((req) => (
+                  <li key={req.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <SmartImage
+                        src={req.avatar_local || AVATAR_PLACEHOLDER}
+                        fallback={AVATAR_PLACEHOLDER}
+                        alt=""
+                        wrapperClassName="h-10 w-10 shrink-0 rounded-full overflow-hidden bg-[var(--surface-hover)] border border-[var(--border)]"
+                        className="h-full w-full object-cover"
+                      />
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <Link
+                            to={`/players/${req.slug}`}
+                            target="_blank"
+                            className="truncate text-sm font-bold text-[var(--text-strong)] hover:text-[var(--accent-text)]"
+                          >
+                            {req.gamertag}
+                          </Link>
+                          <span className="text-[11px] text-[var(--text-muted)]">
+                            {req.current_club_name ? `From ${req.current_club_name}` : 'Free Agent'}
+                          </span>
+                        </div>
+                        {req.message && (
+                          <p className="mt-1 text-xs italic text-[var(--text-muted)] line-clamp-2">
+                            "{req.message}"
+                          </p>
+                        )}
+                        <span className="text-[10px] text-[var(--text-faint)]">
+                          Applied {new Date(req.created_at).toLocaleDateString()}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                      {req.status === 'pending' ? (
+                        <>
+                          <Button
+                            size="sm"
+                            disabled={busy}
+                            onClick={() => handleDecideJoinRequest(req.id, 'accept')}
+                            className="gap-1 font-bold bg-emerald-600 hover:bg-emerald-500 text-white"
+                          >
+                            ✓ Accept
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={busy}
+                            onClick={() => handleDecideJoinRequest(req.id, 'reject')}
+                            className="text-red-400 hover:text-red-300 hover:border-red-500/50"
+                          >
+                            ✕ Decline
+                          </Button>
+                        </>
+                      ) : (
+                        <span
+                          className={cx(
+                            'rounded-lg px-2.5 py-1 text-xs font-semibold capitalize',
+                            req.status === 'accepted'
+                              ? 'bg-emerald-500/15 text-emerald-400 font-bold'
+                              : 'bg-[var(--surface-hover)] text-[var(--text-muted)]',
+                          )}
+                        >
+                          {req.status}
+                        </span>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )
+      })()}
+
       {/* ---- squad ---- */}
       <section className={card}>
         <PanelHead
@@ -1370,16 +1496,42 @@ function PlayerPanel() {
   const [shirtNumber, setShirtNumber] = useState<string>('')
   const [offers, setOffers] = useState<Offer[]>([])
 
+  const [playerRequests, setPlayerRequests] = useState<JoinRequest[]>([])
+
+  const loadJoinRequests = useCallback(async () => {
+    try {
+      const data = await getPlayerJoinRequests()
+      setPlayerRequests(data.requests)
+    } catch {
+      setPlayerRequests([])
+    }
+  }, [])
+
   const load = useCallback(async () => {
     try {
       const overview = await playerOverview()
       setClub(overview.club)
       setShirtNumber(overview.player.shirt_number != null ? String(overview.player.shirt_number) : '')
       setOffers((await incomingOffers()).offers)
+      await loadJoinRequests()
     } catch (err) {
       setNotice({ kind: 'error', text: msg(err) })
     }
-  }, [])
+  }, [loadJoinRequests])
+
+  const onCancelPlayerRequest = async (id: number) => {
+    setBusy(true)
+    setNotice(null)
+    try {
+      await cancelJoinRequest(id)
+      setNotice({ kind: 'ok', text: 'Join request withdrawn.' })
+      await loadJoinRequests()
+    } catch (err: unknown) {
+      setNotice({ kind: 'error', text: msg(err) })
+    } finally {
+      setBusy(false)
+    }
+  }
 
   useEffect(() => {
     void load()
@@ -1517,6 +1669,80 @@ function PlayerPanel() {
                   >
                     Decline
                   </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {/* ---- club applications ---- */}
+      <section className={card}>
+        <div className="flex items-center justify-between pb-1">
+          <PanelHead label="Applications" title="Your Club Applications" />
+          <ButtonLink to="/clubs" size="sm" variant="outline" className="gap-1.5 font-bold">
+            Browse Clubs
+          </ButtonLink>
+        </div>
+        {playerRequests.length === 0 ? (
+          <EmptyState
+            title="No applications sent"
+            hint="You can browse the club list and request to join any club."
+          />
+        ) : (
+          <ul className="divide-y divide-[var(--border)]">
+            {playerRequests.map((r) => (
+              <li key={r.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <SmartImage
+                    src={r.logo_local || r.logo_url || CLUB_PLACEHOLDER}
+                    fallback={CLUB_PLACEHOLDER}
+                    alt=""
+                    wrapperClassName="h-10 w-10 shrink-0 rounded-xl overflow-hidden bg-[var(--surface-hover)] border border-[var(--border)]"
+                    className="h-full w-full object-cover"
+                  />
+                  <div className="min-w-0">
+                    <Link
+                      to={`/clubs/${r.club_slug}`}
+                      className="truncate text-sm font-bold text-[var(--text-strong)] hover:text-[var(--accent-text)]"
+                    >
+                      {r.club_name}
+                    </Link>
+                    {r.message && (
+                      <p className="text-xs italic text-[var(--text-muted)] line-clamp-1">
+                        "{r.message}"
+                      </p>
+                    )}
+                    <span className="text-[10px] text-[var(--text-faint)]">
+                      Applied {r.created_at ? new Date(r.created_at.includes('T') ? r.created_at : r.created_at.replace(' ', 'T') + (r.created_at.endsWith('Z') ? '' : 'Z')).toLocaleDateString() : ''}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                  <span
+                    className={cx(
+                      'rounded-lg px-2.5 py-1 text-xs font-semibold capitalize',
+                      r.status === 'pending'
+                        ? 'bg-[var(--accent-tint)] text-[var(--accent-text)] font-bold'
+                        : r.status === 'accepted'
+                          ? 'bg-emerald-500/15 text-emerald-400 font-bold'
+                          : 'bg-[var(--surface-hover)] text-[var(--text-muted)]',
+                    )}
+                  >
+                    {r.status === 'pending' ? 'Pending Review' : r.status}
+                  </span>
+                  {r.status === 'pending' && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={busy}
+                      onClick={() => onCancelPlayerRequest(r.id)}
+                      className="text-xs text-[var(--text-muted)] hover:text-red-400"
+                    >
+                      Withdraw
+                    </Button>
+                  )}
                 </div>
               </li>
             ))}

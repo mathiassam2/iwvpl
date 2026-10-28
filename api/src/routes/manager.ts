@@ -319,7 +319,7 @@ manager.get(
          FROM transfer_requests tr
          JOIN players p   ON p.id = tr.player_id
          LEFT JOIN clubs fc ON fc.id = tr.from_club_id
-        WHERE tr.to_club_id = ?
+        WHERE tr.to_club_id = ? AND (tr.initiated_by = 'club' OR tr.initiated_by IS NULL)
         ORDER BY tr.created_at DESC
         LIMIT 100`,
       [club.id],
@@ -363,6 +363,184 @@ manager.delete(
     }
 
     res.json({ ok: true })
+  }),
+)
+
+/* -------------------------------------------------------- join requests */
+
+/** Incoming join requests from players wanting to join this club. */
+manager.get(
+  '/join-requests',
+  handler(async (req, res) => {
+    const club = await ownClub(req.user!.id)
+    const rows = await queryAll(
+      `SELECT tr.id, tr.status, tr.message, tr.created_at, tr.responded_at,
+              p.id AS player_id, p.gamertag, p.slug, p.avatar_local, p.shirt_number,
+              fc.name AS current_club_name
+         FROM transfer_requests tr
+         JOIN players p ON p.id = tr.player_id
+         LEFT JOIN clubs fc ON fc.id = tr.from_club_id
+        WHERE tr.to_club_id = ? AND tr.initiated_by = 'player'
+        ORDER BY (tr.status = 'pending') DESC, tr.created_at DESC
+        LIMIT 100`,
+      [club.id],
+    )
+    res.json({ requests: rows })
+  }),
+)
+
+/** Manager accepts or rejects a player's join request. */
+manager.post(
+  '/join-requests/:id/:decision',
+  handler(async (req, res) => {
+    const decision = String(req.params.decision)
+    if (decision !== 'accept' && decision !== 'reject') {
+      throw Object.assign(new Error('Decision must be accept or reject.'), { status: 400 })
+    }
+
+    const club = await ownClub(req.user!.id)
+    const requestId = Number(req.params.id)
+    if (!Number.isSafeInteger(requestId) || requestId < 1) {
+      throw Object.assign(new Error('Invalid request ID.'), { status: 400 })
+    }
+
+    const row = await queryOne<{
+      id: number
+      player_id: number
+      from_club_id: number | null
+      status: string
+      kind: string | null
+    }>(
+      `SELECT id, player_id, from_club_id, status, kind
+         FROM transfer_requests
+        WHERE id = ? AND to_club_id = ? AND initiated_by = 'player'`,
+      [requestId, club.id],
+    )
+    if (!row) throw Object.assign(new Error('Join request not found.'), { status: 404 })
+    if (row.status !== 'pending') {
+      throw Object.assign(new Error('This request has already been answered.'), { status: 409 })
+    }
+
+    const player = await queryOne<{
+      id: number
+      gamertag: string
+      user_id: number | null
+      club_id: number | null
+    }>(
+      'SELECT id, gamertag, user_id, club_id FROM players WHERE id = ?',
+      [row.player_id],
+    )
+    if (!player) throw Object.assign(new Error('Player not found.'), { status: 404 })
+
+    if (decision === 'accept') {
+      await withTransaction(async (conn) => {
+        // Mark request accepted
+        const [upd] = await conn.execute(
+          `UPDATE transfer_requests
+              SET status = 'accepted', responded_at = NOW()
+            WHERE id = ? AND to_club_id = ? AND status = 'pending'`,
+          [requestId, club.id],
+        )
+        if ((upd as any).affectedRows === 0) {
+          throw Object.assign(new Error('This request was already answered.'), { status: 409 })
+        }
+
+        // Attach player to this club
+        await conn.execute(
+          `UPDATE players
+              SET club_id = ?, is_free_agent = FALSE, updated_at = NOW()
+            WHERE id = ?`,
+          [club.id, player.id],
+        )
+
+        // Log transfer
+        await conn.execute(
+          `INSERT INTO transfers (player_id, from_club_id, to_club_id, occurred_at, kind, created_at)
+           VALUES (?, ?, ?, NOW(), ?, NOW())`,
+          [player.id, player.club_id, club.id, row.kind || 'free'],
+        )
+
+        // Synchronize clubs.starting_xi_json if present (add to bench)
+        const [clubRows] = await conn.query(
+          'SELECT starting_xi_json FROM clubs WHERE id = ? FOR UPDATE',
+          [club.id],
+        )
+        const cRow = (clubRows as any[])[0]
+        if (cRow?.starting_xi_json) {
+          try {
+            const parsed = JSON.parse(cRow.starting_xi_json)
+            const starters = Array.isArray(parsed.starters) ? parsed.starters : []
+            const bench = Array.isArray(parsed.bench) ? parsed.bench : []
+            const inStarters = starters.some((s: any) => s.playerId === player.id || s.gamertag === player.gamertag)
+            const inBench = bench.some((b: any) => b.playerId === player.id || b.gamertag === player.gamertag)
+            if (!inStarters && !inBench) {
+              bench.push({
+                playerId: player.id,
+                gamertag: player.gamertag,
+                number: 12 + bench.length,
+                role: 'SUB',
+              })
+              await conn.execute(
+                'UPDATE clubs SET starting_xi_json = ?, updated_at = NOW() WHERE id = ?',
+                [JSON.stringify({ ...parsed, bench }), club.id],
+              )
+            }
+          } catch {
+            /* ignore JSON parse failure */
+          }
+        }
+      })
+
+      // Notify player
+      if (player.user_id) {
+        notify(
+          player.user_id,
+          'join_accepted',
+          `Welcome to ${club.name}!`,
+          `Your request to join ${club.name} was accepted by the manager.`,
+          '/dashboard',
+        ).catch(() => undefined)
+      }
+
+      // If player was in a previous club, notify former manager
+      if (player.club_id && player.club_id !== club.id) {
+        const formerManager = await queryOne<{ id: number }>(
+          'SELECT id FROM users WHERE club_id = ? AND is_active = 1 LIMIT 1',
+          [player.club_id],
+        )
+        if (formerManager) {
+          notify(
+            formerManager.id,
+            'player_transferred',
+            `${player.gamertag} transferred`,
+            `${player.gamertag} joined ${club.name}.`,
+            '/dashboard',
+          ).catch(() => undefined)
+        }
+      }
+
+      res.json({ ok: true, accepted: true })
+    } else {
+      // Decision === 'reject'
+      await execute(
+        `UPDATE transfer_requests
+            SET status = 'rejected', responded_at = NOW()
+          WHERE id = ? AND to_club_id = ? AND status = 'pending'`,
+        [requestId, club.id],
+      )
+
+      if (player.user_id) {
+        notify(
+          player.user_id,
+          'join_rejected',
+          `Join Request Update`,
+          `${club.name} was unable to accept your request to join at this time.`,
+          '/dashboard',
+        ).catch(() => undefined)
+      }
+
+      res.json({ ok: true, accepted: false })
+    }
   }),
 )
 

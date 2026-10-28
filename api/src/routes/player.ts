@@ -114,7 +114,7 @@ player.get(
 
     const pending = await queryOne<{ n: number }>(
       `SELECT COUNT(*) AS n FROM transfer_requests
-        WHERE player_id = ? AND status = 'pending'`,
+        WHERE player_id = ? AND status = 'pending' AND (initiated_by = 'club' OR initiated_by IS NULL)`,
       [me.id],
     )
 
@@ -210,10 +210,142 @@ player.get(
          FROM transfer_requests tr
          JOIN clubs c ON c.id = tr.to_club_id
         WHERE tr.player_id = ? AND tr.status = 'pending'
+          AND (tr.initiated_by = 'club' OR tr.initiated_by IS NULL)
         ORDER BY tr.created_at DESC`,
       [me.id],
     )
     res.json({ offers: rows })
+  }),
+)
+
+/* ------------------------------------------------------- join requests */
+
+/** Player-initiated club join requests. */
+player.get(
+  '/join-requests',
+  handler(async (req, res) => {
+    const me = await ownPlayer(req.user!.id)
+    const rows = await queryAll(
+      `SELECT tr.id, tr.status, tr.message, tr.created_at, tr.responded_at,
+              c.id AS club_id, c.name AS club_name, c.slug AS club_slug, c.logo_local, c.logo_url
+         FROM transfer_requests tr
+         JOIN clubs c ON c.id = tr.to_club_id
+        WHERE tr.player_id = ? AND tr.initiated_by = 'player'
+        ORDER BY (tr.status = 'pending') DESC, tr.created_at DESC`,
+      [me.id],
+    )
+    res.json({ requests: rows })
+  }),
+)
+
+/** Submit a request to join a club. */
+player.post(
+  '/join-requests',
+  handler(async (req, res) => {
+    const me = await ownPlayer(req.user!.id)
+    const clubId = Number(req.body?.clubId)
+    if (!Number.isSafeInteger(clubId) || clubId < 1) {
+      throw Object.assign(new Error('Invalid club ID.'), { status: 400 })
+    }
+    const message = req.body?.message ? String(req.body.message).trim().slice(0, 255) : null
+
+    const targetClub = await queryOne<{ id: number; name: string }>(
+      'SELECT id, name FROM clubs WHERE id = ?',
+      [clubId],
+    )
+    if (!targetClub) {
+      throw Object.assign(new Error('That club does not exist.'), { status: 404 })
+    }
+
+    if (me.club_id === clubId) {
+      throw Object.assign(new Error('You are already a member of this club.'), { status: 400 })
+    }
+
+    // Check if player already has an open pending join request to this club
+    const existing = await queryOne<{ id: number }>(
+      `SELECT id FROM transfer_requests
+        WHERE player_id = ? AND to_club_id = ? AND status = 'pending' AND initiated_by = 'player'
+        LIMIT 1`,
+      [me.id, clubId],
+    )
+    if (existing) {
+      throw Object.assign(new Error('You already have a pending join request to this club.'), {
+        status: 409,
+      })
+    }
+
+    // Check if club already offered the player a contract
+    const openOffer = await queryOne<{ id: number }>(
+      `SELECT id FROM transfer_requests
+        WHERE player_id = ? AND to_club_id = ? AND status = 'pending' AND (initiated_by = 'club' OR initiated_by IS NULL)
+        LIMIT 1`,
+      [me.id, clubId],
+    )
+    if (openOffer) {
+      throw Object.assign(
+        new Error(
+          `${targetClub.name} has already sent you a contract offer! Review and accept it in your dashboard.`,
+        ),
+        { status: 409 },
+      )
+    }
+
+    let requestId: number
+    await withTransaction(async (conn) => {
+      const [res] = await conn.execute(
+        `INSERT INTO transfer_requests (player_id, from_club_id, to_club_id, initiated_by, kind, status, message, created_at)
+         VALUES (?, ?, ?, 'player', 'free', 'pending', ?, NOW())`,
+        [me.id, me.club_id, clubId, message],
+      )
+      requestId = (res as any).insertId
+    })
+
+    // Notify the club manager if there is one
+    const manager = await queryOne<{ id: number }>(
+      'SELECT id FROM users WHERE club_id = ? AND is_active = 1 LIMIT 1',
+      [clubId],
+    )
+    if (manager) {
+      notify(
+        manager.id,
+        'join_request',
+        `Join request: ${me.gamertag}`,
+        message || `${me.gamertag} has requested to join ${targetClub.name}.`,
+        '/dashboard',
+      ).catch(() => undefined)
+    }
+
+    res.status(201).json({ ok: true, id: requestId! })
+  }),
+)
+
+/** Cancel an outstanding join request. */
+player.delete(
+  '/join-requests/:id',
+  handler(async (req, res) => {
+    const me = await ownPlayer(req.user!.id)
+    const requestId = Number(req.params.id)
+    if (!Number.isSafeInteger(requestId) || requestId < 1) {
+      throw Object.assign(new Error('Invalid request ID.'), { status: 400 })
+    }
+
+    const row = await queryOne<{ id: number; to_club_id: number; status: string }>(
+      `SELECT id, to_club_id, status FROM transfer_requests
+        WHERE id = ? AND player_id = ? AND initiated_by = 'player'`,
+      [requestId, me.id],
+    )
+    if (!row) throw Object.assign(new Error('Join request not found.'), { status: 404 })
+    if (row.status !== 'pending') {
+      throw Object.assign(new Error('This request has already been answered.'), { status: 409 })
+    }
+
+    await execute(
+      `UPDATE transfer_requests SET status = 'cancelled', responded_at = NOW()
+        WHERE id = ? AND status = 'pending'`,
+      [requestId],
+    )
+
+    res.json({ ok: true })
   }),
 )
 

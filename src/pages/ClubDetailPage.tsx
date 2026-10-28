@@ -28,6 +28,8 @@ import {
 import type { Match, Standing } from '@/types/site'
 import { buildSquadFromLineup } from '@/lib/fixtures'
 import { useAuth } from '@/lib/auth'
+import { RequestJoinClubModal } from '@/components/club/RequestJoinClubModal'
+import { getPlayerJoinRequests, cancelJoinRequest, type JoinRequest } from '@/lib/api'
 import { updateClubDescription } from '@/lib/api'
 
 
@@ -50,6 +52,26 @@ export default function ClubDetailPage() {
   const [isEditingDesc, setIsEditingDesc] = useState(false)
   const [descInput, setDescInput] = useState('')
   const [descSaving, setDescSaving] = useState(false)
+  const [showJoinModal, setShowJoinModal] = useState(false)
+  const [myJoinRequests, setMyJoinRequests] = useState<JoinRequest[]>([])
+  const [joinBusy, setJoinBusy] = useState(false)
+
+  const loadMyJoinRequests = useCallback(async () => {
+    if (!user) {
+      setMyJoinRequests([])
+      return
+    }
+    try {
+      const data = await getPlayerJoinRequests()
+      setMyJoinRequests(data.requests)
+    } catch {
+      setMyJoinRequests([])
+    }
+  }, [user])
+
+  useEffect(() => {
+    void loadMyJoinRequests()
+  }, [loadMyJoinRequests])
 
   /**
    * Club identity, live, falling back to the crawl.
@@ -664,9 +686,65 @@ export default function ClubDetailPage() {
               )}
             </div>
 
-            <ButtonLink to="/clubs" variant="outline" size="md" className="shrink-0 self-start sm:self-auto">
-              All clubs
-            </ButtonLink>
+            <div className="flex flex-wrap items-center gap-2.5 shrink-0 self-start sm:self-auto">
+              {liveClub?.id && user?.clubId === liveClub.id ? (
+                <span className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs font-bold text-emerald-400">
+                  <span className="h-2 w-2 rounded-full bg-emerald-400" />
+                  Your Club
+                </span>
+              ) : liveClub?.id && myJoinRequests.some((r) => r.club_id === liveClub.id && r.status === 'pending') ? (
+                <div className="flex items-center gap-1.5">
+                  <span className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--accent-ring)] bg-[var(--accent-tint)] px-3 py-2 text-xs font-bold text-[var(--accent-text)]">
+                    <svg width="12" height="12" viewBox="0 0 20 20" fill="none" aria-hidden>
+                      <circle cx="10" cy="10" r="7" stroke="currentColor" strokeWidth="2" />
+                      <path d="M10 6v4l2.5 2.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    </svg>
+                    Request Pending
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={joinBusy}
+                    onClick={async () => {
+                      const req = myJoinRequests.find((r) => r.club_id === liveClub.id && r.status === 'pending')
+                      if (!req) return
+                      setJoinBusy(true)
+                      try {
+                        await cancelJoinRequest(req.id)
+                        await loadMyJoinRequests()
+                      } finally {
+                        setJoinBusy(false)
+                      }
+                    }}
+                    className="text-xs text-[var(--text-muted)] hover:text-red-400"
+                    title="Withdraw your join request"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              ) : liveClub?.id ? (
+                user ? (
+                  <Button
+                    size="md"
+                    onClick={() => setShowJoinModal(true)}
+                    className="gap-1.5 font-bold shadow-md"
+                  >
+                    <svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden>
+                      <path d="M10 4v12M4 10h12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+                    </svg>
+                    Request to Join Club
+                  </Button>
+                ) : (
+                  <ButtonLink to="/login" variant="outline" size="md">
+                    Log in to Join
+                  </ButtonLink>
+                )
+              ) : null}
+
+              <ButtonLink to="/clubs" variant="outline" size="md">
+                All clubs
+              </ButtonLink>
+            </div>
           </div>
         </Container>
       </section>
@@ -743,6 +821,22 @@ export default function ClubDetailPage() {
           </div>
         </Container>
       </Section>
+
+      {liveClub?.id && (
+        <RequestJoinClubModal
+          open={showJoinModal}
+          onClose={() => setShowJoinModal(false)}
+          club={{
+            id: liveClub.id,
+            name: liveClub.name,
+            logo: liveClub.logo_local || liveClub.logo_url || null,
+            slug: liveClub.slug,
+          }}
+          onSuccess={() => {
+            void loadMyJoinRequests()
+          }}
+        />
+      )}
 
       {/* ---------------- CTA ---------------- */}
       <Section tone="deep" className="!py-14">

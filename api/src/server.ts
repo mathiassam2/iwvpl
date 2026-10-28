@@ -317,6 +317,12 @@ async function start(): Promise<void> {
     console.warn('Could not heal unassigned club managers:', err instanceof Error ? err.message : err)
   }
 
+  try {
+    await execute("ALTER TABLE transfer_requests ADD COLUMN IF NOT EXISTS initiated_by VARCHAR(16) NOT NULL DEFAULT 'club'")
+  } catch (err) {
+    console.warn('Could not ensure initiated_by column on transfer_requests:', err instanceof Error ? err.message : err)
+  }
+
   const onListening = () => {
     console.log(`IWVPL api  http://${config.host}:${config.port}`)
     console.log(`  env      ${config.env}`)
