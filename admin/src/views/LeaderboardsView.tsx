@@ -1102,6 +1102,12 @@ export function LeaderboardsView({
 /**
  * Preview Card for one podium spot with overflow celebration cutout (1:1 Stage)
  */
+const DEFAULT_PODIUM_IMAGES: Record<number, string> = {
+  1: '/assets/podium/podium-default-1.png',
+  2: '/assets/podium/podium-default-2.png',
+  3: '/assets/podium/podium-default-3.png',
+}
+
 function PodiumPreviewSlot({
   place,
   stat,
@@ -1183,44 +1189,18 @@ function PodiumPreviewSlot({
         }}
       >
 
-        {stat?.celebration_image ? (
-          <img
-            src={stat.celebration_image}
-            alt={stat.gamertag}
-            style={{
-              width: '100%',
-              height: '100%',
-              objectFit: 'contain',
-              objectPosition: 'bottom',
-              filter: 'drop-shadow(0 16px 28px rgba(0,0,0,0.85))',
-            }}
-          />
-        ) : (
-          <div
-            style={{
-              width: isFirst ? 72 : 56,
-              height: isFirst ? 72 : 56,
-              borderRadius: '50%',
-              background: 'rgba(255,255,255,0.06)',
-              border: '2px dashed rgba(255,255,255,0.2)',
-              display: 'grid',
-              placeItems: 'center',
-              marginBottom: 44,
-              fontSize: 22,
-              filter: 'drop-shadow(0 6px 12px rgba(0,0,0,0.5))',
-            }}
-          >
-            {stat?.avatar_local ? (
-              <img
-                src={stat.avatar_local}
-                alt=""
-                style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
-              />
-            ) : (
-              '🧍'
-            )}
-          </div>
-        )}
+        <img
+          src={stat?.celebration_image || DEFAULT_PODIUM_IMAGES[place]}
+          alt={stat?.gamertag || `Podium #${place}`}
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'contain',
+            objectPosition: 'bottom',
+            filter: 'drop-shadow(0 16px 28px rgba(0,0,0,0.85))',
+            opacity: stat ? 1 : 0.25,
+          }}
+        />
       </div>
 
       {/* Pedestal Block (Sits in front of waist/cutout for seamless framing) */}
@@ -1265,19 +1245,27 @@ function PodiumPreviewSlot({
 
         {stat ? (
           <>
-            <strong
-              style={{
-                fontSize: isFirst ? 16 : 14,
-                color: '#fff',
-                lineHeight: 1.2,
-                maxWidth: '100%',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {stat.gamertag}
-            </strong>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, maxWidth: '100%' }}>
+              {stat.avatar_local && (
+                <img
+                  src={stat.avatar_local}
+                  alt=""
+                  style={{ width: 18, height: 18, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
+                />
+              )}
+              <strong
+                style={{
+                  fontSize: isFirst ? 16 : 14,
+                  color: '#fff',
+                  lineHeight: 1.2,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {stat.gamertag}
+              </strong>
+            </div>
 
             <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 2 }}>
               {stat.club_flag ? `${stat.club_flag} ` : ''}

@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import type { Leaderboard } from '@/types/site'
-import { AVATAR_PLACEHOLDER, cx, stripFlag } from '@/lib/format'
+import { AVATAR_PLACEHOLDER, DEFAULT_PODIUM_IMAGES, cx, stripFlag } from '@/lib/format'
 import { playerHref } from '@/lib/players'
 
 function PodiumAwardIcon({ place, isFirst }: { place: number; isFirst: boolean }) {
@@ -106,7 +106,7 @@ export function LeaderboardPodium({ board }: { board: Leaderboard }) {
       <div className="grid grid-cols-3 items-end gap-2.5 sm:gap-4 md:gap-6 max-w-4xl mx-auto overflow-visible">
         {slots.map(({ row, place, label }) => {
           const isFirst = place === 1
-          const cutout = row?.celebrationImage || row?.avatarLocal || row?.avatar || null
+          const cutout = row?.celebrationImage || DEFAULT_PODIUM_IMAGES[place]
           const hasCustomCelebration = Boolean(row?.celebrationImage)
 
           const badgeTheme =
@@ -167,39 +167,16 @@ export function LeaderboardPodium({ board }: { board: Leaderboard }) {
                     WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 82%, transparent 98%)',
                   }}
                 >
-                  {hasCustomCelebration ? (
-                    <img
-                      src={row!.celebrationImage!}
-                      alt={row!.name}
-                      loading="lazy"
-                      decoding="async"
-                      className="w-full h-full object-contain object-bottom drop-shadow-[0_16px_32px_rgba(0,0,0,0.9)] filter transition-transform duration-300 hover:scale-105"
-                    />
-                  ) : row ? (
-                    <div
-                      className={cx(
-                        'relative flex items-end justify-center mb-8 sm:mb-10',
-                        isFirst ? 'h-24 w-24 sm:h-30 sm:w-30' : 'h-18 w-18 sm:h-22 sm:w-22',
-                      )}
-                    >
-                      <img
-                        src={cutout || AVATAR_PLACEHOLDER}
-                        alt={row.name}
-                        loading="lazy"
-                        decoding="async"
-                        className={cx(
-                          'rounded-full object-cover shadow-[0_14px_28px_rgba(0,0,0,0.8)] ring-2',
-                          isFirst
-                            ? 'h-20 w-20 sm:h-26 sm:w-26 ring-[var(--accent-solid)]'
-                            : 'h-14 w-14 sm:h-18 sm:w-18 ring-white/20',
-                        )}
-                      />
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center mb-8 opacity-25">
-                      <span className="text-3xl sm:text-4xl">🧍</span>
-                    </div>
-                  )}
+                  <img
+                    src={cutout}
+                    alt={row?.name || `Podium #${place}`}
+                    loading="lazy"
+                    decoding="async"
+                    className={cx(
+                      'w-full h-full object-contain object-bottom drop-shadow-[0_16px_32px_rgba(0,0,0,0.9)] filter transition-transform duration-300 hover:scale-105',
+                      !row && 'opacity-25',
+                    )}
+                  />
                 </div>
               </div>
 
@@ -243,19 +220,31 @@ export function LeaderboardPodium({ board }: { board: Leaderboard }) {
                   </span>
 
                   {/* Player Gamertag */}
-                  <p
-                    className={cx(
-                      'relative mt-2.5 truncate font-extrabold text-white',
-                      isFirst
-                        ? 'text-base sm:text-lg md:text-xl'
-                        : place === 2
-                          ? 'text-xs sm:text-sm'
-                          : 'text-[11.5px] sm:text-xs',
+                  <div className="relative mt-2.5 flex items-center justify-center gap-1.5 px-1 min-w-0">
+                    {row.avatarLocal && row.avatarLocal !== AVATAR_PLACEHOLDER && (
+                      <img
+                        src={row.avatarLocal}
+                        alt=""
+                        className={cx(
+                          'rounded-full object-cover ring-1 ring-white/20 shrink-0',
+                          isFirst ? 'h-5 w-5 sm:h-6 sm:w-6' : 'h-4 w-4 sm:h-4.5 sm:w-4.5',
+                        )}
+                      />
                     )}
-                    title={row.name}
-                  >
-                    {row.name}
-                  </p>
+                    <p
+                      className={cx(
+                        'truncate font-extrabold text-white',
+                        isFirst
+                          ? 'text-base sm:text-lg md:text-xl'
+                          : place === 2
+                            ? 'text-xs sm:text-sm'
+                            : 'text-[11.5px] sm:text-xs',
+                      )}
+                      title={row.name}
+                    >
+                      {row.name}
+                    </p>
+                  </div>
 
                   {/* Club Details */}
                   <p className="relative mt-0.5 flex items-center justify-center gap-1.5 truncate text-[11px] sm:text-xs text-white/60">

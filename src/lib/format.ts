@@ -4,6 +4,11 @@ import { asset } from './assets'
 
 export const CLUB_PLACEHOLDER = asset('/assets/brand/club-placeholder.svg')
 export const AVATAR_PLACEHOLDER = asset('/assets/brand/avatar-placeholder.svg')
+export const DEFAULT_PODIUM_IMAGES: Record<number, string> = {
+  1: asset('/assets/podium/podium-default-1.png'),
+  2: asset('/assets/podium/podium-default-2.png'),
+  3: asset('/assets/podium/podium-default-3.png'),
+}
 
 export function cx(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(' ')
