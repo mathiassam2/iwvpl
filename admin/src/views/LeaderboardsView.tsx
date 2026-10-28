@@ -1170,14 +1170,14 @@ function PodiumPreviewSlot({
         />
       )}
 
-      {/* 3D Cutout Celebration Image Stage - Placed above the card */}
+      {/* 3D Cutout Celebration Image Stage - Standing tall above the card */}
       <div
         style={{
           position: 'relative',
           width: '100%',
-          maxWidth: isFirst ? 285 : place === 2 ? 240 : 215,
-          height: isFirst ? 240 : place === 2 ? 200 : 180,
-          marginBottom: 0,
+          maxWidth: isFirst ? 320 : place === 2 ? 270 : 250,
+          height: isFirst ? 320 : place === 2 ? 260 : 230,
+          marginBottom: 8,
           zIndex: 2,
           display: 'flex',
           justifyContent: 'center',

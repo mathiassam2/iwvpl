@@ -155,15 +155,15 @@ export function LeaderboardPodium({ board }: { board: Leaderboard }) {
                 />
               )}
 
-              {/* Podium Cutout Stage - Placed above the card, starting from bottom of PNG */}
+              {/* Podium Cutout Stage - Standing tall and proud directly above the card */}
               <div
                 className={cx(
-                  'relative w-full flex items-end justify-center pointer-events-none mb-0 overflow-visible z-10',
+                  'relative w-full flex items-end justify-center pointer-events-none mb-2 sm:mb-3 overflow-visible z-20',
                   isFirst
-                    ? 'h-48 sm:h-60 md:h-68 max-w-[285px]'
+                    ? 'h-64 sm:h-80 md:h-96 max-w-[320px]'
                     : place === 2
-                      ? 'h-40 sm:h-50 md:h-56 max-w-[240px]'
-                      : 'h-36 sm:h-44 md:h-50 max-w-[220px]',
+                      ? 'h-52 sm:h-64 md:h-80 max-w-[270px]'
+                      : 'h-44 sm:h-56 md:h-72 max-w-[250px]',
                 )}
               >
                 <img
@@ -183,7 +183,7 @@ export function LeaderboardPodium({ board }: { board: Leaderboard }) {
                 <Link
                   to={playerHref(row.name)}
                   className={cx(
-                    'relative w-full rounded-xl sm:rounded-2xl text-center transition-all duration-300 ease-out z-20 block',
+                    'relative w-full rounded-xl sm:rounded-2xl text-center transition-all duration-300 ease-out z-10 block',
                     'hover:-translate-y-1 focus-visible:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-solid)]',
                     isFirst
                       ? 'min-h-[210px] sm:min-h-[230px] pt-5 pb-5 px-3.5 sm:pt-6 sm:pb-6 sm:px-4.5 border border-[var(--accent-solid)]/45 shadow-[0_20px_45px_-12px_rgba(200,255,61,0.32),inset_0_1px_0_rgba(200,255,61,0.35)]'
