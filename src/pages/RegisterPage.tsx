@@ -38,7 +38,7 @@ const FORMATS = [
 ]
 
 const EMPTY: Fields = {
-  role: 'club_manager',
+  role: 'player',
   managerPasscode: '',
   club: '',
   clubLogo: null,
@@ -149,18 +149,22 @@ export default function RegisterPage() {
   }
 
   // --- Verification for Invite Code ---
-  const handleVerifyInviteCode = async (explicitCode?: string) => {
+  const handleVerifyInviteCode = async (explicitCode?: string): Promise<boolean> => {
     const codeToTest = (explicitCode ?? values.managerPasscode).trim()
     if (!codeToTest) {
+      const err = 'Please enter a manager invite code.'
       setInviteVerification({
         verified: false,
         busy: false,
-        error: 'Please enter an invite code to verify.',
+        error: err,
       })
+      setErrors((prev) => ({ ...prev, managerPasscode: err }))
       return false
     }
 
     setInviteVerification((prev) => ({ ...prev, busy: true, error: null }))
+    setErrors((prev) => ({ ...prev, managerPasscode: undefined }))
+
     try {
       const res = await verifyInvite({
         code: codeToTest,
@@ -187,21 +191,26 @@ export default function RegisterPage() {
           boundEmail,
           boundClubName: boundClub,
         })
+        setErrors((prev) => ({ ...prev, managerPasscode: undefined }))
         return true
       } else {
+        const errMsg = res.error || 'Invalid or expired invite code.'
         setInviteVerification({
           verified: false,
           busy: false,
-          error: res.error || 'Invalid invite code.',
+          error: errMsg,
         })
+        setErrors((prev) => ({ ...prev, managerPasscode: errMsg }))
         return false
       }
     } catch (err) {
+      const errMsg = err instanceof ApiError ? err.message : 'Could not verify invite code.'
       setInviteVerification({
         verified: false,
         busy: false,
-        error: err instanceof ApiError ? err.message : 'Could not verify invite code.',
+        error: errMsg,
       })
+      setErrors((prev) => ({ ...prev, managerPasscode: errMsg }))
       return false
     }
   }
@@ -210,16 +219,16 @@ export default function RegisterPage() {
   const validateStep1 = async (): Promise<boolean> => {
     setSubmitError(null)
     if (values.role === 'club_manager') {
-      if (passcodeRequired) {
-        if (!values.managerPasscode.trim()) {
-          setErrors({ managerPasscode: 'Manager invite code is required.' })
-          return false
-        }
-        if (!inviteVerification.verified) {
-          const ok = await handleVerifyInviteCode()
-          if (!ok) return false
-        }
+      const cleanCode = values.managerPasscode.trim()
+      if (!cleanCode) {
+        const err = 'Manager invite code is required to register a club.'
+        setErrors((prev) => ({ ...prev, managerPasscode: err }))
+        setInviteVerification((prev) => ({ ...prev, verified: false, error: err }))
+        return false
       }
+      // Always verify code validity when proceeding to the next step
+      const ok = await handleVerifyInviteCode(cleanCode)
+      if (!ok) return false
     }
     setErrors({})
     return true
@@ -587,32 +596,8 @@ export default function RegisterPage() {
                       </p>
                     </div>
 
-                    {/* Role Selection Cards */}
+                    {/* Role Selection Cards: Player first, then Club Manager */}
                     <div className="grid gap-4 sm:grid-cols-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setValues((v) => ({ ...v, role: 'club_manager' }))
-                          setErrors({})
-                        }}
-                        className={cx(
-                          'flex flex-col items-start rounded-xl border p-5 text-left transition-all',
-                          values.role === 'club_manager'
-                            ? 'border-[var(--accent)] bg-[var(--accent-tint)] shadow-sm ring-1 ring-[var(--accent)]'
-                            : 'border-[var(--border)] bg-[var(--surface)] hover:border-[var(--border-strong)]'
-                        )}
-                      >
-                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--surface-muted)] text-xl mb-3">
-                          🛡️
-                        </div>
-                        <span className="text-base font-bold text-[var(--text-strong)]">
-                          I manage a club
-                        </span>
-                        <span className="mt-1 text-xs text-[var(--text-muted)] leading-relaxed">
-                          Register your team, manage rosters, sign players, and compete in official league divisions.
-                        </span>
-                      </button>
-
                       <button
                         type="button"
                         onClick={() => {
@@ -634,6 +619,30 @@ export default function RegisterPage() {
                         </span>
                         <span className="mt-1 text-xs text-[var(--text-muted)] leading-relaxed">
                           Create your official player profile, enter the free agent market, and get scouted by team managers.
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setValues((v) => ({ ...v, role: 'club_manager' }))
+                          setErrors({})
+                        }}
+                        className={cx(
+                          'flex flex-col items-start rounded-xl border p-5 text-left transition-all',
+                          values.role === 'club_manager'
+                            ? 'border-[var(--accent)] bg-[var(--accent-tint)] shadow-sm ring-1 ring-[var(--accent)]'
+                            : 'border-[var(--border)] bg-[var(--surface)] hover:border-[var(--border-strong)]'
+                        )}
+                      >
+                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--surface-muted)] text-xl mb-3">
+                          🛡️
+                        </div>
+                        <span className="text-base font-bold text-[var(--text-strong)]">
+                          I manage a club
+                        </span>
+                        <span className="mt-1 text-xs text-[var(--text-muted)] leading-relaxed">
+                          Register your team, manage rosters, sign players, and compete in official league divisions.
                         </span>
                       </button>
                     </div>
@@ -682,7 +691,7 @@ export default function RegisterPage() {
                               {inviteVerification.busy ? 'Checking…' : 'Verify'}
                             </button>
                           </div>
-                          {errors.managerPasscode && (
+                          {errors.managerPasscode && !inviteVerification.error && (
                             <p className="text-xs text-red-400 font-medium">{errors.managerPasscode}</p>
                           )}
                         </div>
@@ -708,8 +717,9 @@ export default function RegisterPage() {
                         )}
 
                         {inviteVerification.error && (
-                          <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-400">
-                            ✕ {inviteVerification.error}
+                          <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-400 font-medium flex items-center gap-2">
+                            <span>⚠️</span>
+                            <span>{inviteVerification.error}</span>
                           </div>
                         )}
 
@@ -731,12 +741,13 @@ export default function RegisterPage() {
                       <Button
                         size="md"
                         type="button"
+                        disabled={inviteVerification.busy}
                         onClick={async () => {
                           const ok = await validateStep1()
                           if (ok) goToStep(2)
                         }}
                       >
-                        Continue to Details →
+                        {inviteVerification.busy ? 'Checking Code…' : 'Continue to Details →'}
                       </Button>
                     </div>
                   </div>

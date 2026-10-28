@@ -91,7 +91,8 @@ auth.get(
   handler(async (_req, res) => {
     const settings = await getManagerPasscodeSettings()
     res.json({
-      managerPasscodeRequired: settings.enabled,
+      managerPasscodeRequired: true,
+      fallbackPasscodeEnabled: settings.enabled,
     })
   }),
 )
