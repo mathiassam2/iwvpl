@@ -1303,9 +1303,9 @@ admin.put(
         const targetUser = (userRows as Array<{ id: number; role: string }>)[0]
         if (!targetUser) return { error: 'User account not found.' as const, status: 404 }
 
-        // Clear any other club_manager previously assigned to this club
+        // Clear any other club_manager previously assigned to this club and demote them to player
         await conn.execute(
-          `UPDATE users SET club_id = NULL, updated_at = NOW()
+          `UPDATE users SET club_id = NULL, role = 'player', updated_at = NOW()
             WHERE club_id = ? AND role = 'club_manager' AND id <> ?`,
           [club.id, userId],
         )
@@ -1318,7 +1318,7 @@ admin.put(
         )
       } else {
         await conn.execute(
-          `UPDATE users SET club_id = NULL, updated_at = NOW()
+          `UPDATE users SET club_id = NULL, role = 'player', updated_at = NOW()
             WHERE club_id = ? AND role = 'club_manager'`,
           [club.id],
         )
@@ -1395,9 +1395,10 @@ admin.delete(
           await conn.query('DELETE FROM users WHERE id IN (?)', [userIds])
         }
       } else {
-        await conn.execute('UPDATE users SET club_id = NULL, updated_at = NOW() WHERE club_id = ?', [
-          club.id,
-        ])
+        await conn.execute(
+          "UPDATE users SET club_id = NULL, role = CASE WHEN role = 'club_manager' THEN 'player' ELSE role END, updated_at = NOW() WHERE club_id = ?",
+          [club.id],
+        )
       }
       await conn.execute(
         'UPDATE players SET club_id = NULL, is_free_agent = TRUE, updated_at = NOW() WHERE club_id = ?',
@@ -3260,7 +3261,7 @@ admin.post(
     const email = parseUserEmail(req.body?.email)
     const plainPassword = parseOptionalPassword(req.body?.password, true)!
     const displayName = optionalString(req.body?.displayName, 120)
-    const role = parseUserRole(req.body?.role)
+    let role = parseUserRole(req.body?.role)
     const isActive = req.body?.isActive === undefined ? true : Boolean(req.body.isActive)
     const rawClubId = req.body?.clubId
     const parsedClubId =
@@ -3269,6 +3270,9 @@ admin.post(
         : Number(rawClubId)
     if (parsedClubId !== null && (!Number.isSafeInteger(parsedClubId) || parsedClubId < 1)) {
       return res.status(400).json({ error: 'clubId must be a positive integer or null.' })
+    }
+    if (role === 'club_manager' && parsedClubId === null) {
+      role = 'player'
     }
     const clubId = role === 'player' ? null : parsedClubId
     const gamertag = optionalString(req.body?.gamertag, 120)
@@ -3352,7 +3356,7 @@ admin.put(
     const email = parseUserEmail(req.body?.email)
     const plainPassword = parseOptionalPassword(req.body?.password, false)
     const displayName = optionalString(req.body?.displayName, 120)
-    const role = parseUserRole(req.body?.role)
+    let role = parseUserRole(req.body?.role)
     const isActive = req.body?.isActive === undefined ? true : Boolean(req.body.isActive)
     const rawClubId = req.body?.clubId
     const parsedClubId =
@@ -3361,6 +3365,9 @@ admin.put(
         : Number(rawClubId)
     if (parsedClubId !== null && (!Number.isSafeInteger(parsedClubId) || parsedClubId < 1)) {
       return res.status(400).json({ error: 'clubId must be a positive integer or null.' })
+    }
+    if (role === 'club_manager' && parsedClubId === null) {
+      role = 'player'
     }
     const clubId = role === 'player' ? null : parsedClubId
     const gamertagProvided = Object.prototype.hasOwnProperty.call(req.body ?? {}, 'gamertag')

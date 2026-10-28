@@ -47,7 +47,7 @@ import {
   type ClubLineupBench,
   type ClubLineupSlot,
 } from '@/lib/fixtures'
-import { CLUB_PLACEHOLDER, compressClubLogo, cx } from '@/lib/format'
+import { AVATAR_PLACEHOLDER, CLUB_PLACEHOLDER, compressClubLogo, cx } from '@/lib/format'
 import { invalidateLiveClubCache } from '@/lib/liveLeague'
 
 /**
@@ -122,6 +122,11 @@ function ManagerPanel() {
   const [editShortCode, setEditShortCode] = useState('')
 
   const [squadList, setSquadList] = useState<Awaited<ReturnType<typeof squad>>['squad']>([])
+  const [squadPage, setSquadPage] = useState(1)
+  const squadPageSize = 10
+  const totalSquadPages = Math.max(1, Math.ceil(squadList.length / squadPageSize))
+  const safeSquadPage = Math.min(squadPage, totalSquadPages)
+  const pagedSquad = squadList.slice((safeSquadPage - 1) * squadPageSize, safeSquadPage * squadPageSize)
   const [offers, setOffers] = useState<Offer[]>([])
 
   // Starting XI state
@@ -1140,7 +1145,31 @@ function ManagerPanel() {
 
       {/* ---- squad ---- */}
       <section className={card}>
-        <PanelHead label="Squad" title={myClub?.name ?? 'Your squad'} />
+        <PanelHead
+          label="Squad"
+          title={myClub?.name ?? 'Your squad'}
+          action={
+            <Button
+              size="sm"
+              onClick={() => {
+                const el = document.getElementById('manager-sign-section')
+                if (el) {
+                  el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                  const input = el.querySelector('input')
+                  if (input) {
+                    setTimeout(() => input.focus(), 350)
+                  }
+                }
+              }}
+              className="gap-1.5 font-bold shadow-sm"
+            >
+              <svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden>
+                <path d="M10 4v12M4 10h12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+              </svg>
+              Sign a Player
+            </Button>
+          }
+        />
         {!isManagerInSquad && (
           <div className="mb-4 rounded-xl border border-[var(--accent-ring)] bg-[var(--accent-tint)]/40 p-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -1210,14 +1239,16 @@ function ManagerPanel() {
         {squadList.length === 0 ? (
           <EmptyState title="No players signed yet" hint="Search below to offer a contract." />
         ) : (
+          <>
           <ul className="divide-y divide-[var(--border)]">
-            {squadList.map((p) => (
+            {pagedSquad.map((p) => (
               <li key={p.id} className="flex items-center gap-3 py-3">
                 <SmartImage
-                  src={p.avatar_local || ''}
-                  fallback=""
+                  src={p.avatar_local || AVATAR_PLACEHOLDER}
+                  fallback={AVATAR_PLACEHOLDER}
                   alt=""
-                  className="h-9 w-9 shrink-0 rounded-lg object-cover"
+                  wrapperClassName="h-9 w-9 shrink-0 rounded-full overflow-hidden bg-[var(--surface-hover)] border border-[var(--border)]"
+                  className="h-full w-full object-cover"
                 />
                 <div className="min-w-0 flex-1 flex items-center gap-2">
                   <Link
@@ -1260,7 +1291,7 @@ function ManagerPanel() {
                     type="button"
                     disabled={busy}
                     onClick={() => handleReleasePlayer(p)}
-                    className="adm-btn adm-btn-danger ml-1 px-2.5 py-1 text-xs font-semibold shrink-0"
+                    className="ml-1 shrink-0 rounded-lg border border-red-500/25 bg-red-500/10 px-2.5 py-1 text-xs font-semibold text-red-400 transition-all duration-150 hover:border-red-500/60 hover:bg-red-500 hover:text-white active:scale-95 disabled:opacity-50"
                     title={(user?.playerId && p.id === user.playerId) || (user?.id && p.user_id === user.id) ? "Leave Squad" : "Release Player"}
                   >
                     {(user?.playerId && p.id === user.playerId) || (user?.id && p.user_id === user.id) ? "Leave" : "Release"}
@@ -1274,11 +1305,42 @@ function ManagerPanel() {
               </li>
             ))}
           </ul>
+
+          {squadList.length > squadPageSize && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border)] pt-3 text-xs text-[var(--text-muted)]">
+              <span>
+                Showing {(safeSquadPage - 1) * squadPageSize + 1}–
+                {Math.min(safeSquadPage * squadPageSize, squadList.length)} of {squadList.length} players
+              </span>
+              <div className="flex items-center gap-1.5">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={safeSquadPage <= 1}
+                  onClick={() => setSquadPage((p) => Math.max(1, p - 1))}
+                >
+                  ← Previous
+                </Button>
+                <span className="px-2 font-mono font-medium">
+                  {safeSquadPage} / {totalSquadPages}
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={safeSquadPage >= totalSquadPages}
+                  onClick={() => setSquadPage((p) => Math.min(totalSquadPages, p + 1))}
+                >
+                  Next →
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
         )}
       </section>
 
       {/* ---- sign ---- */}
-      <section className={card}>
+      <section id="manager-sign-section" className={card}>
         <PanelHead label="Recruitment" title="Sign a player" />
         <p className="mb-4 ">
           Only players with an account can be offered to — an offer is a request for an answer, so

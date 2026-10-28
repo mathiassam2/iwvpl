@@ -253,8 +253,10 @@ export function SmartImage({
 } & Omit<ImgHTMLAttributes<HTMLImageElement>, 'src' | 'alt'>) {
   const [failed, setFailed] = useState(false)
   const finalSrc = !src || failed ? fallback : src
+  const sizingClasses = className ? className.split(/\s+/).filter((cls) => /^(w-|h-|size-|rounded-|aspect-)/.test(cls)).join(' ') : ''
+  const finalWrapperClass = wrapperClassName || cx('block overflow-hidden shrink-0', sizingClasses)
   return (
-    <span className={cx('block overflow-hidden', wrapperClassName)}>
+    <span className={finalWrapperClass}>
       <img
         src={finalSrc}
         alt={alt}

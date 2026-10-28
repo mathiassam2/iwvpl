@@ -283,10 +283,18 @@ export async function unreadCount(userId: number): Promise<number> {
  * address in the header.
  */
 export async function toPublicUser(user: AccountUser): Promise<PublicUser> {
+  let effectiveRole = user.role
   let effectiveClubId: number | null = null
+
   if (user.role === 'club_manager') {
-    effectiveClubId = user.club_id
-  } else if (user.player_id) {
+    if (user.club_id) {
+      effectiveClubId = user.club_id
+    } else {
+      effectiveRole = 'player'
+    }
+  }
+
+  if (effectiveRole !== 'club_manager' && user.player_id) {
     const p = await queryOne<{ club_id: number | null; is_free_agent: number }>(
       'SELECT club_id, is_free_agent FROM players WHERE id = ?',
       [user.player_id],
@@ -307,7 +315,7 @@ export async function toPublicUser(user: AccountUser): Promise<PublicUser> {
     id: user.id,
     email: user.email,
     name: user.display_name || user.gamertag || user.email.split('@')[0],
-    role: user.role,
+    role: effectiveRole,
     clubId: effectiveClubId,
     clubName: club?.name ?? null,
     clubSlug: club?.slug ?? null,

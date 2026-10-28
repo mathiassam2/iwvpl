@@ -119,12 +119,20 @@ export function UsersPlayersView({
     e.preventDefault()
     setBusy(true)
     try {
+      let finalRole = uRole
+      let finalClubId = uClubId ? Number(uClubId) : null
+      if (finalRole === 'club_manager' && !finalClubId) {
+        finalRole = 'player'
+      }
+      if (finalRole === 'player') {
+        finalClubId = null
+      }
       const payload = {
         email: uEmail.trim(),
         ...(uPassword ? { password: uPassword } : {}),
         displayName: uName.trim() || null,
-        role: uRole,
-        clubId: uRole !== 'player' && uClubId ? Number(uClubId) : null,
+        role: finalRole,
+        clubId: finalClubId,
         gamertag: uGamertag.trim() || null,
         isActive: uActive,
       }
@@ -150,8 +158,13 @@ export function UsersPlayersView({
   const handleInlineAssignClub = async (u: AdminUser, nextClubIdStr: string) => {
     const nextClubId = nextClubIdStr ? Number(nextClubIdStr) : null
     // If assigning a club to a 'player' account, promote them to 'club_manager'
+    // If unassigning a club from a 'club_manager' account, demote them back to 'player'
     const nextRole: UserRole =
-      nextClubId !== null && u.role === 'player' ? 'club_manager' : u.role
+      nextClubId !== null && u.role === 'player'
+        ? 'club_manager'
+        : nextClubId === null && u.role === 'club_manager'
+          ? 'player'
+          : u.role
     try {
       await guard(
         () =>
@@ -657,7 +670,13 @@ export function UsersPlayersView({
                     <span>Managed Club</span>
                     <select
                       value={uClubId}
-                      onChange={(e) => setUClubId(e.target.value)}
+                      onChange={(e) => {
+                        const nextVal = e.target.value
+                        setUClubId(nextVal)
+                        if (!nextVal && uRole === 'club_manager') {
+                          setURole('player')
+                        }
+                      }}
                       className="adm-select"
                     >
                       <option value="">None</option>

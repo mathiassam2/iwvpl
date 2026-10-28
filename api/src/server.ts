@@ -25,7 +25,7 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import { config } from './config.js'
-import { closePool, queryOne } from './db.js'
+import { closePool, execute, queryOne } from './db.js'
 import { runMigrations } from './migrate.js'
 import { seed } from './domain/seed.js'
 import { league } from './routes/league.js'
@@ -309,6 +309,12 @@ async function start(): Promise<void> {
   } catch (err) {
     // Not fatal. Failing to prune must not stop the server from booting.
     console.warn('Could not prune expired sessions:', err instanceof Error ? err.message : err)
+  }
+
+  try {
+    await execute("UPDATE users SET role = 'player' WHERE role = 'club_manager' AND club_id IS NULL")
+  } catch (err) {
+    console.warn('Could not heal unassigned club managers:', err instanceof Error ? err.message : err)
   }
 
   const onListening = () => {
