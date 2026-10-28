@@ -1519,7 +1519,7 @@ function PlayerPanel() {
                       {o.club_name}
                     </p>
                     <p className="text-[12px] text-[var(--text-faint)]">
-                      {new Date(o.created_at.replace(' ', 'T') + 'Z').toLocaleDateString()}
+                      {o.created_at ? new Date(o.created_at.includes('T') ? o.created_at : o.created_at.replace(' ', 'T') + (o.created_at.endsWith('Z') ? '' : 'Z')).toLocaleDateString() : ''}
                     </p>
                   </div>
                 </div>

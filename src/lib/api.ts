@@ -29,6 +29,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response
   try {
     res = await fetch(`${base}${path}`, {
+      cache: 'no-store',
       ...init,
       credentials: 'include',
       headers: { 'content-type': 'application/json', ...(init?.headers ?? {}) },
