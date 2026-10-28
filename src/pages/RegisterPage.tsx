@@ -730,14 +730,7 @@ export default function RegisterPage() {
                           Don't have an invite code? Contact a league administrator on Discord to request team registration.
                         </p>
                       </div>
-                    ) : (
-                      <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 text-xs text-emerald-400 flex items-center gap-3">
-                        <span className="text-lg">✓</span>
-                        <div>
-                          <strong>Player Registration is Open:</strong> No invite code required. Complete the next steps to set your gamertag and credentials.
-                        </div>
-                      </div>
-                    )}
+                    ) : null}
 
                     {/* Step 1 Actions */}
                     <div className="pt-2 flex justify-end">
