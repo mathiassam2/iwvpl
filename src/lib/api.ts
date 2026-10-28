@@ -207,6 +207,7 @@ export const squad = () =>
       avatar_local: string | null
       is_free_agent: number
       pending: number
+      user_id?: number | null
     }>
   }>('/api/manager/squad')
 
@@ -224,6 +225,12 @@ export const updateSquadPlayerShirt = (playerId: number, shirtNumber: number | n
       body: JSON.stringify({ shirtNumber }),
     },
   )
+
+export const createManagerSelfPlayer = (input: { gamertag: string; shirtNumber?: number | null }) =>
+  request<{ ok: true; playerId: number; gamertag: string }>('/api/manager/self-player', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
 
 /* ----------------------------------------------------------------- player */
 

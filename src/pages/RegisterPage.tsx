@@ -243,6 +243,12 @@ export default function RegisterPage() {
       if (!values.format) e.format = 'Please choose a competition format.'
       if (!values.manager.trim()) e.manager = 'Please enter the manager name.'
       if (!values.discord.trim()) e.discord = 'Please provide a Discord username for league coordination.'
+      if (values.shirtNumber.trim()) {
+        const n = Number.parseInt(values.shirtNumber.trim(), 10)
+        if (!Number.isInteger(n) || n < 1 || n > 99) {
+          e.shirtNumber = 'Jersey number must be between 1 and 99.'
+        }
+      }
     } else {
       if (!values.gamertag.trim()) e.gamertag = 'Please enter your in-game gamertag.'
       if (values.shirtNumber.trim()) {
@@ -326,11 +332,8 @@ export default function RegisterPage() {
         email: values.email.trim(),
         password: values.password,
         name: values.role === 'club_manager' ? values.manager.trim() : values.manager.trim() || values.gamertag.trim(),
-        gamertag: values.role === 'player' ? values.gamertag.trim() : undefined,
-        shirtNumber:
-          values.role === 'player' && values.shirtNumber.trim()
-            ? Number.parseInt(values.shirtNumber.trim(), 10)
-            : undefined,
+        gamertag: values.gamertag.trim() || undefined,
+        shirtNumber: values.shirtNumber.trim() ? Number.parseInt(values.shirtNumber.trim(), 10) : undefined,
         clubName: values.role === 'club_manager' ? values.club.trim() : undefined,
         shortCode: values.role === 'club_manager' ? values.shortCode.trim() : undefined,
         region: values.role === 'club_manager' ? values.region.trim() : undefined,
@@ -918,6 +921,47 @@ export default function RegisterPage() {
                               />
                             </Field>
                           </div>
+
+                          {/* Playing Captain / Player-Manager option */}
+                          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)]/40 p-4 space-y-3">
+                            <div className="flex items-start gap-2.5">
+                              <span className="text-lg">⚽</span>
+                              <div>
+                                <strong className="text-xs font-semibold text-[var(--text-strong)] block">
+                                  Playing Captain / Manager on Pitch (Optional)
+                                </strong>
+                                <span className="text-[11px] text-[var(--text-muted)] leading-relaxed block mt-0.5">
+                                  Will you also play in matches for this club? Enter your EA ID / Gamertag to be placed directly on your club squad and be eligible for the Starting XI.
+                                </span>
+                              </div>
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-2 pt-1">
+                              <Field label="Captain Gamertag / EA ID" error={errors.gamertag} htmlFor="manager_gamertag">
+                                <input
+                                  id="manager_gamertag"
+                                  name="gamertag"
+                                  type="text"
+                                  value={values.gamertag}
+                                  onChange={set('gamertag')}
+                                  placeholder="e.g. Captain_Ace"
+                                  className={cx(inputCls, errors.gamertag ? 'border-red-500' : '')}
+                                />
+                              </Field>
+                              <Field label="Jersey Number (1–99)" error={errors.shirtNumber} htmlFor="manager_shirtNumber">
+                                <input
+                                  id="manager_shirtNumber"
+                                  name="shirtNumber"
+                                  type="number"
+                                  min={1}
+                                  max={99}
+                                  value={values.shirtNumber}
+                                  onChange={set('shirtNumber')}
+                                  placeholder="e.g. 10"
+                                  className={cx(inputCls, errors.shirtNumber ? 'border-red-500' : '')}
+                                />
+                              </Field>
+                            </div>
+                          </div>
                         </>
                       ) : (
                         <>
@@ -1146,6 +1190,14 @@ export default function RegisterPage() {
                               <span className="text-[var(--text-faint)] uppercase font-semibold">Format</span>
                               <p className="text-[var(--text-strong)] font-medium mt-0.5">{values.format}</p>
                             </div>
+                            {values.gamertag.trim() && (
+                              <div className="col-span-2 rounded-lg bg-[var(--surface)] p-2.5 border border-[var(--border)] flex items-center justify-between">
+                                <span className="text-[var(--text-faint)] font-semibold">Playing Captain Gamertag:</span>
+                                <span className="font-bold text-[var(--text-strong)]">
+                                  ⚽ {values.gamertag.trim()} {values.shirtNumber.trim() ? `(#${values.shirtNumber.trim()})` : ''}
+                                </span>
+                              </div>
+                            )}
                           </>
                         )}
                       </div>

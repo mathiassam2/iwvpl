@@ -11,7 +11,7 @@
  * response is to send them to sign in and come back.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Pitch } from '@/components/club'
 import { Button, ButtonLink, Container, EmptyState, SmartImage } from '@/components/ui'
@@ -20,6 +20,7 @@ import { ApiError } from '@/lib/api'
 import {
   cancelOffer,
   createClub,
+  createManagerSelfPlayer,
   decideOffer,
   incomingOffers,
   leaveClub,
@@ -270,6 +271,40 @@ function ManagerPanel() {
     void loadClub()
     void loadOffers()
   }, [loadClub, loadOffers])
+
+  const [showClaimSelf, setShowClaimSelf] = useState(false)
+  const [selfGamertag, setSelfGamertag] = useState(user?.gamertag || user?.name || '')
+  const [selfShirtNumber, setSelfShirtNumber] = useState('')
+  const [selfBusy, setSelfBusy] = useState(false)
+
+  const isManagerInSquad = squadList.some(
+    (p) => (user?.playerId && p.id === user.playerId) || (user?.id && p.user_id === user.id),
+  )
+
+  const handleClaimSelfPlayer = async (e: FormEvent) => {
+    e.preventDefault()
+    const cleanTag = selfGamertag.trim()
+    if (!cleanTag) return
+    setSelfBusy(true)
+    try {
+      const shirt = selfShirtNumber.trim() ? Number.parseInt(selfShirtNumber.trim(), 10) : undefined
+      await createManagerSelfPlayer({
+        gamertag: cleanTag,
+        shirtNumber: shirt,
+      })
+      setNotice({
+        kind: 'ok',
+        text: `You've joined ${myClub?.name || 'the squad'} as Playing Captain! You can now place yourself in the Starting XI.`,
+      })
+      setShowClaimSelf(false)
+      await loadClub()
+      await refresh()
+    } catch (err) {
+      setNotice({ kind: 'error', text: msg(err) })
+    } finally {
+      setSelfBusy(false)
+    }
+  }
 
   const onCreateLogoPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -1044,8 +1079,13 @@ function ManagerPanel() {
                         <span className="rounded bg-[var(--bg)] px-1.5 py-0.5 font-mono text-[10.5px] font-bold text-[var(--text-muted)]">
                           #{p.shirt_number ?? idx + 1}
                         </span>
-                        <span className="min-w-0 flex-1 truncate font-semibold text-[var(--text-strong)]">
+                        <span className="min-w-0 flex-1 truncate font-semibold text-[var(--text-strong)] flex items-center gap-1.5">
                           {p.gamertag}
+                          {(user?.playerId === p.id || user?.id === p.user_id) && (
+                            <span className="rounded bg-amber-500/15 text-amber-500 border border-amber-500/30 px-1 py-0.2 text-[9px] font-bold shrink-0">
+                              MGR
+                            </span>
+                          )}
                         </span>
                         {starterPos ? (
                           <span className="rounded bg-[var(--accent-tint)] px-2 py-0.5 font-mono text-[10px] font-extrabold text-[var(--accent-text)]">
@@ -1072,6 +1112,72 @@ function ManagerPanel() {
       {/* ---- squad ---- */}
       <section className={card}>
         <PanelHead label="Squad" title={myClub?.name ?? 'Your squad'} />
+        {!isManagerInSquad && (
+          <div className="mb-4 rounded-xl border border-[var(--accent-ring)] bg-[var(--accent-tint)]/40 p-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">⚽</span>
+                  <span className="text-sm font-bold text-[var(--text-strong)]">
+                    Add Yourself to Squad (Playing Captain)
+                  </span>
+                </div>
+                <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+                  Club managers have playing privileges! Register your in-game identity to place yourself on your squad roster and be eligible for the Starting XI.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowClaimSelf((prev) => !prev)}
+                className="adm-btn adm-btn-primary px-3 py-1.5 text-xs font-semibold shrink-0"
+              >
+                {showClaimSelf ? 'Close' : '⚽ Add Myself to Squad'}
+              </button>
+            </div>
+
+            {showClaimSelf && (
+              <form
+                onSubmit={handleClaimSelfPlayer}
+                className="mt-3.5 pt-3.5 border-t border-[var(--border)] flex flex-wrap items-end gap-3"
+              >
+                <div className="flex-1 min-w-[160px] space-y-1">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-faint)]">
+                    Your EA ID / Gamertag
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={selfGamertag}
+                    onChange={(e) => setSelfGamertag(e.target.value)}
+                    placeholder="e.g. Captain_Ace"
+                    className="h-9 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 text-xs font-semibold text-[var(--text-strong)]"
+                  />
+                </div>
+                <div className="w-28 space-y-1">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-faint)]">
+                    Jersey # (1–99)
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={99}
+                    value={selfShirtNumber}
+                    onChange={(e) => setSelfShirtNumber(e.target.value)}
+                    placeholder="10"
+                    className="h-9 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 text-center font-mono text-xs font-bold text-[var(--text-strong)]"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={selfBusy || !selfGamertag.trim()}
+                  className="adm-btn adm-btn-primary h-9 px-4 text-xs font-semibold whitespace-nowrap"
+                >
+                  {selfBusy ? 'Adding…' : 'Join as Playing Captain'}
+                </button>
+              </form>
+            )}
+          </div>
+        )}
         {squadList.length === 0 ? (
           <EmptyState title="No players signed yet" hint="Search below to offer a contract." />
         ) : (
@@ -1084,12 +1190,19 @@ function ManagerPanel() {
                   alt=""
                   className="h-9 w-9 shrink-0 rounded-lg object-cover"
                 />
-                <Link
-                  to={`/players/${p.slug}`}
-                  className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--text-strong)] hover:text-[var(--accent-text)]"
-                >
-                  {p.gamertag}
-                </Link>
+                <div className="min-w-0 flex-1 flex items-center gap-2">
+                  <Link
+                    to={`/players/${p.slug}`}
+                    className="truncate text-sm font-semibold text-[var(--text-strong)] hover:text-[var(--accent-text)]"
+                  >
+                    {p.gamertag}
+                  </Link>
+                  {(user?.playerId === p.id || user?.id === p.user_id) && (
+                    <span className="shrink-0 rounded bg-amber-500/15 text-amber-500 border border-amber-500/30 px-1.5 py-0.5 text-[10px] font-bold">
+                      👑 Playing Captain
+                    </span>
+                  )}
+                </div>
                 <div className="flex items-center gap-1.5">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-faint)]">
                     Jersey #

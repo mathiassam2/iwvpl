@@ -168,11 +168,11 @@ auth.post(
     // people who crawled into the league before accounts existed; they cannot
     // be claimed here, so a collision is reported rather than silently
     // attaching an account to someone else's identity.
-    const gamertag = role === 'player' ? clean(req.body?.gamertag, 'Gamertag', 120) : null
-    const rawShirtNumber = role === 'player' ? req.body?.shirtNumber : null
+    // If gamertag provided (player or playing manager captain)
+    const gamertag = req.body?.gamertag ? clean(req.body.gamertag, 'Gamertag', 120) : null
+    const rawShirtNumber = req.body?.shirtNumber
     let shirtNumber: number | null = null
     if (
-      role === 'player' &&
       rawShirtNumber !== undefined &&
       rawShirtNumber !== null &&
       String(rawShirtNumber).trim() !== ''
@@ -270,8 +270,15 @@ auth.post(
         const [res] = await conn.execute(
           `INSERT INTO players
              (gamertag, gamertag_key, slug, shirt_number, club_id, is_free_agent, created_at, updated_at)
-           VALUES (?, ?, ?, ?, NULL, TRUE, NOW(), NOW())`,
-          [gamertag, gamertagKey(gamertag), clubSlug(gamertag), shirtNumber],
+           VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+          [
+            gamertag,
+            gamertagKey(gamertag),
+            clubSlug(gamertag),
+            shirtNumber,
+            clubId ?? null,
+            clubId ? false : true,
+          ],
         )
         playerId = (res as any).insertId
       }

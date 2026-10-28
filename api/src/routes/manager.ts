@@ -11,7 +11,7 @@
 import { Router } from 'express'
 import { execute, queryAll, queryOne, withTransaction } from '../db.js'
 import { requireAuth, requireManager } from '../middleware/auth.js'
-import { clubSlug } from '../domain/slug.js'
+import { clubSlug, gamertagKey } from '../domain/slug.js'
 import { notify } from '../domain/auth.js'
 
 export const manager = Router()
@@ -385,7 +385,7 @@ manager.get(
   handler(async (req, res) => {
     const club = await ownClub(req.user!.id)
     const rows = await queryAll(
-      `SELECT p.id, p.gamertag, p.slug, p.shirt_number, p.avatar_local, p.is_free_agent,
+      `SELECT p.id, p.gamertag, p.slug, p.shirt_number, p.avatar_local, p.is_free_agent, p.user_id,
 
               (SELECT COUNT(*) FROM transfer_requests tr
                 WHERE tr.player_id = p.id AND tr.to_club_id = ? AND tr.status = 'pending') AS pending
@@ -574,3 +574,82 @@ manager.patch(
   }),
 )
 
+
+/**
+ * Create or link the manager's own player profile to their club as Playing Captain.
+ */
+manager.post(
+  '/self-player',
+  handler(async (req, res) => {
+    const club = await ownClub(req.user!.id)
+    const gamertag = String(req.body?.gamertag ?? '').trim()
+    if (!gamertag) bad('Gamertag is required.')
+    const rawNum = req.body?.shirtNumber
+    let shirtNumber: number | null = null
+    if (rawNum !== undefined && rawNum !== null && String(rawNum).trim() !== '') {
+      const parsed = Number.parseInt(String(rawNum), 10)
+      if (!Number.isInteger(parsed) || parsed < 1 || parsed > 99) {
+        bad('Jersey number must be between 1 and 99.')
+      }
+      shirtNumber = parsed
+    }
+
+    const key = gamertagKey(gamertag)
+    const existing = await queryOne<{ id: number; gamertag_key: string }>(
+      'SELECT id, gamertag_key FROM players WHERE user_id = ?',
+      [req.user!.id],
+    )
+    const clash = await queryOne<{ id: number; user_id: number | null }>(
+      'SELECT id, user_id FROM players WHERE gamertag_key = ?',
+      [key],
+    )
+
+    let playerId: number
+    if (existing) {
+      if (clash && clash.id !== existing.id) {
+        bad('That gamertag is already registered to another user.')
+      }
+      playerId = existing.id
+      await execute(
+        `UPDATE players
+            SET gamertag = ?,
+                gamertag_key = ?,
+                slug = ?,
+                club_id = ?,
+                is_free_agent = FALSE,
+                shirt_number = COALESCE(?, shirt_number),
+                is_active = TRUE,
+                updated_at = NOW()
+          WHERE id = ?`,
+        [gamertag, key, clubSlug(gamertag), club.id, shirtNumber, existing.id],
+      )
+    } else if (clash) {
+      if (clash.user_id && clash.user_id !== req.user!.id) {
+        bad('That gamertag is already registered to another user.')
+      }
+      playerId = clash.id
+      await execute(
+        `UPDATE players
+            SET user_id = ?,
+                club_id = ?,
+                is_free_agent = FALSE,
+                shirt_number = COALESCE(?, shirt_number),
+                is_active = TRUE,
+                updated_at = NOW()
+          WHERE id = ?`,
+        [req.user!.id, club.id, shirtNumber, clash.id],
+      )
+    } else {
+      await execute(
+        `INSERT INTO players
+           (gamertag, gamertag_key, slug, shirt_number, club_id, is_free_agent, user_id, is_active, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, FALSE, ?, TRUE, NOW(), NOW())`,
+        [gamertag, key, clubSlug(gamertag), shirtNumber, club.id, req.user!.id],
+      )
+      const ins = await queryOne<{ id: number }>('SELECT id FROM players WHERE gamertag_key = ?', [key])
+      playerId = ins!.id
+    }
+
+    res.json({ ok: true, playerId, gamertag })
+  }),
+)
