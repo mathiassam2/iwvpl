@@ -28,8 +28,6 @@ import {
   managerOffers,
   playerOverview,
   saveManagerLineup,
-  searchPlayers,
-  sendOffer,
   squad,
   updateManagerClub,
   updateMyPlayerProfile,
@@ -462,7 +460,6 @@ function ManagerPanel() {
     try {
       await cancelOffer(id)
       void loadOffers()
-      await refreshResults()
     } catch (err) {
       setNotice({ kind: 'error', text: msg(err) })
     } finally {
@@ -1145,8 +1142,7 @@ function ManagerPanel() {
           <section className={card}>
             <PanelHead
               label="Applications"
-              title="Join Requests"
-              badge={pendingCount > 0 ? `${pendingCount} Pending` : undefined}
+              title={pendingCount > 0 ? `Join Requests (${pendingCount} Pending)` : 'Join Requests'}
             />
             {joinRequests.length === 0 ? (
               <EmptyState

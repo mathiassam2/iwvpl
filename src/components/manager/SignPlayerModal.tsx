@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import { Button, SmartImage } from '@/components/ui'
 import { AVATAR_PLACEHOLDER, cx } from '@/lib/format'
-import { searchPlayers, sendOffer, type Offer } from '@/lib/api'
+import { searchPlayers, sendOffer } from '@/lib/api'
 
 export interface SignPlayerModalProps {
   open: boolean

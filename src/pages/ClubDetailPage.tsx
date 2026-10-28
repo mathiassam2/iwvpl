@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import {
   Badge,
+  Button,
   ButtonLink,
   Card,
   Container,
@@ -829,7 +830,7 @@ export default function ClubDetailPage() {
           club={{
             id: liveClub.id,
             name: liveClub.name,
-            logo: liveClub.logo_local || liveClub.logo_url || null,
+            logo: liveClub.logoLocal || liveClub.logo || null,
             slug: liveClub.slug,
           }}
           onSuccess={() => {
