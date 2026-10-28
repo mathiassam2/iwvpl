@@ -61,14 +61,59 @@ export async function hashPassword(plain: string): Promise<string> {
   return bcrypt.hash(plain, config.auth.bcryptRounds)
 }
 
+const ITOA64 = './0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+
+function encode64(input: Buffer, count: number): string {
+  let output = ''
+  let i = 0
+  do {
+    let value = input[i++]
+    output += ITOA64[value & 0x3f]
+    if (i < count) value |= input[i] << 8
+    output += ITOA64[(value >> 6) & 0x3f]
+    if (i++ >= count) break
+    if (i < count) value |= input[i] << 16
+    output += ITOA64[(value >> 12) & 0x3f]
+    if (i++ >= count) break
+    output += ITOA64[(value >> 18) & 0x3f]
+  } while (i < count)
+  return output
+}
+
+export function verifyPhpass(plain: string, hash: string): boolean {
+  if (hash.length !== 34) return false
+  const id = hash.slice(0, 3)
+  if (id !== '$P$' && id !== '$H$') return false
+  const countLog2 = ITOA64.indexOf(hash[3])
+  if (countLog2 < 7 || countLog2 > 30) return false
+  let count = 1 << countLog2
+  const salt = hash.slice(4, 12)
+  if (salt.length !== 8) return false
+
+  let digest = createHash('md5').update(salt + plain, 'utf8').digest()
+  while (count > 0) {
+    digest = createHash('md5').update(Buffer.concat([digest, Buffer.from(plain, 'utf8')])).digest()
+    count--
+  }
+
+  const output = hash.slice(0, 12) + encode64(digest, 16)
+  return output === hash
+}
+
 export async function verifyPassword(plain: string, hash: string): Promise<boolean> {
   try {
+    if (hash.startsWith('$P$') || hash.startsWith('$H$')) {
+      return verifyPhpass(plain, hash)
+    }
     if (hash.startsWith('$wp')) {
       const prehashed = createHmac('sha384', 'wp-sha384')
         .update(plain, 'utf8')
         .digest('base64')
       const bHash = hash.slice(3).replace(/^\$2y\$/, '$2b$')
       return await bcrypt.compare(prehashed, bHash)
+    }
+    if (/^[0-9a-f]{32}$/i.test(hash)) {
+      return createHash('md5').update(plain, 'utf8').digest('hex').toLowerCase() === hash.toLowerCase()
     }
     const normalizedHash = hash.replace(/^\$2y\$/, '$2b$')
     return await bcrypt.compare(plain, normalizedHash)

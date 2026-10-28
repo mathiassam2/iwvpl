@@ -176,6 +176,12 @@ export const config = {
    * file. Set MIGRATE_ON_BOOT=false there and run `npm run migrate` as an
    * explicit deploy step instead.
    */
+  wordpress: {
+    enabled: bool('WP_AUTH_ENABLED', true),
+    dbName: optional('WP_DB_NAME', 'iwvq7995_wp967'),
+    tablePrefix: optional('WP_TABLE_PREFIX', 'wpla_'),
+  },
+
   migrateOnBoot: bool('MIGRATE_ON_BOOT', true),
 
   /** Binds the dev server to loopback only unless explicitly widened. */

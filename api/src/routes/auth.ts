@@ -12,7 +12,8 @@
  */
 
 import { Router } from 'express'
-import { queryOne, withTransaction } from '../db.js'
+import { execute, queryOne, withTransaction } from '../db.js'
+import { findAndMigrateWordPressUser } from '../domain/wordpressAuth.js'
 import { attachUser } from '../middleware/auth.js'
 import {
   clearSessionCookie,
@@ -358,15 +359,31 @@ auth.post(
       '$2a$10$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvalidinvalidiu'
 
     const ok = await verifyPassword(secret, storedHash)
-    if (!row || !ok) throw invalid()
+    let authenticatedUser: AccountUser | null = (row && ok) ? row : null
 
-    if (!row.is_active) {
+    // If local authentication failed or account is not in v2 yet, try WordPress auto-migration
+    if (!authenticatedUser) {
+      const migrated = await findAndMigrateWordPressUser(identifier, secret)
+      if (migrated) {
+        authenticatedUser = migrated
+      }
+    }
+
+    if (!authenticatedUser) throw invalid()
+
+    if (row && !row.is_active) {
       throw Object.assign(new Error('That account has been deactivated.'), { status: 403 })
     }
 
-    const token = await createSession(row.id, req)
+    // If local row had a legacy hash ($P, $H, $wp, or MD5), upgrade to bcrypt on the fly
+    if (row && ok && (storedHash.startsWith('$' + 'P$') || storedHash.startsWith('$' + 'H$') || storedHash.startsWith('$' + 'wp') || /^[0-9a-f]{32}$/i.test(storedHash))) {
+      const freshHash = await hashPassword(secret)
+      await execute('UPDATE users SET password_hash = ?, updated_at = NOW() WHERE id = ?', [freshHash, row.id])
+    }
+
+    const token = await createSession(authenticatedUser.id, req)
     setSessionCookie(res, token)
-    res.json({ user: await toPublicUser(row) })
+    res.json({ user: await toPublicUser(authenticatedUser) })
   }),
 )
 
