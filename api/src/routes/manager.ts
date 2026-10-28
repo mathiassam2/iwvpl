@@ -223,7 +223,7 @@ manager.get(
     const q = String(req.query.q ?? '').trim().slice(0, 80)
 
     const rows = await queryAll(
-      `SELECT p.id, p.gamertag, p.slug, p.avatar_local, p.club_id,
+      `SELECT p.id, p.gamertag, p.slug, p.avatar_local, p.club_id, p.user_id,
               c.name AS club_name,
               (SELECT tr.id FROM transfer_requests tr
                 WHERE tr.player_id = p.id
@@ -235,7 +235,7 @@ manager.get(
         WHERE (p.club_id IS NULL OR p.club_id <> ?)
           AND (? = '' OR p.gamertag LIKE ?)
         ORDER BY (p.user_id IS NOT NULL) DESC, p.gamertag
-        LIMIT 30`,
+        LIMIT 50`,
       [club.id, club.id, q, `%${q}%`],
     )
 

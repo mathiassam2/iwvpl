@@ -185,6 +185,7 @@ export const searchPlayers = (q: string, signal?: AbortSignal) =>
       avatar_local: string | null
       club_id: number | null
       club_name: string | null
+      user_id?: number | null
       pending_id: number | null
     }>
   }>(`/api/manager/players?q=${encodeURIComponent(q)}`, { signal })

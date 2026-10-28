@@ -11,9 +11,10 @@
  * response is to send them to sign in and come back.
  */
 
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Pitch } from '@/components/club'
+import { SignPlayerModal } from '@/components/manager/SignPlayerModal'
 import { Button, ButtonLink, Container, EmptyState, SmartImage } from '@/components/ui'
 import { useAuth } from '@/lib/auth'
 import { ApiError } from '@/lib/api'
@@ -196,9 +197,8 @@ function ManagerPanel() {
     setSlotSearch('')
   }
 
-  const [query, setQuery] = useState('')
-  const [results, setResults] = useState<Awaited<ReturnType<typeof searchPlayers>>['players']>([])
-  const [searched, setSearched] = useState(false)
+  const [showSignModal, setShowSignModal] = useState(false)
+  const squadPlayerIds = useMemo(() => new Set(squadList.map((p) => p.id)), [squadList])
 
   const initLineupState = useCallback(
     (clubData: ManagerClub | null, players: Awaited<ReturnType<typeof squad>>['squad']) => {
@@ -421,45 +421,7 @@ function ManagerPanel() {
     }
   }
 
-  const onSearch = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setBusy(true)
-    setNotice(null)
-    try {
-      setResults((await searchPlayers(query.trim())).players)
-      setSearched(true)
-    } catch (err) {
-      setNotice({ kind: 'error', text: msg(err) })
-    } finally {
-      setBusy(false)
-    }
-  }
 
-  /** Re-run the current search. The pending flag on each row is owned by the
-   *  server, so it is re-read rather than patched locally. */
-  const refreshResults = useCallback(async () => {
-    try {
-      setResults((await searchPlayers(query.trim())).players)
-    } catch {
-      /* the banner already reports failures; a stale list is harmless */
-    }
-  }, [query])
-
-
-  const onOffer = async (playerId: number) => {
-    setBusy(true)
-    setNotice(null)
-    try {
-      await sendOffer(playerId, null, null)
-      setNotice({ kind: 'ok', text: 'Offer sent. They will see it in their notifications.' })
-      await refreshResults()
-      void loadOffers()
-    } catch (err) {
-      setNotice({ kind: 'error', text: msg(err) })
-    } finally {
-      setBusy(false)
-    }
-  }
 
   const onCancel = async (id: number) => {
     setBusy(true)
@@ -1151,16 +1113,7 @@ function ManagerPanel() {
           action={
             <Button
               size="sm"
-              onClick={() => {
-                const el = document.getElementById('manager-sign-section')
-                if (el) {
-                  el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-                  const input = el.querySelector('input')
-                  if (input) {
-                    setTimeout(() => input.focus(), 350)
-                  }
-                }
-              }}
+              onClick={() => setShowSignModal(true)}
               className="gap-1.5 font-bold shadow-sm"
             >
               <svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden>
@@ -1237,7 +1190,17 @@ function ManagerPanel() {
           </div>
         )}
         {squadList.length === 0 ? (
-          <EmptyState title="No players signed yet" hint="Search below to offer a contract." />
+          <div className="py-6 text-center">
+            <EmptyState title="No players signed yet" hint="Search for players and send contract offers to build your roster." />
+            <div className="mt-3">
+              <Button size="sm" onClick={() => setShowSignModal(true)} className="gap-1.5 font-bold">
+                <svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden>
+                  <path d="M10 4v12M4 10h12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+                </svg>
+                Sign First Player
+              </Button>
+            </div>
+          </div>
         ) : (
           <>
           <ul className="divide-y divide-[var(--border)]">
@@ -1339,61 +1302,15 @@ function ManagerPanel() {
         )}
       </section>
 
-      {/* ---- sign ---- */}
-      <section id="manager-sign-section" className={card}>
-        <PanelHead label="Recruitment" title="Sign a player" />
-        <p className="mb-4 ">
-          Only players with an account can be offered to — an offer is a request for an answer, so
-          it needs someone on the other end who can log in and give it.
-        </p>
-
-        <form onSubmit={onSearch} className="flex flex-col gap-3 sm:flex-row">
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by gamertag"
-            maxLength={80}
-            className={field}
-          />
-          <Button type="submit" variant="outline" disabled={busy}>
-            Search
-          </Button>
-        </form>
-
-        {searched && results.length > 0 && (
-          <ul className="mt-4 divide-y divide-[var(--border)]">
-            {results.map((p) => (
-              <li key={p.id} className="flex items-center gap-3 py-3">
-                <div className="min-w-0 flex-1">
-                  <Link
-                    to={`/players/${p.slug}`}
-                    className="block truncate text-sm font-semibold text-[var(--text-strong)] hover:text-[var(--accent-text)]"
-                  >
-                    {p.gamertag}
-                  </Link>
-                  <p className="truncate text-[12px] text-[var(--text-muted)]">
-                    {p.club_name ?? 'Free agent'}
-                  </p>
-                </div>
-                {p.pending_id ? (
-                  <span className="text-[12px] font-semibold text-[var(--text-faint)]">Offered</span>
-                ) : (
-                  <Button size="sm" disabled={busy} onClick={() => void onOffer(p.id)}>
-                    Offer
-                  </Button>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {searched && results.length === 0 && (
-          <EmptyState
-            title="No matching players"
-            hint="Only players who have signed up themselves appear here."
-          />
-        )}
-      </section>
+      {/* ---- recruitment modal ---- */}
+      <SignPlayerModal
+        open={showSignModal}
+        onClose={() => setShowSignModal(false)}
+        squadPlayerIds={squadPlayerIds}
+        onOfferSent={() => {
+          void loadOffers()
+        }}
+      />
 
       {/* ---- outbox ---- */}
       <section className={card}>
