@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * Deploy the built public SPA (`dist/`), admin SPA (`admin/dist/`), and API
- * (`api/dist/` + `api/migrations/`) to the `beta.iwvpl.asia` Node.js app on
- * Rumahweb cPanel without touching the legacy site in `public_html`.
+ * (`api/dist/` + `api/migrations/`) to the production `iwvpl.asia` Node.js app on
+ * Rumahweb cPanel.
  *
  * Usage:
  *   CPANEL_USER=iwvq7995 CPANEL_PASS='...' node scripts/deploy-cpanel.mjs
