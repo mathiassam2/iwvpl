@@ -31,6 +31,7 @@ import { clubSlug, gamertagKey } from '../domain/slug.js'
 import { config } from '../config.js'
 import { createRateLimiter } from '../middleware/rateLimit.js'
 import { getManagerPasscodeSettings } from '../domain/settings.js'
+import { verifyManagerInvite } from '../domain/invites.js'
 
 export const auth = Router()
 
@@ -95,6 +96,25 @@ auth.get(
   }),
 )
 
+
+auth.post(
+  '/verify-invite',
+  handler(async (req, res) => {
+    const code = String(req.body?.code ?? '').trim()
+    const email = req.body?.email ? String(req.body.email).trim() : undefined
+    const clubName = req.body?.clubName ? String(req.body.clubName).trim() : undefined
+    const result = await verifyManagerInvite(code, email, clubName)
+    if (!result.valid) {
+      const passcodeSettings = await getManagerPasscodeSettings()
+      if (passcodeSettings.enabled && code.toLowerCase() === passcodeSettings.passcode.toLowerCase()) {
+        return res.json({ valid: true, invite: null, type: 'passcode' })
+      }
+      return res.status(400).json({ valid: false, error: result.error || 'Invalid or expired invite code.' })
+    }
+    res.json({ valid: true, invite: result.invite, type: 'invite' })
+  }),
+)
+
 /* ------------------------------------------------------------- register */
 
 auth.post(
@@ -119,15 +139,24 @@ auth.post(
     }
 
     const hash = await hashPassword(secret)
+    let matchedInviteId: number | null = null
     if (role === 'club_manager') {
-      const passcodeSettings = await getManagerPasscodeSettings()
-      if (passcodeSettings.enabled) {
-        const submitted = String(req.body?.managerPasscode ?? req.body?.passcode ?? '').trim()
-        if (!submitted) {
-          bad('Manager passcode is required to register as a club manager. Please ask a league admin or Discord.')
-        }
-        if (submitted.toLowerCase() !== passcodeSettings.passcode.toLowerCase()) {
-          bad('Invalid manager passcode. Please obtain the correct code from the league administrator.')
+      const submittedCode = String(
+        req.body?.managerPasscode ?? req.body?.passcode ?? req.body?.inviteCode ?? ''
+      ).trim()
+      if (!submittedCode) {
+        bad('Manager invite code is required to register as a club manager. Contact a league admin or Discord.')
+      }
+
+      const inviteCheck = await verifyManagerInvite(submittedCode, address, req.body?.clubName ? String(req.body.clubName).trim() : undefined)
+      if (inviteCheck.valid && inviteCheck.invite) {
+        matchedInviteId = inviteCheck.invite.id
+      } else {
+        const passcodeSettings = await getManagerPasscodeSettings()
+        if (passcodeSettings.enabled && submittedCode.toLowerCase() === passcodeSettings.passcode.toLowerCase()) {
+          // Matched general passcode
+        } else {
+          bad(inviteCheck.error || 'Invalid or expired manager invite code.')
         }
       }
     }
@@ -257,6 +286,13 @@ auth.post(
       // player, so this cannot collide with an existing row.
       if (playerId) {
         await conn.execute('UPDATE players SET user_id = ? WHERE id = ?', [userId, playerId])
+      }
+
+      if (matchedInviteId) {
+        await conn.execute(
+          'UPDATE manager_invites SET is_used = TRUE, used_by_user_id = ?, used_at = NOW(), updated_at = NOW() WHERE id = ?',
+          [userId, matchedInviteId]
+        )
       }
 
       return { userId, clubId, playerId, clubName, gamertag }

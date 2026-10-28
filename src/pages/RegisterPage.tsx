@@ -3,22 +3,17 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Button, Container, Section, SectionHead, Select } from '@/components/ui'
 import { TermsDialog } from '@/components/ui/TermsDialog'
 import { SITE, siteData } from '@/data'
-import { ApiError, getRegistrationSettings, register } from '@/lib/api'
+import { ApiError, getRegistrationSettings, register, verifyInvite, type VerifyInviteResult } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { useCart } from '@/lib/cart'
 import { CLUB_PLACEHOLDER, compressClubLogo, cx, stripFlag } from '@/lib/format'
 import { useSeasonName } from '@/lib/season'
 
 interface Fields {
-  /* Which kind of account this form creates. A manager entry creates a club;
-     a player entry creates a free-agent player row. */
   role: 'club_manager' | 'player'
   managerPasscode: string
   club: string
   clubLogo: string | null
-  /* Optional. Decorative rather than identity — codes are not unique and the
-     slug is the real key — but a manager knows what to call their club and it
-     saves an admin a round trip. */
   shortCode: string
   region: string
   format: string
@@ -27,8 +22,6 @@ interface Fields {
   shirtNumber: string
   email: string
   password: string
-  /* Never sent to the API. Compared against `password` on the client only, so
-     the server never holds a second value that could be got wrong. */
   confirmPassword: string
   discord: string
   agree: boolean
@@ -62,54 +55,6 @@ const EMPTY: Fields = {
   agree: false,
 }
 
-/**
- * Role-aware.
- *
- * The club fields are not merely optional for a player, they are meaningless —
- * a player does not pick a region and a competition format to join a club.
- * Validating them anyway would block sign-up on questions that do not apply.
- */
-function validate(v: Fields, requirePasscode = true): Errors {
-  const e: Errors = {}
-
-  if (v.role === 'club_manager') {
-    if (requirePasscode && !v.managerPasscode.trim()) {
-      e.managerPasscode = 'Manager passcode is required to register a club.'
-    }
-    if (!v.club.trim()) e.club = 'Please enter your club name.'
-    if (!v.region) e.region = 'Please select your region.'
-    if (!v.format) e.format = 'Please choose a competition format.'
-    if (!v.manager.trim()) e.manager = 'Please enter the manager name.'
-    if (!v.discord.trim()) e.discord = 'Please provide a Discord username so we can reach you.'
-  } else {
-    if (!v.gamertag.trim()) e.gamertag = 'Please enter your in-game gamertag.'
-    if (v.shirtNumber.trim()) {
-      const n = Number.parseInt(v.shirtNumber.trim(), 10)
-      if (!Number.isInteger(n) || n < 1 || n > 99) {
-        e.shirtNumber = 'Jersey number must be between 1 and 99.'
-      }
-    }
-  }
-
-  if (!v.email.trim()) e.email = 'Please enter an email address.'
-  else if (!EMAIL_RE.test(v.email.trim())) e.email = 'Please enter a valid email address.'
-
-  // Matches the API minimum. Caught here so the round trip is only spent on
-  // input that can actually succeed.
-  if (!v.password) e.password = 'Please choose a password.'
-  else if (v.password.length < 8) e.password = 'Use at least 8 characters.'
-
-  // A typo in a password field is otherwise invisible until the account
-  // exists and the first sign-in fails, by which point the password is hashed
-  // and cannot be recovered.
-  if (v.confirmPassword !== v.password) {
-    e.confirmPassword = v.confirmPassword ? 'Passwords do not match.' : 'Re-enter your password.'
-  }
-
-  if (!v.agree) e.agree = 'Please accept the entry terms before submitting.'
-  return e
-}
-
 const inputCls =
   'w-full rounded-xl border bg-[var(--surface)] px-4 py-3 text-[15px] ' +
   'text-[var(--text-strong)] placeholder:text-[var(--text-faint)] outline-none ' +
@@ -122,23 +67,37 @@ const REGION_OPTIONS = [
 
 export default function RegisterPage() {
   const seasonName = useSeasonName()
+  const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4>(1)
+  const [maxStepVisited, setMaxStepVisited] = useState<number>(1)
   const [values, setValues] = useState<Fields>(EMPTY)
   const [errors, setErrors] = useState<Errors>({})
   const [touched, setTouched] = useState(false)
   const [sent, setSent] = useState(false)
-  /* What the account that was just created actually was.
-     The confirmation reads from here rather than from `values`, because the
-     form is cleared the moment submission succeeds — leaving a filled-in form
-     under the "you're done" panel invites a double submit. */
-  const [created, setCreated] = useState<{ role: Fields['role']; club: string; gamertag: string } | null>(
-    null,
-  )
+  const [created, setCreated] = useState<{ role: Fields['role']; club: string; gamertag: string } | null>(null)
   const [termsOpen, setTermsOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [logoError, setLogoError] = useState<string | null>(null)
   const logoInputRef = useRef<HTMLInputElement | null>(null)
+
+  // Passcode & Invite verification state
   const [passcodeRequired, setPasscodeRequired] = useState(true)
+  const [inviteVerification, setInviteVerification] = useState<{
+    verified: boolean
+    busy: boolean
+    error: string | null
+    type?: 'invite' | 'passcode'
+    boundEmail?: string | null
+    boundClubName?: string | null
+  }>({
+    verified: false,
+    busy: false,
+    error: null,
+  })
+
+  const { openPanel } = useCart()
+  const { setUser } = useAuth()
+  const navigate = useNavigate()
 
   useEffect(() => {
     let active = true
@@ -151,14 +110,6 @@ export default function RegisterPage() {
       active = false
     }
   }, [])
-  // Only the panel opener survives here. Adding passes to the cart moved to
-  // /entries, where they can be browsed without a form half-finished beside
-  // them; the success panel still offers a shortcut to the cart.
-  const { openPanel } = useCart()
-  const { setUser } = useAuth()
-  const navigate = useNavigate()
-
-  const errorFor = (k: keyof Fields) => (touched ? errors[k] : undefined)
 
   const set =
     (k: keyof Fields) =>
@@ -167,13 +118,21 @@ export default function RegisterPage() {
       const v = target.type === 'checkbox' ? target.checked : target.value
       const next = { ...values, [k]: v } as Fields
       setValues(next)
-      if (touched) setErrors(validate(next))
+      if (k === 'managerPasscode') {
+        // Reset verification if code changes
+        setInviteVerification({ verified: false, busy: false, error: null })
+      }
+      if (errors[k]) {
+        setErrors((prev) => ({ ...prev, [k]: undefined }))
+      }
     }
 
   const pick = (k: 'region' | 'format') => (v: string) => {
     const next = { ...values, [k]: v }
     setValues(next)
-    if (touched) setErrors(validate(next))
+    if (errors[k]) {
+      setErrors((prev) => ({ ...prev, [k]: undefined }))
+    }
   }
 
   const onLogoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -189,18 +148,167 @@ export default function RegisterPage() {
     }
   }
 
+  // --- Verification for Invite Code ---
+  const handleVerifyInviteCode = async (explicitCode?: string) => {
+    const codeToTest = (explicitCode ?? values.managerPasscode).trim()
+    if (!codeToTest) {
+      setInviteVerification({
+        verified: false,
+        busy: false,
+        error: 'Please enter an invite code to verify.',
+      })
+      return false
+    }
+
+    setInviteVerification((prev) => ({ ...prev, busy: true, error: null }))
+    try {
+      const res = await verifyInvite({
+        code: codeToTest,
+        email: values.email.trim() || undefined,
+        clubName: values.club.trim() || undefined,
+      })
+
+      if (res.valid) {
+        const boundEmail = res.invite?.targetEmail || null
+        const boundClub = res.invite?.targetClubName || null
+
+        // Auto-fill bound fields if returned
+        setValues((v) => ({
+          ...v,
+          email: boundEmail ? boundEmail : v.email,
+          club: boundClub ? boundClub : v.club,
+        }))
+
+        setInviteVerification({
+          verified: true,
+          busy: false,
+          error: null,
+          type: res.type,
+          boundEmail,
+          boundClubName: boundClub,
+        })
+        return true
+      } else {
+        setInviteVerification({
+          verified: false,
+          busy: false,
+          error: res.error || 'Invalid invite code.',
+        })
+        return false
+      }
+    } catch (err) {
+      setInviteVerification({
+        verified: false,
+        busy: false,
+        error: err instanceof ApiError ? err.message : 'Could not verify invite code.',
+      })
+      return false
+    }
+  }
+
+  // --- Step 1 Validation ---
+  const validateStep1 = async (): Promise<boolean> => {
+    setSubmitError(null)
+    if (values.role === 'club_manager') {
+      if (passcodeRequired) {
+        if (!values.managerPasscode.trim()) {
+          setErrors({ managerPasscode: 'Manager invite code is required.' })
+          return false
+        }
+        if (!inviteVerification.verified) {
+          const ok = await handleVerifyInviteCode()
+          if (!ok) return false
+        }
+      }
+    }
+    setErrors({})
+    return true
+  }
+
+  // --- Step 2 Validation ---
+  const validateStep2 = (): boolean => {
+    const e: Errors = {}
+    if (values.role === 'club_manager') {
+      if (!values.club.trim()) e.club = 'Please enter your club name.'
+      if (!values.region) e.region = 'Please select your region.'
+      if (!values.format) e.format = 'Please choose a competition format.'
+      if (!values.manager.trim()) e.manager = 'Please enter the manager name.'
+      if (!values.discord.trim()) e.discord = 'Please provide a Discord username for league coordination.'
+    } else {
+      if (!values.gamertag.trim()) e.gamertag = 'Please enter your in-game gamertag.'
+      if (values.shirtNumber.trim()) {
+        const n = Number.parseInt(values.shirtNumber.trim(), 10)
+        if (!Number.isInteger(n) || n < 1 || n > 99) {
+          e.shirtNumber = 'Jersey number must be between 1 and 99.'
+        }
+      }
+    }
+    setErrors(e)
+    return Object.keys(e).length === 0
+  }
+
+  // --- Step 3 Validation ---
+  const validateStep3 = (): boolean => {
+    const e: Errors = {}
+    if (!values.email.trim()) {
+      e.email = 'Please enter an email address.'
+    } else if (!EMAIL_RE.test(values.email.trim())) {
+      e.email = 'Please enter a valid email address.'
+    } else if (
+      values.role === 'club_manager' &&
+      inviteVerification.boundEmail &&
+      values.email.trim().toLowerCase() !== inviteVerification.boundEmail.toLowerCase()
+    ) {
+      e.email = `This invite code is locked to email: ${inviteVerification.boundEmail}`
+    }
+
+    if (!values.password) {
+      e.password = 'Please choose a password.'
+    } else if (values.password.length < 8) {
+      e.password = 'Use at least 8 characters.'
+    }
+
+    if (values.confirmPassword !== values.password) {
+      e.confirmPassword = values.confirmPassword ? 'Passwords do not match.' : 'Re-enter your password.'
+    }
+
+    setErrors(e)
+    return Object.keys(e).length === 0
+  }
+
+  // --- Step 4 Validation ---
+  const validateStep4 = (): boolean => {
+    const e: Errors = {}
+    if (!values.agree) {
+      e.agree = 'Please accept the entry terms and rules before submitting.'
+    }
+    setErrors(e)
+    return Object.keys(e).length === 0
+  }
+
+  // Navigation handlers
+  const goToStep = async (step: 1 | 2 | 3 | 4) => {
+    setSubmitError(null)
+    if (step > currentStep) {
+      if (currentStep === 1) {
+        const ok = await validateStep1()
+        if (!ok) return
+      } else if (currentStep === 2) {
+        if (!validateStep2()) return
+      } else if (currentStep === 3) {
+        if (!validateStep3()) return
+      }
+    }
+    setCurrentStep(step)
+    setMaxStepVisited((prev) => Math.max(prev, step))
+    window.scrollTo({ top: 120, behavior: 'smooth' })
+  }
+
+  // Final Submission
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault()
-    setTouched(true)
     setSubmitError(null)
-    const errs = validate(values, passcodeRequired)
-    setErrors(errs)
-    if (Object.keys(errs).length) {
-      // Send focus to the first thing that needs attention.
-      const firstBad = document.getElementById(Object.keys(errs)[0] === 'agree' ? 'agree' : String(Object.keys(errs)[0]))
-      firstBad?.focus()
-      return
-    }
+    if (!validateStep4()) return
 
     setBusy(true)
     try {
@@ -220,10 +328,8 @@ export default function RegisterPage() {
         clubLogo: values.role === 'club_manager' ? values.clubLogo : undefined,
         managerPasscode: values.role === 'club_manager' ? values.managerPasscode.trim() : undefined,
       })
+
       setUser(user)
-      // Snapshot what was created, then clear the form. The confirmation
-      // reads from the snapshot, and the cleared fields make a second submit
-      // impossible by accident — the submit button now fails validation.
       setCreated({
         role: values.role,
         club: values.club.trim(),
@@ -231,8 +337,6 @@ export default function RegisterPage() {
       })
       setValues(EMPTY)
       setErrors({})
-      setTouched(false)
-      setSubmitError(null)
       setSent(true)
       window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch (err) {
@@ -329,543 +433,761 @@ export default function RegisterPage() {
         ),
       },
     ],
-    [],
+    [seasonName],
   )
+
+  const stepsList = [
+    { number: 1, label: 'Role & Invite', description: 'Choose account type' },
+    { number: 2, label: values.role === 'club_manager' ? 'Club Details' : 'Player Details', description: 'Team or gamer info' },
+    { number: 3, label: 'Account Security', description: 'Email & password' },
+    { number: 4, label: 'Review & Terms', description: 'Confirm entry' },
+  ]
 
   return (
     <div className="page-enter">
       <Section>
-        {/* The form is centred and capped at a comfortable measure rather than
-            left-aligned under the page header: it is one short column of
-            fields, and the page has nothing beside it now that the entry-pass
-            sidebar moved to /entries. */}
         <Container size="wide">
-          {/* One column. The entry-pass sidebar moved to /entries — a price
-              list beside a signup form reads as part of submitting it. */}
           <div className="mx-auto max-w-2xl">
-            {/* No page heading at all. The only decision here is which of the
-                two roles you are, the toggle below states both options in their
-                own words, and a title above it only pushed that choice further
-                down the page. */}
-            {/* ================= form ================= */}
-            <div>
-              {sent && (
-                <div
-                  role="status"
-                  className="mb-8 rounded-card border border-[var(--accent-ring)] bg-[var(--accent-tint)] p-6"
-                >
-                  <div className="flex items-start gap-3">
-                    <svg
-                      width="22" height="22" viewBox="0 0 20 20" fill="none" aria-hidden
-                      className="mt-0.5 shrink-0 text-[var(--accent-text)]"
-                    >
-                      <circle cx="10" cy="10" r="8.5" stroke="currentColor" strokeWidth="1.6" />
-                      <path d="M6.5 10.5l2.5 2.5 4.5-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            {/* ================= Success Banner ================= */}
+            {sent ? (
+              <div
+                role="status"
+                className="mb-8 rounded-card border border-[var(--accent-ring)] bg-[var(--accent-tint)] p-6 sm:p-8"
+              >
+                <div className="flex items-start gap-4">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-white">
+                    <svg width="24" height="24" viewBox="0 0 20 20" fill="none" aria-hidden>
+                      <path d="M5 10.5l3.5 3.5 6.5-7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
-                    <div>
-                      <h2 className="font-display text-lg font-bold text-[var(--text-strong)]">
-                        {created?.role === 'club_manager'
-                          ? 'Account created'
-                          : 'Welcome to IWVPL'}
-                      </h2>
-                      <p className="mt-2 text-sm leading-relaxed text-[var(--text-muted)]">
-                        {created?.role === 'club_manager' ? (
-                          <>
-                            You are signed in as the manager of{' '}
-                            <strong className="text-[var(--text)]">{stripFlag(created.club)}</strong>
-                            . It is waiting for league admin approval — until then it is not on the
-                            public site and cannot play fixtures. You can sign players in the
-                            meantime.
-                          </>
-                        ) : (
-                          <>
-                            You are signed in as{' '}
-                            <strong className="text-[var(--text)]">{created?.gamertag}</strong> and
-                            you are a free agent. Clubs can find you and send you an offer from your
-                            dashboard.
-                          </>
-                        )}
-                      </p>
-                      <div className="mt-5 flex flex-wrap gap-2.5">
-                        <Button size="sm" onClick={() => navigate('/dashboard')}>
-                          Go to dashboard
+                  </div>
+                  <div>
+                    <h2 className="font-display text-xl font-bold text-[var(--text-strong)]">
+                      {created?.role === 'club_manager' ? 'Club Application Submitted!' : 'Welcome to IWVPL!'}
+                    </h2>
+                    <p className="mt-2 text-sm leading-relaxed text-[var(--text-muted)]">
+                      {created?.role === 'club_manager' ? (
+                        <>
+                          You are registered as the manager of{' '}
+                          <strong className="text-[var(--text-strong)]">{stripFlag(created.club)}</strong>.
+                          Your application is waiting for league admin verification. In the meantime, you can explore your Manager Dashboard, customize your profile, and search for players.
+                        </>
+                      ) : (
+                        <>
+                          You are signed in as{' '}
+                          <strong className="text-[var(--text-strong)]">{created?.gamertag}</strong> and listed in the free agent recruitment pool. Club managers can now scout and send contract offers directly to your dashboard.
+                        </>
+                      )}
+                    </p>
+
+                    <div className="mt-6 flex flex-wrap gap-3">
+                      <Button size="sm" onClick={() => navigate('/dashboard')}>
+                        Go to Dashboard →
+                      </Button>
+                      {created?.role === 'club_manager' && (
+                        <Button size="sm" variant="ghost" onClick={openPanel}>
+                          View Entry Passes
                         </Button>
-                        {created?.role === 'club_manager' && (
-                          <Button size="sm" variant="outline" onClick={() => openPanel()}>
-                            Review cart
-                          </Button>
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setSent(false)
-                            setCreated(null)
-                          }}
-                        >
-                          {created?.role === 'club_manager'
-                            ? 'Register another club'
-                            : 'Register another account'}
-                        </Button>
-                      </div>
+                      )}
                     </div>
                   </div>
                 </div>
-              )}
-
-              <SectionHead
-                eyebrow="Entry form"
-                title={values.role === 'club_manager' ? 'Club & manager details' : 'Player details'}
-              />
-
-              {/* Two genuinely different registrations behind one form. A
-                  manager entry creates a club and pays an entry fee; a player
-                  entry creates a free agent and costs nothing, so the fee,
-                  cart and region/format questions are all hidden for them
-                  rather than shown and then ignored. */}
-              <div className="mb-6 grid gap-3 sm:grid-cols-2">
-                {(
-                  [
-                    { id: 'club_manager', title: 'I manage a club', hint: 'Create a club and sign players' },
-                    { id: 'player', title: 'I am a player', hint: 'Join as a free agent' },
-                  ] as const
-                ).map((opt) => (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => {
-                      setValues({ ...values, role: opt.id })
-                      setErrors({})
-                      setSubmitError(null)
-                    }}
-                    aria-pressed={values.role === opt.id}
-                    className={cx(
-                      'rounded-card border p-4 text-left transition-colors',
-                      values.role === opt.id
-                        ? 'border-[var(--accent-ring)] bg-[var(--accent-tint)]'
-                        : 'border-[var(--border-strong)] bg-[var(--surface)] hover:bg-[var(--surface-hover)]',
-                    )}
-                  >
-                    <span className="block text-sm font-bold text-[var(--text-strong)]">
-                      {opt.title}
-                    </span>
-                    <span className="mt-0.5 block text-[12px] text-[var(--text-muted)]">
-                      {opt.hint}
-                    </span>
-                  </button>
-                ))}
               </div>
-
-              {values.role === 'club_manager' && (
-                /* The entry passes used to live in a sidebar here and moved to
-                   /entries, which left the only route to them in the footer.
-                   The fee is quoted in the lede above, so the link belongs next
-                   to the form a manager is filling in. */
-                <p className="mb-6 mt-4 text-[13px] text-[var(--text-muted)]">
-                  Not ready to sign up yet?{' '}
-                  <Link to="/entries" className="font-semibold text-[var(--accent-text)] hover:underline">
-                    See what each entry pass includes
-                  </Link>
-                  .
-                </p>
-              )}
-
-              {submitError && (
-                <p
-                  role="alert"
-                  className="mb-6 rounded-lg border border-[var(--danger-text)] bg-[var(--danger-text)]/10 px-4 py-3 text-sm text-[var(--danger-text)]"
-                >
-                  {submitError}
-                </p>
-              )}
-
-              <form onSubmit={onSubmit} noValidate className="space-y-8">
-                {/* --- club (managers only) --- */}
-                {values.role === 'club_manager' && (
-                <fieldset className="surface rounded-card p-6 sm:p-7">
-                  <legend className="sr-only">Club details</legend>
-                  <p className="mb-5 text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--accent-text)]">
-                    1 &middot; Your club
+            ) : (
+              <div className="space-y-8">
+                {/* Header Title & Subtitle */}
+                <div className="text-center">
+                  <span className="text-[12px] font-bold uppercase tracking-[0.2em] text-[var(--accent-text)]">
+                    Official League Registration
+                  </span>
+                  <h1 className="mt-1 font-display text-3xl font-extrabold text-[var(--text-strong)] sm:text-4xl">
+                    Join IWVPL
+                  </h1>
+                  <p className="mx-auto mt-2 max-w-lg text-sm text-[var(--text-muted)]">
+                    Step into Southeast Asia's premier EA SPORTS FC competitive league. Complete the steps below to secure your spot.
                   </p>
+                </div>
 
-                  <div className="space-y-5">
-                    {passcodeRequired && (
+                {/* ================= 4-Step Interactive Progress Bar ================= */}
+                <div className="surface rounded-2xl p-4 sm:p-5 border border-[var(--border)]">
+                  {/* Step indicators */}
+                  <div className="grid grid-cols-4 gap-2 sm:gap-4">
+                    {stepsList.map((s) => {
+                      const isCurrent = currentStep === s.number
+                      const isCompleted = currentStep > s.number
+                      const isClickable = s.number <= maxStepVisited
+
+                      return (
+                        <button
+                          key={s.number}
+                          type="button"
+                          disabled={!isClickable}
+                          onClick={() => isClickable && goToStep(s.number as any)}
+                          className={cx(
+                            'group flex flex-col items-center text-center transition-all',
+                            isClickable ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'
+                          )}
+                        >
+                          <div
+                            className={cx(
+                              'flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold transition-all shadow-sm',
+                              isCurrent && 'bg-[var(--accent)] text-white ring-4 ring-[var(--accent-ring)] scale-110',
+                              isCompleted && 'bg-emerald-500 text-white',
+                              !isCurrent && !isCompleted && 'bg-[var(--surface-muted)] text-[var(--text-muted)] border border-[var(--border)]'
+                            )}
+                          >
+                            {isCompleted ? '✓' : s.number}
+                          </div>
+                          <span
+                            className={cx(
+                              'mt-2 block text-[11px] sm:text-xs font-semibold leading-tight line-clamp-1',
+                              isCurrent ? 'text-[var(--text-strong)] font-bold' : 'text-[var(--text-muted)]'
+                            )}
+                          >
+                            {s.label}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  {/* Progress Line */}
+                  <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-muted)]">
+                    <div
+                      className="h-full bg-gradient-to-r from-[var(--accent)] to-emerald-400 transition-all duration-300"
+                      style={{
+                        width: `${((currentStep - 1) / (stepsList.length - 1)) * 100}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Global Error Banner */}
+                {submitError && (
+                  <div
+                    role="alert"
+                    className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-400 flex items-start gap-3"
+                  >
+                    <span className="text-lg">⚠️</span>
+                    <div>{submitError}</div>
+                  </div>
+                )}
+
+                {/* ================= STEP 1: Role & Verification ================= */}
+                {currentStep === 1 && (
+                  <div className="surface rounded-2xl p-6 sm:p-8 space-y-6 border border-[var(--border)]">
+                    <div>
+                      <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--accent-text)]">
+                        Step 1 of 4
+                      </span>
+                      <h2 className="text-xl font-bold text-[var(--text-strong)] mt-1">
+                        Select Your Role
+                      </h2>
+                      <p className="text-sm text-[var(--text-muted)] mt-1">
+                        Choose whether you are registering a competitive club as a manager or joining the league player pool.
+                      </p>
+                    </div>
+
+                    {/* Role Selection Cards */}
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setValues((v) => ({ ...v, role: 'club_manager' }))
+                          setErrors({})
+                        }}
+                        className={cx(
+                          'flex flex-col items-start rounded-xl border p-5 text-left transition-all',
+                          values.role === 'club_manager'
+                            ? 'border-[var(--accent)] bg-[var(--accent-tint)] shadow-sm ring-1 ring-[var(--accent)]'
+                            : 'border-[var(--border)] bg-[var(--surface)] hover:border-[var(--border-strong)]'
+                        )}
+                      >
+                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--surface-muted)] text-xl mb-3">
+                          🛡️
+                        </div>
+                        <span className="text-base font-bold text-[var(--text-strong)]">
+                          I manage a club
+                        </span>
+                        <span className="mt-1 text-xs text-[var(--text-muted)] leading-relaxed">
+                          Register your team, manage rosters, sign players, and compete in official league divisions.
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setValues((v) => ({ ...v, role: 'player' }))
+                          setErrors({})
+                        }}
+                        className={cx(
+                          'flex flex-col items-start rounded-xl border p-5 text-left transition-all',
+                          values.role === 'player'
+                            ? 'border-[var(--accent)] bg-[var(--accent-tint)] shadow-sm ring-1 ring-[var(--accent)]'
+                            : 'border-[var(--border)] bg-[var(--surface)] hover:border-[var(--border-strong)]'
+                        )}
+                      >
+                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--surface-muted)] text-xl mb-3">
+                          ⚽
+                        </div>
+                        <span className="text-base font-bold text-[var(--text-strong)]">
+                          I am a player
+                        </span>
+                        <span className="mt-1 text-xs text-[var(--text-muted)] leading-relaxed">
+                          Create your official player profile, enter the free agent market, and get scouted by team managers.
+                        </span>
+                      </button>
+                    </div>
+
+                    {/* Manager Invite Code Verification Section */}
+                    {values.role === 'club_manager' ? (
+                      <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)]/50 p-5 space-y-4">
+                        <div className="flex items-center gap-2">
+                          <span className="text-base">🔐</span>
+                          <strong className="text-sm font-semibold text-[var(--text-strong)]">
+                            Manager Invite Verification
+                          </strong>
+                        </div>
+                        <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+                          To protect the league from fake clubs, manager registration requires a unique invite code issued by league admins. Codes may be restricted to your captain email or club.
+                        </p>
+
+                        <div className="space-y-2">
+                          <label
+                            htmlFor="managerPasscode"
+                            className="block text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--text-faint)]"
+                          >
+                            Manager Invite Code
+                          </label>
+                          <div className="flex gap-2.5">
+                            <input
+                              id="managerPasscode"
+                              name="managerPasscode"
+                              type="text"
+                              value={values.managerPasscode}
+                              onChange={set('managerPasscode')}
+                              placeholder="e.g. MGR-8F2A-K9X1"
+                              autoCapitalize="characters"
+                              className={cx(
+                                inputCls,
+                                'font-mono uppercase tracking-wider font-bold',
+                                errors.managerPasscode ? 'border-red-500' : ''
+                              )}
+                            />
+                            <button
+                              type="button"
+                              disabled={inviteVerification.busy || !values.managerPasscode.trim()}
+                              onClick={() => void handleVerifyInviteCode()}
+                              className="adm-btn adm-btn-secondary px-4 text-xs font-semibold whitespace-nowrap"
+                            >
+                              {inviteVerification.busy ? 'Checking…' : 'Verify'}
+                            </button>
+                          </div>
+                          {errors.managerPasscode && (
+                            <p className="text-xs text-red-400 font-medium">{errors.managerPasscode}</p>
+                          )}
+                        </div>
+
+                        {/* Verification Status Feedback */}
+                        {inviteVerification.verified && (
+                          <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-400 space-y-1">
+                            <div className="flex items-center gap-1.5 font-bold">
+                              <span>✓</span>
+                              <span>Invite Code Validated!</span>
+                            </div>
+                            {inviteVerification.boundEmail && (
+                              <p>
+                                ✉️ Locked to captain email: <strong>{inviteVerification.boundEmail}</strong>
+                              </p>
+                            )}
+                            {inviteVerification.boundClubName && (
+                              <p>
+                                🛡️ Locked to club name: <strong>{inviteVerification.boundClubName}</strong>
+                              </p>
+                            )}
+                          </div>
+                        )}
+
+                        {inviteVerification.error && (
+                          <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-400">
+                            ✕ {inviteVerification.error}
+                          </div>
+                        )}
+
+                        <p className="text-[11px] text-[var(--text-muted)]">
+                          Don't have an invite code? Contact a league administrator on Discord to request team registration.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 text-xs text-emerald-400 flex items-center gap-3">
+                        <span className="text-lg">✓</span>
+                        <div>
+                          <strong>Player Registration is Open:</strong> No invite code required. Complete the next steps to set your gamertag and credentials.
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Step 1 Actions */}
+                    <div className="pt-2 flex justify-end">
+                      <Button
+                        size="md"
+                        type="button"
+                        onClick={async () => {
+                          const ok = await validateStep1()
+                          if (ok) goToStep(2)
+                        }}
+                      >
+                        Continue to Details →
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* ================= STEP 2: Details (Club or Player) ================= */}
+                {currentStep === 2 && (
+                  <div className="surface rounded-2xl p-6 sm:p-8 space-y-6 border border-[var(--border)]">
+                    <div>
+                      <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--accent-text)]">
+                        Step 2 of 4
+                      </span>
+                      <h2 className="text-xl font-bold text-[var(--text-strong)] mt-1">
+                        {values.role === 'club_manager' ? 'Club & Manager Profile' : 'Player Identity'}
+                      </h2>
+                      <p className="text-sm text-[var(--text-muted)] mt-1">
+                        {values.role === 'club_manager'
+                          ? 'Provide official team credentials, competition format, and manager contact.'
+                          : 'Set your in-game identity and squad preferences for recruitment.'}
+                      </p>
+                    </div>
+
+                    <div className="space-y-5">
+                      {values.role === 'club_manager' ? (
+                        <>
+                          <Field
+                            label="Club Name"
+                            error={errors.club}
+                            htmlFor="club"
+                            hint={inviteVerification.boundClubName ? 'Locked by your manager invite code' : undefined}
+                          >
+                            <input
+                              id="club"
+                              name="club"
+                              type="text"
+                              value={values.club}
+                              onChange={set('club')}
+                              placeholder="e.g. Lion City Esports"
+                              readOnly={Boolean(inviteVerification.boundClubName)}
+                              className={cx(
+                                inputCls,
+                                inviteVerification.boundClubName ? 'opacity-80 bg-[var(--surface-muted)] cursor-not-allowed' : '',
+                                errors.club ? 'border-red-500' : ''
+                              )}
+                            />
+                          </Field>
+
+                          <div className="grid gap-4 sm:grid-cols-2">
+                            <Field label="Short Code / Tag" error={errors.shortCode} htmlFor="shortCode">
+                              <input
+                                id="shortCode"
+                                name="shortCode"
+                                type="text"
+                                maxLength={8}
+                                value={values.shortCode}
+                                onChange={set('shortCode')}
+                                placeholder="e.g. LCE"
+                                className={cx(inputCls, 'uppercase font-mono font-bold')}
+                              />
+                            </Field>
+
+                            <div>
+                              <label
+                                htmlFor="region"
+                                className="mb-2 block text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--text-faint)]"
+                              >
+                                Region / Country
+                              </label>
+                              <Select
+                                id="region"
+                                name="region"
+                                value={values.region}
+                                onChange={pick('region')}
+                                options={REGION_OPTIONS}
+                                error={errors.region}
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <label
+                              htmlFor="format"
+                              className="mb-2 block text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--text-faint)]"
+                            >
+                              Competition Format
+                            </label>
+                            <Select
+                              id="format"
+                              name="format"
+                              value={values.format}
+                              onChange={pick('format')}
+                              options={FORMATS.map((f) => ({ value: f, label: f }))}
+                              error={errors.format}
+                            />
+                          </div>
+
+                          {/* Club Logo Upload */}
+                          <div>
+                            <span className="mb-2 block text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--text-faint)]">
+                              Club Crest / Logo (Optional)
+                            </span>
+                            <div className="flex items-center gap-4">
+                              <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-muted)]">
+                                {values.clubLogo ? (
+                                  <img src={values.clubLogo} alt="Preview" className="h-full w-full object-contain p-1" />
+                                ) : (
+                                  <span className="text-xl text-[var(--text-muted)]">🛡️</span>
+                                )}
+                              </div>
+                              <div className="space-y-1">
+                                <div className="flex gap-2">
+                                  <Button
+                                    size="sm"
+                                    type="button"
+                                    variant="secondary"
+                                    onClick={() => logoInputRef.current?.click()}
+                                  >
+                                    {values.clubLogo ? 'Change Crest' : 'Upload Crest'}
+                                  </Button>
+                                  {values.clubLogo && (
+                                    <Button
+                                      size="sm"
+                                      type="button"
+                                      variant="ghost"
+                                      onClick={() => setValues((v) => ({ ...v, clubLogo: null }))}
+                                    >
+                                      Remove
+                                    </Button>
+                                  )}
+                                </div>
+                                <input
+                                  ref={logoInputRef}
+                                  type="file"
+                                  accept="image/png,image/jpeg,image/webp"
+                                  onChange={onLogoFileChange}
+                                  className="hidden"
+                                />
+                                <span className="block text-[11px] text-[var(--text-muted)]">
+                                  PNG, JPG or WebP (max 4MB, compressed automatically)
+                                </span>
+                              </div>
+                            </div>
+                            {logoError && <p className="mt-1 text-xs text-red-400">{logoError}</p>}
+                          </div>
+
+                          <div className="grid gap-4 sm:grid-cols-2 pt-2 border-t border-[var(--border)]">
+                            <Field label="Manager Full Name" error={errors.manager} htmlFor="manager">
+                              <input
+                                id="manager"
+                                name="manager"
+                                type="text"
+                                value={values.manager}
+                                onChange={set('manager')}
+                                placeholder="Your full name"
+                                className={cx(inputCls, errors.manager ? 'border-red-500' : '')}
+                              />
+                            </Field>
+
+                            <Field label="Discord Username" error={errors.discord} htmlFor="discord">
+                              <input
+                                id="discord"
+                                name="discord"
+                                type="text"
+                                value={values.discord}
+                                onChange={set('discord')}
+                                placeholder="e.g. captain#1234 or captain"
+                                className={cx(inputCls, errors.discord ? 'border-red-500' : '')}
+                              />
+                            </Field>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="grid gap-4 sm:grid-cols-2">
+                            <Field label="In-Game Gamertag / EA ID" error={errors.gamertag} htmlFor="gamertag">
+                              <input
+                                id="gamertag"
+                                name="gamertag"
+                                type="text"
+                                value={values.gamertag}
+                                onChange={set('gamertag')}
+                                placeholder="e.g. Striker_SG"
+                                className={cx(inputCls, errors.gamertag ? 'border-red-500' : '')}
+                              />
+                            </Field>
+
+                            <Field label="Preferred Jersey # (1–99)" error={errors.shirtNumber} htmlFor="shirtNumber">
+                              <input
+                                id="shirtNumber"
+                                name="shirtNumber"
+                                type="number"
+                                min={1}
+                                max={99}
+                                value={values.shirtNumber}
+                                onChange={set('shirtNumber')}
+                                placeholder="e.g. 7 or 10"
+                                className={cx(inputCls, errors.shirtNumber ? 'border-red-500' : '')}
+                              />
+                            </Field>
+                          </div>
+
+                          <div className="grid gap-4 sm:grid-cols-2">
+                            <Field label="Player Display Name (Optional)" htmlFor="manager">
+                              <input
+                                id="manager"
+                                name="manager"
+                                type="text"
+                                value={values.manager}
+                                onChange={set('manager')}
+                                placeholder="Your name (optional)"
+                                className={inputCls}
+                              />
+                            </Field>
+
+                            <Field label="Discord Username (Optional)" htmlFor="discord">
+                              <input
+                                id="discord"
+                                name="discord"
+                                type="text"
+                                value={values.discord}
+                                onChange={set('discord')}
+                                placeholder="e.g. player#1234"
+                                className={inputCls}
+                              />
+                            </Field>
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Step 2 Actions */}
+                    <div className="pt-4 flex justify-between border-t border-[var(--border)]">
+                      <Button size="md" type="button" variant="secondary" onClick={() => goToStep(1)}>
+                        ← Back to Step 1
+                      </Button>
+                      <Button
+                        size="md"
+                        type="button"
+                        onClick={() => {
+                          if (validateStep2()) goToStep(3)
+                        }}
+                      >
+                        Continue to Security →
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* ================= STEP 3: Account Security ================= */}
+                {currentStep === 3 && (
+                  <div className="surface rounded-2xl p-6 sm:p-8 space-y-6 border border-[var(--border)]">
+                    <div>
+                      <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--accent-text)]">
+                        Step 3 of 4
+                      </span>
+                      <h2 className="text-xl font-bold text-[var(--text-strong)] mt-1">
+                        Account Security & Login
+                      </h2>
+                      <p className="text-sm text-[var(--text-muted)] mt-1">
+                        Set the email and password you will use to log into the IWVPL Manager or Player portal.
+                      </p>
+                    </div>
+
+                    <div className="space-y-5">
                       <Field
-                        label="Manager Invite Passcode"
-                        error={errorFor('managerPasscode')}
-                        htmlFor="managerPasscode"
-                        hint="A league invite passcode is required to register a club. Ask a league administrator or Discord."
+                        label="Email Address"
+                        error={errors.email}
+                        htmlFor="email"
+                        hint={inviteVerification.boundEmail ? 'Pre-filled and locked to your invite code' : undefined}
                       >
                         <input
-                          id="managerPasscode"
-                          name="managerPasscode"
-                          type="text"
-                          value={values.managerPasscode}
-                          onChange={set('managerPasscode')}
-                          placeholder="e.g. IWVPL2026"
-                          autoCapitalize="characters"
-                          aria-invalid={Boolean(errorFor('managerPasscode'))}
+                          id="email"
+                          name="email"
+                          type="email"
+                          value={values.email}
+                          onChange={set('email')}
+                          placeholder="you@domain.com"
+                          readOnly={Boolean(inviteVerification.boundEmail)}
                           className={cx(
                             inputCls,
-                            'font-mono uppercase tracking-wider',
-                            errorFor('managerPasscode') ? 'border-[var(--danger-text)]' : 'border-[var(--border-strong)]'
+                            inviteVerification.boundEmail ? 'opacity-80 bg-[var(--surface-muted)] cursor-not-allowed' : '',
+                            errors.email ? 'border-red-500' : ''
                           )}
                         />
                       </Field>
-                    )}
 
-                    <Field label="Club name" error={errorFor('club')} htmlFor="club">
-                      <input
-                        id="club"
-                        name="club"
-                        type="text"
-                        value={values.club}
-                        onChange={set('club')}
-                        placeholder="Enter your club name"
-                        aria-invalid={Boolean(errorFor('club'))}
-                        className={cx(inputCls, errorFor('club') ? 'border-[var(--danger-text)]' : 'border-[var(--border-strong)]')}
-                      />
-                    </Field>
-
-                    {/* Club Logo / Crest Upload */}
-                    <div>
-                      <span className="mb-2 block text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--text-faint)]">
-                        Club logo / crest
-                      </span>
-                      <div className="flex flex-wrap items-center gap-4 rounded-xl border border-[var(--border-strong)] bg-[var(--surface)] p-3.5">
-                        <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg)] p-1.5">
-                          <img
-                            src={values.clubLogo || CLUB_PLACEHOLDER}
-                            alt="Club logo preview"
-                            className="h-full w-full object-contain"
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <Field label="Password (Min. 8 chars)" error={errors.password} htmlFor="password">
+                          <input
+                            id="password"
+                            name="password"
+                            type="password"
+                            value={values.password}
+                            onChange={set('password')}
+                            placeholder="••••••••"
+                            className={cx(inputCls, errors.password ? 'border-red-500' : '')}
                           />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-xs font-medium text-[var(--text-strong)]">
-                            {values.clubLogo ? 'Club logo selected' : 'Upload your club logo (optional)'}
-                          </p>
-                          <p className="mt-0.5 text-xs text-[var(--text-faint)]">
-                            PNG, JPG, WebP or SVG. Square transparent crest recommended. You can also update this later from your dashboard.
-                          </p>
-                          <div className="mt-2.5 flex flex-wrap items-center gap-2">
-                            <input
-                              ref={logoInputRef}
-                              type="file"
-                              accept="image/png,image/jpeg,image/webp,image/svg+xml"
-                              onChange={(e) => void onLogoFileChange(e)}
-                              className="hidden"
-                            />
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              onClick={() => logoInputRef.current?.click()}
-                            >
-                              {values.clubLogo ? 'Change logo' : 'Upload logo'}
-                            </Button>
-                            {values.clubLogo && (
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => setValues((v) => ({ ...v, clubLogo: null }))}
-                              >
-                                Remove
-                              </Button>
-                            )}
-                          </div>
-                        </div>
+                        </Field>
+
+                        <Field label="Confirm Password" error={errors.confirmPassword} htmlFor="confirmPassword">
+                          <input
+                            id="confirmPassword"
+                            name="confirmPassword"
+                            type="password"
+                            value={values.confirmPassword}
+                            onChange={set('confirmPassword')}
+                            placeholder="••••••••"
+                            className={cx(inputCls, errors.confirmPassword ? 'border-red-500' : '')}
+                          />
+                        </Field>
                       </div>
-                      {logoError && (
-                        <p role="alert" className="mt-1.5 text-xs font-medium text-[var(--danger-text)]">
-                          {logoError}
-                        </p>
-                      )}
                     </div>
 
-                    <div className="grid gap-5 sm:grid-cols-2">
-                      <Field
-                        label="Short code"
-                        error={errorFor('shortCode')}
-                        htmlFor="shortCode"
+                    {/* Step 3 Actions */}
+                    <div className="pt-4 flex justify-between border-t border-[var(--border)]">
+                      <Button size="md" type="button" variant="secondary" onClick={() => goToStep(2)}>
+                        ← Back to Details
+                      </Button>
+                      <Button
+                        size="md"
+                        type="button"
+                        onClick={() => {
+                          if (validateStep3()) goToStep(4)
+                        }}
                       >
-                        <input
-                          id="shortCode"
-                          name="shortCode"
-                          type="text"
-                          value={values.shortCode}
-                          onChange={(e) =>
-                            setValues((v) => ({ ...v, shortCode: e.target.value.toUpperCase() }))
-                          }
-                          placeholder="3-letter code (optional)"
-                          maxLength={8}
-                          autoCapitalize="characters"
-                          spellCheck={false}
-                          className={cx(inputCls, 'uppercase')}
-                        />
-                        <p className="mt-2 text-xs text-[var(--text-faint)]">
-                          Optional. Shown beside your club in tables — an admin can add it later.
-                        </p>
-                      </Field>
-                      <Field label="Region" error={errorFor('region')} htmlFor="region">
-                        <Select
-                          id="region"
-                          value={values.region}
-                          onChange={pick('region')}
-                          options={REGION_OPTIONS}
-                          placeholder="Select a region"
-                        />
-                      </Field>
-
-                      <Field label="Format" error={errorFor('format')} htmlFor="format">
-                        <Select
-                          id="format"
-                          value={values.format}
-                          onChange={pick('format')}
-                          options={FORMATS.map((f) => ({ value: f, label: f }))}
-                          placeholder="Choose a format"
-                        />
-                      </Field>
+                        Continue to Review →
+                      </Button>
                     </div>
                   </div>
-                </fieldset>
                 )}
 
-                {/* --- contact --- */}
-                <fieldset className="surface rounded-card p-6 sm:p-7">
-                  <legend className="sr-only">Contact details</legend>
-                  {/* The step numbers track the fieldsets actually shown. A
-                      player never sees step 1, so counting from 2 would leave
-                      the form opening on "2" with nothing above it. */}
-                  <p className="mb-5 text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--accent-text)]">
-                    {values.role === 'club_manager' ? '2' : '1'} &middot; Your details
-                  </p>
-
-                  <div className="grid gap-5 sm:grid-cols-2">
-                    <Field
-                      label={values.role === 'club_manager' ? 'Manager name' : 'Your name'}
-                      error={errorFor('manager')}
-                      htmlFor="manager"
-                      className={values.role === 'player' ? 'sm:col-span-2' : undefined}
-                    >
-                      <input
-                        id="manager"
-                        name="manager"
-                        type="text"
-                        autoComplete="name"
-                        value={values.manager}
-                        onChange={set('manager')}
-                        placeholder="Your name"
-                        aria-invalid={Boolean(errorFor('manager'))}
-                        className={cx(inputCls, errorFor('manager') ? 'border-[var(--danger-text)]' : 'border-[var(--border-strong)]')}
-                      />
-                    </Field>
-
-                    <Field label="Email" error={errorFor('email')} htmlFor="email">
-                      <input
-                        id="email"
-                        name="email"
-                        type="email"
-                        autoComplete="email"
-                        value={values.email}
-                        onChange={set('email')}
-                        placeholder="you@club.com"
-                        aria-invalid={Boolean(errorFor('email'))}
-                        className={cx(inputCls, errorFor('email') ? 'border-[var(--danger-text)]' : 'border-[var(--border-strong)]')}
-                      />
-                    </Field>
-
-                    {/* Discord is a club-admin contact channel. A player has no fixtures to be
-                        reached about, so it is not asked of them. */}
-                    {values.role === 'club_manager' && (
-                      <Field
-                        label="Discord username"
-                        error={errorFor('discord')}
-                        htmlFor="discord"
-                        className="sm:col-span-2"
-                      >
-                        <input
-                          id="discord"
-                          name="discord"
-                          type="text"
-                          value={values.discord}
-                          onChange={set('discord')}
-                          placeholder="e.g. manager#1234"
-                          aria-invalid={Boolean(errorFor('discord'))}
-                          className={cx(inputCls, errorFor('discord') ? 'border-[var(--danger-text)]' : 'border-[var(--border-strong)]')}
-                        />
-                        <p className="mt-2 text-xs text-[var(--text-faint)]">
-                          Required so we can reach you about fixtures and league admin.
-                        </p>
-                      </Field>
-                    )}
-
-                    {values.role === 'player' && (
-                      <>
-                        <Field
-                          label="Gamertag"
-                          error={errorFor('gamertag')}
-                          htmlFor="gamertag"
-                        >
-                          <input
-                            id="gamertag"
-                            name="gamertag"
-                            type="text"
-                            value={values.gamertag}
-                            onChange={set('gamertag')}
-                            placeholder="e.g. LethaL_ShoTs11"
-                            autoCapitalize="none"
-                            spellCheck={false}
-                            aria-invalid={Boolean(errorFor('gamertag'))}
-                            className={cx(inputCls, errorFor('gamertag') ? 'border-[var(--danger-text)]' : 'border-[var(--border-strong)]')}
-                          />
-                          <p className="mt-2 text-xs text-[var(--text-faint)]">
-                            Exactly as it appears in game, capitals and underscores included.
-                          </p>
-                        </Field>
-
-                        <Field
-                          label="Jersey / Shirt number"
-                          error={errorFor('shirtNumber')}
-                          htmlFor="shirtNumber"
-                        >
-                          <input
-                            id="shirtNumber"
-                            name="shirtNumber"
-                            type="number"
-                            min={1}
-                            max={99}
-                            value={values.shirtNumber}
-                            onChange={set('shirtNumber')}
-                            placeholder="e.g. 10 (1–99)"
-                            aria-invalid={Boolean(errorFor('shirtNumber'))}
-                            className={cx(inputCls, errorFor('shirtNumber') ? 'border-[var(--danger-text)]' : 'border-[var(--border-strong)]')}
-                          />
-                          <p className="mt-2 text-xs text-[var(--text-faint)]">
-                            Shown on your jersey on the Starting XI pitch. You or an admin can change it anytime.
-                          </p>
-                        </Field>
-                      </>
-                    )}
-
-                    {/* Password lives with the contact details because it is
-                        what makes this an account rather than an application. */}
-                    <Field
-                      label="Password"
-                      error={errorFor('password')}
-                      htmlFor="password"
-                      className="sm:col-span-2"
-                    >
-                      <input
-                        id="password"
-                        name="password"
-                        type="password"
-                        autoComplete="new-password"
-                        value={values.password}
-                        onChange={set('password')}
-                        placeholder="At least 8 characters"
-                        aria-invalid={Boolean(errorFor('password'))}
-                        className={cx(inputCls, errorFor('password') ? 'border-[var(--danger-text)]' : 'border-[var(--border-strong)]')}
-                      />
-                    </Field>
-
-                    <Field
-                      label="Confirm password"
-                      error={errorFor('confirmPassword')}
-                      htmlFor="confirmPassword"
-                      className="sm:col-span-2"
-                    >
-                      <input
-                        id="confirmPassword"
-                        name="confirmPassword"
-                        type="password"
-                        autoComplete="new-password"
-                        value={values.confirmPassword}
-                        onChange={set('confirmPassword')}
-                        placeholder="Type it again"
-                        aria-invalid={Boolean(errorFor('confirmPassword'))}
-                        className={cx(inputCls, errorFor('confirmPassword') ? 'border-[var(--danger-text)]' : 'border-[var(--border-strong)]')}
-                      />
-                    </Field>
-                  </div>
-                </fieldset>
-
-                {/* --- terms --- */}
-                <fieldset className="surface rounded-card p-6 sm:p-7">
-                  <legend className="sr-only">Terms</legend>
-                  <p className="mb-5 text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--accent-text)]">
-                    {values.role === 'club_manager' ? '3' : '2'} &middot; Entry terms
-                  </p>
-
-                  {/* The terms are one click away, right next to the checkbox
-                      itself. The button is deliberately NOT nested inside the
-                      <label>: a label swallows clicks on its descendants, so
-                      the terms link never fired. */}
-                  <div className="flex items-start gap-3">
-                    <input
-                      id="agree"
-                      name="agree"
-                      type="checkbox"
-                      checked={values.agree}
-                      onChange={set('agree')}
-                      aria-invalid={Boolean(errorFor('agree'))}
-                      aria-describedby="agree-help"
-                      className={cx(
-                        'mt-0.5 h-5 w-5 shrink-0 cursor-pointer rounded border bg-[var(--surface)] accent-[var(--accent-solid)]',
-                        errorFor('agree') ? 'border-[var(--danger-text)]' : 'border-[var(--border-strong)]',
-                      )}
-                    />
-                    <div className="min-w-0 text-sm leading-relaxed text-[var(--text-muted)]">
-                      <span>
-                        <label htmlFor="agree" className="cursor-pointer">
-                          I have read and accept the{' '}
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() => setTermsOpen(true)}
-                          className="font-semibold text-[var(--accent-text)] underline decoration-[var(--accent-ring)] underline-offset-2 transition-colors hover:text-[var(--accent-hover)]"
-                        >
-                          IWVPL entry terms
-                        </button>
-                        .
+                {/* ================= STEP 4: Review & Terms ================= */}
+                {currentStep === 4 && (
+                  <form onSubmit={onSubmit} noValidate className="surface rounded-2xl p-6 sm:p-8 space-y-6 border border-[var(--border)]">
+                    <div>
+                      <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--accent-text)]">
+                        Step 4 of 4
                       </span>
-                      <p id="agree-help" className="mt-1.5 text-xs text-[var(--text-faint)]">
-                        Covers what your entry includes, the {SITE.registrationFee} fee, the
-                        24&ndash;48 hour confirmation window, roster submission and code of conduct.
+                      <h2 className="text-xl font-bold text-[var(--text-strong)] mt-1">
+                        Review & Complete Registration
+                      </h2>
+                      <p className="text-sm text-[var(--text-muted)] mt-1">
+                        Please review your application summary and confirm league entry terms.
                       </p>
                     </div>
-                  </div>
-                  {errorFor('agree') && (
-                    <p role="alert" className="mt-2.5 text-xs font-medium text-[var(--danger-text)]">
-                      {errors.agree}
-                    </p>
-                  )}
 
-                  <div className="mt-7 flex flex-wrap items-center gap-3 border-t border-[var(--border)] pt-6">
-                    <Button type="submit" size="lg" disabled={busy}>
-                      {busy
-                        ? 'Creating account…'
-                        : values.role === 'club_manager'
-                          ? 'Create club & sign up'
-                          : 'Create my account'}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      onClick={() => {
-                        setValues(EMPTY)
-                        setErrors({})
-                        setTouched(false)
-                        setSubmitError(null)
-                      }}
-                    >
-                      Reset form
-                    </Button>
-                  </div>
-                </fieldset>
-              </form>
-            </div>
+                    {/* Summary Review Card */}
+                    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)]/60 p-5 space-y-4">
+                      <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
+                        <div className="flex items-center gap-3">
+                          {values.role === 'club_manager' ? (
+                            values.clubLogo ? (
+                              <img src={values.clubLogo} alt="Logo" className="h-10 w-10 object-contain rounded-lg border border-[var(--border)] p-0.5" />
+                            ) : (
+                              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--accent)] text-white font-bold text-sm">
+                                {(values.shortCode || values.club).slice(0, 3).toUpperCase()}
+                              </div>
+                            )
+                          ) : (
+                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500 text-white font-bold text-sm">
+                              ⚽
+                            </div>
+                          )}
+                          <div>
+                            <strong className="block text-base text-[var(--text-strong)]">
+                              {values.role === 'club_manager' ? values.club : values.gamertag}
+                            </strong>
+                            <span className="text-xs text-[var(--text-muted)]">
+                              {values.role === 'club_manager' ? `Tag: ${values.shortCode || 'None'}` : `Jersey #${values.shirtNumber || 'None'}`}
+                            </span>
+                          </div>
+                        </div>
+                        <span className="adm-status-badge status-active text-xs">
+                          {values.role === 'club_manager' ? 'Club Manager' : 'Free Agent Player'}
+                        </span>
+                      </div>
 
+                      <div className="grid grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <span className="text-[var(--text-faint)] uppercase font-semibold">Account Email</span>
+                          <p className="text-[var(--text-strong)] font-medium mt-0.5">{values.email}</p>
+                        </div>
+                        <div>
+                          <span className="text-[var(--text-faint)] uppercase font-semibold">Contact / Discord</span>
+                          <p className="text-[var(--text-strong)] font-medium mt-0.5">
+                            {values.discord || values.manager || '—'}
+                          </p>
+                        </div>
+                        {values.role === 'club_manager' && (
+                          <>
+                            <div>
+                              <span className="text-[var(--text-faint)] uppercase font-semibold">Region</span>
+                              <p className="text-[var(--text-strong)] font-medium mt-0.5">{values.region}</p>
+                            </div>
+                            <div>
+                              <span className="text-[var(--text-faint)] uppercase font-semibold">Format</span>
+                              <p className="text-[var(--text-strong)] font-medium mt-0.5">{values.format}</p>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* League Terms Summary Box */}
+                    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 text-xs space-y-2 text-[var(--text-muted)] leading-relaxed">
+                      <strong className="text-[var(--text-strong)] block text-sm">Tournament Terms & Conduct</strong>
+                      <p>
+                        By submitting, you agree to abide by the official IWVPL Match Rules, Fair Play Guidelines, and Code of Conduct. Match results and disputes must be submitted via the portal according to scheduled deadlines.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setTermsOpen(true)}
+                        className="text-[var(--accent-text)] font-semibold hover:underline"
+                      >
+                        Read full league terms & conditions →
+                      </button>
+                    </div>
+
+                    {/* Terms Agreement Checkbox */}
+                    <div>
+                      <label className="flex items-start gap-3 cursor-pointer">
+                        <input
+                          id="agree"
+                          name="agree"
+                          type="checkbox"
+                          checked={values.agree}
+                          onChange={set('agree')}
+                          className="mt-0.5 h-4 w-4 rounded border-[var(--border-strong)] text-[var(--accent)]"
+                        />
+                        <span className="text-xs text-[var(--text)] font-medium">
+                          I confirm that all provided details are correct and I agree to the tournament regulations and conduct guidelines.
+                        </span>
+                      </label>
+                      {errors.agree && (
+                        <p className="mt-1 text-xs text-red-400 font-medium">{errors.agree}</p>
+                      )}
+                    </div>
+
+                    {/* Step 4 Actions */}
+                    <div className="pt-4 flex justify-between border-t border-[var(--border)]">
+                      <Button size="md" type="button" variant="secondary" onClick={() => goToStep(3)}>
+                        ← Back to Edit
+                      </Button>
+                      <Button size="md" type="submit" disabled={busy}>
+                        {busy ? 'Creating Account…' : 'Complete Registration ✓'}
+                      </Button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            )}
           </div>
         </Container>
       </Section>
@@ -873,8 +1195,8 @@ export default function RegisterPage() {
       <TermsDialog
         open={termsOpen}
         onClose={() => setTermsOpen(false)}
-        title="IWVPL entry terms"
-        sections={terms}
+        terms={terms}
+        title="League Terms & Entry Conditions"
       />
     </div>
   )
@@ -884,12 +1206,14 @@ function Field({
   label,
   error,
   htmlFor,
+  hint,
   className,
   children,
 }: {
   label: string
   error?: string
   htmlFor: string
+  hint?: string
   className?: string
   children: ReactNode
 }) {
@@ -897,13 +1221,16 @@ function Field({
     <div className={className}>
       <label
         htmlFor={htmlFor}
-        className="mb-2 block text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--text-faint)]"
+        className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--text-faint)]"
       >
         {label}
       </label>
       {children}
+      {hint && !error && (
+        <p className="mt-1 text-[11px] text-[var(--text-muted)]">{hint}</p>
+      )}
       {error && (
-        <p role="alert" className="mt-1.5 text-xs font-medium text-[var(--danger-text)]">
+        <p role="alert" className="mt-1 text-xs font-medium text-red-400">
           {error}
         </p>
       )}

@@ -256,3 +256,17 @@ export const listNotifications = () =>
   request<{ notifications: Notification[]; unread: number }>('/api/notifications')
 
 export const markNotificationsRead = () => post<{ ok: true }>('/api/notifications/read')
+export interface VerifyInviteResult {
+  valid: boolean
+  error?: string
+  invite?: {
+    id: number
+    code: string
+    targetEmail: string | null
+    targetClubName: string | null
+  }
+  type?: 'invite' | 'passcode'
+}
+
+export const verifyInvite = (params: { code: string; email?: string; clubName?: string }) =>
+  post<VerifyInviteResult>('/api/auth/verify-invite', params)

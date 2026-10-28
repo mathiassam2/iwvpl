@@ -35,6 +35,7 @@ import {
 } from '../domain/rollover.js'
 import { clubSlug, gamertagKey } from '../domain/slug.js'
 import { getManagerPasscodeSettings, updateManagerPasscodeSettings } from '../domain/settings.js'
+import { listManagerInvites, createManagerInvite, deleteManagerInvite } from '../domain/invites.js'
 import {
   ALLOWED_SECTIONS,
   loadSiteContent,
@@ -3824,6 +3825,44 @@ admin.delete(
   }),
 )
 
+
+
+/* ----------------------------------------------------- manager invites */
+
+admin.get(
+  '/manager-invites',
+  handler(async (_req, res) => {
+    const invites = await listManagerInvites()
+    res.json({ invites })
+  }),
+)
+
+admin.post(
+  '/manager-invites',
+  handler(async (req, res) => {
+    const invite = await createManagerInvite({
+      code: req.body?.code,
+      targetEmail: req.body?.targetEmail,
+      targetClubName: req.body?.targetClubName,
+      notes: req.body?.notes,
+      createdByUserId: req.user?.id,
+    })
+    res.json({ ok: true, invite })
+  }),
+)
+
+admin.delete(
+  '/manager-invites/:id',
+  handler(async (req, res) => {
+    const id = Number.parseInt(req.params.id, 10)
+    if (!Number.isSafeInteger(id) || id < 1) {
+      return res.status(400).json({ error: 'Invite id must be a positive integer.' })
+    }
+    const deleted = await deleteManagerInvite(id)
+    if (!deleted) return res.status(404).json({ error: 'Invite not found.' })
+    res.json({ ok: true, id })
+  }),
+)
 
 /* ----------------------------------------------------- system settings */
 

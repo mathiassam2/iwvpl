@@ -1362,3 +1362,37 @@ export const updateManagerSecuritySettings = (settings: Partial<ManagerSecurityS
       body: JSON.stringify(settings),
     },
   )
+
+export interface AdminManagerInvite {
+  id: number
+  code: string
+  target_email: string | null
+  target_club_name: string | null
+  notes: string | null
+  is_used: boolean
+  used_by_user_id: number | null
+  used_at: string | null
+  created_at: string
+  updated_at: string
+  used_by_name?: string | null
+  used_by_email?: string | null
+}
+
+export const getAdminManagerInvites = () =>
+  request<{ invites: AdminManagerInvite[] }>('/api/admin/manager-invites').then((r) => r.invites)
+
+export const createAdminManagerInvite = (input: {
+  code?: string
+  targetEmail?: string | null
+  targetClubName?: string | null
+  notes?: string | null
+}) =>
+  request<{ ok: true; invite: AdminManagerInvite }>('/api/admin/manager-invites', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  }).then((r) => r.invite)
+
+export const deleteAdminManagerInvite = (id: number) =>
+  request<{ ok: true; id: number }>(`/api/admin/manager-invites/${id}`, {
+    method: 'DELETE',
+  })

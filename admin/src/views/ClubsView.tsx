@@ -14,6 +14,10 @@ import {
   getManagerSecuritySettings,
   updateManagerSecuritySettings,
   type ManagerSecuritySettings,
+  getAdminManagerInvites,
+  createAdminManagerInvite,
+  deleteAdminManagerInvite,
+  type AdminManagerInvite,
   getDivisions,
   getPendingClubs,
   invalidateAdminCache,
@@ -357,6 +361,15 @@ export function ClubsView({
   const [securityModalOpen, setSecurityModalOpen] = useState(false)
   const [securityBusy, setSecurityBusy] = useState(false)
   const [passcodeCopied, setPasscodeCopied] = useState(false)
+  const [securityTab, setSecurityTab] = useState<'invites' | 'passcode'>('invites')
+  const [invites, setInvites] = useState<AdminManagerInvite[]>([])
+  const [invitesLoading, setInvitesLoading] = useState(false)
+  const [newInviteCode, setNewInviteCode] = useState('')
+  const [newInviteEmail, setNewInviteEmail] = useState('')
+  const [newInviteClub, setNewInviteClub] = useState('')
+  const [newInviteNotes, setNewInviteNotes] = useState('')
+  const [inviteCreateBusy, setInviteCreateBusy] = useState(false)
+  const [copiedInviteId, setCopiedInviteId] = useState<number | null>(null)
   const currentClub = clubs.find((c) => c.slug === drawerClubSlug)
   const [drawerDetail, setDrawerDetail] = useState<ClubDetailResponse | null>(null)
   const [drawerLoading, setDrawerLoading] = useState(false)
@@ -461,6 +474,10 @@ export function ClubsView({
       setRegions(regionsList)
       setUsers(usersList)
       if (secSettings) setSecuritySettings(secSettings)
+      try {
+        const invList = await getAdminManagerInvites()
+        setInvites(invList)
+      } catch {}
       hasLoadedRef.current = true
     } catch {
       /* reported */
@@ -3153,14 +3170,14 @@ export function ClubsView({
       {/* Manager Passcode & Security Settings Modal */}
       {securityModalOpen && (
         <div className="adm-modal-backdrop" onClick={() => setSecurityModalOpen(false)}>
-          <div className="adm-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 540 }}>
+          <div className="adm-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 680, maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
             <div className="adm-modal-header">
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 24 }}>🔑</span>
+                <span style={{ fontSize: 24 }}>🔐</span>
                 <div>
-                  <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Manager Passcode & Security</h2>
+                  <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Manager Registration Security</h2>
                   <small style={{ color: 'var(--adm-text-muted)' }}>
-                    Require captains to enter a secret invite passcode to register a club
+                    Protect manager registration from fake accounts and passcode sharing
                   </small>
                 </div>
               </div>
@@ -3173,97 +3190,336 @@ export function ClubsView({
               </button>
             </div>
 
-            <div className="adm-stack" style={{ padding: '16px 20px', gap: 16 }}>
-              <div style={{
-                background: 'rgba(56, 189, 248, 0.08)',
-                border: '1px solid rgba(56, 189, 248, 0.25)',
-                borderRadius: 8,
-                padding: 12,
-                fontSize: 13,
-                lineHeight: 1.5,
-                color: 'var(--adm-text)',
-              }}>
-                <strong>How this protects your league:</strong>
-                <br />
-                When enabled, anyone registering with <em>"I manage a club"</em> on <code>/register</code> must input this exact passcode. Uninvited visitors or bots cannot create fake manager accounts. Normal players can still register freely without a passcode.
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontWeight: 600 }}>
-                  <input
-                    type="checkbox"
-                    checked={securitySettings.enabled}
-                    onChange={(e) => setSecuritySettings((s) => ({ ...s, enabled: e.target.checked }))}
-                    style={{ width: 18, height: 18 }}
-                  />
-                  Require Passcode for Manager Registration
-                </label>
-                <span style={{ fontSize: 12, color: 'var(--adm-text-muted)', marginLeft: 28 }}>
-                  {securitySettings.enabled
-                    ? 'Active: Public manager signups are blocked without this passcode.'
-                    : 'Disabled: Anyone can register as a club manager without a passcode.'}
-                </span>
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--adm-text-muted)', textTransform: 'uppercase' }}>
-                  Current Manager Passcode / Invite Key
-                </label>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <input
-                    type="text"
-                    value={securitySettings.passcode}
-                    onChange={(e) => setSecuritySettings((s) => ({ ...s, passcode: e.target.value.toUpperCase() }))}
-                    placeholder="e.g. IWVPL2026"
-                    className="adm-input"
-                    style={{ fontFamily: 'monospace', fontWeight: 700, letterSpacing: 1 }}
-                    disabled={!securitySettings.enabled}
-                  />
-                  <button
-                    type="button"
-                    className="adm-btn adm-btn-secondary"
-                    onClick={() => {
-                      navigator.clipboard.writeText(securitySettings.passcode)
-                      setPasscodeCopied(true)
-                      setTimeout(() => setPasscodeCopied(false), 2000)
-                    }}
-                    title="Copy passcode to clipboard to share with captains"
-                  >
-                    {passcodeCopied ? '✓ Copied' : '📋 Copy'}
-                  </button>
-                </div>
-                <small style={{ fontSize: 11, color: 'var(--adm-text-muted)' }}>
-                  Share this passcode with verified club captains via Discord or WhatsApp for this season.
-                </small>
-              </div>
-            </div>
-
-            <div className="adm-modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, padding: '12px 20px' }}>
+            {/* Modal Tabs */}
+            <div style={{ display: 'flex', borderBottom: '1px solid var(--adm-border, rgba(255,255,255,0.1))', padding: '0 20px', gap: 12 }}>
               <button
                 type="button"
-                className="adm-btn adm-btn-ghost"
-                onClick={() => setSecurityModalOpen(false)}
+                className={`adm-pill-tab ${securityTab === 'invites' ? 'is-active' : ''}`}
+                onClick={() => setSecurityTab('invites')}
+                style={{ padding: '10px 16px', borderRadius: 0, borderBottom: securityTab === 'invites' ? '2px solid var(--adm-accent, #38bdf8)' : '2px solid transparent' }}
               >
-                Cancel
+                🎟️ Bound & Single-Use Invites ({invites.filter((i) => !i.is_used).length} Available)
               </button>
               <button
                 type="button"
-                className="adm-btn adm-btn-primary"
-                disabled={securityBusy}
-                onClick={async () => {
-                  setSecurityBusy(true)
-                  try {
-                    await updateManagerSecuritySettings(securitySettings)
-                    report('ok', `Manager security settings saved (Passcode: ${securitySettings.passcode})`)
-                    setSecurityModalOpen(false)
-                  } catch (err) {
-                    report('error', err instanceof Error ? err.message : 'Could not save security settings')
-                  } finally {
-                    setSecurityBusy(false)
-                  }
-                }}
+                className={`adm-pill-tab ${securityTab === 'passcode' ? 'is-active' : ''}`}
+                onClick={() => setSecurityTab('passcode')}
+                style={{ padding: '10px 16px', borderRadius: 0, borderBottom: securityTab === 'passcode' ? '2px solid var(--adm-accent, #38bdf8)' : '2px solid transparent' }}
               >
-                {securityBusy ? 'Saving…' : 'Save Settings'}
+                🔑 Shared Passcode Fallback
+              </button>
+            </div>
+
+            <div className="adm-stack" style={{ padding: '16px 20px', gap: 16, overflowY: 'auto', flex: 1 }}>
+              {securityTab === 'invites' ? (
+                <>
+                  <div style={{
+                    background: 'rgba(56, 189, 248, 0.08)',
+                    border: '1px solid rgba(56, 189, 248, 0.25)',
+                    borderRadius: 8,
+                    padding: 12,
+                    fontSize: 13,
+                    lineHeight: 1.5,
+                  }}>
+                    <strong>Anti-Leak Protection:</strong>
+                    <br />
+                    Create invite codes bound to a specific captain email or club name. Even if the code is forwarded or leaked, no unauthorized person can use it. Each code expires immediately upon registration.
+                  </div>
+
+                  {/* Create New Invite Card */}
+                  <div style={{
+                    background: 'var(--adm-bg-subtle, rgba(255,255,255,0.03))',
+                    border: '1px solid var(--adm-border, rgba(255,255,255,0.08))',
+                    borderRadius: 8,
+                    padding: 14,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 10,
+                  }}>
+                    <strong style={{ fontSize: 13 }}>Issue New Manager Invite</strong>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
+                      <div>
+                        <label style={{ fontSize: 11, color: 'var(--adm-text-muted)', fontWeight: 600 }}>INVITE CODE</label>
+                        <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                          <input
+                            type="text"
+                            value={newInviteCode}
+                            onChange={(e) => setNewInviteCode(e.target.value.toUpperCase())}
+                            placeholder="e.g. MGR-SG-LION"
+                            className="adm-input adm-input-sm"
+                            style={{ fontFamily: 'monospace', fontWeight: 700 }}
+                          />
+                          <button
+                            type="button"
+                            className="adm-btn adm-btn-secondary adm-btn-sm"
+                            title="Generate random code"
+                            onClick={() => {
+                              const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+                              let c = 'MGR-'
+                              for (let i = 0; i < 4; i++) c += chars.charAt(Math.floor(Math.random() * chars.length))
+                              c += '-'
+                              for (let i = 0; i < 4; i++) c += chars.charAt(Math.floor(Math.random() * chars.length))
+                              setNewInviteCode(c)
+                            }}
+                          >
+                            🎲
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label style={{ fontSize: 11, color: 'var(--adm-text-muted)', fontWeight: 600 }}>BIND TO EMAIL (OPTIONAL)</label>
+                        <input
+                          type="email"
+                          value={newInviteEmail}
+                          onChange={(e) => setNewInviteEmail(e.target.value)}
+                          placeholder="e.g. captain@lioncity.com"
+                          className="adm-input adm-input-sm"
+                          style={{ marginTop: 4 }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ fontSize: 11, color: 'var(--adm-text-muted)', fontWeight: 600 }}>BIND TO CLUB (OPTIONAL)</label>
+                        <input
+                          type="text"
+                          value={newInviteClub}
+                          onChange={(e) => setNewInviteClub(e.target.value)}
+                          placeholder="e.g. Lion City FC"
+                          className="adm-input adm-input-sm"
+                          style={{ marginTop: 4 }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ fontSize: 11, color: 'var(--adm-text-muted)', fontWeight: 600 }}>NOTES / CAPTAIN</label>
+                        <input
+                          type="text"
+                          value={newInviteNotes}
+                          onChange={(e) => setNewInviteNotes(e.target.value)}
+                          placeholder="e.g. For Season 1 registration"
+                          className="adm-input adm-input-sm"
+                          style={{ marginTop: 4 }}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4 }}>
+                      <button
+                        type="button"
+                        className="adm-btn adm-btn-primary adm-btn-sm"
+                        disabled={inviteCreateBusy}
+                        onClick={async () => {
+                          setInviteCreateBusy(true)
+                          try {
+                            const inv = await createAdminManagerInvite({
+                              code: newInviteCode || undefined,
+                              targetEmail: newInviteEmail || null,
+                              targetClubName: newInviteClub || null,
+                              notes: newInviteNotes || null,
+                            })
+                            report('ok', `Invite ${inv.code} issued successfully!`)
+                            setNewInviteCode('')
+                            setNewInviteEmail('')
+                            setNewInviteClub('')
+                            setNewInviteNotes('')
+                            const updated = await getAdminManagerInvites()
+                            setInvites(updated)
+                          } catch (err) {
+                            report('error', err instanceof Error ? err.message : 'Could not issue invite.')
+                          } finally {
+                            setInviteCreateBusy(false)
+                          }
+                        }}
+                      >
+                        {inviteCreateBusy ? 'Issuing…' : '+ Issue Invite Code'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* List of Invites */}
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <strong style={{ fontSize: 13 }}>Issued Invites ({invites.length})</strong>
+                      <button
+                        type="button"
+                        className="adm-btn adm-btn-ghost adm-btn-sm"
+                        onClick={async () => {
+                          setInvitesLoading(true)
+                          try {
+                            const updated = await getAdminManagerInvites()
+                            setInvites(updated)
+                          } finally {
+                            setInvitesLoading(false)
+                          }
+                        }}
+                      >
+                        {invitesLoading ? 'Refreshing…' : '↻ Refresh'}
+                      </button>
+                    </div>
+
+                    {invites.length === 0 ? (
+                      <div className="adm-empty-compact">No manager invites issued yet. Issue one above.</div>
+                    ) : (
+                      <div className="adm-list" style={{ maxHeight: 280, overflowY: 'auto' }}>
+                        {invites.map((inv) => (
+                          <div
+                            key={inv.id}
+                            className="adm-list-row"
+                            style={{ opacity: inv.is_used ? 0.6 : 1, padding: '8px 12px' }}
+                          >
+                            <div className="adm-list-main" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <strong style={{ fontFamily: 'monospace', fontSize: 14 }}>{inv.code}</strong>
+                                {inv.is_used ? (
+                                  <span className="adm-status-badge status-withdrawn" style={{ fontSize: 11 }}>Used</span>
+                                ) : (
+                                  <span className="adm-status-badge status-active" style={{ fontSize: 11 }}>Available</span>
+                                )}
+                              </div>
+                              <div style={{ fontSize: 12, color: 'var(--adm-text-muted)' }}>
+                                {inv.target_email && <span>✉️ Restricted to: <strong>{inv.target_email}</strong> · </span>}
+                                {inv.target_club_name && <span>🛡️ Club: <strong>{inv.target_club_name}</strong> · </span>}
+                                {inv.notes && <span>💬 {inv.notes} · </span>}
+                                {inv.is_used && (
+                                  <span>Redeemed by {inv.used_by_name || inv.used_by_email || 'Manager'}</span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="adm-row-actions">
+                              {!inv.is_used && (
+                                <button
+                                  type="button"
+                                  className="adm-btn adm-btn-secondary adm-btn-sm"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(inv.code)
+                                    setCopiedInviteId(inv.id)
+                                    setTimeout(() => setCopiedInviteId(null), 2000)
+                                  }}
+                                  title="Copy invite code to share with captain"
+                                >
+                                  {copiedInviteId === inv.id ? '✓ Copied' : '📋 Copy'}
+                                </button>
+                              )}
+                              {!inv.is_used && (
+                                <button
+                                  type="button"
+                                  className="adm-btn adm-btn-danger adm-btn-sm"
+                                  onClick={async () => {
+                                    if (!window.confirm(`Revoke invite ${inv.code}?`)) return
+                                    try {
+                                      await deleteAdminManagerInvite(inv.id)
+                                      report('ok', `Revoked invite ${inv.code}`)
+                                      setInvites((prev) => prev.filter((i) => i.id !== inv.id))
+                                    } catch (err) {
+                                      report('error', err instanceof Error ? err.message : 'Could not revoke invite')
+                                    }
+                                  }}
+                                  title="Revoke / Delete invite"
+                                >
+                                  ✕
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{
+                    background: 'rgba(234, 179, 8, 0.08)',
+                    border: '1px solid rgba(234, 179, 8, 0.25)',
+                    borderRadius: 8,
+                    padding: 12,
+                    fontSize: 13,
+                    lineHeight: 1.5,
+                  }}>
+                    <strong>General Shared Passcode:</strong>
+                    <br />
+                    This is a secondary fallback passcode. If enabled, any visitor who enters this exact code can register as a club manager without a unique invite.
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontWeight: 600 }}>
+                      <input
+                        type="checkbox"
+                        checked={securitySettings.enabled}
+                        onChange={(e) => setSecuritySettings((s) => ({ ...s, enabled: e.target.checked }))}
+                        style={{ width: 18, height: 18 }}
+                      />
+                      Enable Shared Passcode Fallback
+                    </label>
+                    <span style={{ fontSize: 12, color: 'var(--adm-text-muted)', marginLeft: 28 }}>
+                      {securitySettings.enabled
+                        ? 'Active: Anyone with this general code can register.'
+                        : 'Disabled: Only captains with valid Single-Use / Bound Invites can register.'}
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--adm-text-muted)', textTransform: 'uppercase' }}>
+                      Shared League Passcode
+                    </label>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <input
+                        type="text"
+                        value={securitySettings.passcode}
+                        onChange={(e) => setSecuritySettings((s) => ({ ...s, passcode: e.target.value.toUpperCase() }))}
+                        placeholder="e.g. IWVPL2026"
+                        className="adm-input"
+                        style={{ fontFamily: 'monospace', fontWeight: 700, letterSpacing: 1 }}
+                        disabled={!securitySettings.enabled}
+                      />
+                      <button
+                        type="button"
+                        className="adm-btn adm-btn-secondary"
+                        onClick={() => {
+                          navigator.clipboard.writeText(securitySettings.passcode)
+                          setPasscodeCopied(true)
+                          setTimeout(() => setPasscodeCopied(false), 2000)
+                        }}
+                        title="Copy passcode to clipboard"
+                      >
+                        {passcodeCopied ? '✓ Copied' : '📋 Copy'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+                    <button
+                      type="button"
+                      className="adm-btn adm-btn-primary"
+                      disabled={securityBusy}
+                      onClick={async () => {
+                        setSecurityBusy(true)
+                        try {
+                          await updateManagerSecuritySettings(securitySettings)
+                          report('ok', `Saved shared passcode settings (Passcode: ${securitySettings.passcode})`)
+                        } catch (err) {
+                          report('error', err instanceof Error ? err.message : 'Could not save security settings')
+                        } finally {
+                          setSecurityBusy(false)
+                        }
+                      }}
+                    >
+                      {securityBusy ? 'Saving…' : 'Save Shared Passcode'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="adm-modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, padding: '12px 20px', borderTop: '1px solid var(--adm-border, rgba(255,255,255,0.08))' }}>
+              <button
+                type="button"
+                className="adm-btn adm-btn-secondary"
+                onClick={() => setSecurityModalOpen(false)}
+              >
+                Close
               </button>
             </div>
           </div>
