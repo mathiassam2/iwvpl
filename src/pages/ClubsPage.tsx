@@ -12,15 +12,15 @@ import type { Club } from '@/types/site'
 type Filter = 'all' | ClubStatus
 
 const FILTERS: Array<{ id: Filter; label: string }> = [
-  { id: 'all', label: 'All clubs' },
   { id: 'Active', label: 'Active' },
   { id: 'Non-Active', label: 'Non-active' },
   { id: 'Pending Approval', label: 'Pending' },
+  { id: 'all', label: 'All clubs' },
 ]
 
 export default function ClubsPage() {
   const seasonName = useSeasonName()
-  const [filter, setFilter] = useState<Filter>('all')
+  const [filter, setFilter] = useState<Filter>('Active')
   const [q, setQ] = useState('')
 
   /**
