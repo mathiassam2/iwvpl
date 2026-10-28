@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Link } from 'react-router-dom'
 import { Badge, Button, ButtonLink, Container, EmptyState, Eyebrow, Section, SectionHead } from '@/components/ui'
 import { HeaderWash } from '@/components/layout/HeaderWash'
@@ -26,6 +27,8 @@ export function CartPanel() {
   const closeRef = useRef<HTMLButtonElement>(null)
   const [panelBusy, setPanelBusy] = useState(false)
   const [panelError, setPanelError] = useState<string | null>(null)
+
+  if (user?.role === 'player') return null
 
   const handlePanelCheckout = async () => {
     if (detailed.length === 0) return
@@ -219,6 +222,15 @@ export function CartPanel() {
 export function CartView() {
   const { detailed, count, total, canTotal, setQty, remove, clear, add, has } = useCart()
   const { user } = useAuth()
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    if (user?.role === 'player') {
+      navigate('/dashboard', { replace: true })
+    }
+  }, [user, navigate])
+
+  if (user?.role === 'player') return null
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 

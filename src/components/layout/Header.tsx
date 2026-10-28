@@ -239,6 +239,9 @@ export function Header() {
      menu. Read here rather than inside AccountMenu because the same decision
      governs the mobile drawer further down. */
   const { user } = useAuth()
+  const isManager = Boolean(
+    user && (user.role === 'club_manager' || user.role === 'owner' || user.role === 'admin')
+  )
 
   const frosted = scrolled || hovered || focusWithin
 
@@ -381,7 +384,7 @@ export function Header() {
              every width, and matches where auto-placement puts them once the
              nav is back. */}
         <div className="col-start-3 flex items-center justify-end gap-2">
-          {user && <CartButton />}
+          {isManager && <CartButton />}
           {user ? (
             <AccountMenu />
           ) : (
@@ -442,7 +445,7 @@ export function Header() {
       {/* Both the button and the panel are behind an account. A cart you can
           fill but not check out is a dead end, and the badge counting items a
           signed-out visitor cannot act on is noise. */}
-      {user && <CartPanel />}
+      {isManager && <CartPanel />}
 
       {/* ---------- mobile drawer ---------- */}
       {/* A scrim sits behind the sheet, and the sheet itself is fully opaque.

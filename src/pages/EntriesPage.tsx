@@ -70,20 +70,22 @@ export default function EntriesPage() {
                           <span className="numeric text-xl font-bold text-[var(--accent-text)]">
                             {p.price}
                           </span>
-                          <Button
-                            size="sm"
-                            onClick={() => {
-                              if (!has(p.slug)) add(p.slug)
-                              // The cart panel only exists behind an account. A
-                              // signed-out visitor gets the cart page instead,
-                              // which is the thing that actually shows the item
-                              // landed — otherwise the click looks broken.
-                              if (user) openPanel()
-                              else navigate('/cart')
-                            }}
-                          >
-                            {has(p.slug) ? 'In cart' : 'Add to cart'}
-                          </Button>
+                          {user?.role === 'player' ? (
+                            <span className="text-[12px] font-semibold text-[var(--text-faint)]">
+                              Managers only
+                            </span>
+                          ) : (
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                if (!has(p.slug)) add(p.slug)
+                                if (user) openPanel()
+                                else navigate('/cart')
+                              }}
+                            >
+                              {has(p.slug) ? 'In cart' : 'Add to cart'}
+                            </Button>
+                          )}
                         </div>
                       </div>
                     </Card>
@@ -91,11 +93,13 @@ export default function EntriesPage() {
                 ))}
               </ul>
 
-              <div className="mt-6">
-                <ButtonLink to="/cart" variant="outline">
-                  Go to cart
-                </ButtonLink>
-              </div>
+              {user?.role !== 'player' && (
+                <div className="mt-6">
+                  <ButtonLink to="/cart" variant="outline">
+                    Go to cart
+                  </ButtonLink>
+                </div>
+              )}
             </div>
 
             {/* ---------------------------------------------- aside ------------- */}
