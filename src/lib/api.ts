@@ -217,6 +217,14 @@ export const saveManagerLineup = (lineup: ClubLineup) =>
     body: JSON.stringify({ lineup }),
   })
 
+export const releaseSquadPlayer = (playerId: number) =>
+  request<{ ok: true; playerId: number; gamertag: string }>(
+    `/api/manager/players/${playerId}/release`,
+    {
+      method: 'POST',
+    },
+  )
+
 export const updateSquadPlayerShirt = (playerId: number, shirtNumber: number | null) =>
   request<{ ok: true; playerId: number; shirtNumber: number | null }>(
     `/api/manager/players/${playerId}`,
@@ -334,6 +342,24 @@ export const createCheckout = (payload: {
   clubName?: string | null
   metadata?: Record<string, any>
 }) => post<CheckoutSessionResult>('/api/payments/checkout-session', payload)
+
+export interface UserOrder {
+  id: number
+  order_number: string
+  total_amount: number
+  currency: string
+  status: string
+  stripe_session_id: string | null
+  stripe_payment_intent_id: string | null
+  items: Array<{ name: string; amount: number; quantity: number }>
+  customer_email: string
+  customer_name?: string | null
+  paid_at: string | null
+  created_at: string
+}
+
+export const getMyOrders = () =>
+  request<{ ok: true; orders: UserOrder[] }>('/api/payments/my-orders')
 
 export const getOrderSession = (sessionId: string) =>
   request<OrderSessionResult>(`/api/payments/session/${encodeURIComponent(sessionId)}`)

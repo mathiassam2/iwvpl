@@ -225,15 +225,15 @@ auth.post(
     const clubLogo = clubLogoRaw || null
 
     if (gamertag) {
-      const clash = await queryOne(
-        'SELECT id FROM players WHERE gamertag_key = ?',
+      const clash = await queryOne<{ id: number; user_id: number | null }>(
+        'SELECT id, user_id FROM players WHERE gamertag_key = ?',
         [gamertagKey(gamertag)],
       )
-      if (clash) {
+      if (clash && clash.user_id) {
         throw Object.assign(
           new Error(
-            'That gamertag is already registered in the league. ' +
-              'Contact the league admin to link your account.',
+            'That gamertag is already linked to another account. ' +
+              'Contact the league admin or Discord support.',
           ),
           { status: 400 },
         )
@@ -267,20 +267,33 @@ auth.post(
 
       let playerId: number | null = null
       if (gamertag) {
-        const [res] = await conn.execute(
-          `INSERT INTO players
-             (gamertag, gamertag_key, slug, shirt_number, club_id, is_free_agent, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-          [
-            gamertag,
-            gamertagKey(gamertag),
-            clubSlug(gamertag),
-            shirtNumber,
-            clubId ?? null,
-            clubId ? false : true,
-          ],
+        const [existingRows] = await conn.query(
+          'SELECT id, user_id FROM players WHERE gamertag_key = ? FOR UPDATE',
+          [gamertagKey(gamertag)],
         )
-        playerId = (res as any).insertId
+        const matched = (existingRows as any[])[0]
+        if (matched && !matched.user_id) {
+          playerId = matched.id
+          await conn.execute(
+            'UPDATE players SET shirt_number = COALESCE(?, shirt_number), club_id = COALESCE(?, club_id), is_free_agent = IF(club_id IS NULL AND ? IS NULL, TRUE, FALSE), updated_at = NOW() WHERE id = ?',
+            [shirtNumber, clubId ?? null, clubId ?? null, playerId],
+          )
+        } else if (!matched) {
+          const [res] = await conn.execute(
+            `INSERT INTO players
+               (gamertag, gamertag_key, slug, shirt_number, club_id, is_free_agent, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+            [
+              gamertag,
+              gamertagKey(gamertag),
+              clubSlug(gamertag),
+              shirtNumber,
+              clubId ?? null,
+              clubId ? false : true,
+            ],
+          )
+          playerId = (res as any).insertId
+        }
       }
 
       const [userRes] = await conn.execute(

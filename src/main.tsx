@@ -7,6 +7,14 @@ import '@/styles/index.css'
 // Resolve the theme before the first paint so there is no flash of the wrong mode.
 initTheme()
 
+// Handle hash router redirect from Stripe or external links without hash
+if (window.location.pathname.startsWith('/checkout/success')) {
+  const search = window.location.search
+  window.location.replace(`/#/checkout/success${search}`)
+} else if (window.location.pathname.startsWith('/cart')) {
+  window.location.replace('/#/cart')
+}
+
 // Take scroll restoration off the browser.
 //
 // Left on 'auto' (the default), refreshing anywhere down the page restores

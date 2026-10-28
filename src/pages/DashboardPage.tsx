@@ -33,6 +33,9 @@ import {
   updateManagerClub,
   updateMyPlayerProfile,
   updateSquadPlayerShirt,
+  releaseSquadPlayer,
+  getMyOrders,
+  type UserOrder,
   type ManagerClub,
 
   type Offer,
@@ -280,6 +283,32 @@ function ManagerPanel() {
   const isManagerInSquad = squadList.some(
     (p) => (user?.playerId && p.id === user.playerId) || (user?.id && p.user_id === user.id),
   )
+
+  const handleReleasePlayer = async (p: { id: number; gamertag: string; user_id?: number | null }) => {
+    const isSelf = (user?.playerId && p.id === user.playerId) || (user?.id && p.user_id === user.id)
+    const confirmMsg = isSelf
+      ? 'Are you sure you want to step down from the squad as Playing Captain? You will become a free agent.'
+      : `Are you sure you want to release ${p.gamertag} from your squad? They will become a free agent.`
+    if (!window.confirm(confirmMsg)) return
+
+    setBusy(true)
+    setNotice(null)
+    try {
+      await releaseSquadPlayer(p.id)
+      setNotice({
+        kind: 'ok',
+        text: isSelf
+          ? 'You have stepped down from the squad and are now a free agent.'
+          : `${p.gamertag} has been released and is now a free agent.`,
+      })
+      await loadClub()
+      await refresh()
+    } catch (err) {
+      setNotice({ kind: 'error', text: msg(err) })
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const handleClaimSelfPlayer = async (e: FormEvent) => {
     e.preventDefault()
@@ -1227,6 +1256,15 @@ function ManagerPanel() {
                     }}
                     className="h-8 w-14 rounded-lg border border-[var(--border-strong)] bg-[var(--bg)] px-2 text-center font-mono text-xs font-bold text-[var(--text-strong)]"
                   />
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => handleReleasePlayer(p)}
+                    className="adm-btn adm-btn-danger ml-1 px-2.5 py-1 text-xs font-semibold shrink-0"
+                    title={(user?.playerId && p.id === user.playerId) || (user?.id && p.user_id === user.id) ? "Leave Squad" : "Release Player"}
+                  >
+                    {(user?.playerId && p.id === user.playerId) || (user?.id && p.user_id === user.id) ? "Leave" : "Release"}
+                  </button>
                 </div>
                 {p.pending > 0 && (
                   <span className="rounded-full bg-[var(--accent-tint)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--accent-text)]">
@@ -1512,6 +1550,153 @@ function PlayerPanel() {
 
 /* =================================================================== page */
 
+/* ========================================================= orders & receipts */
+
+function OrdersSection() {
+  const [orders, setOrders] = useState<UserOrder[]>([])
+  const [loading, setLoading] = useState(true)
+  const [activeReceipt, setActiveReceipt] = useState<UserOrder | null>(null)
+
+  useEffect(() => {
+    let active = true
+    getMyOrders()
+      .then((res) => {
+        if (active) setOrders(res.orders || [])
+      })
+      .catch(() => {
+        if (active) setOrders([])
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  if (loading || orders.length === 0) return null
+
+  return (
+    <section className="mt-8 rounded-card border border-[var(--border-strong)] bg-[var(--surface)] p-4 sm:p-5">
+      <PanelHead label="Purchases" title="Payment History & Receipts" />
+      <div className="space-y-3">
+        {orders.map((o) => (
+          <div key={o.id} className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)]/50 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] pb-2.5">
+              <div>
+                <span className="font-mono text-xs font-bold text-[var(--accent-text)]">{o.order_number}</span>
+                <span className="ml-2 text-[11px] text-[var(--text-muted)]">
+                  {new Date(o.paid_at || o.created_at).toLocaleDateString()}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="adm-status-badge status-active text-[10px]">
+                  {o.status.toUpperCase()}
+                </span>
+                <span className="font-mono text-sm font-bold text-[var(--text-strong)]">
+                  {o.currency} {Number(o.total_amount).toFixed(2)}
+                </span>
+              </div>
+            </div>
+
+            {o.items && o.items.length > 0 && (
+              <ul className="mt-2.5 space-y-1 text-xs text-[var(--text-muted)]">
+                {o.items.map((it, idx) => (
+                  <li key={idx} className="flex justify-between">
+                    <span>{it.quantity}× {it.name}</span>
+                    <span className="font-mono">{o.currency} {(it.amount * it.quantity).toFixed(2)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <div className="mt-3 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setActiveReceipt(o)}
+                className="adm-btn adm-btn-secondary px-2.5 py-1 text-xs font-semibold"
+              >
+                🖨️ View & Print Receipt
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {activeReceipt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="surface w-full max-w-lg rounded-2xl border border-[var(--border)] p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
+              <div>
+                <span className="text-xs uppercase tracking-wider text-[var(--text-muted)]">IWVPL Official Receipt</span>
+                <p className="font-mono text-sm font-bold text-[var(--accent-text)]">{activeReceipt.order_number}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveReceipt(null)}
+                className="text-lg text-[var(--text-muted)] hover:text-[var(--text-strong)]"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="my-4 space-y-3 text-xs">
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-[var(--text-faint)]">Date</span>
+                  <p className="text-[var(--text-strong)] font-medium">
+                    {new Date(activeReceipt.paid_at || activeReceipt.created_at).toLocaleString()}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-[var(--text-faint)]">Payment Method</span>
+                  <p className="text-[var(--text-strong)] font-medium">Stripe Card Payment</p>
+                </div>
+              </div>
+
+              {activeReceipt.items && (
+                <div className="border-t border-[var(--border)] pt-2 space-y-1">
+                  <span className="text-[10px] font-bold uppercase text-[var(--text-faint)]">Items</span>
+                  {activeReceipt.items.map((it, idx) => (
+                    <div key={idx} className="flex justify-between py-1">
+                      <span>{it.quantity}× {it.name}</span>
+                      <span className="font-mono">{activeReceipt.currency} {(it.amount * it.quantity).toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex justify-between border-t border-[var(--border)] pt-2 text-sm font-bold">
+                <span>Total Paid</span>
+                <span className="font-mono text-[var(--accent-text)]">
+                  {activeReceipt.currency} {Number(activeReceipt.total_amount).toFixed(2)}
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="adm-btn adm-btn-primary px-3 py-1.5 text-xs font-semibold"
+              >
+                🖨️ Print / Save PDF
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveReceipt(null)}
+                className="adm-btn adm-btn-outline px-3 py-1.5 text-xs font-semibold"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
+  )
+}
+
 export default function DashboardPage() {
   const { user, loading } = useAuth()
   const navigate = useNavigate()
@@ -1560,6 +1745,7 @@ export default function DashboardPage() {
 
       <Container size="default" className="pb-20">
         {isPlayer ? <PlayerPanel /> : <ManagerPanel />}
+        <OrdersSection />
       </Container>
     </div>
   )

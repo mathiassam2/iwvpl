@@ -8,6 +8,7 @@
  */
 
 import { config } from '../config.js'
+import { clubSlug } from './slug.js'
 import { execute, queryAll, queryOne } from '../db.js'
 import {
   type AccountUser,
@@ -157,9 +158,9 @@ export async function findAndMigrateWordPressUser(
           ])
         } else {
           await execute(
-            `INSERT INTO players (gamertag, gamertag_key, name, user_id, is_active, created_at, updated_at)
-             VALUES (?, LOWER(?), ?, ?, TRUE, NOW(), NOW())`,
-            [gamertag, gamertag, displayName, userId]
+            `INSERT INTO players (gamertag, gamertag_key, slug, is_free_agent, user_id, created_at, updated_at)
+             VALUES (?, LOWER(?), ?, TRUE, ?, NOW(), NOW())`,
+            [gamertag, gamertag, clubSlug(gamertag), userId]
           )
         }
       }

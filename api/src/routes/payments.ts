@@ -100,8 +100,8 @@ payments.post(
       baseUrl = 'https://beta.iwvpl.asia'
     }
 
-    const successUrl = `${baseUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`
-    const cancelUrl = `${baseUrl}/cart`
+    const successUrl = `${baseUrl}/#/checkout/success?session_id={CHECKOUT_SESSION_ID}`
+    const cancelUrl = `${baseUrl}/#/cart`
 
     // Pre-create pending order in DB
     const orderId = await execute(
@@ -155,6 +155,47 @@ payments.post(
 /**
  * Retrieve session & order status for confirmation display.
  */
+/**
+ * List orders and receipts for the currently signed-in user.
+ */
+payments.get(
+  '/my-orders',
+  handler(async (req, res) => {
+    const sessionToken = req.cookies?.[config.auth.cookieName]
+    const user = await resolveSession(sessionToken)
+    if (!user) {
+      return res.status(401).json({ error: 'Sign in to view orders.' })
+    }
+
+    const rows = await queryOne(
+      `SELECT id FROM users WHERE id = ?`,
+      [user.id]
+    )
+    if (!rows) return res.status(401).json({ error: 'User not found.' })
+
+    const { queryAll } = await import('../db.js')
+    const orders = await queryAll<any>(
+      `SELECT id, order_number, user_id, club_id, customer_email, customer_name,
+              total_amount, currency, status, stripe_session_id, stripe_payment_intent_id,
+              items_json, metadata_json, paid_at, created_at
+         FROM orders
+        WHERE user_id = ? OR (customer_email IS NOT NULL AND LOWER(customer_email) = LOWER(?))
+        ORDER BY id DESC
+        LIMIT 50`,
+      [user.id, user.email],
+    )
+
+    res.json({
+      ok: true,
+      orders: orders.map((o) => ({
+        ...o,
+        items: typeof o.items_json === 'string' ? JSON.parse(o.items_json) : o.items_json,
+        metadata: typeof o.metadata_json === 'string' ? JSON.parse(o.metadata_json) : o.metadata_json,
+      })),
+    })
+  }),
+)
+
 payments.get(
   '/session/:sessionId',
   handler(async (req, res) => {

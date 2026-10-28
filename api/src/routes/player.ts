@@ -13,8 +13,10 @@
 
 import { Router } from 'express'
 import { queryAll, queryOne, withTransaction } from '../db.js'
-import { requireAuth, requireRole } from '../middleware/auth.js'
+import { requireAuth } from '../middleware/auth.js'
 import { notify } from '../domain/auth.js'
+import { clubSlug, gamertagKey } from '../domain/slug.js'
+import { execute } from '../db.js'
 
 export const player = Router()
 
@@ -41,10 +43,42 @@ async function ownPlayer(userId: number): Promise<{
   club_id: number | null
   shirt_number: number | null
 }> {
-  const row = await queryOne<{ id: number; gamertag: string; club_id: number | null; shirt_number: number | null }>(
+  let row = await queryOne<{ id: number; gamertag: string; club_id: number | null; shirt_number: number | null }>(
     'SELECT id, gamertag, club_id, shirt_number FROM players WHERE user_id = ?',
     [userId],
   )
+  if (!row) {
+    const user = await queryOne<{ display_name: string | null; username?: string | null; email: string }>(
+      'SELECT display_name, username, email FROM users WHERE id = ?',
+      [userId],
+    )
+    const candidateName = user?.display_name?.trim() || user?.username?.trim() || user?.email?.split('@')[0] || ''
+    if (candidateName) {
+      const match = await queryOne<{ id: number }>(
+        'SELECT id FROM players WHERE gamertag_key = ? AND user_id IS NULL LIMIT 1',
+        [gamertagKey(candidateName)],
+      )
+      if (match) {
+        await execute('UPDATE players SET user_id = ?, updated_at = NOW() WHERE id = ?', [userId, match.id])
+        row = await queryOne<{ id: number; gamertag: string; club_id: number | null; shirt_number: number | null }>(
+          'SELECT id, gamertag, club_id, shirt_number FROM players WHERE id = ?',
+          [match.id],
+        )
+      } else {
+        const key = gamertagKey(candidateName)
+        const slug = clubSlug(candidateName)
+        await execute(
+          `INSERT INTO players (gamertag, gamertag_key, slug, is_free_agent, user_id, created_at, updated_at)
+           VALUES (?, ?, ?, TRUE, ?, NOW(), NOW())`,
+          [candidateName, key, slug, userId],
+        )
+        row = await queryOne<{ id: number; gamertag: string; club_id: number | null; shirt_number: number | null }>(
+          'SELECT id, gamertag, club_id, shirt_number FROM players WHERE user_id = ?',
+          [userId],
+        )
+      }
+    }
+  }
   if (!row) {
     throw Object.assign(new Error('This account has no player profile.'), { status: 404 })
   }
@@ -66,8 +100,7 @@ async function notifyClubOwner(clubId: number | null, kind: string, title: strin
 
 player.get(
   '/me',
-  requireRole('player'),
-  handler(async (req, res) => {
+    handler(async (req, res) => {
     const me = await ownPlayer(req.user!.id)
     const club = me.club_id
       ? await queryOne<{ id: number; name: string; slug: string }>(
@@ -88,8 +121,7 @@ player.get(
 
 player.patch(
   '/me',
-  requireRole('player'),
-  handler(async (req, res) => {
+    handler(async (req, res) => {
     const me = await ownPlayer(req.user!.id)
     const rawShirt = req.body?.shirtNumber
     let shirtNumber: number | null = null
@@ -167,8 +199,7 @@ player.patch(
 /** Incoming offers awaiting a decision. */
 player.get(
   '/offers',
-  requireRole('player'),
-  handler(async (req, res) => {
+    handler(async (req, res) => {
     const me = await ownPlayer(req.user!.id)
     const rows = await queryAll(
       `SELECT tr.id, tr.kind, tr.message, tr.status, tr.created_at,
@@ -196,8 +227,7 @@ player.get(
  */
 player.post(
   '/offers/:id/:decision',
-  requireRole('player'),
-  handler(async (req, res) => {
+    handler(async (req, res) => {
     const decision = String(req.params.decision)
     if (decision !== 'accept' && decision !== 'reject') {
       bad('Decision must be accept or reject.')
@@ -319,8 +349,7 @@ player.post(
  */
 player.post(
   '/leave',
-  requireRole('player'),
-  handler(async (req, res) => {
+    handler(async (req, res) => {
     const me = await ownPlayer(req.user!.id)
     if (!me.club_id) {
       throw Object.assign(new Error('You are not currently in a club.'), { status: 409 })

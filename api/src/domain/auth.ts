@@ -188,18 +188,21 @@ export async function pruneExpiredSessions(): Promise<void> {
  * avoids the Secure requirement, which would otherwise reject the cookie over
  * plain http.
  */
-function cookieBase() {
+function cookieBase(res?: Response) {
+  const host = res?.req?.get('host')?.split(':')[0] || ''
+  const isIwvpl = host === 'iwvpl.asia' || host.endsWith('.iwvpl.asia')
   return {
     httpOnly: true,
     secure: config.isProd,
-    sameSite: (config.isProd ? 'none' : 'lax') as 'none' | 'lax',
+    sameSite: 'lax' as const,
     path: '/',
+    ...(isIwvpl ? { domain: '.iwvpl.asia' } : {}),
   }
 }
 
 export function setSessionCookie(res: Response, token: string): void {
   res.cookie(config.auth.cookieName, token, {
-    ...cookieBase(),
+    ...cookieBase(res),
     maxAge: config.auth.sessionDays * 24 * 60 * 60 * 1000,
   })
 }
@@ -213,7 +216,7 @@ export function setSessionCookie(res: Response, token: string): void {
  * out" — which looks like the button simply does not work.
  */
 export function clearSessionCookie(res: Response): void {
-  res.clearCookie(config.auth.cookieName, cookieBase())
+  res.clearCookie(config.auth.cookieName, cookieBase(res))
 }
 
 /* ---------------------------------------------------------- notifications */
@@ -250,10 +253,16 @@ export async function unreadCount(userId: number): Promise<number> {
  * address in the header.
  */
 export async function toPublicUser(user: AccountUser): Promise<PublicUser> {
-  const club = user.club_id
+  const effectiveClubId =
+    user.club_id ??
+    (user.player_id
+      ? (await queryOne<{ club_id: number | null }>('SELECT club_id FROM players WHERE id = ?', [user.player_id]))?.club_id ?? null
+      : null)
+
+  const club = effectiveClubId
     ? await queryOne<{ name: string; slug: string; status: string }>(
         'SELECT name, slug, status FROM clubs WHERE id = ?',
-        [user.club_id],
+        [effectiveClubId],
       )
     : undefined
 
@@ -262,7 +271,7 @@ export async function toPublicUser(user: AccountUser): Promise<PublicUser> {
     email: user.email,
     name: user.display_name || user.gamertag || user.email.split('@')[0],
     role: user.role,
-    clubId: user.club_id,
+    clubId: effectiveClubId,
     clubName: club?.name ?? null,
     clubSlug: club?.slug ?? null,
     clubStatus: club?.status ?? null,

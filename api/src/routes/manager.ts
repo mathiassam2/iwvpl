@@ -232,11 +232,10 @@ manager.get(
                 LIMIT 1) AS pending_id
          FROM players p
          LEFT JOIN clubs c ON c.id = p.club_id
-        WHERE p.user_id IS NOT NULL
-          AND (p.club_id IS NULL OR p.club_id <> ?)
+        WHERE (p.club_id IS NULL OR p.club_id <> ?)
           AND (? = '' OR p.gamertag LIKE ?)
-        ORDER BY p.gamertag
-        LIMIT 25`,
+        ORDER BY (p.user_id IS NOT NULL) DESC, p.gamertag
+        LIMIT 30`,
       [club.id, club.id, q, `%${q}%`],
     )
 
@@ -267,14 +266,8 @@ manager.post(
       [playerId],
     )
     if (!player) throw Object.assign(new Error('That player does not exist.'), { status: 404 })
-    if (!player.user_id) {
-      // Defence in depth: the search already filters these out, but this route
-      // is reachable directly.
-      throw Object.assign(
-        new Error('That player has no account, so they cannot be offered to.'),
-        { status: 400 },
-      )
-    }
+    // If player has not yet created a web account, the offer is still saved in transfer_requests
+    // and will immediately appear in their inbox when they register or claim their gamertag.
     if (player.club_id === club.id) {
       throw Object.assign(new Error('That player already plays for your club.'), { status: 400 })
     }
@@ -300,13 +293,15 @@ manager.post(
       return (res2 as any).insertId
     })
 
-    await notify(
-      player.user_id,
-      'offer',
-      `Offer from ${club.name}`,
-      message || `${club.name} would like to sign you.`,
-      '/dashboard',
-    )
+    if (player.user_id) {
+      await notify(
+        player.user_id,
+        'offer',
+        `Offer from ${club.name}`,
+        message || `${club.name} would like to sign you.`,
+        '/dashboard',
+      ).catch(() => undefined)
+    }
 
     res.status(201).json({ ok: true, id: requestId })
   }),
@@ -490,6 +485,94 @@ manager.put(
 /**
  * Update a squad player's jersey number (1-99).
  */
+/**
+ * Release a player from the club's squad back into the free agent recruitment pool.
+ */
+manager.post(
+  '/players/:playerId/release',
+  handler(async (req, res) => {
+    const club = await ownClub(req.user!.id)
+    const playerId = id(req.params.playerId, 'Player')
+
+    const player = await queryOne<{ id: number; gamertag: string; user_id: number | null; club_id: number | null }>(
+      'SELECT id, gamertag, user_id, club_id FROM players WHERE id = ? AND club_id = ?',
+      [playerId, club.id],
+    )
+    if (!player) {
+      bad('That player is not in your squad.')
+    }
+
+    await withTransaction(async (conn) => {
+      // 1. Reset player club and mark as free agent
+      await conn.execute(
+        'UPDATE players SET club_id = NULL, is_free_agent = TRUE, updated_at = NOW() WHERE id = ?',
+        [playerId],
+      )
+
+      // 2. Insert transfer history record
+      await conn.execute(
+        `INSERT INTO transfers (player_id, from_club_id, to_club_id, occurred_at, kind, created_at)
+         VALUES (?, ?, NULL, CURDATE(), 'released', NOW())`,
+        [playerId, club.id],
+      )
+
+      // 3. Remove player from club's starting XI / bench lineup if present
+      const [clubRows] = await conn.query(
+        'SELECT starting_xi_json FROM clubs WHERE id = ? FOR UPDATE',
+        [club.id],
+      )
+      const currentClub = (clubRows as any[])[0]
+      if (currentClub?.starting_xi_json) {
+        try {
+          const parsed = JSON.parse(currentClub.starting_xi_json)
+          let modified = false
+          if (Array.isArray(parsed.starters)) {
+            for (let i = 0; i < parsed.starters.length; i++) {
+              const s = parsed.starters[i]
+              if (s && (Number(s.playerId) === Number(playerId) || String(s.gamertag ?? '').toLowerCase() === player.gamertag.toLowerCase())) {
+                parsed.starters[i] = null
+                modified = true
+              }
+            }
+          }
+          if (Array.isArray(parsed.bench)) {
+            const beforeLen = parsed.bench.length
+            parsed.bench = parsed.bench.filter(
+              (b: any) => b && Number(b.playerId) !== Number(playerId) && String(b.gamertag ?? '').toLowerCase() !== player.gamertag.toLowerCase(),
+            )
+            if (parsed.bench.length !== beforeLen) modified = true
+          }
+          if (modified) {
+            await conn.execute(
+              'UPDATE clubs SET starting_xi_json = ?, updated_at = NOW() WHERE id = ?',
+              [JSON.stringify(parsed), club.id],
+            )
+          }
+        } catch {
+          /* ignore json errors */
+        }
+      }
+    })
+
+    if (player.user_id) {
+      await notify(
+        player.user_id,
+        'player_released',
+        'Released from squad',
+        `You have been released from ${club.name} and are now a free agent.`,
+        '/dashboard',
+      ).catch(() => undefined)
+    }
+
+    res.json({ ok: true, playerId, gamertag: player.gamertag })
+  }),
+)
+
+manager.delete('/players/:playerId', (req: any, res: any, next: any) => {
+    req.url = '/players/' + req.params.playerId + '/release'
+    return (manager as any).handle(req, res, next)
+  })
+
 manager.patch(
   '/players/:playerId',
   handler(async (req, res) => {
@@ -618,7 +701,6 @@ manager.post(
                 club_id = ?,
                 is_free_agent = FALSE,
                 shirt_number = COALESCE(?, shirt_number),
-                is_active = TRUE,
                 updated_at = NOW()
           WHERE id = ?`,
         [gamertag, key, clubSlug(gamertag), club.id, shirtNumber, existing.id],
@@ -634,7 +716,6 @@ manager.post(
                 club_id = ?,
                 is_free_agent = FALSE,
                 shirt_number = COALESCE(?, shirt_number),
-                is_active = TRUE,
                 updated_at = NOW()
           WHERE id = ?`,
         [req.user!.id, club.id, shirtNumber, clash.id],
@@ -642,8 +723,8 @@ manager.post(
     } else {
       await execute(
         `INSERT INTO players
-           (gamertag, gamertag_key, slug, shirt_number, club_id, is_free_agent, user_id, is_active, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, FALSE, ?, TRUE, NOW(), NOW())`,
+           (gamertag, gamertag_key, slug, shirt_number, club_id, is_free_agent, user_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, FALSE, ?, NOW(), NOW())`,
         [gamertag, key, clubSlug(gamertag), shirtNumber, club.id, req.user!.id],
       )
       const ins = await queryOne<{ id: number }>('SELECT id FROM players WHERE gamertag_key = ?', [key])

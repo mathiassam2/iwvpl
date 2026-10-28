@@ -161,6 +161,15 @@ app.use((req, res, next) => {
 
 /* ------------------------------------------------------------------- api */
 
+// Prevent caching on dynamic API endpoints so authenticated user states,
+// session checks, and dashboard queries are never served stale from browser or proxy caches.
+app.use('/api', (_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private')
+  res.setHeader('Pragma', 'no-cache')
+  res.setHeader('Expires', '0')
+  next()
+})
+
 app.use('/api', league)
 
 // Account routes. Mounted before the admin gate: these are the public site's

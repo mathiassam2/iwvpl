@@ -8,7 +8,12 @@ import { useAuth } from '@/lib/auth'
 
 export default function CheckoutSuccessPage() {
   const [searchParams] = useSearchParams()
-  const sessionId = searchParams.get('session_id')
+  // Support both hash search params (?session_id=) and window.location.search
+  const sessionId =
+    searchParams.get('session_id') ||
+    new URLSearchParams(window.location.search).get('session_id') ||
+    new URLSearchParams(window.location.hash.split('?')[1] || '').get('session_id')
+
   const { clear } = useCart()
   const { user } = useAuth()
 
@@ -92,67 +97,120 @@ export default function CheckoutSuccessPage() {
                   {isPaid ? 'Thank You for Your Order!' : 'Payment Processing'}
                 </h1>
                 <p className="mt-2 text-sm text-[var(--text-muted)] max-w-md mx-auto">
-                  Your transaction has been processed securely via Stripe. A copy of your receipt and tournament entry confirmation has been emailed to you.
+                  Your transaction has been processed securely via Stripe. A copy of your official receipt and tournament entry is detailed below.
                 </p>
               </div>
 
-              {/* Order Receipt Card */}
+              {/* Printable Official Receipt Card */}
               {order && (
-                <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)]/60 p-5 text-left space-y-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] pb-3">
+                <div id="payment-receipt" className="rounded-xl border-2 border-[var(--border)] bg-[var(--surface-muted)]/60 p-5 sm:p-7 text-left space-y-5 print:border-black print:bg-white print:text-black">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] pb-4 print:border-gray-300">
                     <div>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-faint)]">
-                        Order Reference
-                      </span>
-                      <p className="font-mono text-sm font-bold text-[var(--text-strong)]">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg font-black tracking-wider text-[var(--text-strong)] print:text-black">IWVPL</span>
+                        <span className="text-xs uppercase tracking-widest text-[var(--text-muted)]">Official Receipt</span>
+                      </div>
+                      <p className="mt-1 font-mono text-sm font-bold text-[var(--accent-text)]">
                         {order.order_number}
                       </p>
                     </div>
-                    <span className="adm-status-badge status-active text-xs">
-                      {isPaid ? '✓ Paid via Stripe' : order.status.toUpperCase()}
-                    </span>
+                    <div className="text-right">
+                      <span className="adm-status-badge status-active text-xs">
+                        {isPaid ? '✓ Paid via Stripe' : order.status.toUpperCase()}
+                      </span>
+                      <p className="mt-1 text-[11px] text-[var(--text-muted)] print:text-gray-500">
+                        {new Date(order.paid_at || order.created_at).toLocaleString()}
+                      </p>
+                    </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div className="grid grid-cols-2 gap-4 text-xs">
                     <div>
-                      <span className="text-[var(--text-faint)] uppercase font-semibold">Customer Email</span>
-                      <p className="text-[var(--text-strong)] font-medium mt-0.5 truncate">
+                      <span className="text-[10px] uppercase font-bold text-[var(--text-faint)] tracking-wider block">Customer</span>
+                      <p className="text-[var(--text-strong)] font-semibold mt-0.5 truncate">
+                        {order.customer_name || 'IWVPL Competitor'}
+                      </p>
+                      <p className="text-[var(--text-muted)] font-mono text-[11px] truncate">
                         {order.customer_email || session?.customer_email || '—'}
                       </p>
                     </div>
                     <div>
-                      <span className="text-[var(--text-faint)] uppercase font-semibold">Total Paid</span>
-                      <p className="text-base font-bold text-[var(--accent-text)] mt-0.5">
-                        {order.currency} {Number(order.total_amount).toFixed(2)}
+                      <span className="text-[10px] uppercase font-bold text-[var(--text-faint)] tracking-wider block">Payment Details</span>
+                      <p className="text-[var(--text-strong)] font-semibold mt-0.5">
+                        Card Payment (Stripe)
                       </p>
+                      {order.stripe_payment_intent_id && (
+                        <p className="text-[var(--text-muted)] font-mono text-[10px] truncate" title={order.stripe_payment_intent_id}>
+                          Tx: {order.stripe_payment_intent_id}
+                        </p>
+                      )}
                     </div>
                   </div>
 
                   {/* Items purchased */}
                   {order.items && order.items.length > 0 && (
-                    <div className="border-t border-[var(--border)] pt-3 space-y-2">
+                    <div className="border-t border-[var(--border)] pt-4 space-y-2 print:border-gray-300">
                       <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-faint)]">
                         Purchased Items
                       </span>
-                      <ul className="divide-y divide-[var(--border)]/60 text-xs">
-                        {order.items.map((it, idx) => (
-                          <li key={idx} className="py-1.5 flex items-center justify-between">
-                            <span className="font-medium text-[var(--text-strong)]">
-                              {it.quantity}× {it.name}
-                            </span>
-                            <span className="font-mono font-semibold text-[var(--text-muted)]">
-                              {order.currency} {(it.amount * it.quantity).toFixed(2)}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs">
+                          <thead>
+                            <tr className="border-b border-[var(--border)]/60 text-[10px] uppercase text-[var(--text-faint)] print:border-gray-200">
+                              <th className="pb-1.5 font-bold">Item</th>
+                              <th className="pb-1.5 text-center font-bold">Qty</th>
+                              <th className="pb-1.5 text-right font-bold">Unit Price</th>
+                              <th className="pb-1.5 text-right font-bold">Total</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-[var(--border)]/40 print:divide-gray-100">
+                            {order.items.map((it: any, idx: number) => (
+                              <tr key={idx} className="py-2">
+                                <td className="py-2 font-medium text-[var(--text-strong)] print:text-black">
+                                  {it.name}
+                                </td>
+                                <td className="py-2 text-center text-[var(--text-muted)] font-mono">
+                                  {it.quantity}
+                                </td>
+                                <td className="py-2 text-right text-[var(--text-muted)] font-mono">
+                                  {order.currency} {Number(it.amount).toFixed(2)}
+                                </td>
+                                <td className="py-2 text-right font-semibold text-[var(--text-strong)] font-mono print:text-black">
+                                  {order.currency} {(it.amount * it.quantity).toFixed(2)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   )}
+
+                  {/* Grand Total */}
+                  <div className="border-t-2 border-[var(--border)] pt-3 flex items-center justify-between print:border-black">
+                    <span className="text-sm font-bold uppercase tracking-wider text-[var(--text-strong)] print:text-black">
+                      Total Paid
+                    </span>
+                    <span className="font-mono text-xl font-extrabold text-[var(--accent-text)] print:text-black">
+                      {order.currency} {Number(order.total_amount).toFixed(2)}
+                    </span>
+                  </div>
+
+                  {/* Print / Save Receipt Action */}
+                  <div className="pt-2 flex justify-end print:hidden">
+                    <button
+                      type="button"
+                      onClick={() => window.print()}
+                      className="adm-btn adm-btn-secondary gap-1.5 px-3 py-1.5 text-xs font-semibold"
+                    >
+                      🖨️ Print / Save Receipt (PDF)
+                    </button>
+                  </div>
                 </div>
               )}
 
               {/* Next Steps Card */}
-              <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 text-xs text-left space-y-2 text-[var(--text-muted)]">
+              <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 text-xs text-left space-y-2 text-[var(--text-muted)] print:hidden">
                 <strong className="text-[var(--text-strong)] block text-sm">Next Steps</strong>
                 <p>
                   1. Roster submission forms and scheduling details are accessible from your Manager Dashboard.
@@ -166,14 +224,14 @@ export default function CheckoutSuccessPage() {
               </div>
 
               {/* Actions */}
-              <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
+              <div className="pt-2 flex flex-wrap items-center justify-center gap-3 print:hidden">
                 {user?.role === 'club_manager' ? (
                   <ButtonLink to="/dashboard" size="lg">
                     Go to Manager Dashboard →
                   </ButtonLink>
                 ) : (
-                  <ButtonLink to="/standings" size="lg">
-                    View Standings & Matches →
+                  <ButtonLink to="/dashboard" size="lg">
+                    Go to My Dashboard →
                   </ButtonLink>
                 )}
                 <ButtonLink to="/" variant="outline" size="lg">
