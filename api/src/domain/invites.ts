@@ -62,13 +62,16 @@ export function generateRandomInviteCode(): string {
 export async function listManagerInvites(): Promise<ManagerInvite[]> {
   try {
     await ensureInvitesTable()
-    const rows = await queryAll<ManagerInvite>(
+    const rows = await queryAll<any>(
       `SELECT i.*, u.display_name AS used_by_name, u.email AS used_by_email
          FROM manager_invites i
          LEFT JOIN users u ON u.id = i.used_by_user_id
         ORDER BY i.is_used ASC, i.created_at DESC`
     )
-    return rows
+    return rows.map((r) => ({
+      ...r,
+      is_used: Boolean(r.is_used),
+    }))
   } catch {
     return []
   }
@@ -95,17 +98,16 @@ export async function createManagerInvite(params: {
     throw Object.assign(new Error(`Invite code "${code}" already exists.`), { status: 400 })
   }
 
-  const res = await execute(
+  await execute(
     `INSERT INTO manager_invites
        (code, target_email, target_club_name, notes, created_by_user_id, is_used, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, FALSE, NOW(), NOW())`,
     [code, targetEmail, targetClubName, notes, params.createdByUserId ?? null]
   )
-  const id = (res as any).insertId
 
   const row = await queryOne<ManagerInvite>(
-    'SELECT * FROM manager_invites WHERE id = ?',
-    [id]
+    'SELECT * FROM manager_invites WHERE code = ?',
+    [code]
   )
   if (!row) throw new Error('Could not retrieve created invite.')
   return row
@@ -113,8 +115,8 @@ export async function createManagerInvite(params: {
 
 export async function deleteManagerInvite(id: number): Promise<boolean> {
   await ensureInvitesTable()
-  const res = await execute('DELETE FROM manager_invites WHERE id = ?', [id])
-  return (res as any).affectedRows > 0
+  const affected = await execute('DELETE FROM manager_invites WHERE id = ?', [id])
+  return affected > 0
 }
 
 export interface VerificationResult {
@@ -148,7 +150,7 @@ export async function verifyManagerInvite(
     return { valid: false, error: 'That invite code is not recognized.' }
   }
 
-  if (invite.is_used) {
+  if (Boolean(invite.is_used)) {
     return { valid: false, error: 'That invite code has already been used.' }
   }
 

@@ -3840,27 +3840,38 @@ admin.get(
 admin.post(
   '/manager-invites',
   handler(async (req, res) => {
-    const invite = await createManagerInvite({
-      code: req.body?.code,
-      targetEmail: req.body?.targetEmail,
-      targetClubName: req.body?.targetClubName,
-      notes: req.body?.notes,
-      createdByUserId: req.user?.id,
-    })
-    res.json({ ok: true, invite })
+    try {
+      const invite = await createManagerInvite({
+        code: req.body?.code,
+        targetEmail: req.body?.targetEmail,
+        targetClubName: req.body?.targetClubName,
+        notes: req.body?.notes,
+        createdByUserId: req.user?.id,
+      })
+      res.json({ ok: true, invite })
+    } catch (err: any) {
+      console.error('Error creating manager invite:', err)
+      const status = Number.isInteger(err?.status) ? err.status : 400
+      res.status(status).json({ error: err?.message || 'Could not create manager invite.' })
+    }
   }),
 )
 
 admin.delete(
   '/manager-invites/:id',
   handler(async (req, res) => {
-    const id = Number.parseInt(req.params.id, 10)
-    if (!Number.isSafeInteger(id) || id < 1) {
-      return res.status(400).json({ error: 'Invite id must be a positive integer.' })
+    try {
+      const id = Number.parseInt(req.params.id, 10)
+      if (!Number.isSafeInteger(id) || id < 1) {
+        return res.status(400).json({ error: 'Invite id must be a positive integer.' })
+      }
+      const deleted = await deleteManagerInvite(id)
+      if (!deleted) return res.status(404).json({ error: 'Invite not found.' })
+      res.json({ ok: true, id })
+    } catch (err: any) {
+      console.error('Error deleting manager invite:', err)
+      res.status(500).json({ error: err?.message || 'Could not delete manager invite.' })
     }
-    const deleted = await deleteManagerInvite(id)
-    if (!deleted) return res.status(404).json({ error: 'Invite not found.' })
-    res.json({ ok: true, id })
   }),
 )
 
