@@ -1,8 +1,10 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Badge, Button, ButtonLink, Container, EmptyState, Eyebrow, Section, SectionHead } from '@/components/ui'
 import { HeaderWash } from '@/components/layout/HeaderWash'
 import { useCart } from '@/lib/cart'
+import { useAuth } from '@/lib/auth'
+import { createCheckout, ApiError } from '@/lib/api'
 import { SITE, siteData } from '@/data'
 import { cx } from '@/lib/format'
 
@@ -20,7 +22,43 @@ function CloseIcon() {
  */
 export function CartPanel() {
   const { detailed, count, total, canTotal, panelOpen, closePanel, setQty, remove, clear } = useCart()
+  const { user } = useAuth()
   const closeRef = useRef<HTMLButtonElement>(null)
+  const [panelBusy, setPanelBusy] = useState(false)
+  const [panelError, setPanelError] = useState<string | null>(null)
+
+  const handlePanelCheckout = async () => {
+    if (detailed.length === 0) return
+    setPanelBusy(true)
+    setPanelError(null)
+    try {
+      const parsePrice = (priceStr: string) => {
+        const m = priceStr.match(/(\d+(?:\.\d+)?)/)
+        return m ? Number.parseFloat(m[1]) : 35
+      }
+
+      const items = detailed.map(({ product, qty }) => ({
+        name: product.name,
+        amount: parsePrice(product.price),
+        quantity: qty,
+        description: product.summary || product.kicker,
+        image: product.image?.startsWith('http') ? product.image : `${window.location.origin}${product.image}`,
+      }))
+
+      const res = await createCheckout({
+        items,
+        customerEmail: user?.email,
+        customerName: user?.name,
+        clubId: user?.clubId,
+        clubName: user?.clubName,
+      })
+
+      window.location.href = res.url
+    } catch (err) {
+      setPanelError(err instanceof ApiError ? err.message : 'Could not initialize Stripe Checkout.')
+      setPanelBusy(false)
+    }
+  }
 
   useEffect(() => {
     if (!panelOpen) return
@@ -153,9 +191,19 @@ export function CartPanel() {
               </span>
             </div>
           )}
+          {panelError && (
+            <p className="mb-2 text-xs text-red-400 font-medium">{panelError}</p>
+          )}
           <div className="flex flex-col gap-2">
-            <ButtonLink to="/cart" onClick={closePanel} className="w-full">
-              Go to checkout
+            <Button
+              className="w-full"
+              disabled={panelBusy || detailed.length === 0}
+              onClick={handlePanelCheckout}
+            >
+              {panelBusy ? 'Opening Stripe…' : '💳 Pay with Stripe'}
+            </Button>
+            <ButtonLink to="/cart" onClick={closePanel} variant="outline" className="w-full">
+              Go to full cart
             </ButtonLink>
             <Button variant="ghost" onClick={clear} className="w-full">
               Clear cart
@@ -170,6 +218,42 @@ export function CartPanel() {
 /** Full-page cart, mirroring the WooCommerce checkout layout. */
 export function CartView() {
   const { detailed, count, total, canTotal, setQty, remove, clear, add, has } = useCart()
+  const { user } = useAuth()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleCheckout = async () => {
+    if (detailed.length === 0) return
+    setBusy(true)
+    setError(null)
+    try {
+      const parsePrice = (priceStr: string) => {
+        const m = priceStr.match(/(\d+(?:\.\d+)?)/)
+        return m ? Number.parseFloat(m[1]) : 35
+      }
+
+      const items = detailed.map(({ product, qty }) => ({
+        name: product.name,
+        amount: parsePrice(product.price),
+        quantity: qty,
+        description: product.summary || product.kicker,
+        image: product.image?.startsWith('http') ? product.image : `${window.location.origin}${product.image}`,
+      }))
+
+      const res = await createCheckout({
+        items,
+        customerEmail: user?.email,
+        customerName: user?.name,
+        clubId: user?.clubId,
+        clubName: user?.clubName,
+      })
+
+      window.location.href = res.url
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not initialize Stripe Checkout.')
+      setBusy(false)
+    }
+  }
   return (
     /* Header overlap, same treatment as PageHeader and the club/match bands.
        Without it the bar sits on a flat `--bg` fill and reads as a solid strip. */
@@ -266,11 +350,17 @@ export function CartView() {
                 </span>
               </div>
 
+              {error && (
+                <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-400 font-medium">
+                  {error}
+                </div>
+              )}
+
               <div className="mt-6 flex flex-wrap items-center gap-3">
-                <Button size="lg" onClick={() => undefined}>
-                  Proceed to payment
+                <Button size="lg" disabled={busy} onClick={handleCheckout}>
+                  {busy ? 'Redirecting to Stripe…' : '💳 Proceed to payment (Stripe)'}
                 </Button>
-                <Button variant="outline" size="lg" onClick={clear}>
+                <Button variant="outline" size="lg" disabled={busy} onClick={clear}>
                   Clear cart
                 </Button>
               </div>

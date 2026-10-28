@@ -277,3 +277,64 @@ export interface VerifyInviteResult {
 
 export const verifyInvite = (params: { code: string; email?: string; clubName?: string }) =>
   post<VerifyInviteResult>('/api/auth/verify-invite', params)
+
+/* ----------------------------------------------------------------- payments */
+
+export interface CheckoutItem {
+  name: string
+  amount: number
+  quantity: number
+  description?: string
+  image?: string
+}
+
+export interface CheckoutSessionResult {
+  ok: true
+  url: string
+  sessionId: string
+  orderNumber: string
+  totalAmount: number
+  currency: string
+}
+
+export interface OrderSessionResult {
+  ok: true
+  order: {
+    id: number
+    order_number: string
+    user_id: number | null
+    club_id: number | null
+    customer_email: string
+    customer_name: string | null
+    total_amount: number
+    currency: string
+    status: 'pending' | 'paid' | 'failed' | 'cancelled'
+    stripe_session_id: string | null
+    stripe_payment_intent_id: string | null
+    items: CheckoutItem[]
+    metadata?: Record<string, any>
+    paid_at: string | null
+    created_at: string
+  } | null
+  session: {
+    id: string
+    payment_status: string
+    customer_email: string | null
+    customer_name?: string | null
+    amount_total: number
+    currency: string
+  } | null
+}
+
+export const createCheckout = (payload: {
+  items: CheckoutItem[]
+  customerEmail?: string
+  customerName?: string
+  clubId?: number | null
+  clubName?: string | null
+  metadata?: Record<string, any>
+}) => post<CheckoutSessionResult>('/api/payments/checkout-session', payload)
+
+export const getOrderSession = (sessionId: string) =>
+  request<OrderSessionResult>(`/api/payments/session/${encodeURIComponent(sessionId)}`)
+

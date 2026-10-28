@@ -34,6 +34,7 @@ import { auth } from './routes/auth.js'
 import { manager } from './routes/manager.js'
 import { player } from './routes/player.js'
 import { notifications } from './routes/notifications.js'
+import { payments } from './routes/payments.js'
 import { requireBasicAuth } from './middleware/basicAuth.js'
 import { pruneExpiredSessions } from './domain/auth.js'
 
@@ -57,7 +58,14 @@ app.use((_req, res, next) => {
 })
 
 // Bounded body limits to prevent resource exhaustion / DoS
-app.use(express.json({ limit: '15mb' }))
+app.use(
+  express.json({
+    limit: '15mb',
+    verify: (req: any, _res, buf) => {
+      req.rawBody = buf
+    },
+  }),
+)
 app.use(express.urlencoded({ extended: true, limit: '15mb' }))
 app.use(cookieParser())
 
@@ -161,6 +169,7 @@ app.use('/api/auth', auth)
 app.use('/api/manager', manager)
 app.use('/api/player', player)
 app.use('/api/notifications', notifications)
+app.use('/api/payments', payments)
 
 // Write endpoints sit behind the same basic-auth gate as the admin bundle, not
 // because this is a meaningful permission check — it is one shared credential —

@@ -182,6 +182,13 @@ export const config = {
     tablePrefix: optional('WP_TABLE_PREFIX', 'wpla_'),
   },
 
+  stripe: {
+    secretKey: optional('STRIPE_SECRET_KEY', ''),
+    publishableKey: optional('STRIPE_PUBLISHABLE_KEY', ''),
+    webhookSecret: optional('STRIPE_WEBHOOK_SECRET', ''),
+    currency: optional('STRIPE_CURRENCY', 'SGD'),
+  },
+
   migrateOnBoot: bool('MIGRATE_ON_BOOT', true),
 
   /** Binds the dev server to loopback only unless explicitly widened. */

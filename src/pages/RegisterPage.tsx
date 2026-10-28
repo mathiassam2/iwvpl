@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Button, Container, Section, SectionHead, Select } from '@/components/ui'
 import { TermsDialog } from '@/components/ui/TermsDialog'
 import { SITE, siteData } from '@/data'
-import { ApiError, getRegistrationSettings, register, verifyInvite, type VerifyInviteResult } from '@/lib/api'
+import { ApiError, createCheckout, getRegistrationSettings, register, verifyInvite, type VerifyInviteResult } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { useCart } from '@/lib/cart'
 import { CLUB_PLACEHOLDER, compressClubLogo, cx, stripFlag } from '@/lib/format'
@@ -96,7 +96,8 @@ export default function RegisterPage() {
   })
 
   const { openPanel } = useCart()
-  const { setUser } = useAuth()
+  const { user, setUser } = useAuth()
+  const [payBusy, setPayBusy] = useState(false)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -496,9 +497,40 @@ export default function RegisterPage() {
                         Go to Dashboard →
                       </Button>
                       {created?.role === 'club_manager' && (
-                        <Button size="sm" variant="ghost" onClick={openPanel}>
-                          View Entry Passes
-                        </Button>
+                        <>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            disabled={payBusy}
+                            onClick={async () => {
+                              setPayBusy(true)
+                              try {
+                                const res = await createCheckout({
+                                  items: [
+                                    {
+                                      name: `IWVPL Pro Club Season Entry - ${created.club}`,
+                                      amount: 35,
+                                      quantity: 1,
+                                      description: `Official Team Registration Entry Fee for ${created.club}`,
+                                    },
+                                  ],
+                                  customerEmail: user?.email,
+                                  customerName: user?.name,
+                                  clubName: created.club,
+                                })
+                                window.location.href = res.url
+                              } catch (err) {
+                                alert(err instanceof Error ? err.message : 'Could not launch Stripe Checkout.')
+                                setPayBusy(false)
+                              }
+                            }}
+                          >
+                            {payBusy ? 'Opening Stripe…' : '💳 Pay Entry Fee (SGD 35) via Stripe'}
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={openPanel}>
+                            View Entry Passes
+                          </Button>
+                        </>
                       )}
                     </div>
                   </div>

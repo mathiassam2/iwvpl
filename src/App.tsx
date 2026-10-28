@@ -25,6 +25,7 @@ const ClubDetailPage = lazy(() => import('@/pages/ClubDetailPage'))
 const MatchPage = lazy(() => import('@/pages/MatchPage'))
 const PlayerPage = lazy(() => import('@/pages/PlayerPage'))
 const CartPage = lazy(() => import('@/pages/CartPage'))
+const CheckoutSuccessPage = lazy(() => import('@/pages/CheckoutSuccessPage'))
 const EntriesPage = lazy(() => import('@/pages/EntriesPage'))
 const DashboardPage = lazy(() => import('@/pages/DashboardPage'))
 const NotFoundPage = lazy(() => import('@/pages/NotFoundPage'))
@@ -109,6 +110,7 @@ export default function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/cart" element={<CartPage />} />
             <Route path="/checkout" element={<CartPage />} />
+            <Route path="/checkout/success" element={<CheckoutSuccessPage />} />
             <Route path="/entries" element={<EntriesPage />} />
             <Route path="/entry-passes" element={<EntriesPage />} />
             <Route path="/dashboard" element={<DashboardPage />} />
