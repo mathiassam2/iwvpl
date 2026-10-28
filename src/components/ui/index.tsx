@@ -576,7 +576,14 @@ export function Select({
   }, [open, options, value])
 
   const commit = (v: string) => {
-    onChange(v)
+    // Provide both string valueOf and target.value so handlers expecting
+    // either a direct string or a change event object (e.target.value) work seamlessly.
+    const payload = Object.assign(new String(v), {
+      target: { value: v },
+      currentTarget: { value: v },
+      value: v,
+    })
+    onChange(payload as unknown as string)
     setOpen(false)
   }
 

@@ -229,7 +229,7 @@ export default function MatchesPage() {
                 <div className="w-44">
                   <Select
                     value={seasonId != null ? String(seasonId) : ''}
-                    onChange={(e) => setSeasonId(Number(e.target.value))}
+                    onChange={(val) => setSeasonId(Number(val))}
                     options={seasons.map((s) => ({
                       value: String(s.id),
                       label: `${s.name}${s.is_current ? ' (Current)' : ''}`,
@@ -240,7 +240,7 @@ export default function MatchesPage() {
               <div className="w-48">
                 <Select
                   value={team}
-                  onChange={(e) => setTeam(e.target.value)}
+                  onChange={(val) => setTeam(val)}
                   options={[{ value: 'all', label: 'All Clubs' }, ...clubOptions]}
                 />
               </div>
