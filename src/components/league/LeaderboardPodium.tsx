@@ -94,9 +94,9 @@ export function LeaderboardPodium({ board }: { board: Leaderboard }) {
   ]
 
   return (
-    <section className="relative w-full overflow-visible py-4 sm:py-8">
+    <section className="relative w-full overflow-visible py-3 sm:py-6">
       {/* Stage Header Eyebrow */}
-      <div className="text-center mb-8 sm:mb-10">
+      <div className="text-center mb-4 sm:mb-5">
         <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--accent-soft)] px-3.5 py-1 text-[10px] font-extrabold tracking-[0.18em] uppercase text-[var(--accent-text)] border border-[var(--accent-ring)]">
           ★ {board.title} PODIUM HONOURS ★
         </span>
@@ -147,7 +147,7 @@ export function LeaderboardPodium({ board }: { board: Leaderboard }) {
               {isFirst && (
                 <div
                   aria-hidden="true"
-                  className="pointer-events-none absolute -top-12 sm:-top-16 left-1/2 -translate-x-1/2 w-64 h-64 sm:w-84 sm:h-84 rounded-full opacity-40 blur-3xl z-0"
+                  className="pointer-events-none absolute -top-8 sm:-top-10 left-1/2 -translate-x-1/2 w-64 h-64 sm:w-80 sm:h-80 rounded-full opacity-40 blur-3xl z-0"
                   style={{
                     background:
                       'radial-gradient(circle, var(--accent-solid) 0%, rgba(200, 255, 61, 0.22) 40%, transparent 70%)',
@@ -155,15 +155,15 @@ export function LeaderboardPodium({ board }: { board: Leaderboard }) {
                 />
               )}
 
-              {/* Podium Cutout Stage - Standing tall and proud directly above the card */}
+              {/* Podium Cutout Stage - Sits flush directly on top of the card without gap */}
               <div
                 className={cx(
-                  'relative w-full flex items-end justify-center pointer-events-none mb-2 sm:mb-3 overflow-visible z-20',
+                  'relative w-full flex items-end justify-center pointer-events-none -mb-0.5 overflow-visible z-20',
                   isFirst
-                    ? 'h-64 sm:h-80 md:h-96 max-w-[320px]'
+                    ? 'h-48 sm:h-56 md:h-64 max-w-[280px]'
                     : place === 2
-                      ? 'h-52 sm:h-64 md:h-80 max-w-[270px]'
-                      : 'h-44 sm:h-56 md:h-72 max-w-[250px]',
+                      ? 'h-40 sm:h-48 md:h-52 max-w-[250px]'
+                      : 'h-36 sm:h-40 md:h-44 max-w-[240px]',
                 )}
               >
                 <img
@@ -172,7 +172,7 @@ export function LeaderboardPodium({ board }: { board: Leaderboard }) {
                   loading="lazy"
                   decoding="async"
                   className={cx(
-                    'w-auto h-full max-w-full object-contain object-bottom drop-shadow-[0_16px_32px_rgba(0,0,0,0.9)] filter transition-transform duration-300 hover:scale-105',
+                    'block w-auto h-full max-w-full object-contain object-bottom drop-shadow-[0_16px_32px_rgba(0,0,0,0.9)] filter transition-transform duration-300 hover:scale-105',
                     !row && 'opacity-25',
                   )}
                 />

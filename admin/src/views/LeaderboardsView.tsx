@@ -1175,9 +1175,9 @@ function PodiumPreviewSlot({
         style={{
           position: 'relative',
           width: '100%',
-          maxWidth: isFirst ? 320 : place === 2 ? 270 : 250,
-          height: isFirst ? 320 : place === 2 ? 260 : 230,
-          marginBottom: 8,
+          maxWidth: isFirst ? 280 : place === 2 ? 250 : 240,
+          height: isFirst ? 256 : place === 2 ? 208 : 176,
+          marginBottom: -2,
           zIndex: 2,
           display: 'flex',
           justifyContent: 'center',
