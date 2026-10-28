@@ -17,7 +17,7 @@ const STAGE_WIDTH = 280
 const STAGE_HEIGHT = 350
 const EXPORT_WIDTH = 560
 const EXPORT_HEIGHT = 700
-const OVERLAP_BOTTOM = 40 // Amount the pedestal card overlaps onto the bottom of the cutout stage
+const OVERLAP_BOTTOM = 0 // Cutout sits directly above the pedestal card
 
 export function CelebrationCropperModal({
   isOpen,

@@ -106,8 +106,15 @@ export function LeaderboardPodium({ board }: { board: Leaderboard }) {
       <div className="grid grid-cols-3 items-end gap-2.5 sm:gap-4 md:gap-6 max-w-4xl mx-auto overflow-visible">
         {slots.map(({ row, place, label }) => {
           const isFirst = place === 1
-          const cutout = row?.celebrationImage || DEFAULT_PODIUM_IMAGES[place]
-          const hasCustomCelebration = Boolean(row?.celebrationImage)
+          const isCustomCelebration = Boolean(
+            row?.celebrationImage &&
+            row.celebrationImage !== row.avatarLocal &&
+            row.celebrationImage !== row.avatar &&
+            !row.celebrationImage.includes('avatar-placeholder') &&
+            !row.celebrationImage.includes('profile-photo-') &&
+            !row.celebrationImage.includes('/assets/players/'),
+          )
+          const cutout = isCustomCelebration ? row!.celebrationImage! : DEFAULT_PODIUM_IMAGES[place]
 
           const badgeTheme =
             place === 1
@@ -148,36 +155,27 @@ export function LeaderboardPodium({ board }: { board: Leaderboard }) {
                 />
               )}
 
-              {/* 3D Overflowing Cutout Stage (4:5 Synchronized Aspect Ratio) */}
+              {/* Podium Cutout Stage - Placed above the card, starting from bottom of PNG */}
               <div
                 className={cx(
-                  'relative w-full aspect-[4/5] flex items-end justify-center pointer-events-none -mb-9 sm:-mb-11 overflow-visible z-10',
+                  'relative w-full flex items-end justify-center pointer-events-none mb-0 overflow-visible z-10',
                   isFirst
-                    ? 'max-w-[245px] sm:max-w-[275px]'
+                    ? 'h-48 sm:h-60 md:h-68 max-w-[285px]'
                     : place === 2
-                      ? 'max-w-[195px] sm:max-w-[220px]'
-                      : 'max-w-[175px] sm:max-w-[200px]',
+                      ? 'h-40 sm:h-50 md:h-56 max-w-[240px]'
+                      : 'h-36 sm:h-44 md:h-50 max-w-[220px]',
                 )}
               >
-                {/* The cutout image itself with soft bottom edge blending into the pedestal card */}
-                <div
-                  className="relative w-full h-full flex items-end justify-center overflow-visible"
-                  style={{
-                    maskImage: 'linear-gradient(to bottom, black 0%, black 82%, transparent 98%)',
-                    WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 82%, transparent 98%)',
-                  }}
-                >
-                  <img
-                    src={cutout}
-                    alt={row?.name || `Podium #${place}`}
-                    loading="lazy"
-                    decoding="async"
-                    className={cx(
-                      'w-full h-full object-contain object-bottom drop-shadow-[0_16px_32px_rgba(0,0,0,0.9)] filter transition-transform duration-300 hover:scale-105',
-                      !row && 'opacity-25',
-                    )}
-                  />
-                </div>
+                <img
+                  src={cutout}
+                  alt={row?.name || `Podium #${place}`}
+                  loading="lazy"
+                  decoding="async"
+                  className={cx(
+                    'w-auto h-full max-w-full object-contain object-bottom drop-shadow-[0_16px_32px_rgba(0,0,0,0.9)] filter transition-transform duration-300 hover:scale-105',
+                    !row && 'opacity-25',
+                  )}
+                />
               </div>
 
               {/* Pedestal Card Container (Tiered Olympic step heights: #1 highest, #2 medium, #3 lowest) */}
@@ -188,10 +186,10 @@ export function LeaderboardPodium({ board }: { board: Leaderboard }) {
                     'relative w-full rounded-xl sm:rounded-2xl text-center transition-all duration-300 ease-out z-20 block',
                     'hover:-translate-y-1 focus-visible:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-solid)]',
                     isFirst
-                      ? 'min-h-[225px] sm:min-h-[245px] pt-7 pb-5 px-3.5 sm:pt-8 sm:pb-6 sm:px-4.5 border border-[var(--accent-solid)]/45 shadow-[0_20px_45px_-12px_rgba(200,255,61,0.32),inset_0_1px_0_rgba(200,255,61,0.35)]'
+                      ? 'min-h-[210px] sm:min-h-[230px] pt-5 pb-5 px-3.5 sm:pt-6 sm:pb-6 sm:px-4.5 border border-[var(--accent-solid)]/45 shadow-[0_20px_45px_-12px_rgba(200,255,61,0.32),inset_0_1px_0_rgba(200,255,61,0.35)]'
                       : place === 2
-                        ? 'min-h-[170px] sm:min-h-[188px] pt-5 pb-3.5 px-2.5 sm:pt-6 sm:pb-4 sm:px-3.5 border border-white/10 shadow-[0_14px_32px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.08)]'
-                        : 'min-h-[135px] sm:min-h-[150px] pt-4 pb-3 px-2 sm:pt-5 sm:pb-3.5 sm:px-3 border border-white/10 shadow-[0_12px_28px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.06)]',
+                        ? 'min-h-[160px] sm:min-h-[178px] pt-4 pb-3.5 px-2.5 sm:pt-5 sm:pb-4 sm:px-3.5 border border-white/10 shadow-[0_14px_32px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.08)]'
+                        : 'min-h-[130px] sm:min-h-[142px] pt-3.5 pb-3 px-2 sm:pt-4 sm:pb-3.5 sm:px-3 border border-white/10 shadow-[0_12px_28px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.06)]',
                   )}
                   style={{
                     background: isFirst

@@ -122,7 +122,9 @@ function playerCelebrationSql(alias = 'p'): string {
   return `CASE
     WHEN LEFT(COALESCE(${alias}.celebration_image, ''), 5) = 'data:'
       THEN CONCAT('/api/players/', ${alias}.slug, '/celebration?v=', COALESCE(UNIX_TIMESTAMP(${alias}.updated_at), 1))
-    ELSE COALESCE(${alias}.celebration_image, ${alias}.avatar_local)
+    WHEN ${alias}.celebration_image IS NOT NULL AND ${alias}.celebration_image != ''
+      THEN ${alias}.celebration_image
+    ELSE NULL
   END`
 }
 
@@ -645,7 +647,7 @@ league.get(
   '/players/:slug/celebration',
   handler(async (req, res) => {
     const row = await queryOne<{ image: string | null }>(
-      'SELECT COALESCE(celebration_image, avatar_local) AS image FROM players WHERE slug = ? LIMIT 1',
+      'SELECT celebration_image AS image FROM players WHERE slug = ? LIMIT 1',
       [req.params.slug],
     )
     const img = row?.image

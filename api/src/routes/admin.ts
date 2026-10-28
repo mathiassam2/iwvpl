@@ -3942,7 +3942,9 @@ function playerCelebrationAdminSql(alias = 'p'): string {
   return `CASE
     WHEN LEFT(COALESCE(${alias}.celebration_image, ''), 5) = 'data:'
       THEN CONCAT('/api/players/', ${alias}.slug, '/celebration?v=', COALESCE(UNIX_TIMESTAMP(${alias}.updated_at), 1))
-    ELSE COALESCE(${alias}.celebration_image, ${alias}.avatar_local)
+    WHEN ${alias}.celebration_image IS NOT NULL AND ${alias}.celebration_image != ''
+      THEN ${alias}.celebration_image
+    ELSE NULL
   END`
 }
 

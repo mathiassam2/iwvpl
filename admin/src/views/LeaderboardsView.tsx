@@ -1170,37 +1170,47 @@ function PodiumPreviewSlot({
         />
       )}
 
-      {/* 3D Overflowing Cutout Celebration Image Stage (4:5 Synchronized Ratio) */}
+      {/* 3D Cutout Celebration Image Stage - Placed above the card */}
       <div
         style={{
           position: 'relative',
           width: '100%',
           maxWidth: isFirst ? 285 : place === 2 ? 240 : 215,
-          aspectRatio: '4 / 5',
-          marginBottom: isFirst ? -44 : -36,
+          height: isFirst ? 240 : place === 2 ? 200 : 180,
+          marginBottom: 0,
           zIndex: 2,
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'flex-end',
           pointerEvents: 'none',
           overflow: 'visible',
-          maskImage: 'linear-gradient(to bottom, black 0%, black 80%, transparent 98%)',
-          WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 80%, transparent 98%)',
         }}
       >
-
-        <img
-          src={stat?.celebration_image || DEFAULT_PODIUM_IMAGES[place]}
-          alt={stat?.gamertag || `Podium #${place}`}
-          style={{
-            width: '100%',
-            height: '100%',
-            objectFit: 'contain',
-            objectPosition: 'bottom',
-            filter: 'drop-shadow(0 16px 28px rgba(0,0,0,0.85))',
-            opacity: stat ? 1 : 0.25,
-          }}
-        />
+        {(() => {
+          const isCustomCelebration = Boolean(
+            stat?.celebration_image &&
+            stat.celebration_image !== stat.avatar_local &&
+            !stat.celebration_image.includes('avatar-placeholder') &&
+            !stat.celebration_image.includes('profile-photo-') &&
+            !stat.celebration_image.includes('/assets/players/'),
+          )
+          const cutoutSrc = isCustomCelebration ? stat!.celebration_image! : DEFAULT_PODIUM_IMAGES[place]
+          return (
+            <img
+              src={cutoutSrc}
+              alt={stat?.gamertag || `Podium #${place}`}
+              style={{
+                width: 'auto',
+                height: '100%',
+                maxWidth: '100%',
+                objectFit: 'contain',
+                objectPosition: 'bottom',
+                filter: 'drop-shadow(0 16px 28px rgba(0,0,0,0.85))',
+                opacity: stat ? 1 : 0.25,
+              }}
+            />
+          )
+        })()}
       </div>
 
       {/* Pedestal Block (Sits in front of waist/cutout for seamless framing) */}

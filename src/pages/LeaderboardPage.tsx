@@ -37,7 +37,14 @@ export default function LeaderboardPage() {
           team_logo: r.club_logo || '',
           teamLogoLocal: r.club_logo || '',
           url: `/players/${r.slug}`,
-          celebrationImage: r.celebration_image || null,
+          celebrationImage:
+            r.celebration_image &&
+            r.celebration_image !== r.avatar_local &&
+            !r.celebration_image.includes('avatar-placeholder') &&
+            !r.celebration_image.includes('profile-photo-') &&
+            !r.celebration_image.includes('/assets/players/')
+              ? r.celebration_image
+              : null,
         })),
       }))
     }
