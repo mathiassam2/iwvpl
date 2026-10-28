@@ -8,7 +8,7 @@
  *   CPANEL_USER=iwvq7995 CPANEL_PASS='...' node scripts/deploy-cpanel.mjs
  */
 
-import { mkdirSync, writeFileSync, cpSync, rmSync, readFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync, cpSync, rmSync, readFileSync, existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { execSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
@@ -89,17 +89,18 @@ async function main() {
 
   cpSync(join(repoRoot, 'dist'), join(stageDir, 'dist'), { recursive: true })
 
+  mkdirSync(join(stageDir, 'admin'), { recursive: true })
+  cpSync(join(repoRoot, 'admin', 'dist'), join(stageDir, 'admin', 'dist'), { recursive: true })
+
   // Stamp cache-buster on HTML script and stylesheet tags
   const v = Date.now()
   for (const htmlFile of [join(stageDir, 'dist', 'index.html'), join(stageDir, 'admin', 'dist', 'index.html')]) {
-    if (fs.existsSync(htmlFile)) {
+    if (existsSync(htmlFile)) {
       let html = readFileSync(htmlFile, 'utf8')
       html = html.replace(/(src|href)="(\/assets\/[^"]+\.(?:js|css))"/g, `$1="$2?v=${v}"`)
       writeFileSync(htmlFile, html)
     }
   }
-  mkdirSync(join(stageDir, 'admin'), { recursive: true })
-  cpSync(join(repoRoot, 'admin', 'dist'), join(stageDir, 'admin', 'dist'), { recursive: true })
   mkdirSync(join(stageDir, 'src', 'data'), { recursive: true })
   cpSync(
     join(repoRoot, 'src', 'data', 'site_data.json'),
