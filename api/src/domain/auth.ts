@@ -147,20 +147,45 @@ export async function createSession(userId: number, req: Request): Promise<strin
  * expiry is enforced in SQL rather than in JavaScript so a clock skew between
  * two Render instances cannot extend a session.
  */
-export async function resolveSession(token: string | undefined): Promise<AccountUser | undefined> {
-  if (!token) return undefined
+export function getAllTokens(req: Request): string[] {
+  const header = req.headers.cookie
+  if (!header) return []
+  const name = config.auth.cookieName
+  const tokens: string[] = []
+  const regex = new RegExp(`(?:^|;\\s*)${name}=([^;]+)`, 'g')
+  let m: RegExpExecArray | null
+  while ((m = regex.exec(header)) !== null) {
+    if (m[1]) {
+      const val = decodeURIComponent(m[1].trim())
+      if (val && !tokens.includes(val)) {
+        tokens.push(val)
+      }
+    }
+  }
+  return tokens
+}
 
-  return queryOne<AccountUser>(
-    `SELECT u.id, u.email, u.display_name, u.role, u.club_id,
-            p.id AS player_id, p.gamertag
-       FROM sessions s
-       JOIN users u    ON u.id = s.user_id
-       LEFT JOIN players p ON p.user_id = u.id
-      WHERE s.token_hash = ?
-        AND s.expires_at > NOW()
-        AND u.is_active = TRUE`,
-    [sha256(token)],
-  )
+export async function resolveSession(tokenOrTokens: string | string[] | undefined): Promise<AccountUser | undefined> {
+  if (!tokenOrTokens) return undefined
+  const tokens = Array.isArray(tokenOrTokens) ? tokenOrTokens : [tokenOrTokens]
+  if (tokens.length === 0) return undefined
+
+  for (const t of tokens) {
+    if (!t) continue
+    const user = await queryOne<AccountUser>(
+      `SELECT u.id, u.email, u.display_name, u.role, u.club_id,
+              p.id AS player_id, p.gamertag
+         FROM sessions s
+         JOIN users u    ON u.id = s.user_id
+         LEFT JOIN players p ON p.user_id = u.id
+        WHERE s.token_hash = ?
+          AND s.expires_at > NOW()
+          AND u.is_active = TRUE`,
+      [sha256(t)],
+    )
+    if (user) return user
+  }
+  return undefined
 }
 
 export async function revokeSession(token: string | undefined): Promise<void> {
@@ -188,35 +213,40 @@ export async function pruneExpiredSessions(): Promise<void> {
  * avoids the Secure requirement, which would otherwise reject the cookie over
  * plain http.
  */
-function cookieBase(res?: Response) {
-  const host = res?.req?.get('host')?.split(':')[0] || ''
-  const isIwvpl = host === 'iwvpl.asia' || host.endsWith('.iwvpl.asia')
+function cookieBase() {
   return {
     httpOnly: true,
     secure: config.isProd,
     sameSite: 'lax' as const,
     path: '/',
-    ...(isIwvpl ? { domain: '.iwvpl.asia' } : {}),
   }
 }
 
-export function setSessionCookie(res: Response, token: string): void {
-  res.cookie(config.auth.cookieName, token, {
-    ...cookieBase(res),
-    maxAge: config.auth.sessionDays * 24 * 60 * 60 * 1000,
-  })
+export function clearSessionCookie(res: Response): void {
+  const name = config.auth.cookieName
+  const base = cookieBase()
+  // 1. Clear standard host-only cookie
+  res.clearCookie(name, base)
+  // 2. Clear any lingering domain-scoped cookies across all subdomains/variations
+  res.clearCookie(name, { ...base, domain: '.iwvpl.asia' })
+  res.clearCookie(name, { ...base, domain: 'iwvpl.asia' })
+  res.clearCookie(name, { ...base, domain: '.beta.iwvpl.asia' })
+  res.clearCookie(name, { ...base, domain: 'beta.iwvpl.asia' })
 }
 
-/**
- * Clear the cookie.
- *
- * The attributes must match the ones it was set with, including SameSite and
- * Secure. A mismatched pair is treated by browsers as a different cookie, so
- * the old one is left in place and the user stays signed in after "logging
- * out" — which looks like the button simply does not work.
- */
-export function clearSessionCookie(res: Response): void {
-  res.clearCookie(config.auth.cookieName, cookieBase(res))
+export function setSessionCookie(res: Response, token: string): void {
+  const name = config.auth.cookieName
+  const base = cookieBase()
+  // Cleanly wipe any stale domain variations before setting clean host-only cookie
+  res.clearCookie(name, { ...base, domain: '.iwvpl.asia' })
+  res.clearCookie(name, { ...base, domain: 'iwvpl.asia' })
+  res.clearCookie(name, { ...base, domain: '.beta.iwvpl.asia' })
+  res.clearCookie(name, { ...base, domain: 'beta.iwvpl.asia' })
+
+  res.cookie(name, token, {
+    ...base,
+    maxAge: config.auth.sessionDays * 24 * 60 * 60 * 1000,
+  })
 }
 
 /* ---------------------------------------------------------- notifications */
@@ -253,11 +283,18 @@ export async function unreadCount(userId: number): Promise<number> {
  * address in the header.
  */
 export async function toPublicUser(user: AccountUser): Promise<PublicUser> {
-  const effectiveClubId =
-    user.club_id ??
-    (user.player_id
-      ? (await queryOne<{ club_id: number | null }>('SELECT club_id FROM players WHERE id = ?', [user.player_id]))?.club_id ?? null
-      : null)
+  let effectiveClubId: number | null = null
+  if (user.role === 'club_manager') {
+    effectiveClubId = user.club_id
+  } else if (user.player_id) {
+    const p = await queryOne<{ club_id: number | null; is_free_agent: number }>(
+      'SELECT club_id, is_free_agent FROM players WHERE id = ?',
+      [user.player_id],
+    )
+    if (p && !p.is_free_agent && p.club_id) {
+      effectiveClubId = p.club_id
+    }
+  }
 
   const club = effectiveClubId
     ? await queryOne<{ name: string; slug: string; status: string }>(

@@ -44,7 +44,7 @@ async function ownPlayer(userId: number): Promise<{
   shirt_number: number | null
 }> {
   let row = await queryOne<{ id: number; gamertag: string; club_id: number | null; shirt_number: number | null }>(
-    'SELECT id, gamertag, club_id, shirt_number FROM players WHERE user_id = ?',
+    'SELECT id, gamertag, club_id, shirt_number, is_free_agent FROM players WHERE user_id = ?',
     [userId],
   )
   if (!row) {
@@ -59,7 +59,7 @@ async function ownPlayer(userId: number): Promise<{
         [gamertagKey(candidateName)],
       )
       if (match) {
-        await execute('UPDATE players SET user_id = ?, updated_at = NOW() WHERE id = ?', [userId, match.id])
+        await execute('UPDATE players SET user_id = ?, club_id = NULL, is_free_agent = TRUE, updated_at = NOW() WHERE id = ?', [userId, match.id])
         row = await queryOne<{ id: number; gamertag: string; club_id: number | null; shirt_number: number | null }>(
           'SELECT id, gamertag, club_id, shirt_number FROM players WHERE id = ?',
           [match.id],
@@ -81,6 +81,9 @@ async function ownPlayer(userId: number): Promise<{
   }
   if (!row) {
     throw Object.assign(new Error('This account has no player profile.'), { status: 404 })
+  }
+  if ((row as any).is_free_agent) {
+    row.club_id = null
   }
   return row
 }

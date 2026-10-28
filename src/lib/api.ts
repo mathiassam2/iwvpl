@@ -132,7 +132,7 @@ export const logout = () => post<{ ok: true }>('/api/auth/logout')
 
 /** Never throws for "not signed in" — the API answers 200 with a null user,
  *  because the client asks this on boot to decide what to render. */
-export const me = () => request<{ user: User | null }>('/api/auth/me')
+export const me = () => request<{ user: User | null }>('/api/auth/me', { cache: 'no-store' })
 
 /* ---------------------------------------------------------------- manager */
 

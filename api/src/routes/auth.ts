@@ -14,7 +14,7 @@
 import { Router } from 'express'
 import { execute, queryOne, withTransaction } from '../db.js'
 import { findAndMigrateWordPressUser } from '../domain/wordpressAuth.js'
-import { attachUser } from '../middleware/auth.js'
+import { attachUser, readTokens } from '../middleware/auth.js'
 import {
   clearSessionCookie,
   createSession,
@@ -29,7 +29,6 @@ import {
   type AccountUser,
 } from '../domain/auth.js'
 import { clubSlug, gamertagKey } from '../domain/slug.js'
-import { config } from '../config.js'
 import { createRateLimiter } from '../middleware/rateLimit.js'
 import { getManagerPasscodeSettings } from '../domain/settings.js'
 import { verifyManagerInvite } from '../domain/invites.js'
@@ -275,8 +274,8 @@ auth.post(
         if (matched && !matched.user_id) {
           playerId = matched.id
           await conn.execute(
-            'UPDATE players SET shirt_number = COALESCE(?, shirt_number), club_id = COALESCE(?, club_id), is_free_agent = IF(club_id IS NULL AND ? IS NULL, TRUE, FALSE), updated_at = NOW() WHERE id = ?',
-            [shirtNumber, clubId ?? null, clubId ?? null, playerId],
+            'UPDATE players SET shirt_number = COALESCE(?, shirt_number), club_id = ?, is_free_agent = ?, updated_at = NOW() WHERE id = ?',
+            [shirtNumber, clubId ?? null, clubId ? false : true, playerId],
           )
         } else if (!matched) {
           const [res] = await conn.execute(
@@ -412,7 +411,10 @@ auth.post(
 auth.post(
   '/logout',
   handler(async (req, res) => {
-    await revokeSession(req.cookies?.[config.auth.cookieName])
+    const tokens = readTokens(req)
+    for (const t of tokens) {
+      await revokeSession(t)
+    }
     clearSessionCookie(res)
     res.json({ ok: true })
   }),

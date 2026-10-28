@@ -26,7 +26,7 @@
 
 import type { Request, RequestHandler } from 'express'
 import { config } from '../config.js'
-import { MANAGER_ROLES, resolveSession, type AccountUser, type Role } from '../domain/auth.js'
+import { getAllTokens, MANAGER_ROLES, resolveSession, type AccountUser, type Role } from '../domain/auth.js'
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -37,13 +37,16 @@ declare global {
   }
 }
 
-function readToken(req: Request): string | undefined {
-  return req.cookies?.[config.auth.cookieName]
+export function readTokens(req: Request): string[] {
+  const direct = req.cookies?.[config.auth.cookieName]
+  const all = getAllTokens(req)
+  if (direct && !all.includes(direct)) all.unshift(direct)
+  return all
 }
 
 export function requireAuth(): RequestHandler {
   return (req, res, next) => {
-    resolveSession(readToken(req))
+    resolveSession(readTokens(req))
       .then((user) => {
         if (!user) {
           return res.status(401).json({ error: 'Sign in to continue.' })
@@ -60,7 +63,7 @@ export function requireAuth(): RequestHandler {
  *  handling a 401 as an error state. */
 export function attachUser(): RequestHandler {
   return (req, _res, next) => {
-    resolveSession(readToken(req))
+    resolveSession(readTokens(req))
       .then((user) => {
         if (user) req.user = user
         next()

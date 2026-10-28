@@ -6,6 +6,7 @@ import { Router, type Request, type Response } from 'express'
 import { config } from '../config.js'
 import { execute, queryOne } from '../db.js'
 import { resolveSession, notify } from '../domain/auth.js'
+import { readTokens } from '../middleware/auth.js'
 import {
   createCheckoutSession,
   getStripeCredentials,
@@ -76,8 +77,7 @@ payments.post(
     }
 
     // Identify logged-in user if available
-    const sessionToken = req.cookies?.[config.auth.cookieName]
-    const user = await resolveSession(sessionToken)
+    const user = await resolveSession(readTokens(req))
 
     const customerEmail = String(req.body?.customerEmail || user?.email || '').trim()
     const customerName = String(req.body?.customerName || user?.display_name || '').trim()
@@ -91,13 +91,13 @@ payments.post(
 
     // Base URL for redirects
     const origin = req.get('origin') || req.get('referer')
-    let baseUrl = origin ? origin.replace(/\/+$/, '') : 'https://beta.iwvpl.asia'
+    let baseUrl = origin ? origin.replace(/\/+$/, '') : 'https://iwvpl.asia'
     // If coming from another path, ensure baseUrl has no path
     try {
       const u = new URL(baseUrl)
       baseUrl = u.origin
     } catch {
-      baseUrl = 'https://beta.iwvpl.asia'
+      baseUrl = 'https://iwvpl.asia'
     }
 
     const successUrl = `${baseUrl}/#/checkout/success?session_id={CHECKOUT_SESSION_ID}`
@@ -161,8 +161,7 @@ payments.post(
 payments.get(
   '/my-orders',
   handler(async (req, res) => {
-    const sessionToken = req.cookies?.[config.auth.cookieName]
-    const user = await resolveSession(sessionToken)
+    const user = await resolveSession(readTokens(req))
     if (!user) {
       return res.status(401).json({ error: 'Sign in to view orders.' })
     }
