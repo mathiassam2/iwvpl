@@ -3170,88 +3170,160 @@ export function ClubsView({
       {/* Manager Passcode & Security Settings Modal */}
       {securityModalOpen && (
         <div className="adm-modal-backdrop" onClick={() => setSecurityModalOpen(false)}>
-          <div className="adm-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 680, maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
-            <div className="adm-modal-header">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 24 }}>🔐</span>
+          <div
+            className="adm-modal"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: 700,
+              width: '92vw',
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column',
+              background: '#161922',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
+              borderRadius: 16,
+              overflow: 'hidden',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.7)',
+            }}
+          >
+            {/* Header with Title on Left, Close on Right */}
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '18px 24px',
+                borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+                background: 'rgba(255, 255, 255, 0.02)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={{ fontSize: 26 }}>🔐</span>
                 <div>
-                  <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Manager Registration Security</h2>
-                  <small style={{ color: 'var(--adm-text-muted)' }}>
-                    Protect manager registration from fake accounts and passcode sharing
-                  </small>
+                  <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: '#f3f4f6' }}>
+                    Manager Registration Security
+                  </h2>
+                  <p style={{ margin: '2px 0 0', fontSize: 12, color: '#9ca3af' }}>
+                    Control captain sign-ups, issue single-use invites, and prevent passcode leaks
+                  </p>
                 </div>
               </div>
               <button
                 type="button"
                 className="adm-btn adm-btn-ghost adm-btn-sm"
+                style={{
+                  fontSize: 16,
+                  lineHeight: 1,
+                  padding: '6px 10px',
+                  borderRadius: 8,
+                  color: '#9ca3af',
+                  cursor: 'pointer',
+                }}
                 onClick={() => setSecurityModalOpen(false)}
               >
                 ✕
               </button>
             </div>
 
-            {/* Modal Tabs */}
-            <div style={{ display: 'flex', borderBottom: '1px solid var(--adm-border, rgba(255,255,255,0.1))', padding: '0 20px', gap: 12 }}>
+            {/* Clean Pill Navigation Tabs */}
+            <div
+              style={{
+                display: 'flex',
+                gap: 8,
+                padding: '12px 24px',
+                background: 'rgba(0, 0, 0, 0.25)',
+                borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+              }}
+            >
               <button
                 type="button"
-                className={`adm-pill-tab ${securityTab === 'invites' ? 'is-active' : ''}`}
                 onClick={() => setSecurityTab('invites')}
-                style={{ padding: '10px 16px', borderRadius: 0, borderBottom: securityTab === 'invites' ? '2px solid var(--adm-accent, #38bdf8)' : '2px solid transparent' }}
+                style={{
+                  padding: '7px 14px',
+                  borderRadius: 8,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  border: securityTab === 'invites' ? '1px solid rgba(56, 189, 248, 0.4)' : '1px solid transparent',
+                  background: securityTab === 'invites' ? 'rgba(56, 189, 248, 0.15)' : 'transparent',
+                  color: securityTab === 'invites' ? '#38bdf8' : '#9ca3af',
+                  transition: 'all 0.15s ease',
+                }}
               >
                 🎟️ Bound & Single-Use Invites ({invites.filter((i) => !i.is_used).length} Available)
               </button>
               <button
                 type="button"
-                className={`adm-pill-tab ${securityTab === 'passcode' ? 'is-active' : ''}`}
                 onClick={() => setSecurityTab('passcode')}
-                style={{ padding: '10px 16px', borderRadius: 0, borderBottom: securityTab === 'passcode' ? '2px solid var(--adm-accent, #38bdf8)' : '2px solid transparent' }}
+                style={{
+                  padding: '7px 14px',
+                  borderRadius: 8,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  border: securityTab === 'passcode' ? '1px solid rgba(56, 189, 248, 0.4)' : '1px solid transparent',
+                  background: securityTab === 'passcode' ? 'rgba(56, 189, 248, 0.15)' : 'transparent',
+                  color: securityTab === 'passcode' ? '#38bdf8' : '#9ca3af',
+                  transition: 'all 0.15s ease',
+                }}
               >
                 🔑 Shared Passcode Fallback
               </button>
             </div>
 
-            <div className="adm-stack" style={{ padding: '16px 20px', gap: 16, overflowY: 'auto', flex: 1 }}>
+            {/* Modal Body */}
+            <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
               {securityTab === 'invites' ? (
                 <>
-                  <div style={{
-                    background: 'rgba(56, 189, 248, 0.08)',
-                    border: '1px solid rgba(56, 189, 248, 0.25)',
-                    borderRadius: 8,
-                    padding: 12,
-                    fontSize: 13,
-                    lineHeight: 1.5,
-                  }}>
-                    <strong>Anti-Leak Protection:</strong>
-                    <br />
-                    Create invite codes bound to a specific captain email or club name. Even if the code is forwarded or leaked, no unauthorized person can use it. Each code expires immediately upon registration.
+                  <div
+                    style={{
+                      background: 'rgba(56, 189, 248, 0.08)',
+                      border: '1px solid rgba(56, 189, 248, 0.22)',
+                      borderRadius: 10,
+                      padding: '12px 16px',
+                      fontSize: 12.5,
+                      lineHeight: 1.5,
+                      color: '#e0f2fe',
+                    }}
+                  >
+                    <strong>Anti-Leak Guarantee:</strong> Issue invite codes bound to a captain's email or club name. Even if the code is leaked or forwarded to others, only the intended recipient can register. Each code burns immediately upon use.
                   </div>
 
-                  {/* Create New Invite Card */}
-                  <div style={{
-                    background: 'var(--adm-bg-subtle, rgba(255,255,255,0.03))',
-                    border: '1px solid var(--adm-border, rgba(255,255,255,0.08))',
-                    borderRadius: 8,
-                    padding: 14,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 10,
-                  }}>
-                    <strong style={{ fontSize: 13 }}>Issue New Manager Invite</strong>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
+                  {/* Issue New Invite Card */}
+                  <div
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.025)',
+                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      borderRadius: 12,
+                      padding: 16,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 12,
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <strong style={{ fontSize: 13, color: '#f9fafb' }}>Issue New Manager Invite</strong>
+                      <span style={{ fontSize: 11, color: '#9ca3af' }}>Single-use token</span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
                       <div>
-                        <label style={{ fontSize: 11, color: 'var(--adm-text-muted)', fontWeight: 600 }}>INVITE CODE</label>
-                        <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                        <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: '#9ca3af', marginBottom: 5 }}>
+                          Invite Code
+                        </label>
+                        <div style={{ display: 'flex', gap: 6 }}>
                           <input
                             type="text"
                             value={newInviteCode}
                             onChange={(e) => setNewInviteCode(e.target.value.toUpperCase())}
                             placeholder="e.g. MGR-SG-LION"
-                            className="adm-input adm-input-sm"
-                            style={{ fontFamily: 'monospace', fontWeight: 700 }}
+                            className="adm-input"
+                            style={{ fontFamily: 'monospace', fontWeight: 700, padding: '7px 10px', fontSize: 13 }}
                           />
                           <button
                             type="button"
-                            className="adm-btn adm-btn-secondary adm-btn-sm"
+                            className="adm-btn adm-btn-secondary"
+                            style={{ padding: '0 10px', fontSize: 14 }}
                             title="Generate random code"
                             onClick={() => {
                               const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
@@ -3268,46 +3340,52 @@ export function ClubsView({
                       </div>
 
                       <div>
-                        <label style={{ fontSize: 11, color: 'var(--adm-text-muted)', fontWeight: 600 }}>BIND TO EMAIL (OPTIONAL)</label>
+                        <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: '#9ca3af', marginBottom: 5 }}>
+                          Bind to Email (Optional)
+                        </label>
                         <input
                           type="email"
                           value={newInviteEmail}
                           onChange={(e) => setNewInviteEmail(e.target.value)}
                           placeholder="e.g. captain@lioncity.com"
-                          className="adm-input adm-input-sm"
-                          style={{ marginTop: 4 }}
+                          className="adm-input"
+                          style={{ padding: '7px 10px', fontSize: 13 }}
                         />
                       </div>
 
                       <div>
-                        <label style={{ fontSize: 11, color: 'var(--adm-text-muted)', fontWeight: 600 }}>BIND TO CLUB (OPTIONAL)</label>
+                        <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: '#9ca3af', marginBottom: 5 }}>
+                          Bind to Club Name (Optional)
+                        </label>
                         <input
                           type="text"
                           value={newInviteClub}
                           onChange={(e) => setNewInviteClub(e.target.value)}
                           placeholder="e.g. Lion City FC"
-                          className="adm-input adm-input-sm"
-                          style={{ marginTop: 4 }}
+                          className="adm-input"
+                          style={{ padding: '7px 10px', fontSize: 13 }}
                         />
                       </div>
 
                       <div>
-                        <label style={{ fontSize: 11, color: 'var(--adm-text-muted)', fontWeight: 600 }}>NOTES / CAPTAIN</label>
+                        <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: '#9ca3af', marginBottom: 5 }}>
+                          Notes / Captain Reference
+                        </label>
                         <input
                           type="text"
                           value={newInviteNotes}
                           onChange={(e) => setNewInviteNotes(e.target.value)}
-                          placeholder="e.g. For Season 1 registration"
-                          className="adm-input adm-input-sm"
-                          style={{ marginTop: 4 }}
+                          placeholder="e.g. Season 1 registration"
+                          className="adm-input"
+                          style={{ padding: '7px 10px', fontSize: 13 }}
                         />
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4 }}>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: 4 }}>
                       <button
                         type="button"
-                        className="adm-btn adm-btn-primary adm-btn-sm"
+                        className="adm-btn adm-btn-primary"
                         disabled={inviteCreateBusy}
                         onClick={async () => {
                           setInviteCreateBusy(true)
@@ -3338,9 +3416,11 @@ export function ClubsView({
                   </div>
 
                   {/* List of Invites */}
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                      <strong style={{ fontSize: 13 }}>Issued Invites ({invites.length})</strong>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <strong style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.5, color: '#9ca3af' }}>
+                        Issued Invites ({invites.length})
+                      </strong>
                       <button
                         type="button"
                         className="adm-btn adm-btn-ghost adm-btn-sm"
@@ -3361,33 +3441,42 @@ export function ClubsView({
                     {invites.length === 0 ? (
                       <div className="adm-empty-compact">No manager invites issued yet. Issue one above.</div>
                     ) : (
-                      <div className="adm-list" style={{ maxHeight: 280, overflowY: 'auto' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 250, overflowY: 'auto' }}>
                         {invites.map((inv) => (
                           <div
                             key={inv.id}
-                            className="adm-list-row"
-                            style={{ opacity: inv.is_used ? 0.6 : 1, padding: '8px 12px' }}
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              padding: '10px 14px',
+                              borderRadius: 8,
+                              border: '1px solid rgba(255, 255, 255, 0.08)',
+                              background: inv.is_used ? 'rgba(255, 255, 255, 0.015)' : 'rgba(255, 255, 255, 0.04)',
+                              opacity: inv.is_used ? 0.6 : 1,
+                            }}
                           >
-                            <div className="adm-list-main" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <strong style={{ fontFamily: 'monospace', fontSize: 14 }}>{inv.code}</strong>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                <strong style={{ fontFamily: 'monospace', fontSize: 14, letterSpacing: 0.5, color: '#f3f4f6' }}>
+                                  {inv.code}
+                                </strong>
                                 {inv.is_used ? (
-                                  <span className="adm-status-badge status-withdrawn" style={{ fontSize: 11 }}>Used</span>
+                                  <span className="adm-status-badge status-withdrawn" style={{ fontSize: 10 }}>Used</span>
                                 ) : (
-                                  <span className="adm-status-badge status-active" style={{ fontSize: 11 }}>Available</span>
+                                  <span className="adm-status-badge status-active" style={{ fontSize: 10 }}>Available</span>
                                 )}
                               </div>
-                              <div style={{ fontSize: 12, color: 'var(--adm-text-muted)' }}>
-                                {inv.target_email && <span>✉️ Restricted to: <strong>{inv.target_email}</strong> · </span>}
-                                {inv.target_club_name && <span>🛡️ Club: <strong>{inv.target_club_name}</strong> · </span>}
+                              <div style={{ fontSize: 12, color: '#9ca3af' }}>
+                                {inv.target_email && <span>✉️ {inv.target_email} · </span>}
+                                {inv.target_club_name && <span>🛡️ {inv.target_club_name} · </span>}
                                 {inv.notes && <span>💬 {inv.notes} · </span>}
-                                {inv.is_used && (
-                                  <span>Redeemed by {inv.used_by_name || inv.used_by_email || 'Manager'}</span>
-                                )}
+                                {inv.is_used && <span>Redeemed by {inv.used_by_name || inv.used_by_email || 'Manager'}</span>}
+                                {!inv.target_email && !inv.target_club_name && !inv.is_used && <span>Open single-use</span>}
                               </div>
                             </div>
 
-                            <div className="adm-row-actions">
+                            <div style={{ display: 'flex', gap: 6 }}>
                               {!inv.is_used && (
                                 <button
                                   type="button"
@@ -3397,7 +3486,7 @@ export function ClubsView({
                                     setCopiedInviteId(inv.id)
                                     setTimeout(() => setCopiedInviteId(null), 2000)
                                   }}
-                                  title="Copy invite code to share with captain"
+                                  title="Copy code"
                                 >
                                   {copiedInviteId === inv.id ? '✓ Copied' : '📋 Copy'}
                                 </button>
@@ -3416,7 +3505,7 @@ export function ClubsView({
                                       report('error', err instanceof Error ? err.message : 'Could not revoke invite')
                                     }
                                   }}
-                                  title="Revoke / Delete invite"
+                                  title="Revoke invite"
                                 >
                                   ✕
                                 </button>
@@ -3430,38 +3519,41 @@ export function ClubsView({
                 </>
               ) : (
                 <>
-                  <div style={{
-                    background: 'rgba(234, 179, 8, 0.08)',
-                    border: '1px solid rgba(234, 179, 8, 0.25)',
-                    borderRadius: 8,
-                    padding: 12,
-                    fontSize: 13,
-                    lineHeight: 1.5,
-                  }}>
-                    <strong>General Shared Passcode:</strong>
+                  <div
+                    style={{
+                      background: 'rgba(234, 179, 8, 0.08)',
+                      border: '1px solid rgba(234, 179, 8, 0.22)',
+                      borderRadius: 10,
+                      padding: '12px 16px',
+                      fontSize: 12.5,
+                      lineHeight: 1.5,
+                      color: '#fef08a',
+                    }}
+                  >
+                    <strong>Shared Seasonal Passcode:</strong>
                     <br />
-                    This is a secondary fallback passcode. If enabled, any visitor who enters this exact code can register as a club manager without a unique invite.
+                    This is an optional league-wide passcode. If enabled, any manager who enters this code can register without needing a personalized single-use invite.
                   </div>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontWeight: 600 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '4px 0' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontWeight: 600, color: '#f3f4f6' }}>
                       <input
                         type="checkbox"
                         checked={securitySettings.enabled}
                         onChange={(e) => setSecuritySettings((s) => ({ ...s, enabled: e.target.checked }))}
-                        style={{ width: 18, height: 18 }}
+                        style={{ width: 18, height: 18, accentColor: '#38bdf8' }}
                       />
                       Enable Shared Passcode Fallback
                     </label>
-                    <span style={{ fontSize: 12, color: 'var(--adm-text-muted)', marginLeft: 28 }}>
+                    <span style={{ fontSize: 12, color: '#9ca3af', marginLeft: 28 }}>
                       {securitySettings.enabled
-                        ? 'Active: Anyone with this general code can register.'
+                        ? 'Active: Anyone with this general passcode can register.'
                         : 'Disabled: Only captains with valid Single-Use / Bound Invites can register.'}
                     </span>
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--adm-text-muted)', textTransform: 'uppercase' }}>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase' }}>
                       Shared League Passcode
                     </label>
                     <div style={{ display: 'flex', gap: 8 }}>
@@ -3489,7 +3581,7 @@ export function ClubsView({
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
                     <button
                       type="button"
                       className="adm-btn adm-btn-primary"
@@ -3513,7 +3605,16 @@ export function ClubsView({
               )}
             </div>
 
-            <div className="adm-modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, padding: '12px 20px', borderTop: '1px solid var(--adm-border, rgba(255,255,255,0.08))' }}>
+            {/* Modal Footer */}
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'flex-end',
+                padding: '12px 24px',
+                borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+                background: 'rgba(0, 0, 0, 0.2)',
+              }}
+            >
               <button
                 type="button"
                 className="adm-btn adm-btn-secondary"

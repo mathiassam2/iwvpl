@@ -23,6 +23,29 @@ export interface ManagerInvite {
   used_by_email?: string | null
 }
 
+async function ensureInvitesTable(): Promise<void> {
+  try {
+    await execute(`CREATE TABLE IF NOT EXISTS manager_invites (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      code VARCHAR(64) NOT NULL UNIQUE,
+      target_email VARCHAR(190) NULL,
+      target_club_name VARCHAR(120) NULL,
+      notes VARCHAR(255) NULL,
+      created_by_user_id INT NULL,
+      is_used BOOLEAN NOT NULL DEFAULT FALSE,
+      used_by_user_id INT NULL,
+      used_at DATETIME NULL,
+      created_at DATETIME NOT NULL,
+      updated_at DATETIME NOT NULL,
+      INDEX idx_invites_code (code),
+      INDEX idx_invites_used (is_used),
+      INDEX idx_invites_email (target_email)
+    ) DEFAULT CHARSET=utf8mb4`)
+  } catch (err) {
+    console.error('Could not ensure manager_invites table:', err)
+  }
+}
+
 export function generateRandomInviteCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
   let result = 'MGR-'
@@ -38,6 +61,7 @@ export function generateRandomInviteCode(): string {
 
 export async function listManagerInvites(): Promise<ManagerInvite[]> {
   try {
+    await ensureInvitesTable()
     const rows = await queryAll<ManagerInvite>(
       `SELECT i.*, u.display_name AS used_by_name, u.email AS used_by_email
          FROM manager_invites i
@@ -57,6 +81,7 @@ export async function createManagerInvite(params: {
   notes?: string | null
   createdByUserId?: number | null
 }): Promise<ManagerInvite> {
+  await ensureInvitesTable()
   const code = (params.code?.trim() || generateRandomInviteCode()).toUpperCase()
   const targetEmail = params.targetEmail?.trim().toLowerCase() || null
   const targetClubName = params.targetClubName?.trim() || null
@@ -87,6 +112,7 @@ export async function createManagerInvite(params: {
 }
 
 export async function deleteManagerInvite(id: number): Promise<boolean> {
+  await ensureInvitesTable()
   const res = await execute('DELETE FROM manager_invites WHERE id = ?', [id])
   return (res as any).affectedRows > 0
 }
@@ -107,6 +133,7 @@ export async function verifyManagerInvite(
   candidateEmail?: string,
   candidateClubName?: string
 ): Promise<VerificationResult> {
+  await ensureInvitesTable()
   const cleanCode = code.trim().toUpperCase()
   if (!cleanCode) {
     return { valid: false, error: 'Invite code is required.' }

@@ -3877,13 +3877,18 @@ admin.get(
 admin.put(
   '/settings/manager-passcode',
   handler(async (req, res) => {
-    const enabled = req.body?.enabled !== undefined ? Boolean(req.body.enabled) : true
-    const passcode = String(req.body?.passcode ?? '').trim()
-    if (enabled && !passcode) {
-      return res.status(400).json({ error: 'Passcode cannot be empty when passcode requirement is enabled.' })
+    try {
+      const enabled = req.body?.enabled !== undefined ? Boolean(req.body.enabled) : true
+      const passcode = String(req.body?.passcode ?? '').trim()
+      if (enabled && !passcode) {
+        return res.status(400).json({ error: 'Passcode cannot be empty when passcode requirement is enabled.' })
+      }
+      const updated = await updateManagerPasscodeSettings({ enabled, passcode })
+      res.json({ ok: true, settings: updated })
+    } catch (err) {
+      console.error('Failed to update manager passcode settings:', err)
+      res.status(500).json({ error: err instanceof Error ? err.message : 'Database error while saving passcode.' })
     }
-    const updated = await updateManagerPasscodeSettings({ enabled, passcode })
-    res.json({ ok: true, settings: updated })
   }),
 )
 

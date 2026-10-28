@@ -14,8 +14,21 @@ const DEFAULT_SETTINGS: ManagerPasscodeSettings = {
   passcode: 'IWVPL2026',
 }
 
+async function ensureSettingsTable(): Promise<void> {
+  try {
+    await execute(`CREATE TABLE IF NOT EXISTS system_settings (
+      setting_key VARCHAR(64) NOT NULL PRIMARY KEY,
+      setting_value TEXT NOT NULL,
+      updated_at DATETIME NOT NULL
+    ) DEFAULT CHARSET=utf8mb4`)
+  } catch (err) {
+    console.error('Could not ensure system_settings table:', err)
+  }
+}
+
 export async function getManagerPasscodeSettings(): Promise<ManagerPasscodeSettings> {
   try {
+    await ensureSettingsTable()
     const rows = await queryAll<{ setting_key: string; setting_value: string }>(
       `SELECT setting_key, setting_value FROM system_settings
         WHERE setting_key IN ('manager_passcode', 'manager_passcode_enabled')`
@@ -32,7 +45,6 @@ export async function getManagerPasscodeSettings(): Promise<ManagerPasscodeSetti
       passcode: passcodeRaw?.trim() ? passcodeRaw.trim() : DEFAULT_SETTINGS.passcode,
     }
   } catch {
-    // If table doesn't exist yet, return safe defaults
     return { ...DEFAULT_SETTINGS }
   }
 }
@@ -40,6 +52,7 @@ export async function getManagerPasscodeSettings(): Promise<ManagerPasscodeSetti
 export async function updateManagerPasscodeSettings(
   settings: Partial<ManagerPasscodeSettings>
 ): Promise<ManagerPasscodeSettings> {
+  await ensureSettingsTable()
   const current = await getManagerPasscodeSettings()
   const nextEnabled = settings.enabled !== undefined ? Boolean(settings.enabled) : current.enabled
   const nextPasscode = settings.passcode !== undefined ? settings.passcode.trim() : current.passcode
@@ -47,15 +60,15 @@ export async function updateManagerPasscodeSettings(
   await execute(
     `INSERT INTO system_settings (setting_key, setting_value, updated_at)
      VALUES ('manager_passcode', ?, NOW())
-     ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_at = NOW()`,
-    [nextPasscode]
+     ON DUPLICATE KEY UPDATE setting_value = ?, updated_at = NOW()`,
+    [nextPasscode, nextPasscode]
   )
 
   await execute(
     `INSERT INTO system_settings (setting_key, setting_value, updated_at)
      VALUES ('manager_passcode_enabled', ?, NOW())
-     ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_at = NOW()`,
-    [nextEnabled ? 'true' : 'false']
+     ON DUPLICATE KEY UPDATE setting_value = ?, updated_at = NOW()`,
+    [nextEnabled ? 'true' : 'false', nextEnabled ? 'true' : 'false']
   )
 
   return {
