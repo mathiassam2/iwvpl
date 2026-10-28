@@ -155,10 +155,10 @@ export function LeaderboardPodium({ board }: { board: Leaderboard }) {
                 />
               )}
 
-              {/* Podium Cutout Stage - Sits flush directly on top of the card without gap */}
+              {/* Podium Cutout Stage - Sits cleanly behind the card */}
               <div
                 className={cx(
-                  'relative w-full flex items-end justify-center pointer-events-none -mb-0.5 overflow-visible z-20',
+                  'relative w-full flex items-end justify-center pointer-events-none -mb-2 sm:-mb-2.5 overflow-visible z-10',
                   isFirst
                     ? 'h-48 sm:h-56 md:h-64 max-w-[280px]'
                     : place === 2
@@ -178,12 +178,12 @@ export function LeaderboardPodium({ board }: { board: Leaderboard }) {
                 />
               </div>
 
-              {/* Pedestal Card Container (Tiered Olympic step heights: #1 highest, #2 medium, #3 lowest) */}
+              {/* Pedestal Card Container (Sits in front of cutout with crisp, unclipped border) */}
               {row ? (
                 <Link
                   to={playerHref(row.name)}
                   className={cx(
-                    'relative w-full rounded-xl sm:rounded-2xl text-center transition-all duration-300 ease-out z-10 block',
+                    'relative w-full rounded-xl sm:rounded-2xl text-center transition-all duration-300 ease-out z-20 block',
                     'hover:-translate-y-1 focus-visible:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-solid)]',
                     isFirst
                       ? 'min-h-[210px] sm:min-h-[230px] pt-5 pb-5 px-3.5 sm:pt-6 sm:pb-6 sm:px-4.5 border border-[var(--accent-solid)]/45 shadow-[0_20px_45px_-12px_rgba(200,255,61,0.32),inset_0_1px_0_rgba(200,255,61,0.35)]'
@@ -272,7 +272,7 @@ export function LeaderboardPodium({ board }: { board: Leaderboard }) {
                 /* Empty Contender Pedestal with matching tier heights */
                 <div
                   className={cx(
-                    'relative w-full rounded-xl sm:rounded-2xl text-center border border-dashed border-white/10 bg-white/[0.02] flex flex-col items-center justify-center z-10',
+                    'relative w-full rounded-xl sm:rounded-2xl text-center border border-dashed border-white/10 bg-white/[0.02] flex flex-col items-center justify-center z-20',
                     isFirst
                       ? 'min-h-[225px] sm:min-h-[245px] pt-8 pb-6 px-3.5'
                       : place === 2
