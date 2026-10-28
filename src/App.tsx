@@ -7,6 +7,7 @@ import { AuthProvider } from '@/lib/auth'
 import { CartProvider } from '@/lib/cart'
 import { SeasonProvider } from '@/lib/season'
 import { SiteContentProvider } from '@/data'
+import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 
 const StandingsPage = lazy(() => import('@/pages/StandingsPage'))
 const MatchesPage = lazy(() => import('@/pages/MatchesPage'))
@@ -80,6 +81,7 @@ export default function App() {
       <AuthProvider>
         <CartProvider>
           <SeasonProvider>
+          <ErrorBoundary>
           <AppShell>
           <ParallaxDriver />
           <ScrollToTop />
@@ -118,6 +120,7 @@ export default function App() {
           </Routes>
           </Suspense>
         </AppShell>
+          </ErrorBoundary>
         </SeasonProvider>
         </CartProvider>
       </AuthProvider>

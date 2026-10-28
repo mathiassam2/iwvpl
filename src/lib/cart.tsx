@@ -37,7 +37,24 @@ interface CartApi {
   pulse: number
 }
 
-const CartContext = createContext<CartApi | null>(null)
+const defaultCartApi: CartApi = {
+  lines: [],
+  detailed: [],
+  count: 0,
+  canTotal: false,
+  total: '$0.00',
+  panelOpen: false,
+  add: () => {},
+  setQty: () => {},
+  remove: () => {},
+  clear: () => {},
+  has: () => false,
+  openPanel: () => {},
+  closePanel: () => {},
+  pulse: 0,
+}
+
+const CartContext = createContext<CartApi>(defaultCartApi)
 
 const MAX_PER_LINE = 10
 
@@ -163,8 +180,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
 export function useCart(): CartApi {
   const ctx = useContext(CartContext)
-  if (!ctx) throw new Error('useCart must be used inside <CartProvider>')
-  return ctx
+  return ctx ?? defaultCartApi
 }
 
 export { numericPrice }

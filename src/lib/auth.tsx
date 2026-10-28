@@ -35,7 +35,16 @@ interface AuthValue {
   setUnread: (n: number) => void
 }
 
-const AuthContext = createContext<AuthValue | null>(null)
+const defaultAuthValue: AuthValue = {
+  user: null,
+  loading: false,
+  refresh: async () => null,
+  setUser: () => {},
+  signOut: async () => {},
+  setUnread: () => {},
+}
+
+const AuthContext = createContext<AuthValue>(defaultAuthValue)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
@@ -91,6 +100,5 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth(): AuthValue {
   const ctx = useContext(AuthContext)
-  if (!ctx) throw new Error('useAuth must be used inside <AuthProvider>.')
-  return ctx
+  return ctx ?? defaultAuthValue
 }
