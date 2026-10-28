@@ -272,126 +272,7 @@ function SearchableManagerPicker({
 
 
 
-            {/* Manager Passcode & Security Settings Modal */}
-      {securityModalOpen && (
-        <div className="adm-modal-backdrop" onClick={() => setSecurityModalOpen(false)}>
-          <div className="adm-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 540 }}>
-            <div className="adm-modal-header">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 24 }}>🔑</span>
-                <div>
-                  <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Manager Passcode & Security</h2>
-                  <small style={{ color: 'var(--adm-text-muted)' }}>
-                    Require captains to enter a secret invite passcode to register a club
-                  </small>
                 </div>
-              </div>
-              <button
-                type="button"
-                className="adm-btn adm-btn-ghost adm-btn-sm"
-                onClick={() => setSecurityModalOpen(false)}
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="adm-stack" style={{ padding: '16px 20px', gap: 16 }}>
-              <div style={{
-                background: 'rgba(56, 189, 248, 0.08)',
-                border: '1px solid rgba(56, 189, 248, 0.25)',
-                borderRadius: 8,
-                padding: 12,
-                fontSize: 13,
-                lineHeight: 1.5,
-                color: 'var(--adm-text)',
-              }}>
-                <strong>How this protects your league:</strong>
-                <br />
-                When enabled, anyone registering with <em>"I manage a club"</em> on <code>/register</code> must input this exact passcode. Uninvited visitors or bots cannot create fake manager accounts. Normal players can still register freely without a passcode.
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontWeight: 600 }}>
-                  <input
-                    type="checkbox"
-                    checked={securitySettings.enabled}
-                    onChange={(e) => setSecuritySettings((s) => ({ ...s, enabled: e.target.checked }))}
-                    style={{ width: 18, height: 18 }}
-                  />
-                  Require Passcode for Manager Registration
-                </label>
-                <span style={{ fontSize: 12, color: 'var(--adm-text-muted)', marginLeft: 28 }}>
-                  {securitySettings.enabled
-                    ? 'Active: Public manager signups are blocked without this passcode.'
-                    : 'Disabled: Anyone can register as a club manager without a passcode.'}
-                </span>
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--adm-text-muted)', textTransform: 'uppercase' }}>
-                  Current Manager Passcode / Invite Key
-                </label>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <input
-                    type="text"
-                    value={securitySettings.passcode}
-                    onChange={(e) => setSecuritySettings((s) => ({ ...s, passcode: e.target.value.toUpperCase() }))}
-                    placeholder="e.g. IWVPL2026"
-                    className="adm-input"
-                    style={{ fontFamily: 'monospace', fontWeight: 700, letterSpacing: 1 }}
-                    disabled={!securitySettings.enabled}
-                  />
-                  <button
-                    type="button"
-                    className="adm-btn adm-btn-secondary"
-                    onClick={() => {
-                      navigator.clipboard.writeText(securitySettings.passcode)
-                      setPasscodeCopied(true)
-                      setTimeout(() => setPasscodeCopied(false), 2000)
-                    }}
-                    title="Copy passcode to clipboard to share with captains"
-                  >
-                    {passcodeCopied ? '✓ Copied' : '📋 Copy'}
-                  </button>
-                </div>
-                <small style={{ fontSize: 11, color: 'var(--adm-text-muted)' }}>
-                  Share this passcode with verified club captains via Discord or WhatsApp for this season.
-                </small>
-              </div>
-            </div>
-
-            <div className="adm-modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, padding: '12px 20px' }}>
-              <button
-                type="button"
-                className="adm-btn adm-btn-ghost"
-                onClick={() => setSecurityModalOpen(false)}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="adm-btn adm-btn-primary"
-                disabled={securityBusy}
-                onClick={async () => {
-                  setSecurityBusy(true)
-                  try {
-                    await updateManagerSecuritySettings(securitySettings)
-                    report('ok', `Manager security settings saved (Passcode: ${securitySettings.passcode})`)
-                    setSecurityModalOpen(false)
-                  } catch (err) {
-                    report('error', err instanceof Error ? err.message : 'Could not save security settings')
-                  } finally {
-                    setSecurityBusy(false)
-                  }
-                }}
-              >
-                {securityBusy ? 'Saving…' : 'Save Settings'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
   )
 }
 
@@ -3268,6 +3149,126 @@ export function ClubsView({
         guard={guard}
         report={report}
       />
+
+      {/* Manager Passcode & Security Settings Modal */}
+      {securityModalOpen && (
+        <div className="adm-modal-backdrop" onClick={() => setSecurityModalOpen(false)}>
+          <div className="adm-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 540 }}>
+            <div className="adm-modal-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 24 }}>🔑</span>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Manager Passcode & Security</h2>
+                  <small style={{ color: 'var(--adm-text-muted)' }}>
+                    Require captains to enter a secret invite passcode to register a club
+                  </small>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="adm-btn adm-btn-ghost adm-btn-sm"
+                onClick={() => setSecurityModalOpen(false)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="adm-stack" style={{ padding: '16px 20px', gap: 16 }}>
+              <div style={{
+                background: 'rgba(56, 189, 248, 0.08)',
+                border: '1px solid rgba(56, 189, 248, 0.25)',
+                borderRadius: 8,
+                padding: 12,
+                fontSize: 13,
+                lineHeight: 1.5,
+                color: 'var(--adm-text)',
+              }}>
+                <strong>How this protects your league:</strong>
+                <br />
+                When enabled, anyone registering with <em>"I manage a club"</em> on <code>/register</code> must input this exact passcode. Uninvited visitors or bots cannot create fake manager accounts. Normal players can still register freely without a passcode.
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontWeight: 600 }}>
+                  <input
+                    type="checkbox"
+                    checked={securitySettings.enabled}
+                    onChange={(e) => setSecuritySettings((s) => ({ ...s, enabled: e.target.checked }))}
+                    style={{ width: 18, height: 18 }}
+                  />
+                  Require Passcode for Manager Registration
+                </label>
+                <span style={{ fontSize: 12, color: 'var(--adm-text-muted)', marginLeft: 28 }}>
+                  {securitySettings.enabled
+                    ? 'Active: Public manager signups are blocked without this passcode.'
+                    : 'Disabled: Anyone can register as a club manager without a passcode.'}
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--adm-text-muted)', textTransform: 'uppercase' }}>
+                  Current Manager Passcode / Invite Key
+                </label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    type="text"
+                    value={securitySettings.passcode}
+                    onChange={(e) => setSecuritySettings((s) => ({ ...s, passcode: e.target.value.toUpperCase() }))}
+                    placeholder="e.g. IWVPL2026"
+                    className="adm-input"
+                    style={{ fontFamily: 'monospace', fontWeight: 700, letterSpacing: 1 }}
+                    disabled={!securitySettings.enabled}
+                  />
+                  <button
+                    type="button"
+                    className="adm-btn adm-btn-secondary"
+                    onClick={() => {
+                      navigator.clipboard.writeText(securitySettings.passcode)
+                      setPasscodeCopied(true)
+                      setTimeout(() => setPasscodeCopied(false), 2000)
+                    }}
+                    title="Copy passcode to clipboard to share with captains"
+                  >
+                    {passcodeCopied ? '✓ Copied' : '📋 Copy'}
+                  </button>
+                </div>
+                <small style={{ fontSize: 11, color: 'var(--adm-text-muted)' }}>
+                  Share this passcode with verified club captains via Discord or WhatsApp for this season.
+                </small>
+              </div>
+            </div>
+
+            <div className="adm-modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, padding: '12px 20px' }}>
+              <button
+                type="button"
+                className="adm-btn adm-btn-ghost"
+                onClick={() => setSecurityModalOpen(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="adm-btn adm-btn-primary"
+                disabled={securityBusy}
+                onClick={async () => {
+                  setSecurityBusy(true)
+                  try {
+                    await updateManagerSecuritySettings(securitySettings)
+                    report('ok', `Manager security settings saved (Passcode: ${securitySettings.passcode})`)
+                    setSecurityModalOpen(false)
+                  } catch (err) {
+                    report('error', err instanceof Error ? err.message : 'Could not save security settings')
+                  } finally {
+                    setSecurityBusy(false)
+                  }
+                }}
+              >
+                {securityBusy ? 'Saving…' : 'Save Settings'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
