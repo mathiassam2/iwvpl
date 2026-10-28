@@ -30,6 +30,7 @@ import {
 import { clubSlug, gamertagKey } from '../domain/slug.js'
 import { config } from '../config.js'
 import { createRateLimiter } from '../middleware/rateLimit.js'
+import { getManagerPasscodeSettings } from '../domain/settings.js'
 
 export const auth = Router()
 
@@ -82,6 +83,18 @@ function password(value: unknown): string {
   return s
 }
 
+/* ------------------------------------------------ registration settings */
+
+auth.get(
+  '/registration-settings',
+  handler(async (_req, res) => {
+    const settings = await getManagerPasscodeSettings()
+    res.json({
+      managerPasscodeRequired: settings.enabled,
+    })
+  }),
+)
+
 /* ------------------------------------------------------------- register */
 
 auth.post(
@@ -106,6 +119,19 @@ auth.post(
     }
 
     const hash = await hashPassword(secret)
+    if (role === 'club_manager') {
+      const passcodeSettings = await getManagerPasscodeSettings()
+      if (passcodeSettings.enabled) {
+        const submitted = String(req.body?.managerPasscode ?? req.body?.passcode ?? '').trim()
+        if (!submitted) {
+          bad('Manager passcode is required to register as a club manager. Please ask a league admin or Discord.')
+        }
+        if (submitted.toLowerCase() !== passcodeSettings.passcode.toLowerCase()) {
+          bad('Invalid manager passcode. Please obtain the correct code from the league administrator.')
+        }
+      }
+    }
+
 
     // Player: create a brand new players row. Existing gamertags belong to
     // people who crawled into the league before accounts existed; they cannot

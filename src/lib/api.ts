@@ -110,6 +110,9 @@ export interface Notification {
 export const login = (email: string, password: string) =>
   post<{ user: User }>('/api/auth/login', { email, password })
 
+export const getRegistrationSettings = () =>
+  request<{ managerPasscodeRequired: boolean }>('/api/auth/registration-settings')
+
 export const register = (payload: {
   role: 'player' | 'club_manager'
   email: string
@@ -122,6 +125,7 @@ export const register = (payload: {
   shortCode?: string
   region?: string
   clubLogo?: string | null
+  managerPasscode?: string
 }) => post<{ user: User }>('/api/auth/register', payload)
 
 export const logout = () => post<{ ok: true }>('/api/auth/logout')

@@ -34,6 +34,7 @@ import {
   type RolloverSetting,
 } from '../domain/rollover.js'
 import { clubSlug, gamertagKey } from '../domain/slug.js'
+import { getManagerPasscodeSettings, updateManagerPasscodeSettings } from '../domain/settings.js'
 import {
   ALLOWED_SECTIONS,
   loadSiteContent,
@@ -1382,9 +1383,21 @@ admin.delete(
         await conn.query('DELETE FROM matches WHERE id IN (?)', [matchIds])
       }
 
-      await conn.execute('UPDATE users SET club_id = NULL, updated_at = NOW() WHERE club_id = ?', [
-        club.id,
-      ])
+      const purgeManager = req.query.purgeManager === 'true' || req.body?.purgeManager === true
+      if (purgeManager) {
+        const [mgrRows] = await conn.query('SELECT id FROM users WHERE club_id = ?', [club.id])
+        const userIds = (mgrRows as Array<{ id: number }>).map((u) => u.id)
+        if (userIds.length > 0) {
+          await conn.query('DELETE FROM sessions WHERE user_id IN (?)', [userIds])
+          await conn.query('DELETE FROM notifications WHERE user_id IN (?)', [userIds])
+          await conn.query('UPDATE players SET user_id = NULL, updated_at = NOW() WHERE user_id IN (?)', [userIds])
+          await conn.query('DELETE FROM users WHERE id IN (?)', [userIds])
+        }
+      } else {
+        await conn.execute('UPDATE users SET club_id = NULL, updated_at = NOW() WHERE club_id = ?', [
+          club.id,
+        ])
+      }
       await conn.execute(
         'UPDATE players SET club_id = NULL, is_free_agent = TRUE, updated_at = NOW() WHERE club_id = ?',
         [club.id],
@@ -1802,8 +1815,8 @@ admin.post(
   handler(async (req, res) => {
     const slug = requiredString(req.params.slug, 'slug', 140)
     const decision = requiredString(req.body.decision, 'decision', 16)
-    if (decision !== 'approve' && decision !== 'reject') {
-      return res.status(400).json({ error: 'decision must be approve or reject.' })
+    if (decision !== 'approve' && decision !== 'reject' && decision !== 'purge') {
+      return res.status(400).json({ error: 'decision must be approve, reject, or purge.' })
     }
 
     const club = await queryOne<{ id: number; name: string; status: string }>(
@@ -1813,6 +1826,31 @@ admin.post(
     if (!club) return res.status(404).json({ error: 'Club not found.' })
     if (club.status !== 'pending') {
       return res.status(409).json({ error: `That club is already ${club.status}.` })
+    }
+
+    if (decision === 'purge' || (decision === 'reject' && req.body?.purgeAccount === true)) {
+      await withTransaction(async (conn) => {
+        const [mgrRows] = await conn.query('SELECT id FROM users WHERE club_id = ?', [club.id])
+        const userIds = (mgrRows as Array<{ id: number }>).map((u) => u.id)
+
+        await conn.execute('DELETE FROM match_player_stats WHERE club_id = ?', [club.id])
+        await conn.execute('DELETE FROM transfer_requests WHERE club_id = ?', [club.id])
+        await conn.execute('UPDATE transfers SET from_club_id = NULL WHERE from_club_id = ?', [club.id])
+        await conn.execute('UPDATE transfers SET to_club_id = NULL WHERE to_club_id = ?', [club.id])
+        await conn.execute('UPDATE players SET club_id = NULL, is_free_agent = TRUE, updated_at = NOW() WHERE club_id = ?', [club.id])
+        await conn.execute('DELETE FROM standings_snapshot WHERE club_id = ?', [club.id])
+        await conn.execute('DELETE FROM season_division_movements WHERE club_id = ?', [club.id])
+        await conn.execute('DELETE FROM division_clubs WHERE club_id = ?', [club.id])
+        await conn.execute('DELETE FROM clubs WHERE id = ?', [club.id])
+
+        if (userIds.length > 0) {
+          await conn.query('DELETE FROM sessions WHERE user_id IN (?)', [userIds])
+          await conn.query('DELETE FROM notifications WHERE user_id IN (?)', [userIds])
+          await conn.query('UPDATE players SET user_id = NULL, updated_at = NOW() WHERE user_id IN (?)', [userIds])
+          await conn.query('DELETE FROM users WHERE id IN (?)', [userIds])
+        }
+      })
+      return res.json({ ok: true, status: 'purged' })
     }
 
     const status = decision === 'approve' ? 'active' : 'withdrawn'
@@ -3783,6 +3821,30 @@ admin.delete(
     const affected = await execute('DELETE FROM homepage_regions WHERE id = ?', [id])
     if (affected === 0) return res.status(404).json({ error: 'Region not found.' })
     res.json({ ok: true, id })
+  }),
+)
+
+
+/* ----------------------------------------------------- system settings */
+
+admin.get(
+  '/settings/manager-passcode',
+  handler(async (_req, res) => {
+    const settings = await getManagerPasscodeSettings()
+    res.json(settings)
+  }),
+)
+
+admin.put(
+  '/settings/manager-passcode',
+  handler(async (req, res) => {
+    const enabled = req.body?.enabled !== undefined ? Boolean(req.body.enabled) : true
+    const passcode = String(req.body?.passcode ?? '').trim()
+    if (enabled && !passcode) {
+      return res.status(400).json({ error: 'Passcode cannot be empty when passcode requirement is enabled.' })
+    }
+    const updated = await updateManagerPasscodeSettings({ enabled, passcode })
+    res.json({ ok: true, settings: updated })
   }),
 )
 

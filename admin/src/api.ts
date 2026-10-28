@@ -497,11 +497,19 @@ export const getPendingClubs = () =>
   request<{ clubs: PendingClub[] }>('/api/admin/clubs/pending').then((r) => r.clubs)
 
 /** Approve publishes the club; reject withdraws it. Both notify the manager. */
-export const decideClub = (slug: string, decision: 'approve' | 'reject') =>
-  request<{ ok: true; status: string }>(`/api/admin/clubs/${slug}/decision`, {
-    method: 'POST',
-    body: JSON.stringify({ decision }),
-  })
+/** Approve publishes the club; reject withdraws it; purge deletes club and manager account. */
+export const decideClub = (
+  slug: string,
+  decision: 'approve' | 'reject' | 'purge',
+  purgeAccount?: boolean,
+) =>
+  request<{ ok: true; status: string }>(
+    `/api/admin/clubs/${encodeURIComponent(slug)}/decision`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ decision, purgeAccount }),
+    },
+  )
 
 export interface Division {
   id: number
@@ -738,9 +746,9 @@ export const createAdminClub = (input: AdminClubInput) =>
     body: JSON.stringify(input),
   }).then((r) => r.club)
 
-export const deleteAdminClub = (slug: string) =>
+export const deleteAdminClub = (slug: string, purgeManager?: boolean) =>
   request<{ ok: true; id: number; slug: string }>(
-    `/api/admin/clubs/${encodeURIComponent(slug)}`,
+    `/api/admin/clubs/${encodeURIComponent(slug)}${purgeManager ? '?purgeManager=true' : ''}`,
     { method: 'DELETE' },
   )
 
@@ -1334,3 +1342,23 @@ export const bulkLinkEaClubs = (
     method: 'POST',
     body: JSON.stringify({ links }),
   })
+
+
+/* ------------------------------------------------ manager security settings */
+
+export interface ManagerSecuritySettings {
+  enabled: boolean
+  passcode: string
+}
+
+export const getManagerSecuritySettings = () =>
+  request<ManagerSecuritySettings>('/api/admin/settings/manager-passcode')
+
+export const updateManagerSecuritySettings = (settings: Partial<ManagerSecuritySettings>) =>
+  request<{ ok: true; settings: ManagerSecuritySettings }>(
+    '/api/admin/settings/manager-passcode',
+    {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    },
+  )

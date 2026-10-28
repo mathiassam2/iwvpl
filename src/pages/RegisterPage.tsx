@@ -1,9 +1,9 @@
-import { useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Button, Container, Section, SectionHead, Select } from '@/components/ui'
 import { TermsDialog } from '@/components/ui/TermsDialog'
 import { SITE, siteData } from '@/data'
-import { ApiError, register } from '@/lib/api'
+import { ApiError, getRegistrationSettings, register } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { useCart } from '@/lib/cart'
 import { CLUB_PLACEHOLDER, compressClubLogo, cx, stripFlag } from '@/lib/format'
@@ -13,6 +13,7 @@ interface Fields {
   /* Which kind of account this form creates. A manager entry creates a club;
      a player entry creates a free-agent player row. */
   role: 'club_manager' | 'player'
+  managerPasscode: string
   club: string
   clubLogo: string | null
   /* Optional. Decorative rather than identity — codes are not unique and the
@@ -45,6 +46,7 @@ const FORMATS = [
 
 const EMPTY: Fields = {
   role: 'club_manager',
+  managerPasscode: '',
   club: '',
   clubLogo: null,
   shortCode: '',
@@ -67,10 +69,13 @@ const EMPTY: Fields = {
  * a player does not pick a region and a competition format to join a club.
  * Validating them anyway would block sign-up on questions that do not apply.
  */
-function validate(v: Fields): Errors {
+function validate(v: Fields, requirePasscode = true): Errors {
   const e: Errors = {}
 
   if (v.role === 'club_manager') {
+    if (requirePasscode && !v.managerPasscode.trim()) {
+      e.managerPasscode = 'Manager passcode is required to register a club.'
+    }
     if (!v.club.trim()) e.club = 'Please enter your club name.'
     if (!v.region) e.region = 'Please select your region.'
     if (!v.format) e.format = 'Please choose a competition format.'
@@ -133,6 +138,19 @@ export default function RegisterPage() {
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [logoError, setLogoError] = useState<string | null>(null)
   const logoInputRef = useRef<HTMLInputElement | null>(null)
+  const [passcodeRequired, setPasscodeRequired] = useState(true)
+
+  useEffect(() => {
+    let active = true
+    getRegistrationSettings()
+      .then((s) => {
+        if (active) setPasscodeRequired(s.managerPasscodeRequired)
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [])
   // Only the panel opener survives here. Adding passes to the cart moved to
   // /entries, where they can be browsed without a form half-finished beside
   // them; the success panel still offers a shortcut to the cart.
@@ -175,7 +193,7 @@ export default function RegisterPage() {
     e.preventDefault()
     setTouched(true)
     setSubmitError(null)
-    const errs = validate(values)
+    const errs = validate(values, passcodeRequired)
     setErrors(errs)
     if (Object.keys(errs).length) {
       // Send focus to the first thing that needs attention.
@@ -200,6 +218,7 @@ export default function RegisterPage() {
         shortCode: values.role === 'club_manager' ? values.shortCode.trim() : undefined,
         region: values.role === 'club_manager' ? values.region.trim() : undefined,
         clubLogo: values.role === 'club_manager' ? values.clubLogo : undefined,
+        managerPasscode: values.role === 'club_manager' ? values.managerPasscode.trim() : undefined,
       })
       setUser(user)
       // Snapshot what was created, then clear the form. The confirmation
@@ -470,6 +489,31 @@ export default function RegisterPage() {
                   </p>
 
                   <div className="space-y-5">
+                    {passcodeRequired && (
+                      <Field
+                        label="Manager Invite Passcode"
+                        error={errorFor('managerPasscode')}
+                        htmlFor="managerPasscode"
+                        hint="A league invite passcode is required to register a club. Ask a league administrator or Discord."
+                      >
+                        <input
+                          id="managerPasscode"
+                          name="managerPasscode"
+                          type="text"
+                          value={values.managerPasscode}
+                          onChange={set('managerPasscode')}
+                          placeholder="e.g. IWVPL2026"
+                          autoCapitalize="characters"
+                          aria-invalid={Boolean(errorFor('managerPasscode'))}
+                          className={cx(
+                            inputCls,
+                            'font-mono uppercase tracking-wider',
+                            errorFor('managerPasscode') ? 'border-[var(--danger-text)]' : 'border-[var(--border-strong)]'
+                          )}
+                        />
+                      </Field>
+                    )}
+
                     <Field label="Club name" error={errorFor('club')} htmlFor="club">
                       <input
                         id="club"

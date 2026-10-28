@@ -98,6 +98,60 @@ export function OverviewView({
     void loadAll()
   }, [loadAll])
 
+  const handlePurge = async (club: PendingClub) => {
+    const ident = club.display_name || club.email ? ` and manager account (${club.display_name || club.email})` : ''
+    if (
+      !window.confirm(
+        `Permanently purge pending application "${club.name}"${ident}? This completely deletes the club and fake manager account with zero leftovers.`
+      )
+    ) {
+      return
+    }
+    setBusyId(club.slug)
+    try {
+      await guard(
+        () => decideClub(club.slug, 'purge', true),
+        `Could not purge ${club.name}`,
+      )
+      report('ok', `Purged ${club.name} and removed manager account.`)
+      setSelectedPendingSlugs((prev) => {
+        const next = new Set(prev)
+        next.delete(club.slug)
+        return next
+      })
+      await loadAll()
+    } catch {
+      /* handled */
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const handleBulkPendingPurge = async () => {
+    if (selectedPendingSlugs.size === 0) return
+    const slugs = [...selectedPendingSlugs]
+    if (
+      !window.confirm(
+        `Permanently purge ${slugs.length} selected pending application(s) AND their manager accounts? This deletes all fake clubs and manager user accounts with zero leftovers.`
+      )
+    ) {
+      return
+    }
+    setPendingBulkBusy(true)
+    try {
+      for (const slug of slugs) {
+        await decideClub(slug, 'purge', true)
+      }
+      report('ok', `Purged ${slugs.length} pending application(s) and associated manager accounts.`)
+      setSelectedPendingSlugs(new Set())
+      await loadAll()
+    } catch (err) {
+      report('error', err instanceof Error ? err.message : 'Bulk purge failed.')
+    } finally {
+      setPendingBulkBusy(false)
+    }
+  }
+
   const handleDecision = async (club: PendingClub, decision: 'approve' | 'reject') => {
     setBusyId(club.slug)
     try {
@@ -538,6 +592,16 @@ export function OverviewView({
                         >
                           Reject
                         </button>
+                        <button
+                          type="button"
+                          className="adm-btn adm-btn-danger adm-btn-sm"
+                          style={{ backgroundColor: '#7f1d1d', borderColor: '#991b1b', color: '#fff' }}
+                          disabled={isBusy}
+                          title="Permanently delete this pending club and purge the manager account"
+                          onClick={() => void handlePurge(club)}
+                        >
+                          🗑️ Purge Fake Account
+                        </button>
                       </div>
                     </div>
                   )
@@ -608,6 +672,16 @@ export function OverviewView({
                     onClick={() => void handleBulkPendingDelete()}
                   >
                     Delete
+                  </button>
+                  <button
+                    type="button"
+                    className="adm-btn adm-btn-danger adm-btn-sm"
+                    style={{ backgroundColor: '#7f1d1d', borderColor: '#991b1b', color: '#fff' }}
+                    disabled={pendingBulkBusy}
+                    title="Permanently delete selected pending clubs and purge all their manager accounts"
+                    onClick={() => void handleBulkPendingPurge()}
+                  >
+                    🗑️ Purge Selected & Delete Accounts ({selectedPendingSlugs.size})
                   </button>
                   <button
                     type="button"
