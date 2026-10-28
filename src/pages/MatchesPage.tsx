@@ -127,51 +127,85 @@ export default function MatchesPage() {
     }
   }, [defaultWeekId, selectedWeekId])
 
-  // Clubs filter options
+  // Clubs filter options: only include clubs that actually have fixtures in this season
   const clubOptions = useMemo(() => {
-    if (seasonClubs.length > 0) {
-      return seasonClubs
-        .slice()
-        .sort((a, b) => a.name.localeCompare(b.name))
-        .map((c) => ({
-          value: c.slug,
-          label: stripFlag(c.name),
-        }))
+    const clubsMap = new Map<string, string>() // cleanName -> slug
+
+    for (const m of allMatches) {
+      if (m.home) {
+        const name = stripFlag(m.home).trim()
+        if (name && !clubsMap.has(name)) {
+          const matchedSeasonClub = seasonClubs.find(
+            (c) => stripFlag(c.name).toLowerCase() === name.toLowerCase(),
+          )
+          const slug = matchedSeasonClub?.slug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+          clubsMap.set(name, slug)
+        }
+      }
+      if (m.away) {
+        const name = stripFlag(m.away).trim()
+        if (name && !clubsMap.has(name)) {
+          const matchedSeasonClub = seasonClubs.find(
+            (c) => stripFlag(c.name).toLowerCase() === name.toLowerCase(),
+          )
+          const slug = matchedSeasonClub?.slug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+          clubsMap.set(name, slug)
+        }
+      }
     }
-    return siteData.standings
-      .slice()
-      .sort((a, b) => a.team.localeCompare(b.team))
-      .map((c) => ({
-        value: c.team,
-        label: stripFlag(c.team),
+
+    return Array.from(clubsMap.entries())
+      .map(([name, slug]) => ({
+        value: slug,
+        label: name,
       }))
-  }, [seasonClubs])
+      .sort((a, b) => a.label.localeCompare(b.label))
+  }, [allMatches, seasonClubs])
+
+  const handleTeamChange = (val: string) => {
+    const nextTeam = String(val || 'all').trim()
+    setTeam(nextTeam)
+    if (nextTeam !== 'all') {
+      // When a specific team is selected, show all their fixtures across the entire season
+      setSelectedWeekId('all')
+      const nextParams = new URLSearchParams(searchParams)
+      nextParams.delete('week')
+      setSearchParams(nextParams, { replace: true })
+    } else {
+      // When resetting to All Clubs, return to the default / current week
+      setSelectedWeekId(defaultWeekId || 'all')
+    }
+  }
 
   // Filter matches by week and team
   const filteredMatches = useMemo(() => {
     let result = allMatches
 
-    // 1. Week filter
+    // 1. Team filter
+    const cleanTeam = String(team || 'all').trim().toLowerCase()
+    if (cleanTeam !== 'all') {
+      result = result.filter((m) => {
+        const homeName = stripFlag(m.home).toLowerCase().trim()
+        const awayName = stripFlag(m.away).toLowerCase().trim()
+        const homeSlug = homeName.replace(/[^a-z0-9]+/g, '-')
+        const awaySlug = awayName.replace(/[^a-z0-9]+/g, '-')
+        return (
+          homeSlug === cleanTeam ||
+          awaySlug === cleanTeam ||
+          homeName === cleanTeam ||
+          awayName === cleanTeam ||
+          homeName.includes(cleanTeam) ||
+          awayName.includes(cleanTeam)
+        )
+      })
+    }
+
+    // 2. Week filter (only applied if not 'all' or empty)
     if (selectedWeekId && selectedWeekId !== 'all') {
       const group = byWeekId.get(selectedWeekId)
       if (group) {
-        result = group.matches
+        result = result.filter((m) => group.matches.includes(m))
       }
-    }
-
-    // 2. Team filter
-    if (team !== 'all') {
-      const target = team.toLowerCase()
-      result = result.filter((m) => {
-        const homeSlug = m.home.toLowerCase().replace(/[^a-z0-9]+/g, '-')
-        const awaySlug = m.away.toLowerCase().replace(/[^a-z0-9]+/g, '-')
-        return (
-          m.home.toLowerCase().includes(target) ||
-          m.away.toLowerCase().includes(target) ||
-          homeSlug.includes(target) ||
-          awaySlug.includes(target)
-        )
-      })
     }
 
     return result
@@ -240,7 +274,7 @@ export default function MatchesPage() {
               <div className="w-48">
                 <Select
                   value={team}
-                  onChange={(val) => setTeam(val)}
+                  onChange={handleTeamChange}
                   options={[{ value: 'all', label: 'All Clubs' }, ...clubOptions]}
                 />
               </div>
