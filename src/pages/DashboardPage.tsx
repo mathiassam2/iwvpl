@@ -137,6 +137,10 @@ function ManagerPanel() {
   const [formation, setFormation] = useState<string>('4-3-3')
   const [starters, setStarters] = useState<Array<ClubLineupSlot | null>>(Array(11).fill(null))
   const [bench, setBench] = useState<ClubLineupBench[]>([])
+  const [captainGamertag, setCaptainGamertag] = useState<string | null>(null)
+  const [clubManagers, setClubManagers] = useState<
+    Array<{ id: number; name: string; email?: string; gamertag?: string | null }>
+  >([])
   const [activeSlotIdx, setActiveSlotIdx] = useState<number | null>(null)
   const [slotSearch, setSlotSearch] = useState('')
 
@@ -208,6 +212,11 @@ function ManagerPanel() {
       const saved = clubData?.starting_xi
       const fmtKey = saved?.formation && FORMATIONS[saved.formation] ? saved.formation : '4-3-3'
       const slots = FORMATIONS[fmtKey].slots
+      const initialCaptain =
+        saved?.captainGamertag ??
+        saved?.starters?.find((s) => s?.isCaptain)?.gamertag ??
+        null
+      setCaptainGamertag(initialCaptain)
       setFormation(fmtKey)
       setStarters(
         slots.map(([pos], idx) => {
@@ -219,6 +228,10 @@ function ManagerPanel() {
                 p.gamertag.toLowerCase() === s.gamertag.toLowerCase(),
             )
             const num = pMatch?.shirt_number ?? s.shirtNumber ?? s.number ?? idx + 1
+            const isCap = Boolean(
+              s.isCaptain ||
+              (initialCaptain && s.gamertag.toLowerCase() === initialCaptain.toLowerCase()),
+            )
             return {
               position: pos,
               role: pos,
@@ -226,6 +239,7 @@ function ManagerPanel() {
               gamertag: s.gamertag,
               shirtNumber: num,
               number: num,
+              isCaptain: isCap,
             }
           }
           return null
@@ -261,6 +275,9 @@ function ManagerPanel() {
       setMyClub(data.club)
       setEditShortCode(data.club.short_code ?? '')
       setSquadList(data.squad)
+      if (Array.isArray((data as any).managers)) {
+        setClubManagers((data as any).managers)
+      }
       initLineupState(data.club, data.squad)
     } catch {
       setMyClub(null)
@@ -734,7 +751,18 @@ function ManagerPanel() {
                   try {
                     const lineupPayload: ClubLineup = {
                       formation,
-                      starters,
+                      captainGamertag,
+                      starters: starters.map((s) =>
+                        s
+                          ? {
+                              ...s,
+                              isCaptain: Boolean(
+                                captainGamertag &&
+                                  s.gamertag.toLowerCase() === captainGamertag.toLowerCase(),
+                              ),
+                            }
+                          : null,
+                      ),
                       bench,
                     }
                     await saveManagerLineup(lineupPayload)
@@ -758,7 +786,25 @@ function ManagerPanel() {
             <Pitch
               home
               squad={
-                buildSquadFromLineup({ formation, starters, bench }, user?.name) ?? {
+                buildSquadFromLineup(
+                  {
+                    formation,
+                    captainGamertag,
+                    starters: starters.map((s) =>
+                      s
+                        ? {
+                            ...s,
+                            isCaptain: Boolean(
+                              captainGamertag &&
+                                s.gamertag.toLowerCase() === captainGamertag.toLowerCase(),
+                            ),
+                          }
+                        : null,
+                    ),
+                    bench,
+                  },
+                  user?.name,
+                ) ?? {
                   formation,
                   manager: user?.name || 'Club Manager',
                   starters: (FORMATIONS[formation] || FORMATIONS['4-3-3']).slots.map(
@@ -825,10 +871,43 @@ function ManagerPanel() {
                             <strong className="truncate text-xs font-bold text-white">
                               {currentSlot ? currentSlot.gamertag : 'Empty Position'}
                             </strong>
+                            {currentSlot && captainGamertag && currentSlot.gamertag.toLowerCase() === captainGamertag.toLowerCase() && (
+                              <span className="rounded bg-amber-400 text-black px-1.5 py-0.2 font-mono text-[9px] font-black shrink-0">
+                                (C) CAPTAIN
+                              </span>
+                            )}
                           </div>
                           <div className="flex shrink-0 items-center gap-1.5">
                             {currentSlot && (
                               <>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setCaptainGamertag((prev) =>
+                                      prev && prev.toLowerCase() === currentSlot.gamertag.toLowerCase()
+                                        ? null
+                                        : currentSlot.gamertag,
+                                    )
+                                  }}
+                                  className={cx(
+                                    'h-6 rounded px-2 text-[10px] font-extrabold transition-colors flex items-center gap-1',
+                                    captainGamertag && captainGamertag.toLowerCase() === currentSlot.gamertag.toLowerCase()
+                                      ? 'bg-amber-400 text-black border border-amber-300 shadow-[0_0_8px_rgba(251,191,36,0.6)]'
+                                      : 'bg-white/10 text-amber-300 border border-amber-400/35 hover:bg-amber-400/20',
+                                  )}
+                                  title={
+                                    captainGamertag && captainGamertag.toLowerCase() === currentSlot.gamertag.toLowerCase()
+                                      ? 'Current Captain (Click to remove)'
+                                      : 'Designate as Captain'
+                                  }
+                                >
+                                  <span>©</span>
+                                  <span>
+                                    {captainGamertag && captainGamertag.toLowerCase() === currentSlot.gamertag.toLowerCase()
+                                      ? 'Captain'
+                                      : 'Make (C)'}
+                                  </span>
+                                </button>
                                 <label
                                   className="inline-flex h-6 items-center gap-0.5 rounded border border-white/20 bg-black/50 px-1.5 font-mono text-[11px] font-extrabold text-[#c8ff3d]"
                                   title="Jersey Number (1–99)"
@@ -861,6 +940,12 @@ function ManagerPanel() {
                                 <button
                                   type="button"
                                   onClick={() => {
+                                    if (
+                                      captainGamertag &&
+                                      currentSlot.gamertag.toLowerCase() === captainGamertag.toLowerCase()
+                                    ) {
+                                      setCaptainGamertag(null)
+                                    }
                                     setStarters((prev) => {
                                       const next = [...prev]
                                       next[activeSlotIdx] = null
@@ -992,10 +1077,10 @@ function ManagerPanel() {
             </p>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-2 items-stretch">
             {/* Bench / Substitutes */}
-            <div className="rounded-xl border border-[var(--border)] bg-[var(--bg)] p-3.5">
-              <div className="mb-2.5 flex items-center justify-between">
+            <div className="flex flex-col h-[360px] rounded-xl border border-[var(--border)] bg-[var(--bg)] p-3.5">
+              <div className="mb-2.5 flex items-center justify-between shrink-0">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-faint)]">
                   Bench / Substitutes ({bench.length})
                 </p>
@@ -1028,9 +1113,11 @@ function ManagerPanel() {
                 </select>
               </div>
               {bench.length === 0 ? (
-                <p className="text-xs text-[var(--text-faint)]">No substitutes added yet.</p>
+                <div className="flex flex-1 items-center justify-center p-4">
+                  <p className="text-xs text-[var(--text-faint)]">No substitutes added yet.</p>
+                </div>
               ) : (
-                <ul className="space-y-1.5">
+                <ul className="scroll-slim flex-1 space-y-1.5 overflow-y-auto pr-1">
                   {bench.map((b, bIdx) => (
                     <li
                       key={`${b.gamertag}-${bIdx}`}
@@ -1068,8 +1155,8 @@ function ManagerPanel() {
             </div>
 
             {/* Signed Squad Lineup Status */}
-            <div className="rounded-xl border border-[var(--border)] bg-[var(--bg)] p-3.5">
-              <div className="mb-2.5 flex items-center justify-between">
+            <div className="flex flex-col h-[360px] rounded-xl border border-[var(--border)] bg-[var(--bg)] p-3.5">
+              <div className="mb-2.5 flex items-center justify-between shrink-0">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--accent-text)]">
                   Squad Lineup Status ({starters.filter(Boolean).length} / 11 Starters)
                 </p>
@@ -1079,6 +1166,7 @@ function ManagerPanel() {
                     onClick={() => {
                       setStarters(Array(11).fill(null))
                       setBench([])
+                      setCaptainGamertag(null)
                     }}
                     className="text-[11px] font-semibold text-[var(--text-faint)] hover:text-[var(--text-strong)]"
                   >
@@ -1087,11 +1175,13 @@ function ManagerPanel() {
                 )}
               </div>
               {squadList.length === 0 ? (
-                <p className="text-xs text-[var(--text-faint)]">
-                  Sign players to your squad below to place them on the pitch.
-                </p>
+                <div className="flex flex-1 items-center justify-center p-4 text-center">
+                  <p className="text-xs text-[var(--text-faint)]">
+                    Sign players to your squad below to place them on the pitch.
+                  </p>
+                </div>
               ) : (
-                <ul className="max-h-64 space-y-1.5 overflow-y-auto pr-1">
+                <ul className="scroll-slim flex-1 space-y-1.5 overflow-y-auto pr-1">
                   {squadList.map((p, idx) => {
                     const starterIdx = starters.findIndex(
                       (s) => s && s.gamertag.toLowerCase() === p.gamertag.toLowerCase(),
@@ -1103,6 +1193,16 @@ function ManagerPanel() {
                     const isSub = bench.some(
                       (b) => b.gamertag.toLowerCase() === p.gamertag.toLowerCase(),
                     )
+                    const isMgr =
+                      (user?.playerId === p.id || user?.id === p.user_id) ||
+                      Boolean(user?.gamertag && p.gamertag.toLowerCase() === user.gamertag.toLowerCase()) ||
+                      clubManagers.some((m) =>
+                        m.id === p.user_id ||
+                        (m.gamertag && m.gamertag.toLowerCase() === p.gamertag.toLowerCase()) ||
+                        (m.name && m.name.toLowerCase() === p.gamertag.toLowerCase())
+                      )
+                    const isCap = Boolean(captainGamertag && p.gamertag.toLowerCase() === captainGamertag.toLowerCase())
+
                     return (
                       <li
                         key={p.id}
@@ -1113,16 +1213,42 @@ function ManagerPanel() {
                         </span>
                         <span className="min-w-0 flex-1 truncate font-semibold text-[var(--text-strong)] flex items-center gap-1.5">
                           {p.gamertag}
-                          {((user?.playerId === p.id || user?.id === p.user_id) || Boolean(user?.gamertag && p.gamertag.toLowerCase() === user.gamertag.toLowerCase())) && (
+                          {isMgr && (
                             <span className="rounded bg-amber-500/15 text-amber-500 border border-amber-500/30 px-1 py-0.2 text-[9px] font-bold shrink-0">
                               MGR
                             </span>
                           )}
                         </span>
                         {starterPos ? (
-                          <span className="rounded bg-[var(--accent-tint)] px-2 py-0.5 font-mono text-[10px] font-extrabold text-[var(--accent-text)]">
-                            XI: {starterPos}
-                          </span>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCaptainGamertag((prev) =>
+                                  prev && prev.toLowerCase() === p.gamertag.toLowerCase()
+                                    ? null
+                                    : p.gamertag,
+                                )
+                              }}
+                              className={cx(
+                                'rounded px-1.5 py-0.5 font-mono text-[10px] font-extrabold transition-colors flex items-center gap-0.5',
+                                isCap
+                                  ? 'bg-amber-400 text-black border border-amber-300 shadow-[0_0_8px_rgba(251,191,36,0.5)]'
+                                  : 'bg-[var(--surface-2)] text-[var(--text-faint)] hover:text-amber-400 hover:bg-amber-500/10 border border-transparent',
+                              )}
+                              title={
+                                isCap
+                                  ? 'Team Captain (Click to remove captaincy)'
+                                  : 'Make Team Captain (C)'
+                              }
+                            >
+                              <span>©</span>
+                              <span>{isCap ? 'CAP' : ''}</span>
+                            </button>
+                            <span className="rounded bg-[var(--accent-tint)] px-2 py-0.5 font-mono text-[10px] font-extrabold text-[var(--accent-text)]">
+                              XI: {starterPos}
+                            </span>
+                          </div>
                         ) : isSub ? (
                           <span className="rounded bg-[var(--surface-2)] px-2 py-0.5 text-[10px] font-bold text-[var(--text-muted)]">
                             SUB

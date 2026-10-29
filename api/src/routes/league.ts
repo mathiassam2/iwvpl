@@ -258,7 +258,6 @@ league.get(
     const club = await queryOne<{
       id: number
       starting_xi_json: string | null
-      manager_name: string | null
     }>(
       `SELECT c.id, c.name, c.slug, c.short_code, c.flag,
               CASE
@@ -267,10 +266,7 @@ league.get(
                 ELSE c.logo_url
               END AS logo_url,
               ${clubLogoSql('c')} AS logo_local,
-              c.status, c.is_featured, c.description, c.formation, c.source_url, c.starting_xi_json,
-              (SELECT COALESCE(u.display_name, u.email) FROM users u
-                WHERE u.club_id = c.id AND u.is_active = TRUE AND u.role IN ('club_manager', 'admin', 'owner')
-                ORDER BY u.id DESC LIMIT 1) AS manager_name
+              c.status, c.is_featured, c.description, c.formation, c.source_url, c.starting_xi_json
          FROM clubs c WHERE c.slug = ?`,
 
       [req.params.slug],
@@ -286,7 +282,7 @@ league.get(
       }
     }
 
-    const [division, players] = await Promise.all([
+    const [division, players, managerRows] = await Promise.all([
 
       queryOne(
         `SELECT d.id, d.name, d.slug
@@ -302,7 +298,28 @@ league.get(
 
         [club.id],
       ),
+      queryAll<{
+        id: number
+        email: string
+        display_name: string | null
+        gamertag: string | null
+        role: string
+      }>(
+        `SELECT u.id, u.email, u.display_name, u.role, p.gamertag
+           FROM users u
+           LEFT JOIN players p ON p.user_id = u.id
+          WHERE u.club_id = ?
+            AND u.is_active = TRUE
+            AND u.role IN ('club_manager', 'admin', 'owner')
+          ORDER BY FIELD(u.role, 'owner', 'admin', 'club_manager'), u.id ASC`,
+        [club.id],
+      ),
     ])
+
+    const managerNames = managerRows
+      .map((m) => (m.display_name || m.gamertag || (m.email ? m.email.split('@')[0] : '')).trim())
+      .filter(Boolean)
+    const managerName = managerNames.join(', ') || null
 
     if (starting_xi) {
       const playerMap = new Map<number, any>(players.map((p: any) => [p.id, p]))
@@ -316,6 +333,13 @@ league.get(
           if (matched && matched.shirt_number != null) {
             s.shirtNumber = matched.shirt_number
             s.number = matched.shirt_number
+          }
+          if (
+            starting_xi.captainGamertag &&
+            s.gamertag &&
+            s.gamertag.toLowerCase() === starting_xi.captainGamertag.toLowerCase()
+          ) {
+            s.isCaptain = true
           }
         }
       }
@@ -335,7 +359,20 @@ league.get(
 
     const { starting_xi_json: _ignored, ...restClub } = club
     res.setHeader('Cache-Control', 'no-cache, private')
-    res.json({ ...restClub, starting_xi, division, players })
+    res.json({
+      ...restClub,
+      manager_name: managerName,
+      managers: managerNames,
+      manager_users: managerRows.map((m) => ({
+        id: m.id,
+        name: (m.display_name || m.gamertag || m.email.split('@')[0]).trim(),
+        email: m.email,
+        role: m.role,
+      })),
+      starting_xi,
+      division,
+      players,
+    })
 
   }),
 )

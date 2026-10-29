@@ -565,18 +565,37 @@ manager.get(
   '/squad',
   handler(async (req, res) => {
     const club = await ownClub(req.user!.id)
-    const rows = await queryAll(
-      `SELECT p.id, p.gamertag, p.slug, p.shirt_number, p.avatar_local, p.is_free_agent, p.user_id,
+    const [rows, managers] = await Promise.all([
+      queryAll(
+        `SELECT p.id, p.gamertag, p.slug, p.shirt_number, p.avatar_local, p.is_free_agent, p.user_id,
+                u.role AS user_role,
+                (u.role IN ('club_manager', 'admin', 'owner')) AS is_manager,
+                (SELECT COUNT(*) FROM transfer_requests tr
+                  WHERE tr.player_id = p.id AND tr.to_club_id = ? AND tr.status = 'pending') AS pending
+           FROM players p
+           LEFT JOIN users u ON u.id = p.user_id
+          WHERE p.club_id = ?
+          ORDER BY COALESCE(p.shirt_number, 999), p.gamertag`,
 
-              (SELECT COUNT(*) FROM transfer_requests tr
-                WHERE tr.player_id = p.id AND tr.to_club_id = ? AND tr.status = 'pending') AS pending
-         FROM players p
-        WHERE p.club_id = ?
-        ORDER BY COALESCE(p.shirt_number, 999), p.gamertag`,
-
-      [club.id, club.id],
-    )
-    res.json({ club, squad: rows })
+        [club.id, club.id],
+      ),
+      queryAll<{
+        id: number
+        email: string
+        display_name: string | null
+        gamertag: string | null
+        role: string
+      }>(
+        `SELECT u.id, u.email, u.display_name, u.role, p.gamertag,
+                COALESCE(u.display_name, p.gamertag, u.username, u.email) AS name
+           FROM users u
+           LEFT JOIN players p ON p.user_id = u.id
+          WHERE u.club_id = ? AND u.is_active = TRUE AND u.role IN ('club_manager', 'admin', 'owner')
+          ORDER BY u.id ASC`,
+        [club.id],
+      ),
+    ])
+    res.json({ club, squad: rows, managers })
   }),
 )
 
@@ -592,11 +611,13 @@ manager.put(
       bad('Lineup payload is required.')
     }
     const formation = String(lineup.formation ?? '4-3-3').trim()
+    const captainGamertag = lineup.captainGamertag ? String(lineup.captainGamertag).trim().slice(0, 120) : null
     const starters = Array.isArray(lineup.starters) ? lineup.starters : []
     const bench = Array.isArray(lineup.bench) ? lineup.bench : []
 
     const normalized = {
       formation,
+      captainGamertag,
       starters: starters.map((s: any, idx: number) => {
         if (!s || !String(s?.gamertag ?? '').trim()) return null
         const pos = String(s?.position ?? s?.role ?? '').slice(0, 12)
@@ -607,6 +628,10 @@ manager.put(
             Number.parseInt(String(s?.shirtNumber ?? s?.number ?? idx + 1), 10) || idx + 1,
           ),
         )
+        const isCaptain = Boolean(
+          s?.isCaptain ||
+          (captainGamertag && String(s?.gamertag ?? '').trim().toLowerCase() === captainGamertag.toLowerCase())
+        )
         return {
           slotIndex: Number.isInteger(s?.slotIndex) ? s.slotIndex : idx,
           position: pos,
@@ -615,6 +640,7 @@ manager.put(
           gamertag: String(s?.gamertag ?? '').trim().slice(0, 120),
           shirtNumber: num,
           number: num,
+          isCaptain,
         }
       }),
       bench: bench

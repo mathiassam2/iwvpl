@@ -47,6 +47,7 @@ export interface PitchPlayer {
   x: number
   y: number
   playerId?: number | null
+  isCaptain?: boolean
 }
 
 export interface Squad {
@@ -66,6 +67,7 @@ export interface ClubLineupSlot {
   gamertag: string
   shirtNumber?: number
   number?: number
+  isCaptain?: boolean
 }
 
 export interface ClubLineupBench {
@@ -79,6 +81,7 @@ export interface ClubLineupBench {
 
 export interface ClubLineup {
   formation: string
+  captainGamertag?: string | null
   starters: Array<ClubLineupSlot | null>
   bench: ClubLineupBench[]
   updatedAt?: string
@@ -220,6 +223,10 @@ export function buildSquadFromLineup(
   const starters: PitchPlayer[] = templateSlots.map(([defaultRole, defaultX, defaultY], idx) => {
     const saved = lineup.starters[idx]
     const liveNum = (saved?.gamertag && rosterMap?.get(saved.gamertag.toLowerCase())) ?? null
+    const isCaptain = Boolean(
+      saved?.isCaptain ||
+      (lineup.captainGamertag && saved?.gamertag && saved.gamertag.toLowerCase() === lineup.captainGamertag.toLowerCase())
+    )
     return {
       number: liveNum ?? saved?.shirtNumber ?? saved?.number ?? idx + 1,
       name: saved?.gamertag?.trim() || '—',
@@ -227,6 +234,7 @@ export function buildSquadFromLineup(
       x: defaultX,
       y: defaultY,
       playerId: saved?.playerId ?? null,
+      isCaptain,
     }
   })
 

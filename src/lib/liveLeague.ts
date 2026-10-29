@@ -579,6 +579,7 @@ export type LiveClubDetail = Club & {
   id?: number
   division: string | null
   managerName: string | null
+  managers?: string[]
   startingXi: ClubLineup | null
   roster: Array<{ id: number; name: string; shirtNumber: number | null }>
 }
@@ -618,6 +619,7 @@ export async function getLiveClub(
       description?: string | null
       formation?: string | null
       manager_name?: string | null
+      managers?: string[]
       starting_xi?: ClubLineup | null
       division: { name: string } | null
       players: Array<{ id: number; gamertag: string; shirt_number?: number | null }>
@@ -644,6 +646,11 @@ export async function getLiveClub(
 
       division: response.division?.name ?? null,
       managerName: response.manager_name ?? null,
+      managers: Array.isArray(response.managers) && response.managers.length > 0
+        ? response.managers
+        : response.manager_name
+          ? response.manager_name.split(',').map((s) => s.trim()).filter(Boolean)
+          : [],
       startingXi: response.starting_xi ?? null,
       roster: response.players.map((p) => ({
         id: p.id,

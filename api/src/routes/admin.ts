@@ -1083,16 +1083,15 @@ admin.get(
             GROUP BY dc.club_id
          ) div_assign ON div_assign.club_id = c.id
          LEFT JOIN (
-           SELECT u1.club_id, u1.id, u1.email, u1.display_name
-             FROM users u1
-             JOIN (
-               SELECT club_id, MAX(id) AS max_id
-                 FROM users
-                WHERE club_id IS NOT NULL
-                  AND role IN ('club_manager', 'admin', 'owner')
-                  AND is_active = TRUE
-                GROUP BY club_id
-             ) u2 ON u2.club_id = u1.club_id AND u2.max_id = u1.id
+           SELECT club_id,
+                  GROUP_CONCAT(COALESCE(display_name, email) ORDER BY id ASC SEPARATOR ', ') AS display_name,
+                  MAX(id) AS id,
+                  MAX(email) AS email
+             FROM users
+            WHERE club_id IS NOT NULL
+              AND role IN ('club_manager', 'admin', 'owner')
+              AND is_active = TRUE
+            GROUP BY club_id
          ) mgr ON mgr.club_id = c.id
         ORDER BY c.name`,
       [seasonId, seasonId],
@@ -1504,8 +1503,10 @@ admin.put(
     const starters = Array.isArray(lineup.starters) ? lineup.starters : []
     const bench = Array.isArray(lineup.bench) ? lineup.bench : []
 
+    const captainGamertag = lineup.captainGamertag ? String(lineup.captainGamertag).trim().slice(0, 120) : null
     const normalized = {
       formation,
+      captainGamertag,
       starters: starters.map((s: any, idx: number) => {
         if (!s || !String(s?.gamertag ?? '').trim()) return null
         const pos = String(s?.position ?? s?.role ?? '').slice(0, 12)
@@ -1516,6 +1517,10 @@ admin.put(
             Number.parseInt(String(s?.shirtNumber ?? s?.number ?? idx + 1), 10) || idx + 1,
           ),
         )
+        const isCaptain = Boolean(
+          s?.isCaptain ||
+          (captainGamertag && String(s?.gamertag ?? '').trim().toLowerCase() === captainGamertag.toLowerCase())
+        )
         return {
           slotIndex: Number.isInteger(s?.slotIndex) ? s.slotIndex : idx,
           position: pos,
@@ -1524,6 +1529,7 @@ admin.put(
           gamertag: String(s?.gamertag ?? '').trim().slice(0, 120),
           shirtNumber: num,
           number: num,
+          isCaptain,
         }
       }),
       bench: bench

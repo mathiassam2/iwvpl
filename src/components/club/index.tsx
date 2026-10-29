@@ -15,12 +15,14 @@ export function JerseyIcon({
   home,
   empty,
   selected,
+  isCaptain,
 }: {
   number: number | string
   isGk?: boolean
   home?: boolean
   empty?: boolean
   selected?: boolean
+  isCaptain?: boolean
 }) {
   const fill = empty
     ? '#182128'
@@ -81,6 +83,23 @@ export function JerseyIcon({
       >
         {number}
       </text>
+      {isCaptain && !empty && (
+        <g>
+          {/* Captain badge circle & text on upper right of jersey */}
+          <circle cx="36.5" cy="11.5" r="7" fill="#f59e0b" stroke="#ffffff" strokeWidth="1.2" />
+          <text
+            x="36.5"
+            y="15.2"
+            textAnchor="middle"
+            fill="#0f172a"
+            fontSize="10"
+            fontWeight="900"
+            fontFamily="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+          >
+            C
+          </text>
+        </g>
+      )}
     </svg>
   )
 }
@@ -161,6 +180,7 @@ export function Pitch({
               home={home}
               empty={isEmpty}
               selected={isSelected}
+              isCaptain={p.isCaptain}
             />
             <div className="mt-0.5 flex flex-col items-center">
               <span
@@ -170,10 +190,13 @@ export function Pitch({
                     ? 'bg-[var(--accent-solid)] text-[var(--on-volt)] ring-2 ring-white'
                     : isEmpty
                       ? 'bg-black/55 text-white/65'
-                      : 'bg-black/80 text-white',
+                      : p.isCaptain
+                        ? 'bg-amber-950/90 text-amber-300 ring-1 ring-amber-400/60'
+                        : 'bg-black/80 text-white',
                 )}
               >
                 {isEmpty ? p.role : p.name}
+                {p.isCaptain && !isEmpty && <span className="ml-0.5 text-amber-400 font-black"> (C)</span>}
               </span>
               {!isEmpty && (
                 <span className="mt-0.5 text-[8.5px] font-extrabold uppercase tracking-wider text-[#c8ff3d] drop-shadow-[0_1px_2px_rgba(0,0,0,0.95)]">
@@ -205,11 +228,13 @@ export function LineupList({
     name,
     role,
     keeper,
+    isCaptain,
   }: {
     number: number
     name: string
     role: string
     keeper?: boolean
+    isCaptain?: boolean
   }) => (
     <li className="flex items-center gap-3 border-b border-[var(--border)] px-4 py-2 last:border-0">
       <span
@@ -222,8 +247,13 @@ export function LineupList({
       >
         {number}
       </span>
-      <span className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--text)]">
+      <span className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--text)] flex items-center gap-1.5">
         {name}
+        {isCaptain && (
+          <span className="rounded bg-amber-500/20 text-amber-400 border border-amber-500/40 px-1 py-0.2 text-[9px] font-black shrink-0">
+            (C)
+          </span>
+        )}
       </span>
       {keeper && (
         <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-faint)]">
@@ -243,11 +273,12 @@ export function LineupList({
       <ul>
         {squad.starters.map((p) => (
           <Row
-            key={`s${p.number}`}
+            key={`s${p.number}-${p.name}`}
             number={p.number}
             name={p.name}
             role={p.role}
             keeper={p.role === 'GK'}
+            isCaptain={p.isCaptain}
           />
         ))}
       </ul>

@@ -213,7 +213,9 @@ export default function ClubDetailPage() {
       .filter((g) => g.rows.length > 0)
     const squad = buildSquadFromLineup(
       liveClub?.startingXi,
-      liveClub?.managerName || 'Club Manager',
+      (liveClub?.managers && liveClub.managers.length > 0)
+        ? liveClub.managers.join(', ')
+        : (liveClub?.managerName || 'Club Manager'),
       liveClub?.roster,
     )
     return { standing, divisionTable, matches: played, next, last, transfers, scorers, squad }
@@ -290,8 +292,12 @@ export default function ClubDetailPage() {
             </div>
 
             <p className="border-t border-[var(--border)] px-5 py-3 text-xs text-[var(--text-faint)]">
-              Manager{' '}
-              <span className="font-semibold text-[var(--text-muted)]">{data.squad.manager}</span>
+              {(liveClub?.managers && liveClub.managers.length > 1) ? 'Managers ' : 'Manager '}
+              <span className="font-semibold text-[var(--text-muted)]">
+                {(liveClub?.managers && liveClub.managers.length > 0)
+                  ? liveClub.managers.join(', ')
+                  : data.squad.manager}
+              </span>
               {' · '}
               <span className="text-[var(--text-faint)]">
                 Official Starting XI ({data.squad.formation})
@@ -380,8 +386,13 @@ export default function ClubDetailPage() {
                 <span className="numeric grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[var(--accent-tint)] text-[11px] font-bold text-[var(--accent-text)]">
                   {p.number}
                 </span>
-                <span className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--text)]">
+                <span className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--text)] flex items-center gap-1.5">
                   {p.name}
+                  {p.isCaptain && (
+                    <span className="rounded bg-amber-500/20 text-amber-400 border border-amber-500/35 px-1.5 py-0.2 text-[9px] font-black shrink-0">
+                      (C) CAPTAIN
+                    </span>
+                  )}
                 </span>
                 <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-[var(--text-faint)]">
                   {p.role}
@@ -582,6 +593,16 @@ export default function ClubDetailPage() {
                 {club.code && (
                   <span className="numeric text-xs tracking-[0.2em] text-[var(--text-faint)]">
                     {club.code}
+                  </span>
+                )}
+                {(liveClub?.managers && liveClub.managers.length > 0) && (
+                  <span className="text-xs text-[var(--text-muted)] flex items-center gap-1.5 ml-1">
+                    <span className="text-[var(--text-faint)]">
+                      {liveClub.managers.length > 1 ? 'Managers:' : 'Manager:'}
+                    </span>
+                    <span className="font-semibold text-[var(--text-strong)]">
+                      {liveClub.managers.join(', ')}
+                    </span>
                   </span>
                 )}
               </div>
