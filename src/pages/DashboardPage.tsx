@@ -144,6 +144,45 @@ function ManagerPanel() {
   const [activeSlotIdx, setActiveSlotIdx] = useState<number | null>(null)
   const [slotSearch, setSlotSearch] = useState('')
 
+  // Auto-save & Outside click state for Starting XI
+  const pickerRef = useRef<HTMLDivElement>(null)
+  const isInitializedRef = useRef(false)
+  const lastSavedPayloadRef = useRef<string>('')
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Close player picker when clicking outside the popover (even outside the field)
+  useEffect(() => {
+    if (activeSlotIdx === null) return
+
+    const handleOutsideClick = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as HTMLElement | null
+      if (pickerRef.current && pickerRef.current.contains(e.target as Node)) {
+        return
+      }
+      if (target && target.closest('[data-pitch-slot]')) {
+        return
+      }
+      setActiveSlotIdx(null)
+      setSlotSearch('')
+    }
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setActiveSlotIdx(null)
+        setSlotSearch('')
+      }
+    }
+
+    document.addEventListener('pointerdown', handleOutsideClick)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', handleOutsideClick)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [activeSlotIdx])
+
   const assignOrSwapSlot = (
     targetIdx: number,
     player: { id: number; gamertag: string; shirt_number?: number | null },
@@ -245,26 +284,58 @@ function ManagerPanel() {
           return null
         }),
       )
-      setBench(
-        Array.isArray(saved?.bench)
-          ? saved.bench.map((b, idx) => {
-              const pMatch = players.find(
-                (p) =>
-                  (b.playerId && p.id === b.playerId) ||
-                  p.gamertag.toLowerCase() === b.gamertag.toLowerCase(),
-              )
-              const num = pMatch?.shirt_number ?? b.shirtNumber ?? b.number ?? 12 + idx
-              return {
-                playerId: b.playerId ?? pMatch?.id ?? null,
-                gamertag: b.gamertag,
-                shirtNumber: num,
-                number: num,
-                position: b.position || b.role || 'SUB',
-                role: b.position || b.role || 'SUB',
-              }
-            })
-          : [],
-      )
+      const benchItems = Array.isArray(saved?.bench)
+        ? saved.bench.map((b, idx) => {
+            const pMatch = players.find(
+              (p) =>
+                (b.playerId && p.id === b.playerId) ||
+                p.gamertag.toLowerCase() === b.gamertag.toLowerCase(),
+            )
+            const num = pMatch?.shirt_number ?? b.shirtNumber ?? b.number ?? 12 + idx
+            return {
+              playerId: b.playerId ?? pMatch?.id ?? null,
+              gamertag: b.gamertag,
+              shirtNumber: num,
+              number: num,
+              position: b.position || b.role || 'SUB',
+              role: b.position || b.role || 'SUB',
+            }
+          })
+        : []
+      setBench(benchItems)
+
+      // Initialize saved payload reference so initial load does not trigger auto-save
+      lastSavedPayloadRef.current = JSON.stringify({
+        formation: fmtKey,
+        captainGamertag: initialCaptain,
+        starters: slots.map(([pos], idx) => {
+          const s = saved?.starters?.[idx]
+          if (s && s.gamertag) {
+            const pMatch = players.find(
+              (p) =>
+                (s.playerId && p.id === s.playerId) ||
+                p.gamertag.toLowerCase() === s.gamertag.toLowerCase(),
+            )
+            const num = pMatch?.shirt_number ?? s.shirtNumber ?? s.number ?? idx + 1
+            const isCap = Boolean(
+              s.isCaptain ||
+              (initialCaptain && s.gamertag.toLowerCase() === initialCaptain.toLowerCase()),
+            )
+            return {
+              position: pos,
+              role: pos,
+              playerId: s.playerId ?? pMatch?.id ?? null,
+              gamertag: s.gamertag,
+              shirtNumber: num,
+              number: num,
+              isCaptain: isCap,
+            }
+          }
+          return null
+        }),
+        bench: benchItems,
+      })
+      isInitializedRef.current = true
     },
     [],
   )
@@ -284,6 +355,59 @@ function ManagerPanel() {
       setSquadList([])
     }
   }, [initLineupState])
+
+  // Auto-save every action in starting XI and bench
+  useEffect(() => {
+    if (!myClub || !isInitializedRef.current) return
+
+    const currentPayload: ClubLineup = {
+      formation,
+      captainGamertag,
+      starters: starters.map((s) =>
+        s
+          ? {
+              ...s,
+              isCaptain: Boolean(
+                captainGamertag &&
+                  s.gamertag.toLowerCase() === captainGamertag.toLowerCase(),
+              ),
+            }
+          : null,
+      ),
+      bench,
+    }
+    const currentJson = JSON.stringify(currentPayload)
+
+    // Skip if nothing changed from last saved state
+    if (lastSavedPayloadRef.current === currentJson) {
+      return
+    }
+
+    setSaveStatus('saving')
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current)
+    }
+
+    saveTimeoutRef.current = setTimeout(async () => {
+      try {
+        await saveManagerLineup(currentPayload)
+        lastSavedPayloadRef.current = currentJson
+        setSaveStatus('saved')
+        if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
+        savedTimerRef.current = setTimeout(() => {
+          setSaveStatus((prev) => (prev === 'saved' ? 'idle' : prev))
+        }, 2200)
+      } catch (err) {
+        setSaveStatus('error')
+      }
+    }, 400)
+
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current)
+      }
+    }
+  }, [formation, starters, bench, captainGamertag, myClub])
 
   const loadOffers = useCallback(async () => {
     try {
@@ -741,42 +865,25 @@ function ManagerPanel() {
               >
                 Auto-fill from squad
               </Button>
-              <Button
-                type="button"
-                size="sm"
-                disabled={busy}
-                onClick={async () => {
-                  setBusy(true)
-                  setNotice(null)
-                  try {
-                    const lineupPayload: ClubLineup = {
-                      formation,
-                      captainGamertag,
-                      starters: starters.map((s) =>
-                        s
-                          ? {
-                              ...s,
-                              isCaptain: Boolean(
-                                captainGamertag &&
-                                  s.gamertag.toLowerCase() === captainGamertag.toLowerCase(),
-                              ),
-                            }
-                          : null,
-                      ),
-                      bench,
-                    }
-                    await saveManagerLineup(lineupPayload)
-                    setNotice({ kind: 'ok', text: 'Starting XI saved and published to your club page.' })
-                    await loadClub()
-                  } catch (err) {
-                    setNotice({ kind: 'error', text: msg(err) })
-                  } finally {
-                    setBusy(false)
-                  }
-                }}
-              >
-                {busy ? 'Saving…' : 'Save Starting XI'}
-              </Button>
+              {saveStatus === 'saving' && (
+                <span className="flex items-center gap-1.5 rounded-full bg-amber-500/15 border border-amber-500/30 px-2.5 py-1 text-xs font-bold text-amber-400">
+                  <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Saving…
+                </span>
+              )}
+              {saveStatus === 'saved' && (
+                <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-1 text-xs font-bold text-emerald-400">
+                  <span>✓</span> Auto-saved
+                </span>
+              )}
+              {saveStatus === 'error' && (
+                <span className="flex items-center gap-1 rounded-full bg-rose-500/15 border border-rose-500/30 px-2.5 py-1 text-xs font-bold text-rose-400">
+                  <span>⚠</span> Save failed
+                </span>
+              )}
             </div>
           }
         />
@@ -833,7 +940,7 @@ function ManagerPanel() {
               {activeSlotIdx !== null && (
                 <>
                   <div
-                    className="absolute inset-0 z-[6] rounded-card bg-black/25"
+                    className="fixed inset-0 z-[20] bg-black/35 cursor-default transition-opacity"
                     onClick={() => {
                       setActiveSlotIdx(null)
                       setSlotSearch('')
@@ -853,7 +960,8 @@ function ManagerPanel() {
 
                     return (
                       <div
-                        className="absolute z-[12] w-[min(296px,calc(100%-16px))] -translate-x-1/2 overflow-hidden rounded-xl border border-[#c8ff3d]/45 bg-[#0c1014]/95 shadow-[0_20px_44px_rgba(0,0,0,0.8)] backdrop-blur-md"
+                        ref={pickerRef}
+                        className="absolute z-[30] w-[min(296px,calc(100%-16px))] -translate-x-1/2 overflow-hidden rounded-xl border border-[#c8ff3d]/45 bg-[#0c1014]/95 shadow-[0_20px_44px_rgba(0,0,0,0.8)] backdrop-blur-md"
                         style={{
                           left: `clamp(156px, ${x}%, calc(100% - 156px))`,
                           ...(openAbove
@@ -1064,7 +1172,7 @@ function ManagerPanel() {
             </Pitch>
             <p className="mt-2.5 text-center text-xs leading-relaxed text-[var(--text-faint)]">
               Click any jersey on the pitch to open the smart player dropdown — search your squad,
-              swap positions, or edit jersey numbers directly on the field.
+              swap positions, or edit jersey numbers directly on the field. All changes auto-save.
             </p>
           </div>
 

@@ -167,10 +167,11 @@ export function Pitch({
             key={`${idx}-${p.role}`}
             type={onSelectSlot ? 'button' : undefined}
             onClick={onSelectSlot ? () => onSelectSlot(idx) : undefined}
+            data-pitch-slot={idx}
             className={cx(
               'absolute z-[3] -translate-x-1/2 -translate-y-1/2 text-center outline-none transition-transform',
               onSelectSlot && 'cursor-pointer hover:scale-105 focus-visible:scale-105',
-              isSelected && 'z-[4] scale-110',
+              isSelected && 'z-[25] scale-110',
             )}
             style={{ left: `${p.x}%`, top: `${p.y}%` }}
           >
