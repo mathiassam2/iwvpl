@@ -116,13 +116,6 @@ async function main() {
     cpSync(join(repoRoot, 'api', '.env.production'), join(stageDir, 'api', '.env'))
   }
 
-  // Ensure nodemailer is included in deployment bundle
-  const nodemailerSrc = join(repoRoot, 'api', 'node_modules', 'nodemailer')
-  if (existsSync(nodemailerSrc)) {
-    mkdirSync(join(stageDir, 'node_modules'), { recursive: true })
-    cpSync(nodemailerSrc, join(stageDir, 'node_modules', 'nodemailer'), { recursive: true })
-  }
-
   const apiPkg = JSON.parse(readFileSync(join(repoRoot, 'api', 'package.json'), 'utf8'))
   writeFileSync(
     join(stageDir, 'package.json'),
