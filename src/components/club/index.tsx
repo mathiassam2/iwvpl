@@ -326,7 +326,7 @@ export function TeamFormStrip({ matches, club }: { matches: Match[]; club: strin
         const opponentLogo = clubIsHome ? m.awayLogo : m.homeLogo
 
         return (
-          <li key={`${m.url}-${i}`} className="flex flex-col items-center gap-1.5">
+          <li key={`${m.url}-${i}`} className="min-w-0 flex flex-col items-center gap-1.5">
             <span className="text-[9px] font-bold uppercase tracking-wider text-[var(--text-faint)]">
               {clubIsHome ? 'H' : 'A'}
             </span>
@@ -337,8 +337,11 @@ export function TeamFormStrip({ matches, club }: { matches: Match[]; club: strin
               wrapperClassName="h-8 w-8 sm:h-10 sm:w-10"
               className="object-contain"
             />
-            <span className="max-w-full truncate text-center text-[10px] text-[var(--text-muted)]">
-              {stripFlag(opponent).split(' ').slice(-1)[0]}
+            <span
+              title={stripFlag(opponent)}
+              className="w-full truncate px-0.5 text-center text-[10px] font-medium text-[var(--text-muted)]"
+            >
+              {stripFlag(opponent)}
             </span>
             {outcome ? (
               <span
