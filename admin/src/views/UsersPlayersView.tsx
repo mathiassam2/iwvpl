@@ -68,15 +68,21 @@ function isValidDate(iso: string | null | undefined): boolean {
 
 function parseTime(iso: string | null | undefined): number {
   if (!isValidDate(iso)) return 0
-  const norm = iso!.includes('T') ? iso! : iso!.replace(' ', 'T')
-  const t = new Date(norm).getTime()
+  const norm = iso!.trim()
+  const match = norm.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})/)
+  if (match) {
+    const [, y, m, d, h, min, s] = match
+    const t = new Date(Number(y), Number(m) - 1, Number(d), Number(h), Number(min), Number(s)).getTime()
+    return Number.isNaN(t) ? 0 : t
+  }
+  const t = new Date(norm.includes('T') ? norm : norm.replace(' ', 'T')).getTime()
   return Number.isNaN(t) ? 0 : t
 }
 
 function formatFullDateTime(iso: string | null | undefined): string {
-  if (!isValidDate(iso)) return 'Never'
-  const norm = iso!.includes('T') ? iso! : iso!.replace(' ', 'T')
-  const d = new Date(norm)
+  const t = parseTime(iso)
+  if (!t) return 'Never'
+  const d = new Date(t)
   return d.toLocaleString('en-GB', {
     day: '2-digit',
     month: 'short',
@@ -87,21 +93,36 @@ function formatFullDateTime(iso: string | null | undefined): string {
 }
 
 function formatRelativeTime(iso: string | null | undefined): string {
-  if (!isValidDate(iso)) return '—'
-  const norm = iso!.includes('T') ? iso! : iso!.replace(' ', 'T')
-  const diffMs = Date.now() - new Date(norm).getTime()
+  const targetTime = parseTime(iso)
+  if (!targetTime) return '—'
+
+  const diffMs = Date.now() - targetTime
+  if (diffMs < 0 && diffMs > -60000) return 'Just now'
   if (diffMs < 0) return 'Just now'
-  const secs = Math.floor(diffMs / 1000)
-  if (secs < 60) return 'Just now'
-  const mins = Math.floor(secs / 60)
-  if (mins < 60) return `${mins}m ago`
+
+  const diffSecs = Math.floor(diffMs / 1000)
+  if (diffSecs < 60) return 'Just now'
+
+  const mins = Math.floor(diffSecs / 60)
+  if (mins < 60) {
+    return `${mins} ${mins === 1 ? 'min' : 'mins'} ago`
+  }
+
   const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours}h ago`
+  const remainingMins = mins % 60
+
+  if (hours < 24) {
+    if (remainingMins > 0) {
+      return `${hours}h ${remainingMins}m ago`
+    }
+    return `${hours} ${hours === 1 ? 'hr' : 'hrs'} ago`
+  }
+
   const days = Math.floor(hours / 24)
   if (days === 1) return 'Yesterday'
-  if (days < 30) return `${days}d ago`
+  if (days < 30) return `${days} days ago`
   const months = Math.floor(days / 30)
-  if (months < 12) return `${months}mo ago`
+  if (months < 12) return `${months} ${months === 1 ? 'month' : 'months'} ago`
   return `${Math.floor(days / 365)}y ago`
 }
 
@@ -747,13 +768,15 @@ export function UsersPlayersView({
             type="button"
             className={`adm-pill-tab ${typeFilter === 'all' ? 'is-active' : ''}`}
             onClick={() => setTypeFilter('all')}
+            title="Show all members, accounts, and roster players"
           >
-            👥 All Members ({counts.all})
+            👥 All Directory ({counts.all})
           </button>
           <button
             type="button"
             className={`adm-pill-tab ${typeFilter === 'linked' ? 'is-active' : ''}`}
             onClick={() => setTypeFilter('linked')}
+            title="Has both website login account and EA FC player profile"
           >
             🔗 Linked ({counts.linked})
           </button>
@@ -761,15 +784,17 @@ export function UsersPlayersView({
             type="button"
             className={`adm-pill-tab ${typeFilter === 'account_only' ? 'is-active' : ''}`}
             onClick={() => setTypeFilter('account_only')}
+            title="Website login account only (no EA FC player profile in league)"
           >
-            👤 Accounts Only ({counts.accountOnly})
+            👤 Web Accounts ({counts.accountOnly})
           </button>
           <button
             type="button"
             className={`adm-pill-tab ${typeFilter === 'player_only' ? 'is-active' : ''}`}
             onClick={() => setTypeFilter('player_only')}
+            title="EA FC roster player only (no website login account)"
           >
-            🎮 Roster Only ({counts.playerOnly})
+            🎮 Roster Players ({counts.playerOnly})
           </button>
         </div>
 
@@ -777,6 +802,28 @@ export function UsersPlayersView({
           <button type="button" className="adm-btn adm-btn-primary" onClick={openCreateMember}>
             + Add Member
           </button>
+        </div>
+      </div>
+
+      {/* Member Type Legend / Quick Guide */}
+      <div className="adm-member-type-guide">
+        <div className="adm-guide-item">
+          <span className="adm-unified-pill type-linked">🔗 Linked</span>
+          <span className="adm-guide-desc">
+            <strong>Account + Player:</strong> Website login connected to an EA FC player profile on a squad.
+          </span>
+        </div>
+        <div className="adm-guide-item">
+          <span className="adm-unified-pill type-account">👤 Web Account</span>
+          <span className="adm-guide-desc">
+            <strong>Login Only:</strong> Has website credentials, but no EA FC player profile registered in league.
+          </span>
+        </div>
+        <div className="adm-guide-item">
+          <span className="adm-unified-pill type-roster">🎮 Roster Player</span>
+          <span className="adm-guide-desc">
+            <strong>Player Only:</strong> In-game EA FC squad player without a website login account.
+          </span>
         </div>
       </div>
 
@@ -941,26 +988,20 @@ export function UsersPlayersView({
                       {/* Type Badge */}
                       <td>
                         {m.type === 'linked' ? (
-                          <span
-                            className="adm-unified-pill type-linked"
-                            title="User account linked to league player profile"
-                          >
-                            🔗 Linked
-                          </span>
+                          <div className="adm-type-cell" title="Web account connected to EA FC player profile">
+                            <span className="adm-unified-pill type-linked">🔗 Linked</span>
+                            <span className="adm-type-subtext">Account + Player</span>
+                          </div>
                         ) : m.type === 'account_only' ? (
-                          <span
-                            className="adm-unified-pill type-account"
-                            title="User account without player profile"
-                          >
-                            👤 Account Only
-                          </span>
+                          <div className="adm-type-cell" title="Website login credentials with no EA FC player profile">
+                            <span className="adm-unified-pill type-account">👤 Web Account</span>
+                            <span className="adm-type-subtext">No Player Profile</span>
+                          </div>
                         ) : (
-                          <span
-                            className="adm-unified-pill type-roster"
-                            title="Player profile without a web user account"
-                          >
-                            🎮 Roster Only
-                          </span>
+                          <div className="adm-type-cell" title="In-game league roster player without a website login">
+                            <span className="adm-unified-pill type-roster">🎮 Roster Only</span>
+                            <span className="adm-type-subtext">No Web Login</span>
+                          </div>
                         )}
                       </td>
 
@@ -1140,28 +1181,37 @@ export function UsersPlayersView({
               <form onSubmit={handleSaveMember} className="adm-form-stack">
                 {/* Creation Mode Selector */}
                 {isCreating && (
-                  <div className="adm-radio-toggle-group">
-                    <button
-                      type="button"
-                      className={`adm-radio-toggle-btn ${createType === 'linked' ? 'is-active' : ''}`}
-                      onClick={() => setCreateType('linked')}
-                    >
-                      🔗 Account & Player
-                    </button>
-                    <button
-                      type="button"
-                      className={`adm-radio-toggle-btn ${createType === 'account_only' ? 'is-active' : ''}`}
-                      onClick={() => setCreateType('account_only')}
-                    >
-                      👤 Account Only
-                    </button>
-                    <button
-                      type="button"
-                      className={`adm-radio-toggle-btn ${createType === 'player_only' ? 'is-active' : ''}`}
-                      onClick={() => setCreateType('player_only')}
-                    >
-                      🎮 Roster Only
-                    </button>
+                  <div>
+                    <div className="adm-radio-toggle-group" style={{ marginBottom: 6 }}>
+                      <button
+                        type="button"
+                        className={`adm-radio-toggle-btn ${createType === 'linked' ? 'is-active' : ''}`}
+                        onClick={() => setCreateType('linked')}
+                      >
+                        🔗 Account & Player
+                      </button>
+                      <button
+                        type="button"
+                        className={`adm-radio-toggle-btn ${createType === 'account_only' ? 'is-active' : ''}`}
+                        onClick={() => setCreateType('account_only')}
+                      >
+                        👤 Web Account Only
+                      </button>
+                      <button
+                        type="button"
+                        className={`adm-radio-toggle-btn ${createType === 'player_only' ? 'is-active' : ''}`}
+                        onClick={() => setCreateType('player_only')}
+                      >
+                        🎮 Roster Player Only
+                      </button>
+                    </div>
+                    <p className="adm-text-muted" style={{ fontSize: '11.5px', marginBottom: 14 }}>
+                      {createType === 'linked'
+                        ? 'Creates both website login credentials (email & password) and an EA FC league player profile on a squad.'
+                        : createType === 'account_only'
+                          ? 'Creates website login credentials only (e.g. for non-playing club managers, staff, or admins).'
+                          : 'Registers an in-game EA FC player on a club roster without creating website login credentials.'}
+                    </p>
                   </div>
                 )}
 

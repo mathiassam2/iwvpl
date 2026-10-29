@@ -5741,3 +5741,49 @@ input:checked + .adm-slider:before {
   border-color: var(--accent);
   color: var(--accent);
 }
+
+
+/* Member Type Guide / Legend Banner */
+.adm-member-type-guide {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-top: 6px;
+  margin-bottom: 2px;
+}
+
+.adm-guide-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+
+.adm-guide-desc {
+  color: var(--muted);
+}
+
+.adm-guide-desc strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* Type Cell in Table */
+.adm-type-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: flex-start;
+}
+
+.adm-type-subtext {
+  font-size: 10.5px;
+  color: var(--faint);
+  line-height: 1.2;
+  white-space: nowrap;
+}
