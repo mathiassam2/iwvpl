@@ -13,6 +13,9 @@ if (window.location.pathname.startsWith('/checkout/success')) {
   window.location.replace(`/#/checkout/success${search}`)
 } else if (window.location.pathname.startsWith('/cart')) {
   window.location.replace('/#/cart')
+} else if (window.location.pathname.startsWith('/reset-password')) {
+  const search = window.location.search
+  window.location.replace(`/#/reset-password${search}`)
 }
 
 // Take scroll restoration off the browser.

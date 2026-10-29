@@ -122,28 +122,127 @@ player.get(
   }),
 )
 
+/* ------------------------------------------- check gamertag availability */
+
+player.get(
+  '/check-gamertag',
+  handler(async (req, res) => {
+    const rawTag = String(req.query.gamertag ?? '').trim()
+    if (!rawTag) return res.json({ available: false, reason: 'Gamertag cannot be empty' })
+    if (rawTag.length < 2) return res.json({ available: false, reason: 'At least 2 characters required' })
+    if (rawTag.length > 50) return res.json({ available: false, reason: 'Maximum 50 characters allowed' })
+    if (!/^[a-zA-Z0-9_.-]+$/.test(rawTag)) {
+      return res.json({ available: false, reason: 'Only letters, numbers, underscores, dots, and hyphens' })
+    }
+
+    const me = await ownPlayer(req.user!.id)
+    if (rawTag.toLowerCase() === me.gamertag.toLowerCase()) {
+      return res.json({ available: true, isCurrent: true })
+    }
+
+    const key = gamertagKey(rawTag)
+    const takenPlayer = await queryOne<{ id: number }>(
+      'SELECT id FROM players WHERE gamertag_key = ? AND id != ?',
+      [key, me.id],
+    )
+    if (takenPlayer) {
+      return res.json({ available: false, reason: 'That gamertag is already taken' })
+    }
+
+    const takenUser = await queryOne<{ id: number }>(
+      'SELECT id FROM users WHERE (LOWER(username) = LOWER(?) OR LOWER(display_name) = LOWER(?)) AND id != ?',
+      [rawTag, rawTag, req.user!.id],
+    )
+    if (takenUser) {
+      return res.json({ available: false, reason: 'That name is already in use' })
+    }
+
+    res.json({ available: true })
+  }),
+)
+
+/* ------------------------------------------------ update profile / gamertag */
+
 player.patch(
   '/me',
-    handler(async (req, res) => {
+  handler(async (req, res) => {
     const me = await ownPlayer(req.user!.id)
+    const oldGamertag = me.gamertag
+
+    // 1. Shirt number validation
     const rawShirt = req.body?.shirtNumber
-    let shirtNumber: number | null = null
-    if (rawShirt !== null && rawShirt !== undefined && String(rawShirt).trim() !== '') {
-      const n = Number.parseInt(String(rawShirt), 10)
-      if (!Number.isInteger(n) || n < 1 || n > 99) {
-        bad('Jersey number must be a whole number between 1 and 99.')
+    let shirtNumber: number | null | undefined = undefined
+    if (rawShirt !== undefined) {
+      if (rawShirt === null || String(rawShirt).trim() === '') {
+        shirtNumber = null
+      } else {
+        const n = Number.parseInt(String(rawShirt), 10)
+        if (!Number.isInteger(n) || n < 1 || n > 99) {
+          bad('Jersey number must be a whole number between 1 and 99.')
+        }
+        shirtNumber = n
       }
-      shirtNumber = n
+    }
+
+    // 2. Gamertag validation and uniqueness check
+    const rawGamertag = req.body?.gamertag
+    let newGamertag: string | null = null
+    if (rawGamertag !== undefined && rawGamertag !== null) {
+      const tag = String(rawGamertag).trim()
+      if (!tag) bad('Gamertag cannot be empty.')
+      if (tag.length < 2) bad('Gamertag must be at least 2 characters.')
+      if (tag.length > 50) bad('Gamertag cannot exceed 50 characters.')
+      if (!/^[a-zA-Z0-9_.-]+$/.test(tag)) {
+        bad('Gamertag can only contain letters, numbers, underscores, dots, and hyphens.')
+      }
+
+      if (tag.toLowerCase() !== oldGamertag.toLowerCase()) {
+        const key = gamertagKey(tag)
+        const clashPlayer = await queryOne<{ id: number }>(
+          'SELECT id FROM players WHERE gamertag_key = ? AND id != ?',
+          [key, me.id],
+        )
+        if (clashPlayer) {
+          bad(`The gamertag "${tag}" is already taken. Please choose another.`)
+        }
+
+        const clashUser = await queryOne<{ id: number }>(
+          'SELECT id FROM users WHERE (LOWER(username) = LOWER(?) OR LOWER(display_name) = LOWER(?)) AND id != ?',
+          [tag, tag, req.user!.id],
+        )
+        if (clashUser) {
+          bad(`The gamertag "${tag}" is already taken. Please choose another.`)
+        }
+
+        newGamertag = tag
+      }
     }
 
     await withTransaction(async (conn) => {
-      await conn.execute('UPDATE players SET shirt_number = ?, updated_at = NOW() WHERE id = ?', [
-        shirtNumber,
-        me.id,
-      ])
+      // Update shirt number if provided
+      if (shirtNumber !== undefined) {
+        await conn.execute('UPDATE players SET shirt_number = ?, updated_at = NOW() WHERE id = ?', [
+          shirtNumber,
+          me.id,
+        ])
+      }
+
+      // Update gamertag if changed
+      if (newGamertag) {
+        const key = gamertagKey(newGamertag)
+        const slug = clubSlug(newGamertag)
+        await conn.execute(
+          'UPDATE players SET gamertag = ?, gamertag_key = ?, slug = ?, updated_at = NOW() WHERE id = ?',
+          [newGamertag, key, slug, me.id],
+        )
+        await conn.execute(
+          'UPDATE users SET display_name = ?, updated_at = NOW() WHERE id = ?',
+          [newGamertag, req.user!.id],
+        )
+      }
 
       // Synchronize clubs.starting_xi_json if player is attached to a club
-      if (me.club_id) {
+      if (me.club_id && (shirtNumber !== undefined || newGamertag)) {
         const [clubRows] = await conn.query(
           'SELECT id, starting_xi_json FROM clubs WHERE id = ? FOR UPDATE',
           [me.club_id],
@@ -153,32 +252,54 @@ player.patch(
           try {
             const parsed = JSON.parse(club.starting_xi_json)
             let modified = false
+
             if (Array.isArray(parsed.starters)) {
               for (const s of parsed.starters) {
                 if (
                   s &&
                   ((s.playerId && Number(s.playerId) === Number(me.id)) ||
-                    (s.gamertag && s.gamertag.toLowerCase() === me.gamertag.toLowerCase()))
+                    (s.gamertag && s.gamertag.toLowerCase() === oldGamertag.toLowerCase()))
                 ) {
-                  s.shirtNumber = shirtNumber ?? undefined
-                  s.number = shirtNumber ?? undefined
+                  if (shirtNumber !== undefined) {
+                    s.shirtNumber = shirtNumber ?? undefined
+                    s.number = shirtNumber ?? undefined
+                  }
+                  if (newGamertag) {
+                    s.gamertag = newGamertag
+                  }
                   modified = true
                 }
               }
             }
+
             if (Array.isArray(parsed.bench)) {
               for (const b of parsed.bench) {
                 if (
                   b &&
                   ((b.playerId && Number(b.playerId) === Number(me.id)) ||
-                    (b.gamertag && b.gamertag.toLowerCase() === me.gamertag.toLowerCase()))
+                    (b.gamertag && b.gamertag.toLowerCase() === oldGamertag.toLowerCase()))
                 ) {
-                  b.shirtNumber = shirtNumber ?? undefined
-                  b.number = shirtNumber ?? undefined
+                  if (shirtNumber !== undefined) {
+                    b.shirtNumber = shirtNumber ?? undefined
+                    b.number = shirtNumber ?? undefined
+                  }
+                  if (newGamertag) {
+                    b.gamertag = newGamertag
+                  }
                   modified = true
                 }
               }
             }
+
+            if (
+              newGamertag &&
+              parsed.captainGamertag &&
+              parsed.captainGamertag.toLowerCase() === oldGamertag.toLowerCase()
+            ) {
+              parsed.captainGamertag = newGamertag
+              modified = true
+            }
+
             if (modified) {
               await conn.execute(
                 'UPDATE clubs SET starting_xi_json = ?, updated_at = NOW() WHERE id = ?',
@@ -193,7 +314,7 @@ player.patch(
     })
 
     const updated = await ownPlayer(req.user!.id)
-    res.json({ ok: true, player: updated })
+    res.json({ ok: true, player: updated, user: { ...req.user, name: updated.gamertag, gamertag: updated.gamertag } })
   }),
 )
 

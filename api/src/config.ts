@@ -189,6 +189,16 @@ export const config = {
     currency: optional('STRIPE_CURRENCY', 'SGD'),
   },
 
+  mail: {
+    host: optional('SMTP_HOST', 'iwvpl.asia'),
+    port: int('SMTP_PORT', 465),
+    secure: bool('SMTP_SECURE', true),
+    user: optional('SMTP_USER', 'noreply@iwvpl.asia'),
+    pass: optional('SMTP_PASS', 'IwvplSecureMail2026!'),
+    from: optional('SMTP_FROM', '"IWVPL" <noreply@iwvpl.asia>'),
+    siteUrl: optional('PUBLIC_SITE_URL', 'https://iwvpl.asia'),
+  },
+
   migrateOnBoot: bool('MIGRATE_ON_BOOT', true),
 
   /** Binds the dev server to loopback only unless explicitly widened. */

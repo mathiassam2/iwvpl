@@ -2133,6 +2133,13 @@ export default function DashboardPage() {
   const { user, loading } = useAuth()
   const navigate = useNavigate()
   const sent = useRef(false)
+  const [showSettingsModal, setShowSettingsModal] = useState(false)
+
+  useEffect(() => {
+    if (window.location.hash.includes('settings')) {
+      setShowSettingsModal(true)
+    }
+  }, [])
 
   // Redirect only after the session has actually resolved, or a signed-in user
   // reloading /dashboard bounces to /login during the one frame where `user` is
@@ -2170,15 +2177,39 @@ export default function DashboardPage() {
             {user.name}
           </h1>
         </div>
-        <ButtonLink to="/" variant="outline" size="sm">
-          Back to site
-        </ButtonLink>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setShowSettingsModal(true)}
+            className="gap-1.5 font-bold"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+            Account Settings
+          </Button>
+          <ButtonLink to="/" variant="outline" size="sm">
+            Back to site
+          </ButtonLink>
+        </div>
       </div>
 
       <Container size="default" className="pb-20">
         {isPlayer ? <PlayerPanel /> : <ManagerPanel />}
         <OrdersSection />
       </Container>
+
+      <AccountSettingsModal
+        open={showSettingsModal}
+        onClose={() => {
+          setShowSettingsModal(false)
+          if (window.location.hash.includes('settings')) {
+            window.history.replaceState(null, '', window.location.pathname)
+          }
+        }}
+      />
     </div>
   )
 }

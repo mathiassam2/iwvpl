@@ -131,6 +131,18 @@ export const register = (payload: {
 
 export const logout = () => post<{ ok: true }>('/api/auth/logout')
 
+export const forgotPassword = (email: string) =>
+  post<{ ok: true; message: string }>('/api/auth/forgot-password', { email })
+
+export const verifyResetToken = (token: string) =>
+  post<{ valid: boolean; error?: string }>('/api/auth/verify-reset-token', { token })
+
+export const resetPassword = (token: string, password: string) =>
+  post<{ ok: true; message: string }>('/api/auth/reset-password', { token, password })
+
+export const changePassword = (currentPassword: string, newPassword: string) =>
+  post<{ ok: true; message: string }>('/api/auth/change-password', { currentPassword, newPassword })
+
 /** Never throws for "not signed in" — the API answers 200 with a null user,
  *  because the client asks this on boot to decide what to render. */
 export const me = () => request<{ user: User | null }>('/api/auth/me', { cache: 'no-store' })
@@ -251,10 +263,16 @@ export const playerOverview = () =>
     pending: number
   }>('/api/player/me')
 
-export const updateMyPlayerProfile = (patch: { shirtNumber: number | null }) =>
+export const checkGamertagAvailability = (gamertag: string) =>
+  request<{ available: boolean; reason?: string; isCurrent?: boolean }>(
+    `/api/player/check-gamertag?gamertag=${encodeURIComponent(gamertag)}`,
+  )
+
+export const updateMyPlayerProfile = (patch: { shirtNumber?: number | null; gamertag?: string }) =>
   request<{
     ok: true
     player: { id: number; gamertag: string; club_id: number | null; shirt_number?: number | null }
+    user?: User
   }>('/api/player/me', {
     method: 'PATCH',
     body: JSON.stringify(patch),

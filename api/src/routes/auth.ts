@@ -14,7 +14,7 @@
 import { Router } from 'express'
 import { execute, queryOne, withTransaction } from '../db.js'
 import { findAndMigrateWordPressUser } from '../domain/wordpressAuth.js'
-import { attachUser, readTokens } from '../middleware/auth.js'
+import { attachUser, readTokens, requireAuth } from '../middleware/auth.js'
 import {
   clearSessionCookie,
   createSession,
@@ -32,6 +32,9 @@ import { clubSlug, gamertagKey } from '../domain/slug.js'
 import { createRateLimiter } from '../middleware/rateLimit.js'
 import { getManagerPasscodeSettings } from '../domain/settings.js'
 import { verifyManagerInvite } from '../domain/invites.js'
+import { randomBytes } from 'node:crypto'
+import { sendPasswordResetEmail } from '../domain/mail.js'
+import { config } from '../config.js'
 
 export const auth = Router()
 
@@ -46,6 +49,12 @@ const registerLimiter = createRateLimiter({
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 10,
   message: 'Too many accounts created from this IP. Please try again later.',
+})
+
+const forgotPasswordLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5,
+  message: 'Too many password reset requests. Please wait 15 minutes before trying again.',
 })
 
 function handler(fn: (req: any, res: any) => Promise<void>) {
@@ -432,5 +441,143 @@ auth.get(
   handler(async (req, res) => {
     if (!req.user) return res.json({ user: null })
     res.json({ user: await toPublicUser(req.user) })
+  }),
+)
+
+/* ---------------------------------------------------- forgot password */
+
+auth.post(
+  '/forgot-password',
+  forgotPasswordLimiter,
+  handler(async (req, res) => {
+    const raw = String(req.body?.email ?? req.body?.identifier ?? '').trim().toLowerCase()
+    if (!raw) bad('Please enter your email or username.')
+
+    const user = await queryOne<{ id: number; email: string; display_name: string | null }>(
+      `SELECT u.id, u.email, u.display_name
+         FROM users u
+         LEFT JOIN players p ON p.user_id = u.id
+        WHERE LOWER(u.email) = ?
+           OR LOWER(u.username) = ?
+           OR LOWER(u.display_name) = ?
+           OR p.gamertag_key = ?
+        LIMIT 1`,
+      [raw, raw, raw, raw],
+    )
+
+    if (user && user.email) {
+      await execute('UPDATE password_resets SET used_at = NOW() WHERE user_id = ? AND used_at IS NULL', [user.id])
+
+      const token = randomBytes(32).toString('hex')
+      await execute(
+        `INSERT INTO password_resets (user_id, token, expires_at, created_at)
+         VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 1 HOUR), NOW())`,
+        [user.id, token],
+      )
+
+      const resetUrl = `${config.mail.siteUrl}/#/reset-password?token=${token}`
+      const recipientName = user.display_name || user.email.split('@')[0]
+
+      try {
+        await sendPasswordResetEmail(user.email, resetUrl, recipientName)
+      } catch (err) {
+        console.error('Failed to send password reset email:', err)
+        bad('Could not send password reset email. Please try again or contact support.')
+      }
+    }
+
+    res.json({
+      ok: true,
+      message: 'If an account exists with that email or username, a reset link has been sent.',
+    })
+  }),
+)
+
+/* ------------------------------------------------- verify reset token */
+
+auth.post(
+  '/verify-reset-token',
+  handler(async (req, res) => {
+    const token = String(req.body?.token ?? '').trim()
+    if (!token) bad('Reset token is required.')
+
+    const row = await queryOne<{ id: number; user_id: number; expires_at: string; used_at: string | null }>(
+      `SELECT id, user_id, expires_at, used_at FROM password_resets WHERE token = ? LIMIT 1`,
+      [token],
+    )
+
+    if (!row || row.used_at !== null) {
+      return res.status(400).json({ valid: false, error: 'This reset link has already been used or is invalid.' })
+    }
+
+    const expiresAt = new Date(row.expires_at.replace(' ', 'T') + 'Z').getTime()
+    if (Date.now() > expiresAt) {
+      return res.status(400).json({ valid: false, error: 'This reset link has expired. Please request a new one.' })
+    }
+
+    res.json({ valid: true })
+  }),
+)
+
+/* ----------------------------------------------------- reset password */
+
+auth.post(
+  '/reset-password',
+  handler(async (req, res) => {
+    const token = String(req.body?.token ?? '').trim()
+    const newPass = password(req.body?.password)
+
+    if (!token) bad('Reset token is required.')
+
+    const row = await queryOne<{ id: number; user_id: number; expires_at: string; used_at: string | null }>(
+      `SELECT id, user_id, expires_at, used_at FROM password_resets WHERE token = ? LIMIT 1`,
+      [token],
+    )
+
+    if (!row || row.used_at !== null) {
+      bad('This reset link has already been used or is invalid.')
+    }
+
+    const expiresAt = new Date(row.expires_at.replace(' ', 'T') + 'Z').getTime()
+    if (Date.now() > expiresAt) {
+      bad('This reset link has expired. Please request a new one.')
+    }
+
+    const hash = await hashPassword(newPass)
+
+    await withTransaction(async (conn) => {
+      await conn.execute('UPDATE users SET password_hash = ?, updated_at = NOW() WHERE id = ?', [hash, row.user_id])
+      await conn.execute('UPDATE password_resets SET used_at = NOW() WHERE id = ?', [row.id])
+      await conn.execute('DELETE FROM sessions WHERE user_id = ?', [row.user_id])
+    })
+
+    res.json({ ok: true, message: 'Password has been successfully reset. You can now sign in.' })
+  }),
+)
+
+/* ---------------------------------------------------- change password */
+
+auth.post(
+  '/change-password',
+  requireAuth(),
+  handler(async (req, res) => {
+    const currentPass = String(req.body?.currentPassword ?? '')
+    const newPass = password(req.body?.newPassword)
+
+    if (!currentPass) bad('Current password is required.')
+
+    const userRow = await queryOne<{ id: number; password_hash: string }>(
+      'SELECT id, password_hash FROM users WHERE id = ?',
+      [req.user!.id],
+    )
+    if (!userRow) bad('User not found.')
+
+    const ok = await verifyPassword(currentPass, userRow.password_hash)
+    if (!ok) bad('Current password is incorrect.')
+
+    const hash = await hashPassword(newPass)
+    await execute('UPDATE users SET password_hash = ?, updated_at = NOW() WHERE id = ?', [hash, req.user!.id])
+
+    res.json({ ok: true, message: 'Password changed successfully.' })
   }),
 )

@@ -4,7 +4,7 @@ import { Button } from '@/components/ui'
 import { HeaderWash } from '@/components/layout/HeaderWash'
 import { SITE } from '@/data'
 import { asset } from '@/lib/assets'
-import { ApiError, login as loginRequest } from '@/lib/api'
+import { ApiError, forgotPassword, login as loginRequest } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { cx } from '@/lib/format'
 
@@ -34,6 +34,11 @@ export default function LoginPage() {
   const [notice, setNotice] = useState<string | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [showForgotModal, setShowForgotModal] = useState(false)
+  const [forgotInput, setForgotInput] = useState('')
+  const [forgotBusy, setForgotBusy] = useState(false)
+  const [forgotError, setForgotError] = useState<string | null>(null)
+  const [forgotSuccess, setForgotSuccess] = useState(false)
 
   const { user, loading, setUser } = useAuth()
   const navigate = useNavigate()
@@ -43,6 +48,26 @@ export default function LoginPage() {
   useEffect(() => {
     if (!loading && user) navigate('/dashboard', { replace: true })
   }, [loading, user, navigate])
+
+  const onForgotSubmit = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!forgotInput.trim()) {
+      setForgotError('Please enter your email address or username.')
+      return
+    }
+
+    setForgotBusy(true)
+    setForgotError(null)
+
+    try {
+      await forgotPassword(forgotInput.trim())
+      setForgotSuccess(true)
+    } catch (err) {
+      setForgotError(err instanceof ApiError ? err.message : 'Could not send reset email. Try again.')
+    } finally {
+      setForgotBusy(false)
+    }
+  }
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault()
@@ -191,6 +216,12 @@ export default function LoginPage() {
                 </label>
                 <button
                   type="button"
+                  onClick={() => {
+                    setForgotInput(email.trim())
+                    setForgotError(null)
+                    setForgotSuccess(false)
+                    setShowForgotModal(true)
+                  }}
                   className="text-sm font-semibold text-[var(--accent-text)] transition-opacity hover:opacity-70"
                 >
                   Forgot password?
@@ -293,6 +324,107 @@ export default function LoginPage() {
         </div>
       </div>
       </div>
+      {/* Forgot Password Modal */}
+      {showForgotModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="forgot-pw-title"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-[fadeIn_.15s_ease-out]"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowForgotModal(false)
+          }}
+        >
+          <div className="w-full max-w-md rounded-card border border-[var(--border-strong)] bg-[#12141a] p-6 shadow-2xl sm:p-7">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 id="forgot-pw-title" className="text-xl font-extrabold text-[var(--text-strong)]">
+                  Reset Password
+                </h3>
+                <p className="mt-1 text-xs text-[var(--text-muted)]">
+                  Enter your email address or username and we'll send you a password reset link.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowForgotModal(false)}
+                className="grid h-8 w-8 place-items-center rounded-lg text-[var(--text-faint)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-strong)]"
+              >
+                ✕
+              </button>
+            </div>
+
+            {forgotSuccess ? (
+              <div className="mt-6 text-center space-y-4">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[var(--accent-tint)] text-[var(--accent-text)]">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                </div>
+                <div className="space-y-1">
+                  <h4 className="text-base font-bold text-[var(--text-strong)]">Reset Link Sent!</h4>
+                  <p className="text-xs leading-relaxed text-[var(--text-muted)]">
+                    If an account exists for <strong className="text-white">{forgotInput}</strong>, a password reset link has been dispatched to your email address.
+                  </p>
+                </div>
+                <div className="rounded-lg bg-[var(--surface)] p-3 text-left text-[11px] text-[var(--text-faint)]">
+                  💡 Don't see it? Be sure to check your spam or junk folder. The link will remain active for 1 hour.
+                </div>
+                <Button
+                  size="md"
+                  className="w-full font-bold mt-2"
+                  onClick={() => setShowForgotModal(false)}
+                >
+                  Back to Sign In
+                </Button>
+              </div>
+            ) : (
+              <form onSubmit={onForgotSubmit} noValidate className="mt-6 space-y-4">
+                {forgotError && (
+                  <div className="rounded-lg border border-[var(--danger-text)]/40 bg-[var(--danger-text)]/10 px-3.5 py-2.5 text-xs font-medium text-[var(--danger-text)]">
+                    {forgotError}
+                  </div>
+                )}
+
+                <div>
+                  <label
+                    htmlFor="forgot-email"
+                    className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-faint)]"
+                  >
+                    Email Address or Username
+                  </label>
+                  <input
+                    id="forgot-email"
+                    type="text"
+                    required
+                    autoFocus
+                    value={forgotInput}
+                    onChange={(e) => {
+                      setForgotInput(e.target.value)
+                      setForgotError(null)
+                    }}
+                    placeholder="e.g. manager@club.com or AcePlayer"
+                    className={input}
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowForgotModal(false)}
+                    className="px-4 py-2.5 text-xs font-semibold text-[var(--text-muted)] hover:text-white transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <Button type="submit" size="md" className="font-bold" disabled={forgotBusy}>
+                    {forgotBusy ? 'Sending…' : 'Send Reset Link'}
+                  </Button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

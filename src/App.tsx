@@ -22,6 +22,7 @@ const AboutPage = lazy(() => import('@/pages/AboutPage'))
 const ContactPage = lazy(() => import('@/pages/ContactPage'))
 const RegisterPage = lazy(() => import('@/pages/RegisterPage'))
 const LoginPage = lazy(() => import('@/pages/LoginPage'))
+const ResetPasswordPage = lazy(() => import('@/pages/ResetPasswordPage'))
 const ClubDetailPage = lazy(() => import('@/pages/ClubDetailPage'))
 const MatchPage = lazy(() => import('@/pages/MatchPage'))
 const PlayerPage = lazy(() => import('@/pages/PlayerPage'))
@@ -110,6 +111,7 @@ export default function App() {
             <Route path="/contact" element={<ContactPage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route path="/cart" element={<CartPage />} />
             <Route path="/checkout" element={<CartPage />} />
             <Route path="/checkout/success" element={<CheckoutSuccessPage />} />

@@ -16,6 +16,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/lib/auth'
 import { listNotifications, markNotificationsRead, type Notification } from '@/lib/api'
 import { cx } from '@/lib/format'
+import { AccountSettingsModal } from './AccountSettingsModal'
 
 /** Shared open/close plumbing for both dropdowns. */
 function useDropdown(onNavigate?: () => void) {
@@ -76,6 +77,7 @@ const row =
 function NotificationBell() {
   const { user, setUnread } = useAuth()
   const { open, setOpen, ref } = useDropdown()
+  const [showSettings, setShowSettings] = useState(false)
   const [items, setItems] = useState<Notification[] | null>(null)
 
   // Opening the panel is the read receipt. Fetching lazily on open keeps the
@@ -255,6 +257,20 @@ export default function AccountMenu() {
                 </span>
                 Notifications
               </Link>
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false)
+                  setShowSettings(true)
+                }}
+                role="menuitem"
+                className={row}
+              >
+                <span className="w-4 text-center" aria-hidden>
+                  ⚙
+                </span>
+                Account Settings
+              </button>
             </div>
 
             <div className="border-t border-[var(--border-strong)] py-1">
@@ -268,6 +284,7 @@ export default function AccountMenu() {
           </div>
         )}
       </div>
+      <AccountSettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
     </div>
   )
 }
