@@ -382,32 +382,28 @@ auth.post(
     // Returning early would make the response time a reliable signal that the
     // address is not registered, which is the same oracle the generic message
     // exists to close.
-    const storedHash =
-      row?.password_hash ??
-      '$2a$10$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvalidinvalidiu'
+    let authenticatedUser: AccountUser | null = null
 
-    const ok = await verifyPassword(secret, storedHash)
-    let authenticatedUser: AccountUser | null = (row && ok) ? row : null
-
-    // If local authentication failed or account is not in v2 yet, try WordPress auto-migration
-    if (!authenticatedUser) {
-      const migrated = await findAndMigrateWordPressUser(identifier, secret)
-      if (migrated) {
-        authenticatedUser = migrated
+    if (row) {
+      if (!row.is_active) {
+        throw Object.assign(new Error('That account has been deactivated.'), { status: 403 })
       }
+      // User is already in v2 users table. Authenticate against v2 credentials only.
+      const ok = await verifyPassword(secret, row.password_hash)
+      if (ok) {
+        authenticatedUser = row
+        const h = row.password_hash
+        if (h.startsWith('$' + 'P$') || h.startsWith('$' + 'H$') || h.startsWith('$' + 'wp') || /^[0-9a-f]{32}$/i.test(h)) {
+          const freshHash = await hashPassword(secret)
+          await execute('UPDATE users SET password_hash = ?, updated_at = NOW() WHERE id = ?', [freshHash, row.id])
+        }
+      }
+    } else {
+      // User is not in v2 users table yet. Attempt legacy WordPress auto-migration.
+      authenticatedUser = await findAndMigrateWordPressUser(identifier, secret)
     }
 
     if (!authenticatedUser) throw invalid()
-
-    if (row && !row.is_active) {
-      throw Object.assign(new Error('That account has been deactivated.'), { status: 403 })
-    }
-
-    // If local row had a legacy hash ($P, $H, $wp, or MD5), upgrade to bcrypt on the fly
-    if (row && ok && (storedHash.startsWith('$' + 'P$') || storedHash.startsWith('$' + 'H$') || storedHash.startsWith('$' + 'wp') || /^[0-9a-f]{32}$/i.test(storedHash))) {
-      const freshHash = await hashPassword(secret)
-      await execute('UPDATE users SET password_hash = ?, updated_at = NOW() WHERE id = ?', [freshHash, row.id])
-    }
 
     const token = await createSession(authenticatedUser.id, req)
     setSessionCookie(res, token)
@@ -551,6 +547,24 @@ auth.post(
       await conn.execute('DELETE FROM sessions WHERE user_id = ?', [row.user_id])
     })
 
+    // Sync to WordPress database if configured
+    if (config.wordpress.enabled) {
+      try {
+        const user = await queryOne<{ email: string; username: string | null }>(
+          'SELECT email, username FROM users WHERE id = ?',
+          [row.user_id],
+        )
+        if (user) {
+          const wpDb = config.wordpress.dbName
+          const wpPrefix = config.wordpress.tablePrefix
+          const updateSql = 'UPDATE `' + wpDb + '`.`' + wpPrefix + 'users` SET user_pass = ? WHERE LOWER(user_email) = ? OR LOWER(user_login) = ?'
+          await execute(updateSql, [hash, user.email.toLowerCase(), (user.username || '').toLowerCase()])
+        }
+      } catch (err) {
+        console.warn('WordPress user reset password sync skipped:', err)
+      }
+    }
+
     res.json({ ok: true, message: 'Password has been successfully reset. You can now sign in.' })
   }),
 )
@@ -566,8 +580,8 @@ auth.post(
 
     if (!currentPass) bad('Current password is required.')
 
-    const userRow = await queryOne<{ id: number; password_hash: string }>(
-      'SELECT id, password_hash FROM users WHERE id = ?',
+    const userRow = await queryOne<{ id: number; email: string; username: string | null; password_hash: string }>(
+      'SELECT id, email, username, password_hash FROM users WHERE id = ?',
       [req.user!.id],
     )
     if (!userRow) bad('User not found.')
@@ -577,6 +591,18 @@ auth.post(
 
     const hash = await hashPassword(newPass)
     await execute('UPDATE users SET password_hash = ?, updated_at = NOW() WHERE id = ?', [hash, req.user!.id])
+
+    // Sync to WordPress database if configured so old WP hash doesn't linger
+    if (config.wordpress.enabled) {
+      try {
+        const wpDb = config.wordpress.dbName
+        const wpPrefix = config.wordpress.tablePrefix
+        const updateSql = 'UPDATE `' + wpDb + '`.`' + wpPrefix + 'users` SET user_pass = ? WHERE LOWER(user_email) = ? OR LOWER(user_login) = ?'
+        await execute(updateSql, [hash, userRow.email.toLowerCase(), (userRow.username || '').toLowerCase()])
+      } catch (err) {
+        console.warn('WordPress user password sync skipped:', err)
+      }
+    }
 
     res.json({ ok: true, message: 'Password changed successfully.' })
   }),

@@ -111,16 +111,15 @@ export async function findAndMigrateWordPressUser(
 
     if (existing) {
       userId = existing.id
-      // Upgrade password hash and ensure username/display_name are filled
+      // Ensure username/display_name are filled, but DO NOT overwrite password_hash for existing v2 users
       await execute(
         `UPDATE users
-            SET password_hash = ?,
-                username = COALESCE(username, ?),
+            SET username = COALESCE(username, ?),
                 display_name = COALESCE(display_name, ?),
                 is_active = TRUE,
                 updated_at = NOW()
           WHERE id = ?`,
-        [bcryptHash, username, displayName, userId]
+        [username, displayName, userId]
       )
     } else {
       // Insert new migrated user into v2
