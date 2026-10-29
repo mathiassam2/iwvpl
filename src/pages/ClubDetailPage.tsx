@@ -27,7 +27,7 @@ import {
   peekLiveClubs,
   type LiveStandings,
 } from '@/lib/liveLeague'
-import type { Match, Standing } from '@/types/site'
+import type { Match, Standing, Transfer } from '@/types/site'
 import { buildSquadFromLineup } from '@/lib/fixtures'
 import { useAuth } from '@/lib/auth'
 import { RequestJoinClubModal } from '@/components/club/RequestJoinClubModal'
@@ -89,6 +89,7 @@ export default function ClubDetailPage() {
   )
   const [liveStandings, setLiveStandings] = useState<LiveStandings | null>(null)
   const [liveMatches, setLiveMatches] = useState<Match[] | null>(null)
+  const [liveTransfers, setLiveTransfers] = useState<Transfer[] | null>(null)
 
   useEffect(() => {
     if (!liveLeagueEnabled || !slug) return
@@ -98,10 +99,11 @@ export default function ClubDetailPage() {
 
     void (async () => {
       try {
-        const [clubRes, standingsRes, matchesRes] = await Promise.allSettled([
+        const [clubRes, standingsRes, matchesRes, transfersRes] = await Promise.allSettled([
           getLiveClub(slug, controller.signal),
           getLiveStandings(controller.signal),
           getLiveMatches(controller.signal, { clubSlug: slug, limit: 200 }),
+          getLiveTransfers(controller.signal),
         ])
 
         if (clubRes.status === 'fulfilled') {
@@ -116,6 +118,10 @@ export default function ClubDetailPage() {
 
         if (matchesRes.status === 'fulfilled') {
           setLiveMatches(matchesRes.value.matches)
+        }
+
+        if (transfersRes.status === 'fulfilled' && transfersRes.value) {
+          setLiveTransfers(transfersRes.value)
         }
       } catch {
         if (!cached) setLiveClub(null)
