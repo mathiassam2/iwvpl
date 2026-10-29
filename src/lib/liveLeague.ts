@@ -1,5 +1,5 @@
 import { asset } from '@/lib/assets'
-import { AVATAR_PLACEHOLDER } from '@/lib/format'
+import { AVATAR_PLACEHOLDER, CLUB_PLACEHOLDER } from '@/lib/format'
 import type { ClubLineup } from '@/lib/fixtures'
 import type { PlayerProfile } from '@/lib/players'
 import type { Club, Format, Match, StandingDivision, Transfer } from '@/types/site'
@@ -722,6 +722,253 @@ export async function getLiveTransfers(signal?: AbortSignal): Promise<Transfer[]
       return res.transfers
     }
     return null
+  } catch {
+    return null
+  }
+}
+
+
+/* ------------------------------------------------------------- live match detail */
+
+export interface LiveMatchPlayerStat {
+  id: number
+  playerId: number | null
+  clubId: number
+  gamertag: string
+  rating: number | null
+  goals: number
+  assists: number
+  shots: number | null
+  passes: number | null
+  tackles: number | null
+  saves: number
+  cleanSheet: boolean
+  isMom: boolean
+}
+
+export interface LiveMatchEvent {
+  minute: number
+  type: string
+  teamSide: 'home' | 'away'
+  playerName: string
+  detail: string | null
+  score: string | null
+}
+
+export interface LiveMatchSquadMember {
+  id: number
+  gamertag: string
+  shirtNumber: number | null
+  isStarting11: boolean
+  sortOrder: number | null
+}
+
+export interface LiveMatchDetail {
+  id: number
+  kickoff: string | null
+  date: string
+  time: string
+  status: string
+  homeScore: number | null
+  awayScore: number | null
+  hs: string
+  as: string
+  played: boolean
+  venue: string | null
+  streamUrl: string | null
+  eaMatchId: string | null
+  divisionName?: string
+  home: {
+    id: number
+    name: string
+    slug: string
+    code: string
+    logo: string
+    flag: string
+  }
+  away: {
+    id: number
+    name: string
+    slug: string
+    code: string
+    logo: string
+    flag: string
+  }
+  playerStats: LiveMatchPlayerStat[]
+  events: LiveMatchEvent[]
+  stats: {
+    possession: [number, number] | null
+    shots: [number, number] | null
+    onTarget: [number, number] | null
+    passAccuracy: [number, number] | null
+    corners: [number, number] | null
+    fouls: [number, number] | null
+    offsides: [number, number] | null
+    tackles: [number, number] | null
+    saves: [number, number] | null
+  }
+  hasStats: boolean
+  homeSquad: LiveMatchSquadMember[]
+  awaySquad: LiveMatchSquadMember[]
+}
+
+export async function getLiveMatchDetail(
+  idOrSlug: string | number,
+  signal?: AbortSignal,
+): Promise<LiveMatchDetail | null> {
+  try {
+    const raw = await get<any>(`/api/matches/${encodeURIComponent(String(idOrSlug))}`, signal)
+    if (!raw || !raw.id) return null
+
+    const { date, time } = formatMatchKickoff(raw.kickoff)
+    const played = raw.home_score !== null && raw.away_score !== null
+
+    const playerStats: LiveMatchPlayerStat[] = (raw.playerStats ?? []).map((p: any) => ({
+      id: p.id,
+      playerId: p.player_id ?? null,
+      clubId: p.club_id,
+      gamertag: p.gamertag,
+      rating: p.rating != null ? Number(p.rating) : null,
+      goals: Number(p.goals) || 0,
+      assists: Number(p.assists) || 0,
+      shots: p.shots != null ? Number(p.shots) : null,
+      passes: p.passes != null ? Number(p.passes) : null,
+      tackles: p.tackles != null ? Number(p.tackles) : null,
+      saves: Number(p.saves) || 0,
+      cleanSheet: Boolean(p.clean_sheet),
+      isMom: Boolean(p.is_mom),
+    }))
+
+    const events: LiveMatchEvent[] = (raw.events ?? []).map((e: any) => ({
+      minute: Number(e.minute) || 0,
+      type: e.type || 'goal',
+      teamSide: e.team_side === 'away' ? 'away' : 'home',
+      playerName: e.player_name || '',
+      detail: e.detail ?? null,
+      score: e.score ?? null,
+    }))
+
+    const homeSquad: LiveMatchSquadMember[] = (raw.homeSquad ?? []).map((p: any) => ({
+      id: p.id,
+      gamertag: p.gamertag,
+      shirtNumber: p.shirt_number != null ? Number(p.shirt_number) : null,
+      isStarting11: Boolean(p.is_starting_11),
+      sortOrder: p.sort_order != null ? Number(p.sort_order) : null,
+    }))
+
+    const awaySquad: LiveMatchSquadMember[] = (raw.awaySquad ?? []).map((p: any) => ({
+      id: p.id,
+      gamertag: p.gamertag,
+      shirtNumber: p.shirt_number != null ? Number(p.shirt_number) : null,
+      isStarting11: Boolean(p.is_starting_11),
+      sortOrder: p.sort_order != null ? Number(p.sort_order) : null,
+    }))
+
+    const ms = raw.stats
+    let possession: [number, number] | null = null
+    let shots: [number, number] | null = null
+    let onTarget: [number, number] | null = null
+    let passAccuracy: [number, number] | null = null
+    let corners: [number, number] | null = null
+    let fouls: [number, number] | null = null
+    let offsides: [number, number] | null = null
+    let tackles: [number, number] | null = null
+    let saves: [number, number] | null = null
+
+    if (ms) {
+      if (ms.possession_home != null && ms.possession_away != null) {
+        possession = [Number(ms.possession_home), Number(ms.possession_away)]
+      }
+      if (ms.shots_home != null && ms.shots_away != null) {
+        shots = [Number(ms.shots_home), Number(ms.shots_away)]
+      }
+      if (ms.on_target_home != null && ms.on_target_away != null) {
+        onTarget = [Number(ms.on_target_home), Number(ms.on_target_away)]
+      }
+      if (ms.pass_accuracy_home != null && ms.pass_accuracy_away != null) {
+        passAccuracy = [Number(ms.pass_accuracy_home), Number(ms.pass_accuracy_away)]
+      }
+      if (ms.corners_home != null && ms.corners_away != null) {
+        corners = [Number(ms.corners_home), Number(ms.corners_away)]
+      }
+      if (ms.fouls_home != null && ms.fouls_away != null) {
+        fouls = [Number(ms.fouls_home), Number(ms.fouls_away)]
+      }
+      if (ms.offsides_home != null && ms.offsides_away != null) {
+        offsides = [Number(ms.offsides_home), Number(ms.offsides_away)]
+      }
+    }
+
+    if (playerStats.length > 0) {
+      const homeP = playerStats.filter((p) => p.clubId === raw.home_club_id)
+      const awayP = playerStats.filter((p) => p.clubId === raw.away_club_id)
+
+      if (!shots) {
+        const hShots = homeP.reduce((acc, p) => acc + (p.shots ?? 0), 0)
+        const aShots = awayP.reduce((acc, p) => acc + (p.shots ?? 0), 0)
+        if (hShots > 0 || aShots > 0) shots = [hShots, aShots]
+      }
+      const hSaves = homeP.reduce((acc, p) => acc + p.saves, 0)
+      const aSaves = awayP.reduce((acc, p) => acc + p.saves, 0)
+      if (hSaves > 0 || aSaves > 0) saves = [hSaves, aSaves]
+
+      const hTackles = homeP.reduce((acc, p) => acc + (p.tackles ?? 0), 0)
+      const aTackles = awayP.reduce((acc, p) => acc + (p.tackles ?? 0), 0)
+      if (hTackles > 0 || aTackles > 0) tackles = [hTackles, aTackles]
+    }
+
+    const hasStats = Boolean(
+      possession || shots || onTarget || passAccuracy || corners || fouls || offsides || tackles || saves,
+    )
+
+    return {
+      id: raw.id,
+      kickoff: raw.kickoff,
+      date,
+      time,
+      status: raw.status,
+      homeScore: raw.home_score,
+      awayScore: raw.away_score,
+      hs: raw.home_score !== null ? String(raw.home_score) : '',
+      as: raw.away_score !== null ? String(raw.away_score) : '',
+      played,
+      venue: raw.venue ?? null,
+      streamUrl: raw.stream_url ?? null,
+      eaMatchId: raw.ea_match_id ?? null,
+      divisionName: raw.division_name ?? undefined,
+      home: {
+        id: raw.home_club_id,
+        name: raw.home_name,
+        slug: raw.home_slug,
+        code: raw.home_code ?? '',
+        logo: raw.home_logo ? asset(raw.home_logo) : CLUB_PLACEHOLDER,
+        flag: raw.home_flag ?? '',
+      },
+      away: {
+        id: raw.away_club_id,
+        name: raw.away_name,
+        slug: raw.away_slug,
+        code: raw.away_code ?? '',
+        logo: raw.away_logo ? asset(raw.away_logo) : CLUB_PLACEHOLDER,
+        flag: raw.away_flag ?? '',
+      },
+      playerStats,
+      events,
+      stats: {
+        possession,
+        shots,
+        onTarget,
+        passAccuracy,
+        corners,
+        fouls,
+        offsides,
+        tackles,
+        saves,
+      },
+      hasStats,
+      homeSquad,
+      awaySquad,
+    }
   } catch {
     return null
   }

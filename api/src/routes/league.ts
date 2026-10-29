@@ -570,7 +570,11 @@ league.get(
 league.get(
   '/matches/:id',
   handler(async (req, res) => {
-    const match = await queryOne<{ id: number }>(
+    const rawParam = String(req.params.id ?? '').trim()
+    const numericId = Number.parseInt(rawParam, 10)
+    const isNum = Number.isSafeInteger(numericId) && numericId > 0 && String(numericId) === rawParam
+
+    const match = await queryOne<any>(
       `SELECT m.id, m.kickoff, m.status, m.home_score, m.away_score,
               m.venue, m.stream_url, m.source_url, m.ea_match_id,
               home.id AS home_club_id, home.name AS home_name, home.slug AS home_slug, home.short_code AS home_code,
@@ -582,12 +586,12 @@ league.get(
          FROM matches m
          JOIN clubs home ON home.id = m.home_club_id
          JOIN clubs away ON away.id = m.away_club_id
-        WHERE m.id = ?`,
-      [req.params.id],
+        WHERE ${isNum ? 'm.id = ?' : 'CONCAT(home.slug, "-vs-", away.slug) = ? OR m.id = ?'}`,
+      isNum ? [numericId] : [rawParam.toLowerCase(), numericId || 0],
     )
     if (!match) return res.status(404).json({ error: 'Match not found' })
 
-    const [events, stats, playerStats] = await Promise.all([
+    const [playerStats, events, matchStats, homeSquad, awaySquad] = await Promise.all([
       queryAll(
         `SELECT id, player_id, club_id, gamertag, rating, goals, assists, shots, passes, tackles, saves, clean_sheet, is_mom
            FROM match_player_stats WHERE match_id = ? ORDER BY club_id, gamertag`,
@@ -599,9 +603,26 @@ league.get(
         [match.id],
       ),
       queryOne('SELECT * FROM match_stats WHERE match_id = ?', [match.id]),
+      queryAll(
+        `SELECT id, gamertag, shirt_number, is_starting_11, sort_order
+           FROM players WHERE club_id = ? ORDER BY is_starting_11 DESC, sort_order ASC, shirt_number ASC`,
+        [match.home_club_id],
+      ),
+      queryAll(
+        `SELECT id, gamertag, shirt_number, is_starting_11, sort_order
+           FROM players WHERE club_id = ? ORDER BY is_starting_11 DESC, sort_order ASC, shirt_number ASC`,
+        [match.away_club_id],
+      ),
     ])
 
-    res.json({ ...match, events, stats: stats ?? null, playerStats: playerStats ?? [] })
+    res.json({
+      ...match,
+      playerStats: playerStats ?? [],
+      events: events ?? [],
+      stats: matchStats ?? null,
+      homeSquad: homeSquad ?? [],
+      awaySquad: awaySquad ?? [],
+    })
   }),
 )
 

@@ -1231,14 +1231,19 @@ export const searchEaClubs = (query: string) =>
     `/api/admin/ea/clubs/search?q=${encodeURIComponent(query)}`,
   ).then((r) => r.clubs)
 
+export interface EaMatchCandidateResponse {
+  ok: true
+  matchId: number
+  homeClub: { id: number; name: string; eaClubId: string | null; eaClubName: string | null }
+  awayClub: { id: number; name: string; eaClubId: string | null; eaClubName: string | null }
+  candidates: EaMatchCandidate[]
+  existingPlayerStats?: any[]
+  homeSquad?: Array<{ id: number; gamertag: string; shirt_number?: number | null }>
+  awaySquad?: Array<{ id: number; gamertag: string; shirt_number?: number | null }>
+}
+
 export const getMatchEaCandidates = (matchId: number) =>
-  request<{
-    ok: true
-    matchId: number
-    homeClub: { id: number; name: string; eaClubId: string | null; eaClubName: string | null }
-    awayClub: { id: number; name: string; eaClubId: string | null; eaClubName: string | null }
-    candidates: EaMatchCandidate[]
-  }>(`/api/admin/matches/${matchId}/ea-candidates`)
+  request<EaMatchCandidateResponse>(`/api/admin/matches/${matchId}/ea-candidates`)
 
 export const applyEaMatchResult = (
   matchId: number,

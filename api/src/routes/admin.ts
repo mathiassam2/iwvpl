@@ -613,14 +613,29 @@ admin.get(
     )
     if (!match) return res.status(404).json({ error: 'Match not found.' })
 
-    const candidates = await getCandidateMatchesForFixture(
-      match.home_ea_club_id,
-      match.away_ea_club_id,
-    )
+    const [candidates, existingPlayerStats, homeSquad, awaySquad] = await Promise.all([
+      getCandidateMatchesForFixture(match.home_ea_club_id, match.away_ea_club_id),
+      queryAll(
+        `SELECT id, player_id, club_id, gamertag, rating, goals, assists, shots, passes, tackles, saves, clean_sheet, is_mom
+           FROM match_player_stats WHERE match_id = ? ORDER BY club_id, gamertag`,
+        [id],
+      ),
+      queryAll(
+        `SELECT id, gamertag, shirt_number FROM players WHERE club_id = ? ORDER BY gamertag`,
+        [match.home_club_id],
+      ),
+      queryAll(
+        `SELECT id, gamertag, shirt_number FROM players WHERE club_id = ? ORDER BY gamertag`,
+        [match.away_club_id],
+      ),
+    ])
 
     res.json({
       ok: true,
       matchId: id,
+      existingPlayerStats: existingPlayerStats ?? [],
+      homeSquad: homeSquad ?? [],
+      awaySquad: awaySquad ?? [],
       homeClub: {
         id: match.home_club_id,
         name: match.home_name,

@@ -35,6 +35,8 @@ export function EaMatchResultModal({
   const [awayScore, setAwayScore] = useState<number | string>('')
   const [homePlayers, setHomePlayers] = useState<EaPlayerStatItem[]>([])
   const [awayPlayers, setAwayPlayers] = useState<EaPlayerStatItem[]>([])
+  const [homeSquad, setHomeSquad] = useState<Array<{ id: number; gamertag: string; shirt_number?: number | null }>>([])
+  const [awaySquad, setAwaySquad] = useState<Array<{ id: number; gamertag: string; shirt_number?: number | null }>>([])
   const [submitting, setSubmitting] = useState(false)
 
   // Load EA candidates when modal opens
@@ -55,11 +57,48 @@ export function EaMatchResultModal({
         setCandidates(data.candidates)
         setHomeClubInfo(data.homeClub)
         setAwayClubInfo(data.awayClub)
+        setHomeSquad(data.homeSquad ?? [])
+        setAwaySquad(data.awaySquad ?? [])
 
         // Pre-select direct match if found
         const direct = data.candidates.find((c) => c.isDirectMatch) ?? data.candidates[0] ?? null
         if (direct) {
           applyCandidate(direct)
+        } else if (data.existingPlayerStats && data.existingPlayerStats.length > 0) {
+          setHomeScore(match.home_score != null ? match.home_score : '')
+          setAwayScore(match.away_score != null ? match.away_score : '')
+          const hId = data.homeClub.id
+          const aId = data.awayClub.id
+          setHomePlayers(
+            data.existingPlayerStats.filter((p: any) => p.club_id === hId).map((p: any) => ({
+              gamertag: p.gamertag,
+              pos: p.pos || 'midfielder',
+              rating: Number(p.rating) || 6.0,
+              goals: Number(p.goals) || 0,
+              assists: Number(p.assists) || 0,
+              shots: Number(p.shots) || 0,
+              passes: Number(p.passes) || 0,
+              tackles: Number(p.tackles) || 0,
+              saves: Number(p.saves) || 0,
+              cleanSheet: Boolean(p.clean_sheet),
+              isMom: Boolean(p.is_mom),
+            }))
+          )
+          setAwayPlayers(
+            data.existingPlayerStats.filter((p: any) => p.club_id === aId).map((p: any) => ({
+              gamertag: p.gamertag,
+              pos: p.pos || 'midfielder',
+              rating: Number(p.rating) || 6.0,
+              goals: Number(p.goals) || 0,
+              assists: Number(p.assists) || 0,
+              shots: Number(p.shots) || 0,
+              passes: Number(p.passes) || 0,
+              tackles: Number(p.tackles) || 0,
+              saves: Number(p.saves) || 0,
+              cleanSheet: Boolean(p.clean_sheet),
+              isMom: Boolean(p.is_mom),
+            }))
+          )
         } else {
           setHomeScore(match.home_score != null ? match.home_score : '')
           setAwayScore(match.away_score != null ? match.away_score : '')
@@ -104,6 +143,43 @@ export function EaMatchResultModal({
       setHomePlayers(homePlayers.filter((_, i) => i !== index))
     } else {
       setAwayPlayers(awayPlayers.filter((_, i) => i !== index))
+    }
+  }
+
+  const handleLoadSquad = (side: 'home' | 'away') => {
+    const squad = side === 'home' ? homeSquad : awaySquad
+    if (!squad || squad.length === 0) {
+      report('info', `No registered players found in roster for ${side === 'home' ? match?.home_name : match?.away_name}`)
+      return
+    }
+    const currentList = side === 'home' ? homePlayers : awayPlayers
+    const existingTags = new Set(currentList.map((p) => p.gamertag.toLowerCase().trim()))
+
+    const toAdd: EaPlayerStatItem[] = squad
+      .filter((sq) => !existingTags.has(sq.gamertag.toLowerCase().trim()))
+      .map((sq) => ({
+        gamertag: sq.gamertag,
+        pos: 'midfielder',
+        rating: 6.0,
+        goals: 0,
+        assists: 0,
+        shots: 0,
+        passes: 0,
+        tackles: 0,
+        saves: 0,
+        cleanSheet: false,
+        isMom: false,
+      }))
+
+    if (toAdd.length === 0) {
+      report('info', 'All registered squad players are already in the list.')
+      return
+    }
+
+    if (side === 'home') {
+      setHomePlayers([...homePlayers, ...toAdd])
+    } else {
+      setAwayPlayers([...awayPlayers, ...toAdd])
     }
   }
 
@@ -275,9 +351,15 @@ export function EaMatchResultModal({
                   border: '1px dashed var(--adm-border)',
                   fontSize: '0.88rem',
                   color: 'var(--adm-muted)',
+                  lineHeight: 1.5,
                 }}
               >
-                No matching EA matches found between these clubs in the recent match window. You can still enter or edit the score and player stats manually below.
+                <div style={{ color: '#e2e8f0', fontWeight: 600, marginBottom: 4 }}>
+                  EA Pro Clubs Match Window Expired
+                </div>
+                EA Sports only keeps the 5 most recent matches per club on their servers (~1–3 days). Older fixtures cannot be retrieved automatically from EA servers.
+                <br />
+                <strong>How to record stats:</strong> Click <em>"+ Load Registered Squad"</em> below to automatically populate the real players from each club's squad roster, then enter goals, assists, and ratings from your match report or Discord screenshot.
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -446,13 +528,25 @@ export function EaMatchResultModal({
                   }}
                 >
                   <strong style={{ fontSize: '0.9rem' }}>{match.home_name} Players ({homePlayers.length})</strong>
-                  <button
-                    type="button"
-                    className="adm-btn adm-btn-secondary adm-btn-xs"
-                    onClick={() => handleAddPlayer('home')}
-                  >
-                    + Add Player
-                  </button>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {homeSquad.length > 0 && (
+                      <button
+                        type="button"
+                        className="adm-btn adm-btn-secondary adm-btn-xs"
+                        onClick={() => handleLoadSquad('home')}
+                        title="Load registered squad players into this match"
+                      >
+                        + Load Registered Squad ({homeSquad.length})
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="adm-btn adm-btn-secondary adm-btn-xs"
+                      onClick={() => handleAddPlayer('home')}
+                    >
+                      + Add Player
+                    </button>
+                  </div>
                 </div>
 
                 {homePlayers.length === 0 ? (
@@ -587,13 +681,25 @@ export function EaMatchResultModal({
                   }}
                 >
                   <strong style={{ fontSize: '0.9rem' }}>{match.away_name} Players ({awayPlayers.length})</strong>
-                  <button
-                    type="button"
-                    className="adm-btn adm-btn-secondary adm-btn-xs"
-                    onClick={() => handleAddPlayer('away')}
-                  >
-                    + Add Player
-                  </button>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {awaySquad.length > 0 && (
+                      <button
+                        type="button"
+                        className="adm-btn adm-btn-secondary adm-btn-xs"
+                        onClick={() => handleLoadSquad('away')}
+                        title="Load registered squad players into this match"
+                      >
+                        + Load Registered Squad ({awaySquad.length})
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="adm-btn adm-btn-secondary adm-btn-xs"
+                      onClick={() => handleAddPlayer('away')}
+                    >
+                      + Add Player
+                    </button>
+                  </div>
                 </div>
 
                 {awayPlayers.length === 0 ? (
