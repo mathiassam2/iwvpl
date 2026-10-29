@@ -190,13 +190,10 @@ export function Pitch({
                     ? 'bg-[var(--accent-solid)] text-[var(--on-volt)] ring-2 ring-white'
                     : isEmpty
                       ? 'bg-black/55 text-white/65'
-                      : p.isCaptain
-                        ? 'bg-amber-950/90 text-amber-300 ring-1 ring-amber-400/60'
-                        : 'bg-black/80 text-white',
+                      : 'bg-black/80 text-white',
                 )}
               >
                 {isEmpty ? p.role : p.name}
-                {p.isCaptain && !isEmpty && <span className="ml-0.5 text-amber-400 font-black"> (C)</span>}
               </span>
               {!isEmpty && (
                 <span className="mt-0.5 text-[8.5px] font-extrabold uppercase tracking-wider text-[#c8ff3d] drop-shadow-[0_1px_2px_rgba(0,0,0,0.95)]">

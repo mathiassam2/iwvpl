@@ -871,11 +871,6 @@ function ManagerPanel() {
                             <strong className="truncate text-xs font-bold text-white">
                               {currentSlot ? currentSlot.gamertag : 'Empty Position'}
                             </strong>
-                            {currentSlot && captainGamertag && currentSlot.gamertag.toLowerCase() === captainGamertag.toLowerCase() && (
-                              <span className="rounded bg-amber-400 text-black px-1.5 py-0.2 font-mono text-[9px] font-black shrink-0">
-                                (C) CAPTAIN
-                              </span>
-                            )}
                           </div>
                           <div className="flex shrink-0 items-center gap-1.5">
                             {currentSlot && (
@@ -890,23 +885,19 @@ function ManagerPanel() {
                                     )
                                   }}
                                   className={cx(
-                                    'h-6 rounded px-2 text-[10px] font-extrabold transition-colors flex items-center gap-1',
+                                    'h-6 rounded px-2 text-[10.5px] font-bold transition flex items-center gap-1',
                                     captainGamertag && captainGamertag.toLowerCase() === currentSlot.gamertag.toLowerCase()
-                                      ? 'bg-amber-400 text-black border border-amber-300 shadow-[0_0_8px_rgba(251,191,36,0.6)]'
-                                      : 'bg-white/10 text-amber-300 border border-amber-400/35 hover:bg-amber-400/20',
+                                      ? 'bg-amber-400 text-black font-extrabold shadow-sm'
+                                      : 'bg-white/10 text-white/70 hover:bg-white/20 hover:text-white',
                                   )}
                                   title={
                                     captainGamertag && captainGamertag.toLowerCase() === currentSlot.gamertag.toLowerCase()
-                                      ? 'Current Captain (Click to remove)'
-                                      : 'Designate as Captain'
+                                      ? 'Remove Captain'
+                                      : 'Set as Captain'
                                   }
                                 >
                                   <span>©</span>
-                                  <span>
-                                    {captainGamertag && captainGamertag.toLowerCase() === currentSlot.gamertag.toLowerCase()
-                                      ? 'Captain'
-                                      : 'Make (C)'}
-                                  </span>
+                                  <span>Captain</span>
                                 </button>
                                 <label
                                   className="inline-flex h-6 items-center gap-0.5 rounded border border-white/20 bg-black/50 px-1.5 font-mono text-[11px] font-extrabold text-[#c8ff3d]"
