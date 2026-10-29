@@ -77,7 +77,6 @@ const row =
 function NotificationBell() {
   const { user, setUnread } = useAuth()
   const { open, setOpen, ref } = useDropdown()
-  const [showSettings, setShowSettings] = useState(false)
   const [items, setItems] = useState<Notification[] | null>(null)
 
   // Opening the panel is the read receipt. Fetching lazily on open keeps the
@@ -168,6 +167,7 @@ function NotificationBell() {
 export default function AccountMenu() {
   const { user, loading, signOut } = useAuth()
   const { open, setOpen, ref } = useDropdown()
+  const [showSettings, setShowSettings] = useState(false)
   const navigate = useNavigate()
 
   const initials = useCallback(
