@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { createPortal } from 'react-dom'
 import { Button } from '@/components/ui'
 import { useAuth } from '@/lib/auth'
 import { ApiError, changePassword, checkGamertagAvailability, updateMyPlayerProfile } from '@/lib/api'
@@ -33,6 +34,26 @@ export function AccountSettingsModal({ open, onClose, initialTab = 'gamertag' }:
   const [showNewPw, setShowNewPw] = useState(false)
   const [pwBusy, setPwBusy] = useState(false)
   const [pwNotice, setPwNotice] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
+
+  // Prevent background scroll and bind Escape key when modal is open
+  useEffect(() => {
+    if (!open) return
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        onClose()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      document.body.style.overflow = prevOverflow
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [open, onClose])
 
   useEffect(() => {
     if (open) {
@@ -134,17 +155,17 @@ export function AccountSettingsModal({ open, onClose, initialTab = 'gamertag' }:
     'h-10 w-full rounded-lg border border-[var(--border-strong)] bg-[var(--surface)] px-3 text-sm text-[var(--text-strong)] ' +
     'placeholder:text-[var(--text-faint)] outline-none transition-colors focus:border-[var(--accent-ring)]'
 
-  return (
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="account-settings-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-[fadeIn_.15s_ease-out]"
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm overflow-y-auto animate-[fadeIn_.15s_ease-out]"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <div className="w-full max-w-lg rounded-card border border-[var(--border-strong)] bg-[#12141a] p-6 shadow-2xl sm:p-7">
+      <div className="relative my-auto w-full max-w-lg rounded-card border border-[var(--border-strong)] bg-[#12141a] p-6 shadow-2xl sm:p-7">
         {/* Header */}
         <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] pb-4">
           <div>
@@ -219,54 +240,38 @@ export function AccountSettingsModal({ open, onClose, initialTab = 'gamertag' }:
                 {tagStatus.checking && (
                   <span className="text-[11px] text-[var(--text-muted)] animate-pulse">Checking availability…</span>
                 )}
-                {!tagStatus.checking && tagStatus.available === true && !tagStatus.isCurrent && (
-                  <span className="text-[11px] font-semibold text-emerald-400">✓ Gamertag is available</span>
+                {!tagStatus.checking && tagStatus.available && tagStatus.isCurrent && (
+                  <span className="text-[11px] text-[var(--text-muted)]">Current gamertag</span>
+                )}
+                {!tagStatus.checking && tagStatus.available && !tagStatus.isCurrent && (
+                  <span className="text-[11px] font-bold text-emerald-400">✓ Available</span>
                 )}
                 {!tagStatus.checking && tagStatus.available === false && (
-                  <span className="text-[11px] font-semibold text-[var(--danger-text)]">
-                    ✗ {tagStatus.reason || 'Not available'}
-                  </span>
+                  <span className="text-[11px] font-bold text-rose-400">✗ {tagStatus.reason || 'Taken'}</span>
                 )}
               </div>
               <input
                 id="settings-gamertag"
                 type="text"
                 required
+                minLength={2}
+                maxLength={32}
                 value={gamertag}
                 onChange={(e) => {
                   setGamertag(e.target.value)
                   setTagNotice(null)
                 }}
-                placeholder="e.g. AceStriker99"
-                className={cx(
-                  inputClass,
-                  tagStatus.available === false
-                    ? 'border-[var(--danger-text)]'
-                    : tagStatus.available === true && !tagStatus.isCurrent
-                      ? 'border-emerald-500'
-                      : '',
-                )}
+                placeholder="e.g. ProStriker_99"
+                className={inputClass}
               />
               <p className="mt-1.5 text-[11px] text-[var(--text-faint)]">
-                This is your player identity on rosters, starting lineups, and leaderboards.
+                This is your in-game EA ID shown on rosters, transfer lists, match sheets, and leaderboards.
               </p>
             </div>
 
-            <div className="rounded-lg bg-[var(--surface)] p-3 text-xs text-[var(--text-muted)] space-y-1">
-              <div className="flex justify-between">
-                <span>Account Email:</span>
-                <strong className="text-[var(--text-strong)]">{user?.email}</strong>
-              </div>
-              <div className="flex justify-between">
-                <span>Account Role:</span>
-                <strong className="text-[var(--text-strong)] capitalize">{user?.role?.replace('_', ' ')}</strong>
-              </div>
-              {user?.clubName && (
-                <div className="flex justify-between">
-                  <span>Current Club:</span>
-                  <strong className="text-[var(--text-strong)]">{user.clubName}</strong>
-                </div>
-              )}
+            <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-3 text-xs text-[var(--text-muted)]">
+              <span className="font-bold text-[var(--text-strong)]">Note:</span> Changing your gamertag will
+              update your name across your squad and historical stats immediately.
             </div>
 
             <div className="flex items-center justify-end gap-3 pt-2">
@@ -275,13 +280,13 @@ export function AccountSettingsModal({ open, onClose, initialTab = 'gamertag' }:
                 onClick={onClose}
                 className="px-4 py-2 text-xs font-semibold text-[var(--text-muted)] hover:text-white transition-colors"
               >
-                Close
+                Cancel
               </button>
               <Button
                 type="submit"
                 size="md"
                 className="font-bold"
-                disabled={tagBusy || !gamertag.trim() || tagStatus.available === false || tagStatus.checking || Boolean(user?.gamertag && gamertag.trim() === user.gamertag)}
+                disabled={tagBusy || tagStatus.checking || tagStatus.available === false || tagStatus.isCurrent}
               >
                 {tagBusy ? 'Saving…' : 'Save Gamertag'}
               </Button>
@@ -289,7 +294,7 @@ export function AccountSettingsModal({ open, onClose, initialTab = 'gamertag' }:
           </form>
         )}
 
-        {/* Tab 2: Change Password */}
+        {/* Tab 2: Password */}
         {tab === 'password' && (
           <form onSubmit={handleUpdatePassword} className="mt-5 space-y-4">
             {pwNotice && (
@@ -306,63 +311,64 @@ export function AccountSettingsModal({ open, onClose, initialTab = 'gamertag' }:
             )}
 
             <div>
-              <label
-                htmlFor="settings-current-pw"
-                className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-[var(--text-faint)]"
-              >
-                Current Password
-              </label>
-              <div className="relative">
-                <input
-                  id="settings-current-pw"
-                  type={showCurrentPw ? 'text' : 'password'}
-                  required
-                  value={currentPw}
-                  onChange={(e) => {
-                    setCurrentPw(e.target.value)
-                    setPwNotice(null)
-                  }}
-                  placeholder="••••••••"
-                  className={cx(inputClass, 'pr-10')}
-                />
+              <div className="flex items-center justify-between mb-1.5">
+                <label
+                  htmlFor="settings-current-pw"
+                  className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-faint)]"
+                >
+                  Current Password
+                </label>
                 <button
                   type="button"
-                  onClick={() => setShowCurrentPw((v) => !v)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-bold text-[var(--text-faint)] hover:text-white"
+                  onClick={() => setShowCurrentPw(!showCurrentPw)}
+                  className="text-[11px] text-[var(--text-muted)] hover:text-[var(--text-strong)]"
                 >
                   {showCurrentPw ? 'Hide' : 'Show'}
                 </button>
               </div>
+              <input
+                id="settings-current-pw"
+                type={showCurrentPw ? 'text' : 'password'}
+                required
+                value={currentPw}
+                onChange={(e) => {
+                  setCurrentPw(e.target.value)
+                  setPwNotice(null)
+                }}
+                placeholder="••••••••"
+                className={inputClass}
+              />
             </div>
 
             <div>
-              <label
-                htmlFor="settings-new-pw"
-                className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-[var(--text-faint)]"
-              >
-                New Password (min 8 chars)
-              </label>
-              <div className="relative">
-                <input
-                  id="settings-new-pw"
-                  type={showNewPw ? 'text' : 'password'}
-                  required
-                  value={newPw}
-                  onChange={(e) => {
-                    setNewPw(e.target.value)
-                    setPwNotice(null)
-                  }}
-                  placeholder="••••••••"
-                  className={cx(inputClass, 'pr-10')}
-                />
+              <div className="flex items-center justify-between mb-1.5">
+                <label
+                  htmlFor="settings-new-pw"
+                  className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-faint)]"
+                >
+                  New Password
+                </label>
                 <button
                   type="button"
-                  onClick={() => setShowNewPw((v) => !v)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-bold text-[var(--text-faint)] hover:text-white"
+                  onClick={() => setShowNewPw(!showNewPw)}
+                  className="text-[11px] text-[var(--text-muted)] hover:text-[var(--text-strong)]"
                 >
                   {showNewPw ? 'Hide' : 'Show'}
                 </button>
               </div>
+              <input
+                id="settings-new-pw"
+                type={showNewPw ? 'text' : 'password'}
+                required
+                minLength={8}
+                value={newPw}
+                onChange={(e) => {
+                  setNewPw(e.target.value)
+                  setPwNotice(null)
+                }}
+                placeholder="At least 8 characters"
+                className={inputClass}
+              />
             </div>
 
             <div>
@@ -401,6 +407,7 @@ export function AccountSettingsModal({ open, onClose, initialTab = 'gamertag' }:
           </form>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

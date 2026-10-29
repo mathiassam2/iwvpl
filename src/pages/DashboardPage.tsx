@@ -12,6 +12,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { createPortal } from 'react-dom'
 import { Link, useNavigate } from 'react-router-dom'
 import { Pitch } from '@/components/club'
 import { SignPlayerModal } from '@/components/manager/SignPlayerModal'
@@ -2056,9 +2057,10 @@ function OrdersSection() {
         ))}
       </div>
 
-      {activeReceipt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-          <div className="surface w-full max-w-lg rounded-2xl border border-[var(--border)] p-6 shadow-2xl">
+      {activeReceipt &&
+        createPortal(
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm overflow-y-auto animate-[fadeIn_.15s_ease-out]">
+            <div className="surface relative my-auto w-full max-w-lg rounded-2xl border border-[var(--border)] p-6 shadow-2xl">
             <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
               <div>
                 <span className="text-xs uppercase tracking-wider text-[var(--text-muted)]">IWVPL Official Receipt</span>
@@ -2124,7 +2126,8 @@ function OrdersSection() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </section>
   )
