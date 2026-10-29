@@ -317,11 +317,17 @@ function ManagerPanel() {
   const [selfBusy, setSelfBusy] = useState(false)
 
   const isManagerInSquad = squadList.some(
-    (p) => (user?.playerId && p.id === user.playerId) || (user?.id && p.user_id === user.id),
+    (p) =>
+      (user?.playerId && p.id === user.playerId) ||
+      (user?.id && p.user_id === user.id) ||
+      Boolean(user?.gamertag && p.gamertag.toLowerCase() === user.gamertag.toLowerCase()),
   )
 
   const handleReleasePlayer = async (p: { id: number; gamertag: string; user_id?: number | null }) => {
-    const isSelf = (user?.playerId && p.id === user.playerId) || (user?.id && p.user_id === user.id)
+    const isSelf =
+      (user?.playerId && p.id === user.playerId) ||
+      (user?.id && p.user_id === user.id) ||
+      Boolean(user?.gamertag && p.gamertag.toLowerCase() === user.gamertag.toLowerCase())
     const confirmMsg = isSelf
       ? 'Are you sure you want to step down from the squad as Playing Captain? You will become a free agent.'
       : `Are you sure you want to release ${p.gamertag} from your squad? They will become a free agent.`
@@ -677,7 +683,7 @@ function ManagerPanel() {
                 className="h-9 rounded-lg border border-[var(--border-strong)] bg-[var(--bg)] px-2.5 text-xs font-bold text-[var(--text-strong)]"
               >
                 {Object.keys(FORMATIONS).map((fmt) => (
-                  <option key={fmt} value={fmt}>
+                  <option key={fmt} value={fmt} className="bg-[#12151a] text-white">
                     Formation: {fmt}
                   </option>
                 ))}
@@ -1013,9 +1019,9 @@ function ManagerPanel() {
                   }}
                   className="h-7 rounded border border-[var(--border-strong)] bg-[var(--surface)] px-2 text-[11px] font-semibold text-[var(--text-strong)]"
                 >
-                  <option value="">+ Add Substitute…</option>
+                  <option value="" className="bg-[#12151a] text-white">+ Add Substitute…</option>
                   {squadList.map((p) => (
-                    <option key={p.id} value={p.gamertag}>
+                    <option key={p.id} value={p.gamertag} className="bg-[#12151a] text-white">
                       {p.gamertag}
                     </option>
                   ))}
@@ -1107,7 +1113,7 @@ function ManagerPanel() {
                         </span>
                         <span className="min-w-0 flex-1 truncate font-semibold text-[var(--text-strong)] flex items-center gap-1.5">
                           {p.gamertag}
-                          {(user?.playerId === p.id || user?.id === p.user_id) && (
+                          {((user?.playerId === p.id || user?.id === p.user_id) || Boolean(user?.gamertag && p.gamertag.toLowerCase() === user.gamertag.toLowerCase())) && (
                             <span className="rounded bg-amber-500/15 text-amber-500 border border-amber-500/30 px-1 py-0.2 text-[9px] font-bold shrink-0">
                               MGR
                             </span>
@@ -1342,7 +1348,7 @@ function ManagerPanel() {
                   >
                     {p.gamertag}
                   </Link>
-                  {(user?.playerId === p.id || user?.id === p.user_id) && (
+                  {((user?.playerId === p.id || user?.id === p.user_id) || Boolean(user?.gamertag && p.gamertag.toLowerCase() === user.gamertag.toLowerCase())) && (
                     <span className="shrink-0 rounded bg-amber-500/15 text-amber-500 border border-amber-500/30 px-1.5 py-0.5 text-[10px] font-bold">
                       👑 Playing Captain
                     </span>
@@ -1377,9 +1383,9 @@ function ManagerPanel() {
                     disabled={busy}
                     onClick={() => handleReleasePlayer(p)}
                     className="ml-1 shrink-0 rounded-lg border border-red-500/25 bg-red-500/10 px-2.5 py-1 text-xs font-semibold text-red-400 transition-all duration-150 hover:border-red-500/60 hover:bg-red-500 hover:text-white active:scale-95 disabled:opacity-50"
-                    title={(user?.playerId && p.id === user.playerId) || (user?.id && p.user_id === user.id) ? "Leave Squad" : "Release Player"}
+                    title={(user?.playerId && p.id === user.playerId) || (user?.id && p.user_id === user.id) || (user?.gamertag && p.gamertag.toLowerCase() === user.gamertag.toLowerCase()) ? "Leave Squad" : "Release Player"}
                   >
-                    {(user?.playerId && p.id === user.playerId) || (user?.id && p.user_id === user.id) ? "Leave" : "Release"}
+                    {(user?.playerId && p.id === user.playerId) || (user?.id && p.user_id === user.id) || (user?.gamertag && p.gamertag.toLowerCase() === user.gamertag.toLowerCase()) ? "Leave" : "Release"}
                   </button>
                 </div>
                 {p.pending > 0 && (

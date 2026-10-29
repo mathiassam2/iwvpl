@@ -237,11 +237,6 @@ export function clearSessionCookie(res: Response): void {
 export function setSessionCookie(res: Response, token: string): void {
   const name = config.auth.cookieName
   const base = cookieBase()
-  // Cleanly wipe any stale domain variations before setting clean host-only cookie
-  res.clearCookie(name, { ...base, domain: '.iwvpl.asia' })
-  res.clearCookie(name, { ...base, domain: 'iwvpl.asia' })
-  res.clearCookie(name, { ...base, domain: '.beta.iwvpl.asia' })
-  res.clearCookie(name, { ...base, domain: 'beta.iwvpl.asia' })
 
   res.cookie(name, token, {
     ...base,
@@ -287,11 +282,7 @@ export async function toPublicUser(user: AccountUser): Promise<PublicUser> {
   let effectiveClubId: number | null = null
 
   if (user.role === 'club_manager') {
-    if (user.club_id) {
-      effectiveClubId = user.club_id
-    } else {
-      effectiveRole = 'player'
-    }
+    effectiveClubId = user.club_id
   }
 
   if (effectiveRole !== 'club_manager' && user.player_id) {

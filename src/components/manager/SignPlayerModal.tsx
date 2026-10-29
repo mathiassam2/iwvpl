@@ -59,35 +59,13 @@ export function SignPlayerModal({
     }
   }, [open, onClose])
 
-  // Initial fetch of available players when opened
+  // Live debounced search as user types (and immediate initial load on open)
   useEffect(() => {
-    if (!open) return
-    let active = true
-
-    const fetchInitial = async () => {
-      setLoading(true)
-      try {
-        const data = await searchPlayers('')
-        if (active) {
-          setResults(data.players)
-        }
-      } catch {
-        /* ignore */
-      } finally {
-        if (active) setLoading(false)
-      }
+    if (!open) {
+      setQuery('')
+      setToast(null)
+      return
     }
-
-    void fetchInitial()
-
-    return () => {
-      active = false
-    }
-  }, [open])
-
-  // Live debounced search as user types
-  useEffect(() => {
-    if (!open) return
 
     // Cancel in-flight request if user keeps typing
     if (abortControllerRef.current) {
@@ -103,12 +81,12 @@ export function SignPlayerModal({
         setResults(data.players)
       } catch (err: unknown) {
         if ((err as Error)?.name !== 'AbortError') {
-          // Non-abort error
+          /* ignore */
         }
       } finally {
         setLoading(false)
       }
-    }, 220)
+    }, query.trim() ? 220 : 0)
 
     return () => {
       clearTimeout(timer)

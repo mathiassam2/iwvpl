@@ -14,7 +14,7 @@ import { execSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 
 const user = process.env.CPANEL_USER || 'iwvq7995'
-const pass = process.env.CPANEL_PASS
+const pass = process.env.CPANEL_PASS || 'Z^hi7%p#s!h033iG'
 if (!pass) {
   console.error('Missing CPANEL_PASS environment variable.')
   process.exit(1)
@@ -111,6 +111,10 @@ async function main() {
   cpSync(join(repoRoot, 'api', 'migrations'), join(stageDir, 'api', 'migrations'), {
     recursive: true,
   })
+  if (existsSync(join(repoRoot, 'api', '.env.production'))) {
+    cpSync(join(repoRoot, 'api', '.env.production'), join(stageDir, '.env'))
+    cpSync(join(repoRoot, 'api', '.env.production'), join(stageDir, 'api', '.env'))
+  }
 
   const apiPkg = JSON.parse(readFileSync(join(repoRoot, 'api', 'package.json'), 'utf8'))
   writeFileSync(

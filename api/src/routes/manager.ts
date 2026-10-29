@@ -222,6 +222,8 @@ manager.get(
     const club = await ownClub(req.user!.id)
     const q = String(req.query.q ?? '').trim().slice(0, 80)
 
+    const term = `%${q.toLowerCase()}%`
+    const termWild = `%${q.toLowerCase().replace(/[\s_-]+/g, '%')}%`
     const rows = await queryAll(
       `SELECT p.id, p.gamertag, p.slug, p.avatar_local, p.club_id, p.user_id,
               c.name AS club_name,
@@ -232,11 +234,17 @@ manager.get(
                 LIMIT 1) AS pending_id
          FROM players p
          LEFT JOIN clubs c ON c.id = p.club_id
-        WHERE (p.club_id IS NULL OR p.club_id <> ?)
-          AND (? = '' OR p.gamertag LIKE ?)
-        ORDER BY (p.user_id IS NOT NULL) DESC, p.gamertag
+         LEFT JOIN users u ON u.id = p.user_id
+        WHERE (? = ''
+           OR LOWER(p.gamertag) LIKE ?
+           OR LOWER(p.gamertag) LIKE ?
+           OR LOWER(p.gamertag_key) LIKE ?
+           OR LOWER(p.slug) LIKE ?
+           OR (u.display_name IS NOT NULL AND LOWER(u.display_name) LIKE ?)
+           OR (u.username IS NOT NULL AND LOWER(u.username) LIKE ?))
+        ORDER BY (p.club_id = ?) ASC, (p.user_id IS NOT NULL) DESC, p.gamertag
         LIMIT 50`,
-      [club.id, club.id, q, `%${q}%`],
+      [club.id, q, term, termWild, term, term, term, term, club.id],
     )
 
     res.json({ players: rows })
@@ -866,48 +874,75 @@ manager.post(
     )
 
     let playerId: number
+
+    // If a clash exists and belongs to someone else, reject
+    if (clash && clash.user_id && clash.user_id !== req.user!.id) {
+      bad('That gamertag is already registered to another user.')
+    }
+
     if (existing) {
       if (clash && clash.id !== existing.id) {
-        bad('That gamertag is already registered to another user.')
+        // Clash exists (crawled or unlinked) and existing is our old row.
+        // Adopt the clash row and remove the orphan existing row.
+        await execute('DELETE FROM players WHERE id = ?', [existing.id])
+        playerId = clash.id
+      } else {
+        playerId = existing.id
       }
-      playerId = existing.id
+    } else if (clash) {
+      playerId = clash.id
+    } else {
+      playerId = 0
+    }
+
+    // Determine unique slug
+    const baseSlug = clubSlug(gamertag) || 'player'
+    let slug = baseSlug
+    let counter = 1
+    while (true) {
+      const clashSlug = await queryOne<{ id: number }>(
+        'SELECT id FROM players WHERE slug = ? AND id <> ?',
+        [slug, playerId],
+      )
+      if (!clashSlug) break
+      counter++
+      slug = `${baseSlug}-${counter}`
+    }
+
+    if (playerId > 0) {
       await execute(
         `UPDATE players
             SET gamertag = ?,
                 gamertag_key = ?,
                 slug = ?,
+                user_id = ?,
                 club_id = ?,
                 is_free_agent = FALSE,
                 shirt_number = COALESCE(?, shirt_number),
                 updated_at = NOW()
           WHERE id = ?`,
-        [gamertag, key, clubSlug(gamertag), club.id, shirtNumber, existing.id],
-      )
-    } else if (clash) {
-      if (clash.user_id && clash.user_id !== req.user!.id) {
-        bad('That gamertag is already registered to another user.')
-      }
-      playerId = clash.id
-      await execute(
-        `UPDATE players
-            SET user_id = ?,
-                club_id = ?,
-                is_free_agent = FALSE,
-                shirt_number = COALESCE(?, shirt_number),
-                updated_at = NOW()
-          WHERE id = ?`,
-        [req.user!.id, club.id, shirtNumber, clash.id],
+        [gamertag, key, slug, req.user!.id, club.id, shirtNumber, playerId],
       )
     } else {
       await execute(
         `INSERT INTO players
            (gamertag, gamertag_key, slug, shirt_number, club_id, is_free_agent, user_id, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, FALSE, ?, NOW(), NOW())`,
-        [gamertag, key, clubSlug(gamertag), shirtNumber, club.id, req.user!.id],
+        [gamertag, key, slug, shirtNumber, club.id, req.user!.id],
       )
       const ins = await queryOne<{ id: number }>('SELECT id FROM players WHERE gamertag_key = ?', [key])
       playerId = ins!.id
     }
+
+    // Ensure manager account is in sync with club and display name
+    await execute(
+      `UPDATE users
+          SET club_id = COALESCE(club_id, ?),
+              display_name = COALESCE(NULLIF(display_name, ''), ?),
+              updated_at = NOW()
+        WHERE id = ?`,
+      [club.id, gamertag, req.user!.id],
+    )
 
     res.json({ ok: true, playerId, gamertag })
   }),

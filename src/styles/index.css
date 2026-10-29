@@ -6,6 +6,12 @@
    site ended up following the OS to light. */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* Explicit dark styling for native select options to prevent OS white-background conflicts */
+select option {
+  background-color: #12151a !important;
+  color: #ffffff !important;
+}
+
 /* ============================================================
    IWVPL v2 — Design System (dark only)
 

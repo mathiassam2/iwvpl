@@ -167,6 +167,7 @@ app.use('/api', (_req, res, next) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private')
   res.setHeader('Pragma', 'no-cache')
   res.setHeader('Expires', '0')
+  res.setHeader('X-LiteSpeed-Cache-Control', 'no-cache')
   next()
 })
 
@@ -239,7 +240,10 @@ if (webBuilt) {
   // real URL that must return index.html rather than 404 — both for a cold hit
   // and for a refresh.
   app.get('*', (_req, res) => {
-    res.setHeader('Cache-Control', 'no-cache')
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
+    res.setHeader('Pragma', 'no-cache')
+    res.setHeader('Expires', '0')
+    res.setHeader('X-LiteSpeed-Cache-Control', 'no-cache')
     res.sendFile(join(config.paths.webDist, 'index.html'))
   })
 } else {
@@ -309,12 +313,6 @@ async function start(): Promise<void> {
   } catch (err) {
     // Not fatal. Failing to prune must not stop the server from booting.
     console.warn('Could not prune expired sessions:', err instanceof Error ? err.message : err)
-  }
-
-  try {
-    await execute("UPDATE users SET role = 'player' WHERE role = 'club_manager' AND club_id IS NULL")
-  } catch (err) {
-    console.warn('Could not heal unassigned club managers:', err instanceof Error ? err.message : err)
   }
 
   try {
