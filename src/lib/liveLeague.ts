@@ -2,7 +2,7 @@ import { asset } from '@/lib/assets'
 import { AVATAR_PLACEHOLDER } from '@/lib/format'
 import type { ClubLineup } from '@/lib/fixtures'
 import type { PlayerProfile } from '@/lib/players'
-import type { Club, Format, Match, StandingDivision } from '@/types/site'
+import type { Club, Format, Match, StandingDivision, Transfer } from '@/types/site'
 
 interface ApiClub {
   id: number
@@ -702,6 +702,15 @@ export async function getLiveLeaderboardSummary(signal?: AbortSignal): Promise<L
     const res = await get<LiveLeaderboardSummary>(`/api/leaderboards/summary?_=${Date.now()}`, signal)
     cachedLiveLeaderboards = res
     return res
+  } catch {
+    return null
+  }
+}
+
+export async function getLiveTransfers(signal?: AbortSignal): Promise<Transfer[] | null> {
+  try {
+    const res = await get<{ transfers: Transfer[] }>(`/api/transfers?_=${Date.now()}`, signal)
+    return Array.isArray(res?.transfers) ? res.transfers : null
   } catch {
     return null
   }

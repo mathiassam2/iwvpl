@@ -36,53 +36,87 @@ function id(value: unknown, field: string): number {
   return n
 }
 
+async function uniquePlayerSlug(tag: string, excludePlayerId?: number): Promise<string> {
+  const baseSlug = clubSlug(tag) || 'player'
+  let slug = baseSlug
+  let counter = 1
+  while (true) {
+    const clash = await queryOne<{ id: number }>(
+      'SELECT id FROM players WHERE slug = ?' + (excludePlayerId ? ' AND id != ?' : ''),
+      excludePlayerId ? [slug, excludePlayerId] : [slug],
+    )
+    if (!clash) break
+    counter++
+    slug = `${baseSlug}-${counter}`
+  }
+  return slug
+}
+
 /** The player row behind the signed-in account. */
-async function ownPlayer(userId: number): Promise<{
+async function ownPlayer(userId: number, candidateGamertag?: string): Promise<{
   id: number
   gamertag: string
   club_id: number | null
   shirt_number: number | null
 }> {
-  let row = await queryOne<{ id: number; gamertag: string; club_id: number | null; shirt_number: number | null }>(
+  let row = await queryOne<{ id: number; gamertag: string; club_id: number | null; shirt_number: number | null; is_free_agent: number }>(
     'SELECT id, gamertag, club_id, shirt_number, is_free_agent FROM players WHERE user_id = ?',
     [userId],
   )
   if (!row) {
-    const user = await queryOne<{ display_name: string | null; username?: string | null; email: string }>(
-      'SELECT display_name, username, email FROM users WHERE id = ?',
+    const user = await queryOne<{ display_name: string | null; username?: string | null; email: string; club_id: number | null }>(
+      'SELECT display_name, username, email, club_id FROM users WHERE id = ?',
       [userId],
     )
-    const candidateName = user?.display_name?.trim() || user?.username?.trim() || user?.email?.split('@')[0] || ''
-    if (candidateName) {
-      const match = await queryOne<{ id: number }>(
-        'SELECT id FROM players WHERE gamertag_key = ? AND user_id IS NULL LIMIT 1',
-        [gamertagKey(candidateName)],
+    const rawCandidate =
+      candidateGamertag?.trim() ||
+      user?.display_name?.trim() ||
+      user?.username?.trim() ||
+      user?.email?.split('@')[0] ||
+      `User_${userId}`
+
+    let candidateName = rawCandidate
+    const key = gamertagKey(candidateName)
+    const match = await queryOne<{ id: number }>(
+      'SELECT id FROM players WHERE gamertag_key = ? AND user_id IS NULL LIMIT 1',
+      [key],
+    )
+    if (match) {
+      const clubId = user?.club_id ?? null
+      const isFree = clubId ? 0 : 1
+      await execute(
+        'UPDATE players SET user_id = ?, club_id = ?, is_free_agent = ?, updated_at = NOW() WHERE id = ?',
+        [userId, clubId, isFree, match.id],
       )
-      if (match) {
-        await execute('UPDATE players SET user_id = ?, club_id = NULL, is_free_agent = TRUE, updated_at = NOW() WHERE id = ?', [userId, match.id])
-        row = await queryOne<{ id: number; gamertag: string; club_id: number | null; shirt_number: number | null }>(
-          'SELECT id, gamertag, club_id, shirt_number FROM players WHERE id = ?',
-          [match.id],
-        )
-      } else {
-        const key = gamertagKey(candidateName)
-        const slug = clubSlug(candidateName)
-        await execute(
-          `INSERT INTO players (gamertag, gamertag_key, slug, is_free_agent, user_id, created_at, updated_at)
-           VALUES (?, ?, ?, TRUE, ?, NOW(), NOW())`,
-          [candidateName, key, slug, userId],
-        )
-        row = await queryOne<{ id: number; gamertag: string; club_id: number | null; shirt_number: number | null }>(
-          'SELECT id, gamertag, club_id, shirt_number FROM players WHERE user_id = ?',
-          [userId],
-        )
+      row = await queryOne<{ id: number; gamertag: string; club_id: number | null; shirt_number: number | null; is_free_agent: number }>(
+        'SELECT id, gamertag, club_id, shirt_number, is_free_agent FROM players WHERE id = ?',
+        [match.id],
+      )
+    } else {
+      let candidateKey = key
+      const keyTaken = await queryOne<{ id: number }>('SELECT id FROM players WHERE gamertag_key = ?', [candidateKey])
+      if (keyTaken) {
+        candidateName = `${rawCandidate}_${userId}`
+        candidateKey = gamertagKey(candidateName)
       }
+      const slug = await uniquePlayerSlug(candidateName)
+      const clubId = user?.club_id ?? null
+      const isFree = clubId ? 0 : 1
+      await execute(
+        `INSERT INTO players (gamertag, gamertag_key, slug, is_free_agent, club_id, user_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+        [candidateName, candidateKey, slug, isFree, clubId, userId],
+      )
+      row = await queryOne<{ id: number; gamertag: string; club_id: number | null; shirt_number: number | null; is_free_agent: number }>(
+        'SELECT id, gamertag, club_id, shirt_number, is_free_agent FROM players WHERE user_id = ?',
+        [userId],
+      )
     }
   }
   if (!row) {
     throw Object.assign(new Error('This account has no player profile.'), { status: 404 })
   }
-  if ((row as any).is_free_agent) {
+  if (row.is_free_agent) {
     row.club_id = null
   }
   return row
@@ -127,25 +161,28 @@ player.get(
 player.get(
   '/check-gamertag',
   handler(async (req, res) => {
-    const rawTag = String(req.query.gamertag ?? '').trim()
+    const rawTag = String(req.query.gamertag ?? '').trim().replace(/\s+/g, ' ')
     if (!rawTag) return res.json({ available: false, reason: 'Gamertag cannot be empty' })
     if (rawTag.length < 2) return res.json({ available: false, reason: 'At least 2 characters required' })
     if (rawTag.length > 50) return res.json({ available: false, reason: 'Maximum 50 characters allowed' })
-    if (!/^[a-zA-Z0-9_.-]+$/.test(rawTag)) {
-      return res.json({ available: false, reason: 'Only letters, numbers, underscores, dots, and hyphens' })
+    if (!/^[a-zA-Z0-9_.-\s]+$/.test(rawTag)) {
+      return res.json({ available: false, reason: 'Only letters, numbers, spaces, underscores, dots, and hyphens' })
     }
 
-    const me = await ownPlayer(req.user!.id)
-    if (rawTag.toLowerCase() === me.gamertag.toLowerCase()) {
+    const myPlayer = await queryOne<{ id: number; gamertag: string }>(
+      'SELECT id, gamertag FROM players WHERE user_id = ?',
+      [req.user!.id],
+    )
+    if (myPlayer && rawTag.toLowerCase() === myPlayer.gamertag.toLowerCase()) {
       return res.json({ available: true, isCurrent: true })
     }
 
     const key = gamertagKey(rawTag)
-    const takenPlayer = await queryOne<{ id: number }>(
-      'SELECT id FROM players WHERE gamertag_key = ? AND id != ?',
-      [key, me.id],
+    const takenPlayer = await queryOne<{ id: number; user_id: number | null }>(
+      'SELECT id, user_id FROM players WHERE gamertag_key = ?' + (myPlayer ? ' AND id != ?' : ''),
+      myPlayer ? [key, myPlayer.id] : [key],
     )
-    if (takenPlayer) {
+    if (takenPlayer && takenPlayer.user_id && takenPlayer.user_id !== req.user!.id) {
       return res.json({ available: false, reason: 'That gamertag is already taken' })
     }
 
@@ -166,9 +203,6 @@ player.get(
 player.patch(
   '/me',
   handler(async (req, res) => {
-    const me = await ownPlayer(req.user!.id)
-    const oldGamertag = me.gamertag
-
     // 1. Shirt number validation
     const rawShirt = req.body?.shirtNumber
     let shirtNumber: number | null | undefined = undefined
@@ -188,34 +222,40 @@ player.patch(
     const rawGamertag = req.body?.gamertag
     let newGamertag: string | null = null
     if (rawGamertag !== undefined && rawGamertag !== null) {
-      const tag = String(rawGamertag).trim()
+      const tag = String(rawGamertag).trim().replace(/\s+/g, ' ')
       if (!tag) bad('Gamertag cannot be empty.')
       if (tag.length < 2) bad('Gamertag must be at least 2 characters.')
       if (tag.length > 50) bad('Gamertag cannot exceed 50 characters.')
-      if (!/^[a-zA-Z0-9_.-]+$/.test(tag)) {
-        bad('Gamertag can only contain letters, numbers, underscores, dots, and hyphens.')
+      if (!/^[a-zA-Z0-9_.-\s]+$/.test(tag)) {
+        bad('Gamertag can only contain letters, numbers, spaces, underscores, dots, and hyphens.')
       }
+      newGamertag = tag
+    }
 
-      if (tag.toLowerCase() !== oldGamertag.toLowerCase()) {
-        const key = gamertagKey(tag)
-        const clashPlayer = await queryOne<{ id: number }>(
-          'SELECT id FROM players WHERE gamertag_key = ? AND id != ?',
+    const me = await ownPlayer(req.user!.id, newGamertag || undefined)
+    const oldGamertag = me.gamertag
+
+    let shouldUpdateGamertag = false
+    if (newGamertag && newGamertag !== oldGamertag) {
+      if (newGamertag.toLowerCase() !== oldGamertag.toLowerCase()) {
+        const key = gamertagKey(newGamertag)
+        const clashPlayer = await queryOne<{ id: number; user_id: number | null }>(
+          'SELECT id, user_id FROM players WHERE gamertag_key = ? AND id != ?',
           [key, me.id],
         )
-        if (clashPlayer) {
-          bad(`The gamertag "${tag}" is already taken. Please choose another.`)
+        if (clashPlayer && clashPlayer.user_id && clashPlayer.user_id !== req.user!.id) {
+          bad(`The gamertag "${newGamertag}" is already taken. Please choose another.`)
         }
 
         const clashUser = await queryOne<{ id: number }>(
           'SELECT id FROM users WHERE (LOWER(username) = LOWER(?) OR LOWER(display_name) = LOWER(?)) AND id != ?',
-          [tag, tag, req.user!.id],
+          [newGamertag, newGamertag, req.user!.id],
         )
         if (clashUser) {
-          bad(`The gamertag "${tag}" is already taken. Please choose another.`)
+          bad(`The gamertag "${newGamertag}" is already taken. Please choose another.`)
         }
-
-        newGamertag = tag
       }
+      shouldUpdateGamertag = true
     }
 
     await withTransaction(async (conn) => {
@@ -228,9 +268,9 @@ player.patch(
       }
 
       // Update gamertag if changed
-      if (newGamertag) {
+      if (shouldUpdateGamertag && newGamertag) {
         const key = gamertagKey(newGamertag)
-        const slug = clubSlug(newGamertag)
+        const slug = await uniquePlayerSlug(newGamertag, me.id)
         await conn.execute(
           'UPDATE players SET gamertag = ?, gamertag_key = ?, slug = ?, updated_at = NOW() WHERE id = ?',
           [newGamertag, key, slug, me.id],

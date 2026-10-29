@@ -55,8 +55,13 @@ export function AccountSettingsModal({ open, onClose, initialTab = 'gamertag' }:
       return
     }
 
-    if (clean.toLowerCase() === (user?.gamertag || user?.name || '').toLowerCase()) {
+    if (user?.gamertag && clean === user.gamertag) {
       setTagStatus({ checking: false, available: true, isCurrent: true })
+      return
+    }
+
+    if (user?.gamertag && clean.toLowerCase() === user.gamertag.toLowerCase()) {
+      setTagStatus({ checking: false, available: true, isCurrent: false })
       return
     }
 
@@ -276,7 +281,7 @@ export function AccountSettingsModal({ open, onClose, initialTab = 'gamertag' }:
                 type="submit"
                 size="md"
                 className="font-bold"
-                disabled={tagBusy || !gamertag.trim() || tagStatus.available === false || tagStatus.checking}
+                disabled={tagBusy || !gamertag.trim() || tagStatus.available === false || tagStatus.checking || Boolean(user?.gamertag && gamertag.trim() === user.gamertag)}
               >
                 {tagBusy ? 'Saving…' : 'Save Gamertag'}
               </Button>

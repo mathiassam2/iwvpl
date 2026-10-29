@@ -1465,6 +1465,7 @@ admin.post(
           }
         }
         // Free agent or already on this club -> sign/update them onto this club
+        const oldClubId = found.club_id
         await conn.execute(
           `UPDATE players
               SET club_id = ?,
@@ -1474,6 +1475,13 @@ admin.post(
             WHERE id = ?`,
           [club.id, shirtNumber, found.id],
         )
+        if (!oldClubId || Number(oldClubId) !== Number(club.id)) {
+          await conn.execute(
+            `INSERT INTO transfers (player_id, from_club_id, to_club_id, occurred_at, kind, created_at)
+             VALUES (?, ?, ?, CURDATE(), 'permanent', NOW())`,
+            [found.id, oldClubId ?? null, club.id],
+          )
+        }
         return { ok: true, id: found.id }
       }
 
@@ -1482,7 +1490,13 @@ admin.post(
          VALUES (?, ?, ?, ?, NULL, ?, FALSE, NOW(), NOW())`,
         [gamertag, key, gamertag.toLowerCase().replace(/\s+/g, '-'), shirtNumber, club.id],
       )
-      return { ok: true, id: (ins as any).insertId }
+      const newPlayerId = (ins as any).insertId
+      await conn.execute(
+        `INSERT INTO transfers (player_id, from_club_id, to_club_id, occurred_at, kind, created_at)
+         VALUES (?, NULL, ?, CURDATE(), 'free', NOW())`,
+        [newPlayerId, club.id],
+      )
+      return { ok: true, id: newPlayerId }
     })
 
     if ('error' in result) return res.status(result.status).json({ error: result.error })
@@ -1595,6 +1609,12 @@ admin.delete(
     const slug = requiredString(req.params.slug, 'slug', 140)
     const gamertag = requiredString(req.params.gamertag, 'gamertag', 120)
 
+    const playerToRelease = await queryOne<{ id: number; club_id: number | null }>(
+      `SELECT id, club_id FROM players
+        WHERE gamertag_key = ? AND club_id = (SELECT id FROM clubs WHERE slug = ?)`,
+      [gamertag.toLowerCase(), slug],
+    )
+
     const affected = await execute(
       `UPDATE players SET club_id = NULL, is_free_agent = TRUE, updated_at = NOW()
         WHERE gamertag_key = ? AND club_id = (SELECT id FROM clubs WHERE slug = ?)`,
@@ -1604,6 +1624,15 @@ admin.delete(
     if (affected === 0) {
       return res.status(404).json({ error: 'Player not found on that club.' })
     }
+
+    if (playerToRelease && playerToRelease.club_id) {
+      await execute(
+        `INSERT INTO transfers (player_id, from_club_id, to_club_id, occurred_at, kind, created_at)
+         VALUES (?, ?, NULL, CURDATE(), 'free', NOW())`,
+        [playerToRelease.id, playerToRelease.club_id],
+      )
+    }
+
     res.json({ ok: true })
   }),
 )

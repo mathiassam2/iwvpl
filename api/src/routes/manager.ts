@@ -877,8 +877,11 @@ manager.post(
   '/self-player',
   handler(async (req, res) => {
     const club = await ownClub(req.user!.id)
-    const gamertag = String(req.body?.gamertag ?? '').trim()
+    const gamertag = String(req.body?.gamertag ?? '').trim().replace(/\s+/g, ' ')
     if (!gamertag) bad('Gamertag is required.')
+    if (!/^[a-zA-Z0-9_.-\s]+$/.test(gamertag)) {
+      bad('Gamertag can only contain letters, numbers, spaces, underscores, dots, and hyphens.')
+    }
     const rawNum = req.body?.shirtNumber
     let shirtNumber: number | null = null
     if (rawNum !== undefined && rawNum !== null && String(rawNum).trim() !== '') {
@@ -968,6 +971,12 @@ manager.post(
               updated_at = NOW()
         WHERE id = ?`,
       [club.id, gamertag, req.user!.id],
+    )
+
+    await execute(
+      `INSERT INTO transfers (player_id, from_club_id, to_club_id, occurred_at, kind, created_at)
+       VALUES (?, NULL, ?, CURDATE(), 'free', NOW())`,
+      [playerId, club.id],
     )
 
     res.json({ ok: true, playerId, gamertag })

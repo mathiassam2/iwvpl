@@ -21,6 +21,7 @@ import {
   getLiveClub,
   getLiveMatches,
   getLiveStandings,
+  getLiveTransfers,
   liveLeagueEnabled,
   peekLiveClub,
   peekLiveClubs,
@@ -202,7 +203,8 @@ export default function ClubDetailPage() {
       last = crawlPlayed[0]
     }
 
-    const transfers = siteData.transfers
+    const transferSource = liveTransfers ?? siteData.transfers
+    const transfers = transferSource
       .filter((t) => sameClub(t.from.name, club.name) || sameClub(t.to.name, club.name))
       .slice(0, 8)
     const scorers = siteData.leaderboards
@@ -219,7 +221,7 @@ export default function ClubDetailPage() {
       liveClub?.roster,
     )
     return { standing, divisionTable, matches: played, next, last, transfers, scorers, squad }
-  }, [club, liveClub, liveStandings, liveMatches, slug])
+  }, [club, liveClub, liveStandings, liveMatches, liveTransfers, slug])
 
   if (!club || !data) {
     return (

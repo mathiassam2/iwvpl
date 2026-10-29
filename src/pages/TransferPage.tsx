@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { getLiveTransfers } from '@/lib/liveLeague'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { StatTile } from '@/components/league'
 import { Badge, Container, EmptyState, Section, Select, SmartImage, Tabs } from '@/components/ui'
@@ -69,7 +70,23 @@ function ClubCell({ side }: { side: Side }) {
 }
 
 export default function TransferPage() {
-  const rows = (siteData.transfers ?? []) as Row[]
+  const [liveRows, setLiveRows] = useState<Row[] | null>(null)
+
+  useEffect(() => {
+    let active = true
+    const ctrl = new AbortController()
+    getLiveTransfers(ctrl.signal).then((data) => {
+      if (active && data && data.length > 0) {
+        setLiveRows(data as Row[])
+      }
+    })
+    return () => {
+      active = false
+      ctrl.abort()
+    }
+  }, [])
+
+  const rows = (liveRows ?? siteData.transfers ?? []) as Row[]
   const [scope, setScope] = useState<Scope>('all')
   const [club, setClub] = useState('all')
   const [q, setQ] = useState('')

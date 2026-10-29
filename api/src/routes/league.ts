@@ -994,6 +994,65 @@ league.get(
   }),
 )
 
+/* ---------------------------------------------------------------- transfers */
+
+league.get(
+  '/transfers',
+  handler(async (req, res) => {
+    const limit = Math.min(500, Math.max(1, Number.parseInt(String(req.query.limit ?? '300'), 10) || 300))
+    const rows = await queryAll<{
+      id: number
+      date_str: string
+      player_name: string
+      from_name: string | null
+      from_logo_local: string | null
+      from_logo_url: string | null
+      to_name: string | null
+      to_logo_local: string | null
+      to_logo_url: string | null
+    }>(
+      `SELECT t.id,
+              DATE_FORMAT(COALESCE(t.occurred_at, t.created_at), '%Y-%m-%d %H:%i') AS date_str,
+              p.gamertag AS player_name,
+              fc.name AS from_name,
+              fc.logo_local AS from_logo_local,
+              fc.logo_url AS from_logo_url,
+              tc.name AS to_name,
+              tc.logo_local AS to_logo_local,
+              tc.logo_url AS to_logo_url
+         FROM transfers t
+         JOIN players p ON p.id = t.player_id
+         LEFT JOIN clubs fc ON fc.id = t.from_club_id
+         LEFT JOIN clubs tc ON tc.id = t.to_club_id
+        ORDER BY COALESCE(t.occurred_at, t.created_at) DESC, t.id DESC
+        LIMIT ?`,
+      [limit],
+    )
+
+    const transfers = rows.map((r) => ({
+      date: r.date_str,
+      player: r.player_name,
+      from: {
+        name: r.from_name || 'Free Agent',
+        logo: r.from_logo_url || '',
+        emoji: '',
+        free: !r.from_name,
+        logoLocal: r.from_logo_local || '',
+      },
+      to: {
+        name: r.to_name || 'Free Agent',
+        logo: r.to_logo_url || '',
+        emoji: '',
+        free: !r.to_name,
+        logoLocal: r.to_logo_local || '',
+      },
+    }))
+
+    res.setHeader('Cache-Control', 'no-cache, private')
+    res.json({ transfers })
+  }),
+)
+
 /* ----------------------------------------------------------- site content */
 
 league.get(
