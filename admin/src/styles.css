@@ -5356,3 +5356,70 @@ input:checked + .adm-slider:before {
   align-items: center;
   gap: 10px;
 }
+
+/* Users & Players Unified Directory Additions */
+.adm-th-sortable {
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s ease;
+}
+.adm-th-sortable:hover {
+  color: var(--text) !important;
+}
+.adm-th-sort-indicator {
+  display: inline-block;
+  margin-left: 4px;
+  font-size: 11px;
+  color: var(--accent);
+}
+.adm-drawer-section {
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 16px;
+}
+.adm-drawer-section-title {
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.adm-type-badge-roster {
+  background: rgba(77, 171, 247, 0.14);
+  color: #4dabf7;
+  border: 1px solid rgba(77, 171, 247, 0.35);
+}
+.adm-radio-toggle-group {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 16px;
+}
+.adm-radio-toggle-btn {
+  flex: 1;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s ease;
+}
+.adm-radio-toggle-btn.is-active {
+  background: var(--surface-raised);
+  color: var(--text);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border-strong);
+}

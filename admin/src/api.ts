@@ -914,6 +914,7 @@ export interface AdminUser {
   player_slug: string | null
   is_active: boolean | number
   created_at: string
+  updated_at?: string | null
 }
 
 export interface AdminUserInput {
@@ -940,6 +941,7 @@ export interface AdminPlayer {
   user_email: string | null
   user_name: string | null
   created_at: string
+  updated_at?: string | null
 }
 
 export interface AdminPlayerInput {

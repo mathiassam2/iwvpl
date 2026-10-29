@@ -3245,7 +3245,7 @@ function parseOptionalPassword(value: unknown, required: boolean): string | null
 }
 
 const USER_SELECT_SQL = `
-  SELECT u.id, u.email, u.display_name, u.role, u.club_id, u.is_active, u.created_at,
+  SELECT u.id, u.email, u.display_name, u.role, u.club_id, u.is_active, u.created_at, u.updated_at,
          c.name AS club_name, c.slug AS club_slug,
          p.id AS player_id, p.gamertag, p.slug AS player_slug
     FROM users u
@@ -3510,7 +3510,7 @@ admin.delete(
 )
 
 const PLAYER_SELECT_SQL = `
-  SELECT p.id, p.gamertag, p.slug, p.shirt_number, p.club_id, p.is_free_agent, p.user_id, p.created_at,
+  SELECT p.id, p.gamertag, p.slug, p.shirt_number, p.club_id, p.is_free_agent, p.user_id, p.created_at, p.updated_at,
          c.name AS club_name, c.slug AS club_slug, c.short_code AS club_code,
          u.email AS user_email, u.display_name AS user_name
     FROM players p
