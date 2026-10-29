@@ -1012,7 +1012,7 @@ league.get(
       to_logo_url: string | null
     }>(
       `SELECT t.id,
-              DATE_FORMAT(COALESCE(t.occurred_at, t.created_at), '%Y-%m-%d %H:%i') AS date_str,
+              DATE_FORMAT(COALESCE(t.occurred_at, t.created_at), '%Y-%m-%d') AS date_str,
               p.gamertag AS player_name,
               fc.name AS from_name,
               fc.logo_local AS from_logo_local,

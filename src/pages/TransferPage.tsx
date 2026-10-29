@@ -249,7 +249,7 @@ export default function TransferPage() {
 
                 {filtered.map((r, i) => (
                   <div
-                    key={`${r.date}-${r.player}-${i}`}
+                    key={`${r.date ? r.date.split(' ')[0] : ''}-${r.player}-${i}`}
                     role="row"
                     className="row-hover trf-tpl grid items-center border-b border-[var(--border)] last:border-0"
                   >
@@ -257,7 +257,7 @@ export default function TransferPage() {
                       role="cell"
                       className="numeric truncate px-3 py-3 text-[13px] text-[var(--text-muted)]"
                     >
-                      {r.date}
+                      {r.date ? r.date.split(' ')[0] : ''}
                     </div>
 
                     <div role="cell" className="min-w-0 px-3 py-3">

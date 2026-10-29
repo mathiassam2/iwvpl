@@ -552,7 +552,7 @@ export default function ClubDetailPage() {
                     </span>
                   </span>
                   <span className="numeric shrink-0 text-[11px] text-[var(--text-faint)]">
-                    {t.date}
+                    {t.date ? t.date.split(' ')[0] : ''}
                   </span>
                 </li>
               )
