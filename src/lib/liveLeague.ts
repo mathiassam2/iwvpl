@@ -707,10 +707,21 @@ export async function getLiveLeaderboardSummary(signal?: AbortSignal): Promise<L
   }
 }
 
+let cachedLiveTransfers: Transfer[] | null = null
+
+export function peekLiveTransfers(): Transfer[] | null {
+  return cachedLiveTransfers
+}
+
 export async function getLiveTransfers(signal?: AbortSignal): Promise<Transfer[] | null> {
+  if (cachedLiveTransfers) return cachedLiveTransfers
   try {
-    const res = await get<{ transfers: Transfer[] }>(`/api/transfers?_=${Date.now()}`, signal)
-    return Array.isArray(res?.transfers) ? res.transfers : null
+    const res = await get<{ transfers: Transfer[] }>('/api/transfers', signal)
+    if (Array.isArray(res?.transfers)) {
+      cachedLiveTransfers = res.transfers
+      return res.transfers
+    }
+    return null
   } catch {
     return null
   }

@@ -358,7 +358,7 @@ league.get(
     }
 
     const { starting_xi_json: _ignored, ...restClub } = club
-    res.setHeader('Cache-Control', 'no-cache, private')
+    res.setHeader('Cache-Control', 'public, max-age=15, stale-while-revalidate=60')
     res.json({
       ...restClub,
       manager_name: managerName,
@@ -999,7 +999,7 @@ league.get(
 league.get(
   '/transfers',
   handler(async (req, res) => {
-    const limit = Math.min(500, Math.max(1, Number.parseInt(String(req.query.limit ?? '300'), 10) || 300))
+    const limit = Math.min(2000, Math.max(1, Number.parseInt(String(req.query.limit ?? '1000'), 10) || 1000))
     const rows = await queryAll<{
       id: number
       date_str: string
@@ -1024,7 +1024,8 @@ league.get(
          JOIN players p ON p.id = t.player_id
          LEFT JOIN clubs fc ON fc.id = t.from_club_id
          LEFT JOIN clubs tc ON tc.id = t.to_club_id
-        ORDER BY COALESCE(t.occurred_at, t.created_at) DESC, t.id DESC
+        WHERE (t.from_club_id IS NOT NULL OR t.to_club_id IS NOT NULL)
+        ORDER BY t.occurred_at DESC, t.id DESC
         LIMIT ?`,
       [limit],
     )

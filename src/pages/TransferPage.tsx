@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import { getLiveTransfers } from '@/lib/liveLeague'
+import { getLiveTransfers, peekLiveTransfers } from '@/lib/liveLeague'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { StatTile } from '@/components/league'
-import { Badge, Container, EmptyState, Section, Select, SmartImage, Tabs } from '@/components/ui'
+import { Badge, Button, Container, EmptyState, Section, Select, SmartImage, Tabs } from '@/components/ui'
 import { siteData } from '@/data'
 import { CLUB_PLACEHOLDER, cx, stripFlag } from '@/lib/format'
 
-type Scope = 'all' | 'in' | 'out' | 'internal' | 'signed'
+type Scope = 'all' | 'in' | 'out' | 'internal'
 
 interface Side {
   name: string
@@ -28,7 +28,6 @@ const SCOPES: Array<{ id: Scope; label: string }> = [
   { id: 'in', label: 'Signings' },
   { id: 'out', label: 'Departures' },
   { id: 'internal', label: 'Internal' },
-  { id: 'signed', label: 'Newly signed' },
 ]
 
 /** Columns, in order. `hide` marks columns dropped at a breakpoint. */
@@ -70,7 +69,9 @@ function ClubCell({ side }: { side: Side }) {
 }
 
 export default function TransferPage() {
-  const [liveRows, setLiveRows] = useState<Row[] | null>(null)
+  const [liveRows, setLiveRows] = useState<Row[] | null>(() => peekLiveTransfers() as Row[] | null)
+  const [page, setPage] = useState(1)
+  const pageSize = 25
 
   useEffect(() => {
     let active = true
@@ -86,10 +87,21 @@ export default function TransferPage() {
     }
   }, [])
 
-  const rows = (liveRows ?? siteData.transfers ?? []) as Row[]
+  // Exclude Free Agent to Free Agent moves and ensure strict descending order
+  const rows = useMemo(() => {
+    const raw = (liveRows ?? siteData.transfers ?? []) as Row[]
+    return raw
+      .filter((r) => !(r.from.free && r.to.free))
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+  }, [liveRows])
+
   const [scope, setScope] = useState<Scope>('all')
   const [club, setClub] = useState('all')
   const [q, setQ] = useState('')
+
+  useEffect(() => {
+    setPage(1)
+  }, [scope, club, q])
 
   const clubs = useMemo(() => {
     const s = new Set<string>()
@@ -102,14 +114,13 @@ export default function TransferPage() {
   }, [rows])
 
   const counts = useMemo(() => {
-    const c: Record<Scope, number> = { all: rows.length, in: 0, out: 0, internal: 0, signed: 0 }
+    const c: Record<Scope, number> = { all: rows.length, in: 0, out: 0, internal: 0 }
     rows.forEach((r) => {
       const f = r.from.free
       const t = r.to.free
       if (f && !t) c.in++
       else if (!f && t) c.out++
       else if (!f && !t) c.internal++
-      else c.signed++
     })
     return c
   }, [rows])
@@ -122,7 +133,6 @@ export default function TransferPage() {
       if (scope === 'in' && !(f && !t)) return false
       if (scope === 'out' && !(t && !f)) return false
       if (scope === 'internal' && (f || t)) return false
-      if (scope === 'signed' && !(f && t)) return false
 
       if (club !== 'all') {
         const target = club.toUpperCase()
@@ -133,6 +143,12 @@ export default function TransferPage() {
       return true
     })
   }, [rows, scope, club, q])
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
+  const safePage = Math.min(page, totalPages)
+  const pagedRows = useMemo(() => {
+    return filtered.slice((safePage - 1) * pageSize, safePage * pageSize)
+  }, [filtered, safePage, pageSize])
 
   return (
     <div className="page-enter">
@@ -145,7 +161,7 @@ export default function TransferPage() {
       <Section>
         <Container size="wide">
           <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatTile label="Logged moves" value={rows.length} hint="This window" />
+            <StatTile label="Logged moves" value={counts.all} hint="This window" />
             <StatTile label="Signings" value={counts.in} hint="Free agent → club" />
             <StatTile label="Departures" value={counts.out} hint="Club → free agent" />
             <StatTile label="Internal" value={counts.internal} hint="Club → club" />
@@ -177,28 +193,17 @@ export default function TransferPage() {
                 />
               </div>
 
-              <div className="relative sm:w-56">
+              <div className="relative sm:w-64">
                 <label htmlFor="transfer-q" className="sr-only">
                   Search player
                 </label>
-                <svg
-                  width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden
-                  className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-faint)]"
-                >
-                  <circle cx="7" cy="7" r="5" stroke="currentColor" strokeWidth="1.6" />
-                  <path d="M11 11l3 3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-                </svg>
                 <input
                   id="transfer-q"
                   type="search"
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
-                  placeholder="Search player…"
-                  className={cx(
-                    'h-11 w-full rounded-full border border-[var(--border-strong)] bg-[var(--surface)]',
-                    'pl-11 pr-4 text-sm text-[var(--text-strong)] placeholder:text-[var(--text-faint)]',
-                    'outline-none transition-colors focus:border-[var(--accent-ring)]',
-                  )}
+                  placeholder="Search player name…"
+                  className="h-10 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 text-sm text-[var(--text-strong)] placeholder:text-[var(--text-faint)] focus:border-[var(--accent-ring)] focus:outline-none"
                 />
               </div>
             </div>
@@ -208,16 +213,14 @@ export default function TransferPage() {
           {filtered.length === 0 ? (
             <EmptyState
               title="No transfers match your filters"
-              hint="Try a different scope, club or player name."
+              hint={
+                q || club !== 'all' || scope !== 'all'
+                  ? 'Try clearing the search box or selecting another scope or club.'
+                  : 'Moves will appear here as soon as signings are completed.'
+              }
             />
           ) : (
             <>
-              <p className="mb-4 text-xs text-[var(--text-muted)]">
-                Showing{' '}
-                <span className="numeric font-semibold text-[var(--text)]">{filtered.length}</span> of{' '}
-                {rows.length} moves
-              </p>
-
               {/* Header and rows share one `trf-tpl` track list, so a column's
                   heading and its values can never drift apart, and the track
                   count shrinks at small widths so nothing scrolls sideways. */}
@@ -247,7 +250,7 @@ export default function TransferPage() {
                   ))}
                 </div>
 
-                {filtered.map((r, i) => (
+                {pagedRows.map((r, i) => (
                   <div
                     key={`${r.date ? r.date.split(' ')[0] : ''}-${r.player}-${i}`}
                     role="row"
@@ -294,6 +297,45 @@ export default function TransferPage() {
                   </div>
                 ))}
               </div>
+
+              {/* ---------- Pagination controls ---------- */}
+              {totalPages > 1 && (
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border)] pt-4 text-xs">
+                  <div className="text-[var(--text-muted)]">
+                    Showing <strong className="font-mono text-[var(--text-strong)]">{(safePage - 1) * pageSize + 1}</strong>
+                    –<strong className="font-mono text-[var(--text-strong)]">{Math.min(safePage * pageSize, filtered.length)}</strong> of{' '}
+                    <strong className="font-mono text-[var(--text-strong)]">{filtered.length}</strong> transfers
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={safePage <= 1}
+                      onClick={() => {
+                        setPage((p) => Math.max(1, p - 1))
+                        window.scrollTo({ top: 220, behavior: 'smooth' })
+                      }}
+                    >
+                      ← Previous
+                    </Button>
+                    <span className="px-2 font-mono font-medium text-[var(--text-strong)]">
+                      Page {safePage} of {totalPages}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={safePage >= totalPages}
+                      onClick={() => {
+                        setPage((p) => Math.min(totalPages, p + 1))
+                        window.scrollTo({ top: 220, behavior: 'smooth' })
+                      }}
+                    >
+                      Next →
+                    </Button>
+                  </div>
+                </div>
+              )}
 
               <div className="mt-6">
                 <Badge tone="muted">Free agents</Badge>
