@@ -49,35 +49,60 @@ export type SortKey =
   | 'name_asc'
   | 'name_desc'
 
+function isValidDate(iso: string | null | undefined): boolean {
+  if (!iso) return false
+  const trimmed = iso.trim()
+  if (
+    trimmed.startsWith('0000-00-00') ||
+    trimmed === '0000-00-00 00:00:00' ||
+    trimmed === '—' ||
+    trimmed === 'null' ||
+    trimmed === 'undefined'
+  ) {
+    return false
+  }
+  const norm = trimmed.includes('T') ? trimmed : trimmed.replace(' ', 'T')
+  const t = new Date(norm).getTime()
+  return !Number.isNaN(t) && t > 0
+}
+
 function parseTime(iso: string | null | undefined): number {
-  if (!iso) return 0
-  const norm = iso.includes('T') ? iso : iso.replace(' ', 'T')
+  if (!isValidDate(iso)) return 0
+  const norm = iso!.includes('T') ? iso! : iso!.replace(' ', 'T')
   const t = new Date(norm).getTime()
   return Number.isNaN(t) ? 0 : t
 }
 
-function formatDate(iso: string | null | undefined): string {
-  if (!iso) return '—'
-  const norm = iso.includes('T') ? iso : iso.replace(' ', 'T')
+function formatFullDateTime(iso: string | null | undefined): string {
+  if (!isValidDate(iso)) return 'Never'
+  const norm = iso!.includes('T') ? iso! : iso!.replace(' ', 'T')
   const d = new Date(norm)
-  if (Number.isNaN(d.getTime())) return iso
-  return d.toLocaleDateString('en-GB', {
+  return d.toLocaleString('en-GB', {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
   })
 }
 
-function formatTime(iso: string | null | undefined): string {
-  if (!iso) return ''
-  const norm = iso.includes('T') ? iso : iso.replace(' ', 'T')
-  const d = new Date(norm)
-  if (Number.isNaN(d.getTime())) return ''
-  return d.toLocaleTimeString('en-GB', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  })
+function formatRelativeTime(iso: string | null | undefined): string {
+  if (!isValidDate(iso)) return '—'
+  const norm = iso!.includes('T') ? iso! : iso!.replace(' ', 'T')
+  const diffMs = Date.now() - new Date(norm).getTime()
+  if (diffMs < 0) return 'Just now'
+  const secs = Math.floor(diffMs / 1000)
+  if (secs < 60) return 'Just now'
+  const mins = Math.floor(secs / 60)
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days === 1) return 'Yesterday'
+  if (days < 30) return `${days}d ago`
+  const months = Math.floor(days / 30)
+  if (months < 12) return `${months}mo ago`
+  return `${Math.floor(days / 365)}y ago`
 }
 
 export function UsersPlayersView({
@@ -383,25 +408,18 @@ export function UsersPlayersView({
   )
 
   // Column header sort helper
-  const handleHeaderSort = (field: 'created' | 'updated' | 'name') => {
-    if (field === 'created') {
-      setSortKey((prev) => (prev === 'created_desc' ? 'created_asc' : 'created_desc'))
-    } else if (field === 'updated') {
+  const handleHeaderSort = (field: 'activity' | 'name') => {
+    if (field === 'activity') {
       setSortKey((prev) => (prev === 'updated_desc' ? 'updated_asc' : 'updated_desc'))
     } else if (field === 'name') {
       setSortKey((prev) => (prev === 'name_asc' ? 'name_desc' : 'name_asc'))
     }
   }
 
-  const getSortIndicator = (field: 'created' | 'updated' | 'name') => {
-    if (field === 'created') {
-      if (sortKey === 'created_desc') return ' ▼'
-      if (sortKey === 'created_asc') return ' ▲'
-      return ' ↕'
-    }
-    if (field === 'updated') {
-      if (sortKey === 'updated_desc') return ' ▼'
-      if (sortKey === 'updated_asc') return ' ▲'
+  const getSortIndicator = (field: 'activity' | 'name') => {
+    if (field === 'activity') {
+      if (sortKey === 'updated_desc' || sortKey === 'created_desc') return ' ▼'
+      if (sortKey === 'updated_asc' || sortKey === 'created_asc') return ' ▲'
       return ' ↕'
     }
     if (field === 'name') {
@@ -812,10 +830,10 @@ export function UsersPlayersView({
             className="adm-select"
             title="Sort members list"
           >
-            <option value="updated_desc">Recently Updated (Newest first)</option>
-            <option value="updated_asc">Recently Updated (Oldest first)</option>
-            <option value="created_desc">Created Date (Newest first)</option>
-            <option value="created_asc">Created Date (Oldest first)</option>
+            <option value="updated_desc">Recently Active (Newest first)</option>
+            <option value="updated_asc">Recently Active (Oldest first)</option>
+            <option value="created_desc">Joined Date (Newest first)</option>
+            <option value="created_asc">Joined Date (Oldest first)</option>
             <option value="name_asc">Gamertag / Name (A → Z)</option>
             <option value="name_desc">Gamertag / Name (Z → A)</option>
           </select>
@@ -840,7 +858,7 @@ export function UsersPlayersView({
         ) : (
           <>
             <div className="adm-table-wrap">
-              <table className="adm-table">
+              <table className="adm-table adm-users-table">
                 <thead>
                   <tr>
                     <th
@@ -851,47 +869,70 @@ export function UsersPlayersView({
                       Member / Gamertag
                       <span className="adm-th-sort-indicator">{getSortIndicator('name')}</span>
                     </th>
-                    <th>Type</th>
-                    <th>Role & Status</th>
+                    <th style={{ width: 130 }}>Type</th>
+                    <th style={{ width: 140 }}>Role & Status</th>
                     <th>Squad / Managed Club</th>
                     <th
                       className="adm-th-sortable"
-                      onClick={() => handleHeaderSort('created')}
-                      title="Sort by Created date"
+                      style={{ width: 150 }}
+                      onClick={() => handleHeaderSort('activity')}
+                      title="Sort by Activity"
                     >
-                      Created
-                      <span className="adm-th-sort-indicator">{getSortIndicator('created')}</span>
+                      Activity
+                      <span className="adm-th-sort-indicator">{getSortIndicator('activity')}</span>
                     </th>
-                    <th
-                      className="adm-th-sortable"
-                      onClick={() => handleHeaderSort('updated')}
-                      title="Sort by Updated date"
-                    >
-                      Updated
-                      <span className="adm-th-sort-indicator">{getSortIndicator('updated')}</span>
-                    </th>
-                    <th style={{ textAlign: 'right' }}>Actions</th>
+                    <th style={{ textAlign: 'right', width: 90 }}>Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {pagedMembers.map((m) => (
-                    <tr key={m.key}>
+                    <tr
+                      key={m.key}
+                      className="adm-users-row"
+                      onClick={() => openEditMember(m)}
+                      title={`Click row to edit ${m.gamertag || m.displayName || 'member'}`}
+                    >
                       {/* Member / Gamertag */}
-                      <td>
-                        <div>
-                          <strong>{m.gamertag || m.displayName || 'Unnamed'}</strong>
-                          {m.gamertag && m.displayName && m.displayName !== m.gamertag && (
-                            <div className="adm-text-muted" style={{ fontSize: '12px' }}>
+                      <td className="adm-member-cell">
+                        <div className="adm-member-info">
+                          <div className="adm-member-primary">
+                            <span className="adm-member-gamertag">
+                              {m.gamertag || m.displayName || 'Unnamed Member'}
+                            </span>
+                            {m.shirtNumber != null && (
+                              <span className="adm-jersey-pill" title={`Jersey #${m.shirtNumber}`}>
+                                #{m.shirtNumber}
+                              </span>
+                            )}
+                          </div>
+
+                          {m.displayName && m.displayName !== m.gamertag && (
+                            <div className="adm-member-subname" title="Display Name">
                               {m.displayName}
                             </div>
                           )}
+
                           {m.email ? (
-                            <div className="adm-text-muted" style={{ fontSize: '11px' }}>
-                              {m.email}
+                            <div className="adm-member-email" title={m.email}>
+                              <span className="adm-email-text">{m.email}</span>
+                              <button
+                                type="button"
+                                className="adm-icon-btn-subtle"
+                                title="Copy email address"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  void navigator.clipboard?.writeText(m.email!)
+                                  report('ok', `Copied ${m.email} to clipboard.`)
+                                }}
+                              >
+                                📋
+                              </button>
                             </div>
                           ) : (
-                            <div className="adm-text-muted" style={{ fontSize: '11px', fontStyle: 'italic' }}>
-                              No web account
+                            <div className="adm-member-email">
+                              <span className="adm-email-text" style={{ fontStyle: 'italic', opacity: 0.6 }}>
+                                No web account
+                              </span>
                             </div>
                           )}
                         </div>
@@ -901,21 +942,21 @@ export function UsersPlayersView({
                       <td>
                         {m.type === 'linked' ? (
                           <span
-                            className="adm-status-badge status-active"
+                            className="adm-unified-pill type-linked"
                             title="User account linked to league player profile"
                           >
                             🔗 Linked
                           </span>
                         ) : m.type === 'account_only' ? (
                           <span
-                            className="adm-status-badge status-pending"
+                            className="adm-unified-pill type-account"
                             title="User account without player profile"
                           >
                             👤 Account Only
                           </span>
                         ) : (
                           <span
-                            className="adm-status-badge adm-type-badge-roster"
+                            className="adm-unified-pill type-roster"
                             title="Player profile without a web user account"
                           >
                             🎮 Roster Only
@@ -925,122 +966,106 @@ export function UsersPlayersView({
 
                       {/* Role & Status */}
                       <td>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                          <div>
-                            {m.role === 'owner' ? (
-                              <span
-                                className="adm-code-pill"
-                                style={{ color: '#ffd666', borderColor: 'rgba(255, 214, 102, 0.4)' }}
-                              >
-                                Owner
-                              </span>
-                            ) : m.role === 'admin' ? (
-                              <span
-                                className="adm-code-pill"
-                                style={{ color: '#c8ff3d', borderColor: 'rgba(200, 255, 61, 0.4)' }}
-                              >
-                                Admin
-                              </span>
-                            ) : m.role === 'club_manager' ? (
-                              <span
-                                className="adm-code-pill"
-                                style={{ color: '#4dabf7', borderColor: 'rgba(77, 171, 247, 0.4)' }}
-                              >
-                                Club Manager
-                              </span>
-                            ) : m.role === 'player' ? (
-                              <span className="adm-code-pill">Player</span>
-                            ) : (
-                              <span className="adm-text-muted" style={{ fontSize: '11px' }}>
-                                —
-                              </span>
-                            )}
+                        <div className="adm-role-status-cell">
+                          <div className="adm-status-indicator">
+                            <span
+                              className={`adm-status-dot ${
+                                !m.user
+                                  ? 'dot-unlinked'
+                                  : m.isActive
+                                    ? 'dot-active'
+                                    : 'dot-suspended'
+                              }`}
+                              title={
+                                !m.user
+                                  ? 'Roster player without web account'
+                                  : m.isActive
+                                    ? 'Active account'
+                                    : 'Suspended account'
+                              }
+                            />
+                            <span className="adm-role-label">
+                              {m.role === 'owner' ? (
+                                <span className="adm-role-text role-owner">Owner</span>
+                              ) : m.role === 'admin' ? (
+                                <span className="adm-role-text role-admin">Admin</span>
+                              ) : m.role === 'club_manager' ? (
+                                <span className="adm-role-text role-manager">Club Manager</span>
+                              ) : m.role === 'player' ? (
+                                <span className="adm-role-text role-player">Player</span>
+                              ) : (
+                                <span className="adm-role-text role-none">Roster Only</span>
+                              )}
+                            </span>
                           </div>
-                          {m.user && (
-                            <div>
-                              <span
-                                className={`adm-status-badge ${m.isActive ? 'status-active' : 'status-withdrawn'}`}
-                                style={{ fontSize: '10px', padding: '1px 6px' }}
-                              >
-                                {m.isActive ? 'Active' : 'Suspended'}
-                              </span>
-                            </div>
+
+                          {m.user && !m.isActive && (
+                            <span className="adm-suspended-badge">Suspended</span>
                           )}
                         </div>
                       </td>
 
                       {/* Squad / Managed Club */}
                       <td>
-                        {m.user ? (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                            {m.clubName && (
-                              <div style={{ fontSize: '12px' }}>
-                                Squad: <strong>{m.clubName}</strong>{' '}
+                        <div className="adm-club-assignment-cell">
+                          {m.managedClubName && (
+                            <div className="adm-assignment-row" title={`Manager of ${m.managedClubName}`}>
+                              <span className="adm-assignment-tag tag-manager">
+                                <span className="adm-tag-icon">👔</span>
+                                <span className="adm-tag-text">{m.managedClubName}</span>
+                              </span>
+                            </div>
+                          )}
+
+                          {m.clubName ? (
+                            <div className="adm-assignment-row" title={`Player for ${m.clubName}`}>
+                              <span className="adm-assignment-tag tag-squad">
+                                <span className="adm-tag-icon">⚽</span>
+                                <span className="adm-tag-text">{m.clubName}</span>
                                 {m.shirtNumber != null && (
-                                  <span className="adm-code-pill">#{m.shirtNumber}</span>
-                                )}
-                              </div>
-                            )}
-                            <select
-                              value={m.managedClubId != null ? String(m.managedClubId) : ''}
-                              onChange={(e) => void handleInlineAssignManagedClub(m, e.target.value)}
-                              className="adm-select adm-select-inline"
-                              aria-label={`Assign managed club for ${m.displayName || m.email || m.gamertag}`}
-                              title="Assign managed club"
-                            >
-                              <option value="">— No Managed Club —</option>
-                              {clubs.map((c) => (
-                                <option key={c.id} value={String(c.id)}>
-                                  {c.name} ({c.status})
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        ) : (
-                          <div>
-                            {m.clubName ? (
-                              <span className="adm-row-title">
-                                <strong>{m.clubName}</strong>
-                                {m.clubCode && <span className="adm-code-pill">{m.clubCode}</span>}
-                                {m.shirtNumber != null && (
-                                  <span className="adm-code-pill">#{m.shirtNumber}</span>
+                                  <span className="adm-tag-num">#{m.shirtNumber}</span>
                                 )}
                               </span>
-                            ) : (
-                              <span className="adm-status-badge status-pending">Free Agent</span>
-                            )}
+                            </div>
+                          ) : (
+                            !m.managedClubName && (
+                              <div className="adm-assignment-row">
+                                <span className="adm-assignment-tag tag-free" title="Unassigned / Free Agent">
+                                  Free Agent
+                                </span>
+                              </div>
+                            )
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Activity */}
+                      <td
+                        title={`Updated: ${formatFullDateTime(m.updatedAt)}\nCreated: ${formatFullDateTime(
+                          m.createdAt,
+                        )}`}
+                      >
+                        <div className="adm-activity-cell">
+                          <div className="adm-activity-primary">
+                            {formatRelativeTime(m.updatedAt || m.createdAt)}
                           </div>
-                        )}
-                      </td>
-
-                      {/* Created Date */}
-                      <td title={m.createdAt}>
-                        <div style={{ fontSize: '12px', whiteSpace: 'nowrap' }}>
-                          {formatDate(m.createdAt)}
-                        </div>
-                        <div className="adm-text-muted" style={{ fontSize: '11px', whiteSpace: 'nowrap' }}>
-                          {formatTime(m.createdAt)}
+                          {isValidDate(m.createdAt) && (
+                            <div className="adm-activity-secondary">
+                              Joined {formatRelativeTime(m.createdAt)}
+                            </div>
+                          )}
                         </div>
                       </td>
 
-                      {/* Updated Date */}
-                      <td title={m.updatedAt}>
-                        <div style={{ fontSize: '12px', whiteSpace: 'nowrap' }}>
-                          {formatDate(m.updatedAt)}
-                        </div>
-                        <div className="adm-text-muted" style={{ fontSize: '11px', whiteSpace: 'nowrap' }}>
-                          {formatTime(m.updatedAt)}
-                        </div>
-                      </td>
-
-                      {/* Actions */}
-                      <td style={{ textAlign: 'right' }}>
+                      {/* Action */}
+                      <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
                         <button
                           type="button"
-                          className="adm-btn adm-btn-secondary adm-btn-sm"
+                          className="adm-btn adm-btn-secondary adm-btn-sm adm-edit-btn"
                           onClick={() => openEditMember(m)}
+                          title={`Edit ${m.gamertag || m.displayName || 'member'}`}
                         >
-                          Edit Member →
+                          Edit ⚙️
                         </button>
                       </td>
                     </tr>
