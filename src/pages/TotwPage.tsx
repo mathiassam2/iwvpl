@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { ApiError, getTotw, type TotwPlayer, type TotwResponse } from '@/lib/api'
 import { asset } from '@/lib/assets'
 import { useAuth } from '@/lib/auth'
@@ -13,6 +13,11 @@ import {
 } from '@/lib/totw'
 import { TotwPaint } from '@/components/totw/TotwPaint'
 import '@/styles/totw.css'
+
+function parseWeekNum(label: string): number {
+  const m = label.match(/\d+/)
+  return m ? Number.parseInt(m[0], 10) : 0
+}
 
 function PlayerCard({ player }: { player: TotwPlayer }) {
   const [first, rest] = splitName(player.name)
@@ -87,8 +92,14 @@ function PlayerCard({ player }: { player: TotwPlayer }) {
 
 export default function TotwPage() {
   const { user } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const paramId = Number.parseInt(searchParams.get('week') ?? '', 10)
   const [data, setData] = useState<TotwResponse | null>(null)
-  const [weekId, setWeekId] = useState<number | null>(null)
+  const [weekId, setWeekId] = useState<number | null>(
+    Number.isSafeInteger(paramId) && paramId > 0 ? paramId : null,
+  )
+  const [menuOpen, setMenuOpen] = useState(false)
+  const stepperRef = useRef<HTMLDivElement>(null)
   const [loading, setLoading] = useState(true)
   const [locked, setLocked] = useState(false)
   const [error, setError] = useState('')
@@ -99,6 +110,18 @@ export default function TotwPage() {
   useEffect(() => {
     document.title = 'Team of the Week | IWVPL'
   }, [])
+
+  // Close dropdown menu on outside click or tap
+  useEffect(() => {
+    if (!menuOpen) return
+    const onPointerDown = (e: PointerEvent) => {
+      if (stepperRef.current && !stepperRef.current.contains(e.target as Node)) {
+        setMenuOpen(false)
+      }
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => document.removeEventListener('pointerdown', onPointerDown)
+  }, [menuOpen])
 
   const load = useCallback(
     async (id: number | null) => {
@@ -125,6 +148,30 @@ export default function TotwPage() {
 
   const week = data?.week ?? null
   const bySlot = new Map((week?.players ?? []).map((p) => [p.slot, p]))
+
+  // Chronologically ordered weeks (Matchweek 1, Matchweek 2...)
+  const chronologicalWeeks = useMemo(() => {
+    if (!data?.weeks) return []
+    return [...data.weeks].sort((a, b) => {
+      const numA = parseWeekNum(a.label)
+      const numB = parseWeekNum(b.label)
+      if (numA !== numB) return numA - numB
+      return a.id - b.id
+    })
+  }, [data?.weeks])
+
+  const activeIndex = chronologicalWeeks.findIndex((w) => w.id === week?.id)
+  const prevWeek = activeIndex > 0 ? chronologicalWeeks[activeIndex - 1] : null
+  const nextWeek =
+    activeIndex !== -1 && activeIndex < chronologicalWeeks.length - 1
+      ? chronologicalWeeks[activeIndex + 1]
+      : null
+
+  const handleSelectWeek = (id: number | undefined) => {
+    if (id == null) return
+    setWeekId(id)
+    setSearchParams({ week: String(id) }, { replace: true })
+  }
 
   const onDownload = async () => {
     if (!week || busy) return
@@ -163,18 +210,101 @@ export default function TotwPage() {
         <section className="totw__board" aria-live="polite">
           {week && data?.weeks && data.weeks.length > 0 && (
             <div className="totw__board-header">
-              <div className="totw__weeks" role="tablist" aria-label="Choose a week">
-                {data.weeks.map((w) => (
+              {/* Matches-style Matchweek Stepper (left/right navigation) */}
+              <div className="totw-stepper" ref={stepperRef}>
+                <button
+                  type="button"
+                  className="totw-stepper__arrow"
+                  onClick={() => handleSelectWeek(prevWeek?.id)}
+                  disabled={!prevWeek}
+                  title={prevWeek ? `Previous: ${prevWeek.label}` : 'No earlier matchweek'}
+                  aria-label="Previous matchweek"
+                >
+                  <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <path
+                      d="M10 13L5 8l5-5"
+                      stroke="currentColor"
+                      strokeWidth="2.2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+
+                <div className="totw-stepper__center">
                   <button
-                    key={w.id}
                     type="button"
-                    className="totw__chip"
-                    aria-current={w.id === week.id}
-                    onClick={() => setWeekId(w.id)}
+                    className="totw-stepper__pill"
+                    onClick={() => chronologicalWeeks.length > 1 && setMenuOpen((v) => !v)}
+                    disabled={chronologicalWeeks.length <= 1}
+                    aria-expanded={menuOpen}
+                    aria-haspopup="listbox"
+                    title={chronologicalWeeks.length > 1 ? 'Jump to another matchweek' : undefined}
                   >
-                    {w.label}
+                    <span>{week.label}</span>
+                    {chronologicalWeeks.length > 1 && (
+                      <svg
+                        className={`totw-stepper__caret ${menuOpen ? 'totw-stepper__caret--open' : ''}`}
+                        width="11"
+                        height="11"
+                        viewBox="0 0 16 16"
+                        fill="none"
+                        aria-hidden="true"
+                      >
+                        <path
+                          d="M3 6l5 5 5-5"
+                          stroke="currentColor"
+                          strokeWidth="2.2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    )}
                   </button>
-                ))}
+
+                  {menuOpen && chronologicalWeeks.length > 1 && (
+                    <div className="totw-stepper__dropdown" role="listbox">
+                      {[...chronologicalWeeks].reverse().map((w) => {
+                        const isCurrent = w.id === week.id
+                        return (
+                          <button
+                            key={w.id}
+                            type="button"
+                            role="option"
+                            aria-selected={isCurrent}
+                            className={`totw-stepper__option ${isCurrent ? 'totw-stepper__option--active' : ''}`}
+                            onClick={() => {
+                              handleSelectWeek(w.id)
+                              setMenuOpen(false)
+                            }}
+                          >
+                            <span>{w.label}</span>
+                            {isCurrent && <span className="totw-stepper__dot" />}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  className="totw-stepper__arrow"
+                  onClick={() => handleSelectWeek(nextWeek?.id)}
+                  disabled={!nextWeek}
+                  title={nextWeek ? `Next: ${nextWeek.label}` : 'No later matchweek'}
+                  aria-label="Next matchweek"
+                >
+                  <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <path
+                      d="M6 3l5 5-5 5"
+                      stroke="currentColor"
+                      strokeWidth="2.2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
               </div>
 
               <button

@@ -193,12 +193,22 @@ totw.get(
   handler(async (req, res) => {
     if (!(await canView(req))) fail(403, 'Team of the Week is not available to your account yet.')
 
-    const weeks = await queryAll<{ id: number; label: string; published_at: string | null }>(
+    const rows = await queryAll<{ id: number; label: string; published_at: string | null }>(
       `SELECT id, label, published_at FROM totw_weeks
         WHERE status = 'published'
         ORDER BY published_at DESC, id DESC
         LIMIT 60`,
     )
+    const parseNum = (label: string) => {
+      const m = label.match(/\d+/)
+      return m ? Number.parseInt(m[0], 10) : 0
+    }
+    const weeks = [...rows].sort((a, b) => {
+      const numA = parseNum(a.label)
+      const numB = parseNum(b.label)
+      if (numA !== numB) return numB - numA
+      return b.id - a.id
+    })
     const requested = Number.parseInt(String(req.query.week ?? ''), 10)
     const current = weeks.find((w) => w.id === requested) ?? weeks[0]
 
