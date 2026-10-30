@@ -150,18 +150,20 @@ export default function TotwPage() {
         <span className="totw__mark">IWVPL</span>
       </div>
 
-      <div className="totw__stage">
-        <header className="totw__topbar">
-          <div className="totw__brand">
-            <span className="totw__eyebrow">IWVPL · Best XI</span>
-            <h1 className="totw__title">
-              <span>TEAM OF THE</span>
-              <b>WEEK</b>
-            </h1>
-          </div>
+      <div className="totw__layout">
+        <header className="totw__hero">
+          <span className="totw__eyebrow">IWVPL · Best XI</span>
+          <h1 className="totw__title">
+            <span>Team of the</span>
+            <b>Week</b>
+          </h1>
+          <p className="totw__sub">
+            The standout eleven from across the league, picked in a 4-3-3. Hover a player to see
+            their club.
+          </p>
 
           {week && (
-            <div className="totw__controls">
+            <div className="totw__bar">
               <div className="totw__weeks" role="tablist" aria-label="Choose a week">
                 {data!.weeks.map((w) => (
                   <button
@@ -180,9 +182,8 @@ export default function TotwPage() {
                 className="totw__download"
                 onClick={onDownload}
                 disabled={busy}
-                title="Download full resolution poster"
               >
-                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
                   <path
                     d="M8 2v8m0 0L4.8 6.8M8 10l3.2-3.2M2.5 13h11"
                     stroke="currentColor"
@@ -191,19 +192,18 @@ export default function TotwPage() {
                     strokeLinejoin="round"
                   />
                 </svg>
-                <span>{busy ? 'Preparing…' : 'Download poster'}</span>
+                <span>{busy ? 'Preparing poster…' : 'Download poster'}</span>
               </button>
             </div>
           )}
+          {downloadError && (
+            <p role="alert" className="mt-3 text-sm text-red-300">
+              {downloadError}
+            </p>
+          )}
         </header>
 
-        {downloadError && (
-          <p role="alert" className="totw__download-error">
-            {downloadError}
-          </p>
-        )}
-
-        <main className="totw__board" aria-live="polite">
+        <section className="totw__board" aria-live="polite">
           {loading ? (
             <div className="totw__rows" aria-busy>
               {TOTW_ROWS.map((row, ri) => (
@@ -267,7 +267,7 @@ export default function TotwPage() {
               ))}
             </div>
           )}
-        </main>
+        </section>
       </div>
     </div>
   )
