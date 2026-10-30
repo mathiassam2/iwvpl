@@ -3301,7 +3301,8 @@ admin.get(
   '/users',
   handler(async (_req, res) => {
     const users = await queryAll(`${USER_SELECT_SQL} ORDER BY u.created_at DESC, u.id DESC`)
-    res.json({ users })
+    const nowRow = await queryOne<{ now: string }>('SELECT NOW() AS now')
+    res.json({ users, serverTime: nowRow?.now })
   }),
 )
 
@@ -3577,7 +3578,8 @@ admin.get(
   '/players',
   handler(async (_req, res) => {
     const players = await queryAll(`${PLAYER_SELECT_SQL} ORDER BY p.gamertag ASC, p.id ASC`)
-    res.json({ players })
+    const nowRow = await queryOne<{ now: string }>('SELECT NOW() AS now')
+    res.json({ players, serverTime: nowRow?.now })
   }),
 )
 

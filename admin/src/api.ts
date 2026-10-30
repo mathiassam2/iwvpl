@@ -950,8 +950,31 @@ export interface AdminPlayerInput {
   shirtNumber?: number | null
 }
 
+const initialDefaultOffset = new Date().getTimezoneOffset() === -480 ? 3600000 : 0
+let serverTimeOffsetMs = initialDefaultOffset
+
+export function updateServerTimeOffset(serverTimeStr: string | null | undefined): void {
+  if (!serverTimeStr) return
+  const norm = serverTimeStr.trim()
+  const match = norm.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})/)
+  if (match) {
+    const [, y, m, d, h, min, s] = match
+    const serverMs = new Date(Number(y), Number(m) - 1, Number(d), Number(h), Number(min), Number(s)).getTime()
+    if (!Number.isNaN(serverMs) && serverMs > 0) {
+      serverTimeOffsetMs = Date.now() - serverMs
+    }
+  }
+}
+
+export function getServerTimeOffset(): number {
+  return serverTimeOffsetMs
+}
+
 export const getAdminUsers = () =>
-  request<{ users: AdminUser[] }>('/api/admin/users').then((r) => r.users)
+  request<{ users: AdminUser[]; serverTime?: string }>('/api/admin/users').then((r) => {
+    if (r.serverTime) updateServerTimeOffset(r.serverTime)
+    return r.users
+  })
 
 export const createAdminUser = (input: AdminUserInput) =>
   request<{ user: AdminUser }>('/api/admin/users', {
@@ -971,7 +994,10 @@ export const deleteAdminUser = (id: number) =>
   })
 
 export const getAdminPlayers = () =>
-  request<{ players: AdminPlayer[] }>('/api/admin/players').then((r) => r.players)
+  request<{ players: AdminPlayer[]; serverTime?: string }>('/api/admin/players').then((r) => {
+    if (r.serverTime) updateServerTimeOffset(r.serverTime)
+    return r.players
+  })
 
 export const createAdminPlayer = (input: AdminPlayerInput) =>
   request<{ player: AdminPlayer }>('/api/admin/players', {

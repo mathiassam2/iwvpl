@@ -9,6 +9,7 @@ import {
   getAdminUsers,
   updateAdminPlayer,
   updateAdminUser,
+  getServerTimeOffset,
   type AdminPlayer,
   type AdminUser,
   type Club,
@@ -82,7 +83,8 @@ function parseTime(iso: string | null | undefined): number {
 function formatFullDateTime(iso: string | null | undefined): string {
   const t = parseTime(iso)
   if (!t) return 'Never'
-  const d = new Date(t)
+  const offset = getServerTimeOffset()
+  const d = new Date(t + offset)
   return d.toLocaleString('en-GB', {
     day: '2-digit',
     month: 'short',
@@ -96,8 +98,11 @@ function formatRelativeTime(iso: string | null | undefined): string {
   const targetTime = parseTime(iso)
   if (!targetTime) return '—'
 
-  const diffMs = Date.now() - targetTime
-  if (diffMs < 0 && diffMs > -60000) return 'Just now'
+  const offset = getServerTimeOffset()
+  const now = Date.now() - offset
+  const diffMs = now - targetTime
+
+  if (diffMs <= 0 && diffMs > -60000) return 'Just now'
   if (diffMs < 0) return 'Just now'
 
   const diffSecs = Math.floor(diffMs / 1000)
@@ -109,18 +114,13 @@ function formatRelativeTime(iso: string | null | undefined): string {
   }
 
   const hours = Math.floor(mins / 60)
-  const remainingMins = mins % 60
-
   if (hours < 24) {
-    if (remainingMins > 0) {
-      return `${hours}h ${remainingMins}m ago`
-    }
-    return `${hours} ${hours === 1 ? 'hr' : 'hrs'} ago`
+    return `${hours}h ago`
   }
 
   const days = Math.floor(hours / 24)
   if (days === 1) return 'Yesterday'
-  if (days < 30) return `${days} days ago`
+  if (days < 30) return `${days}d ago`
   const months = Math.floor(days / 30)
   if (months < 12) return `${months} ${months === 1 ? 'month' : 'months'} ago`
   return `${Math.floor(days / 365)}y ago`
