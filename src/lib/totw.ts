@@ -171,12 +171,134 @@ function drawBackground(g: CanvasRenderingContext2D) {
   g.fillText('IWVPL', W / 2, H - 36)
   g.restore()
 
-  // Volt slashes in the margins, placed well clear of the footer text.
-  poly(g, [[0, 160], [80, 120], [115, 140], [0, 210]], VOLT, 0.9)
+  // Volt slashes in the margins, placed well clear of the title and footer text.
+  poly(g, [[0, 420], [90, 380], [130, 400], [0, 470]], VOLT, 0.9)
   poly(g, [[W, 250], [W, 330], [W - 110, 250]], VOLT)
   poly(g, [[0, H - 330], [0, H - 240], [70, H - 290]], VOLT)
   poly(g, [[W, H - 320], [W, H - 210], [W - 140, H - 270]], VOLT, 0.95)
   poly(g, [[W, H - 190], [W - 70, H - 150], [W, H - 130]], VOLT, 0.6)
+}
+
+function drawPaintVariant(
+  g: CanvasRenderingContext2D,
+  variant: number,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+) {
+  const v = Math.abs(variant) % 6
+  const mx = (px: number) => x + (px / 200) * w
+  const my = (py: number) => y + (py / 240) * h
+  const mapPts = (raw: [number, number][]) => raw.map(([px, py]) => [mx(px), my(py)] as [number, number])
+
+  const drawLine = (x1: number, y1: number, x2: number, y2: number, stroke: string, width: number, alpha = 1) => {
+    g.save()
+    g.globalAlpha = alpha
+    g.strokeStyle = stroke
+    g.lineWidth = (width / 200) * w
+    g.lineCap = 'round'
+    g.beginPath()
+    g.moveTo(mx(x1), my(y1))
+    g.lineTo(mx(x2), my(y2))
+    g.stroke()
+    g.restore()
+  }
+
+  const drawDot = (cx: number, cy: number, r: number, fill: string, alpha = 1) => {
+    g.save()
+    g.globalAlpha = alpha
+    g.fillStyle = fill
+    g.beginPath()
+    g.arc(mx(cx), my(cy), (r / 200) * w, 0, Math.PI * 2)
+    g.fill()
+    g.restore()
+  }
+
+  const EMERALD = '#10b981'
+  const DARK = '#030712'
+  const BEAM = '#f4ffe0'
+  const BEAM_WHITE = '#ffffff'
+  const LIGHT_VOLT = '#e4ff75'
+
+  if (v === 0) {
+    poly(g, mapPts([[28, 240], [128, 38], [152, 48], [142, 88], [64, 240]]), DARK, 0.7)
+    poly(g, mapPts([[36, 240], [120, 44], [136, 40], [132, 60], [148, 54], [138, 82], [72, 240]]), EMERALD, 0.88)
+    poly(g, mapPts([[46, 240], [124, 46], [138, 42], [134, 58], [152, 52], [144, 76], [136, 98], [84, 240]]), VOLT, 0.98)
+    poly(g, mapPts([[106, 240], [166, 82], [178, 88], [170, 108], [120, 240]]), VOLT, 0.85)
+    drawLine(22, 228, 174, 34, BEAM, 2.5, 0.95)
+    drawDot(148, 32, 2.2, VOLT)
+    drawDot(162, 46, 1.6, VOLT)
+    drawDot(176, 62, 2.8, LIGHT_VOLT)
+    drawDot(184, 80, 1.4, VOLT)
+    drawDot(34, 204, 1.8, VOLT, 0.7)
+    drawDot(48, 180, 1.4, EMERALD, 0.8)
+  } else if (v === 1) {
+    poly(g, mapPts([[38, 240], [114, 18], [144, 26], [76, 240]]), DARK, 0.7)
+    poly(g, mapPts([[44, 240], [122, 22], [148, 30], [84, 240]]), EMERALD, 0.88)
+    poly(g, mapPts([[52, 240], [116, 30], [130, 28], [126, 44], [142, 38], [134, 62], [90, 240]]), VOLT, 0.98)
+    poly(g, mapPts([[26, 220], [74, 96], [86, 102], [42, 226]]), VOLT, 0.8)
+    drawLine(12, 236, 182, 16, EMERALD, 4.5, 0.45)
+    drawLine(14, 234, 180, 18, BEAM_WHITE, 2.6, 0.95)
+    drawDot(152, 18, 2.4, BEAM_WHITE)
+    drawDot(166, 28, 3.0, VOLT)
+    drawDot(178, 42, 1.8, LIGHT_VOLT)
+    drawDot(188, 56, 2.2, VOLT)
+    drawDot(82, 80, 1.5, VOLT, 0.75)
+  } else if (v === 2) {
+    poly(g, mapPts([[24, 240], [84, 78], [96, 84], [38, 240]]), EMERALD, 0.8)
+    poly(g, mapPts([[20, 240], [80, 82], [92, 88], [34, 240]]), VOLT, 0.9)
+    poly(g, mapPts([[48, 240], [134, 26], [150, 34], [142, 54], [156, 48], [146, 72], [74, 240]]), DARK, 0.7)
+    poly(g, mapPts([[54, 240], [136, 30], [152, 38], [144, 56], [158, 50], [148, 74], [78, 240]]), VOLT, 0.98)
+    poly(g, mapPts([[92, 236], [170, 76], [182, 84], [108, 240]]), VOLT, 0.85)
+    poly(g, mapPts([[102, 68], [112, 62], [108, 74]]), VOLT, 0.9)
+    poly(g, mapPts([[162, 60], [170, 54], [166, 66]]), LIGHT_VOLT, 0.9)
+    drawLine(36, 214, 182, 46, BEAM, 2.4, 0.9)
+    drawDot(140, 22, 2.0, VOLT)
+    drawDot(158, 32, 2.6, LIGHT_VOLT)
+    drawDot(174, 50, 1.6, VOLT)
+    drawDot(186, 70, 2.2, EMERALD)
+    drawDot(48, 172, 1.5, VOLT, 0.7)
+  } else if (v === 3) {
+    poly(g, mapPts([[28, 240], [136, 36], [172, 56], [86, 240]]), DARK, 0.7)
+    poly(g, mapPts([[34, 240], [138, 40], [162, 54], [148, 82], [72, 240]]), EMERALD, 0.9)
+    poly(g, mapPts([[44, 240], [98, 124], [92, 120], [120, 68], [114, 64], [138, 36], [154, 44], [146, 62], [162, 56], [152, 78], [144, 98], [80, 240]]), VOLT, 0.98)
+    poly(g, mapPts([[14, 212], [66, 84], [78, 90], [28, 220]]), VOLT, 0.75)
+    drawLine(26, 230, 168, 42, BEAM_WHITE, 2.4, 0.95)
+    drawDot(146, 26, 2.2, VOLT)
+    drawDot(158, 36, 3.2, LIGHT_VOLT)
+    drawDot(168, 48, 1.8, VOLT)
+    drawDot(178, 64, 2.5, EMERALD)
+    drawDot(188, 82, 1.6, VOLT)
+    drawDot(132, 52, 1.5, VOLT)
+    drawDot(162, 74, 2.0, LIGHT_VOLT)
+  } else if (v === 4) {
+    poly(g, mapPts([[40, 240], [134, 22], [152, 30], [136, 72], [154, 64], [64, 240]]), DARK, 0.7)
+    poly(g, mapPts([[58, 232], [144, 52], [158, 58], [76, 236]]), EMERALD, 0.9)
+    poly(g, mapPts([[42, 240], [130, 24], [146, 30], [134, 66], [148, 60], [62, 240]]), VOLT, 0.98)
+    poly(g, mapPts([[76, 240], [166, 62], [178, 70], [164, 108], [96, 240]]), VOLT, 0.88)
+    drawLine(24, 232, 174, 38, BEAM, 2.5, 0.95)
+    drawDot(138, 18, 2.0, VOLT)
+    drawDot(152, 24, 2.8, LIGHT_VOLT)
+    drawDot(168, 44, 1.8, VOLT)
+    drawDot(182, 66, 2.6, EMERALD)
+    drawDot(190, 88, 1.4, VOLT)
+    drawDot(42, 190, 1.4, VOLT, 0.75)
+  } else {
+    // v === 5
+    poly(g, mapPts([[42, 240], [106, 12], [136, 18], [76, 240]]), DARK, 0.7)
+    poly(g, mapPts([[48, 240], [114, 16], [140, 22], [84, 240]]), EMERALD, 0.85)
+    poly(g, mapPts([[54, 240], [112, 16], [128, 14], [124, 34], [138, 28], [130, 52], [82, 240]]), VOLT, 0.98)
+    poly(g, mapPts([[22, 222], [70, 96], [82, 102], [36, 228]]), VOLT, 0.8)
+    poly(g, mapPts([[86, 226], [166, 60], [178, 68], [98, 234]]), VOLT, 0.85)
+    drawLine(16, 228, 178, 28, BEAM_WHITE, 2.6, 0.95)
+    drawDot(118, 12, 2.8, BEAM_WHITE)
+    drawDot(132, 16, 2.0, VOLT)
+    drawDot(146, 28, 3.2, LIGHT_VOLT)
+    drawDot(164, 48, 2.0, VOLT)
+    drawDot(178, 68, 2.4, EMERALD)
+    drawDot(68, 85, 1.6, VOLT, 0.8)
+  }
 }
 
 function drawCard(
@@ -194,20 +316,8 @@ function drawCard(
   g.rect(x, y, w, h)
   g.clip()
 
-  // Volt brush strokes behind the portraits.
-  const lean = w * 0.18
-  poly(g, [[x + w * 0.2, y + h], [x + w * 0.2 + lean, y + h * 0.22], [x + w * 0.2 + lean + w * 0.12, y + h * 0.26], [x + w * 0.2 + w * 0.12, y + h]], VOLT, 0.95)
-  poly(g, [[x + w * 0.5, y + h], [x + w * 0.5 + lean * 0.8, y + h * 0.4], [x + w * 0.5 + lean * 0.8 + w * 0.05, y + h * 0.42], [x + w * 0.55, y + h]], VOLT, 0.55)
-  poly(g, [[x + w * 0.74, y + h * 0.9], [x + w * 0.9, y + h * 0.3], [x + w * 0.94, y + h * 0.34], [x + w * 0.82, y + h * 0.92]], VOLT, 0.7)
-  // Splatter flecks, deterministic per slot so the poster is stable.
-  let s = seed * 9301 + 49297
-  const rnd = () => ((s = (s * 9301 + 49297) % 233280) / 233280)
-  for (let i = 0; i < 9; i++) {
-    const fx = x + w * (0.12 + rnd() * 0.8)
-    const fy = y + h * (0.28 + rnd() * 0.6)
-    const fs = 3 + rnd() * 7
-    poly(g, [[fx, fy], [fx + fs, fy - fs * 0.4], [fx + fs * 1.2, fy + fs * 0.6], [fx + fs * 0.1, fy + fs]], VOLT, 0.5 + rnd() * 0.4)
-  }
+  // Dynamic multi-tone grunge brushpaint pattern matching web view.
+  drawPaintVariant(g, p.slot, x, y, w, h)
 
   const closeGray = photos.close ? monochrome(photos.close) : null
   const photoH = h * 0.86

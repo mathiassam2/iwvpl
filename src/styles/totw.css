@@ -47,7 +47,7 @@
   background: var(--totw-volt);
 }
 .totw__ambient::before {
-  top: 130px;
+  top: 380px;
   left: -20px;
   width: 140px;
   height: 22px;
@@ -55,9 +55,16 @@
   clip-path: polygon(12% 0, 100% 0, 88% 100%, 0 100%);
   opacity: 0.85;
 }
+@media (max-width: 1023px) {
+  .totw__ambient::before {
+    top: 315px;
+    width: 110px;
+    height: 18px;
+  }
+}
 @media (max-width: 767px) {
   .totw__ambient::before {
-    top: 105px;
+    top: 295px;
     width: 90px;
     height: 16px;
   }
@@ -436,47 +443,30 @@
   box-shadow: 0 22px 40px -22px rgb(200 255 61 / 0.45), inset 0 0 0 1px rgb(200 255 61 / 0.35);
 }
 
-/* Volt brush strokes behind the portraits. */
+/* High-energy grunge brushpaint behind the portraits. */
 .totw-card__paint {
   position: absolute;
   inset: 0;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
+  z-index: 1;
+  overflow: hidden;
 }
-.totw-card__paint i {
-  position: absolute;
-  background: var(--totw-volt);
-  transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.totw-card__paint i:nth-child(1) {
-  left: 20%;
-  bottom: 0;
-  width: 12%;
-  height: 78%;
-  transform: skewX(-14deg);
+.totw-card__paint polygon,
+.totw-card__paint line,
+.totw-card__paint circle {
+  transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
   transform-origin: bottom left;
-  opacity: 0.95;
 }
-.totw-card__paint i:nth-child(2) {
-  left: 50%;
-  bottom: 0;
-  width: 5%;
-  height: 60%;
-  transform: skewX(-12deg);
-  transform-origin: bottom left;
-  opacity: 0.55;
+.totw-card:hover .totw-card__paint .totw-paint__main,
+.totw-card:focus-visible .totw-card__paint .totw-paint__main {
+  transform: scaleY(1.05) skewX(-1.5deg);
 }
-.totw-card__paint i:nth-child(3) {
-  right: 8%;
-  bottom: 8%;
-  width: 4%;
-  height: 62%;
-  transform: skewX(16deg);
-  transform-origin: bottom left;
-  opacity: 0.7;
-}
-.totw-card:hover .totw-card__paint i:nth-child(1),
-.totw-card:focus-visible .totw-card__paint i:nth-child(1) {
-  transform: skewX(-14deg) scaleY(1.08);
+.totw-card:hover .totw-card__paint .totw-paint__beam,
+.totw-card:focus-visible .totw-card__paint .totw-paint__beam {
+  opacity: 1;
+  stroke-width: 2.4px;
 }
 
 .totw-card__photo {

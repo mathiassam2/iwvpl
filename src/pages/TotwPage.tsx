@@ -11,6 +11,7 @@ import {
   renderTotwPoster,
   splitName,
 } from '@/lib/totw'
+import { TotwPaint } from '@/components/totw/TotwPaint'
 import '@/styles/totw.css'
 
 function PlayerCard({ player }: { player: TotwPlayer }) {
@@ -26,11 +27,7 @@ function PlayerCard({ player }: { player: TotwPlayer }) {
       tabIndex={0}
       aria-label={`${player.name}, ${player.position}${club ? `, ${club}` : ''}`}
     >
-      <div className="totw-card__paint" aria-hidden>
-        <i />
-        <i />
-        <i />
-      </div>
+      <TotwPaint variant={player.slot} />
       {player.closeUrl && (
         <img
           className="totw-card__photo totw-card__photo--close"
