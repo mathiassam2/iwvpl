@@ -16,6 +16,7 @@ const MatchesPage = lazy(() => import('@/pages/MatchesPage'))
 const LeaderboardPage = lazy(() => import('@/pages/LeaderboardPage'))
 const ClubsPage = lazy(() => import('@/pages/ClubsPage'))
 const TransferPage = lazy(() => import('@/pages/TransferPage'))
+const TotwPage = lazy(() => import('@/pages/TotwPage'))
 const NewsPage = lazy(() => import('@/pages/NewsPage'))
 const NewsDetailPage = lazy(() => import('@/pages/NewsDetailPage'))
 const AboutPage = lazy(() => import('@/pages/AboutPage'))
@@ -103,6 +104,7 @@ export default function App() {
             <Route path="/team/:slug" element={<ClubDetailPage />} />
             <Route path="/participants" element={<ClubsPage />} />
             <Route path="/transfer" element={<TransferPage />} />
+            <Route path="/totw" element={<TotwPage />} />
             <Route path="/transfer-window" element={<TransferPage />} />
             <Route path="/news" element={<NewsPage />} />
             <Route path="/news/:slug" element={<NewsDetailPage />} />

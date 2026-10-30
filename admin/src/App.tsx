@@ -19,8 +19,9 @@ import { OverviewView } from './views/OverviewView'
 import { SeasonsDivisionsView } from './views/SeasonsDivisionsView'
 import { UsersPlayersView } from './views/UsersPlayersView'
 import { WebsiteContentView } from './views/WebsiteContentView'
+import { TotwView } from './views/TotwView'
 
-export type AdminTab = 'overview' | 'clubs' | 'matches' | 'leaderboards' | 'seasons' | 'users' | 'website'
+export type AdminTab = 'overview' | 'clubs' | 'matches' | 'leaderboards' | 'seasons' | 'users' | 'totw' | 'website'
 
 interface Notice {
   kind: 'ok' | 'error' | 'info'
@@ -136,6 +137,14 @@ const NAV_ITEMS: Array<{
     icon: '👥',
     title: 'Accounts & League Players',
     subtitle: 'Manage registered club manager & player accounts, free agents, and squad transfers.',
+  },
+  {
+    id: 'totw',
+    label: 'Team of the Week',
+    shortLabel: 'TOTW',
+    icon: '★',
+    title: 'Team of the Week',
+    subtitle: 'Build the weekly 4-3-3 best XI, upload player photos, publish it, and choose who can see the page.',
   },
   {
     id: 'website',
@@ -350,6 +359,7 @@ export default function App() {
               initialSub={subTarget}
             />
           )}
+          {tab === 'totw' && <TotwView guard={guard} report={report} />}
           {tab === 'website' && (
             <WebsiteContentView
               guard={guard}

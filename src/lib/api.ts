@@ -418,3 +418,37 @@ export const getManagerJoinRequests = () =>
 
 export const decideJoinRequest = (id: number, decision: 'accept' | 'reject') =>
   post<{ ok: true; accepted: boolean }>(`/api/manager/join-requests/${id}/${decision}`, {})
+
+
+/* ------------------------------------------------------- team of the week */
+
+/** Absolute URL for an API path, for <img src> and fetch outside `request`. */
+export const apiUrl = (path: string) => `${base}${path}`
+
+export interface TotwPlayer {
+  id: number
+  slot: number
+  name: string
+  shirtNumber: number | null
+  position: string
+  clubId: number | null
+  clubName: string | null
+  closeUrl: string | null
+  candidUrl: string | null
+}
+
+export interface TotwWeekSummary {
+  id: number
+  label: string
+  publishedAt: string | null
+}
+
+export interface TotwResponse {
+  weeks: TotwWeekSummary[]
+  week: (TotwWeekSummary & { players: TotwPlayer[] }) | null
+}
+
+export const getTotwAccess = () => request<{ allowed: boolean }>('/api/totw/access')
+
+export const getTotw = (weekId?: number | null) =>
+  request<TotwResponse>(`/api/totw${weekId ? `?week=${weekId}` : ''}`)

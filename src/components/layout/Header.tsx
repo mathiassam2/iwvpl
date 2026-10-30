@@ -9,6 +9,7 @@ import { setInert } from '@/lib/inert'
 import { useSeasonName } from '@/lib/season'
 import { CartPanel } from '@/pages/CartPage'
 import AccountMenu from '@/components/layout/AccountMenu'
+import { useTotwAccess } from '@/lib/totw'
 
 const LEAGUE_LINKS = [
   { label: 'Standings', href: '/standings', desc: 'League tables & form guides' },
@@ -18,6 +19,9 @@ const LEAGUE_LINKS = [
   { label: 'Clubs', href: '/clubs', desc: 'Registered clubs & rosters' },
   { label: 'Transfer', href: '/transfer', desc: 'Signings, releases & moves' },
 ]
+
+/** Early-access page: only offered to visitors the API says may view it. */
+const TOTW_LINK = { label: 'Team of the Week', href: '/totw', desc: 'The best XI, every week' }
 
 const PRIMARY = [
   { label: 'News', href: '/news' },
@@ -59,6 +63,7 @@ export function Logo({ className }: { className?: string }) {
  */
 function LeagueMenu() {
   const seasonName = useSeasonName()
+  const leagueLinks = useTotwAccess() ? [...LEAGUE_LINKS, TOTW_LINK] : LEAGUE_LINKS
   const [open, setOpen] = useState(false)
   const closeTimer = useRef<number | undefined>(undefined)
   const groupRef = useRef<HTMLDivElement>(null)
@@ -156,7 +161,7 @@ function LeagueMenu() {
             </p>
           </div>
           <div className="grid grid-cols-2 gap-0.5 p-2">
-            {LEAGUE_LINKS.map((l) => (
+            {leagueLinks.map((l) => (
               <Link
                 key={l.href}
                 to={l.href}
@@ -239,6 +244,7 @@ export function Header() {
      menu. Read here rather than inside AccountMenu because the same decision
      governs the mobile drawer further down. */
   const { user } = useAuth()
+  const leagueLinks = useTotwAccess() ? [...LEAGUE_LINKS, TOTW_LINK] : LEAGUE_LINKS
   const isManager = Boolean(
     user && (user.role === 'club_manager' || user.role === 'owner' || user.role === 'admin')
   )
@@ -501,7 +507,7 @@ export function Header() {
           >
             <div className="overflow-hidden">
               <div className="grid grid-cols-2 gap-1 pb-1">
-                {LEAGUE_LINKS.map((l) => (
+                {leagueLinks.map((l) => (
                   <Link
                     key={l.href}
                     to={l.href}

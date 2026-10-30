@@ -1429,3 +1429,87 @@ export const deleteAdminManagerInvite = (id: number) =>
   request<{ ok: true; id: number }>(`/api/admin/manager-invites/${id}`, {
     method: 'DELETE',
   })
+
+/* ------------------------------------------------------- team of the week */
+
+export interface TotwAdminWeekSummary {
+  id: number
+  label: string
+  status: 'draft' | 'published'
+  publishedAt: string | null
+  createdAt: string
+  updatedAt: string
+  playerCount: number
+}
+
+export interface TotwAccess {
+  mode: 'all' | 'selected'
+  userIds: number[]
+}
+
+export interface TotwAdminPlayer {
+  id: number
+  slot: number
+  name: string
+  shirtNumber: number | null
+  position: string
+  clubId: number | null
+  clubName: string | null
+  playerId: number | null
+  closeUrl: string | null
+  candidUrl: string | null
+}
+
+export interface TotwSlotInput {
+  name: string
+  shirtNumber: number | null
+  position: string
+  clubId: number | null
+  clubName: string | null
+  playerId: number | null
+  /** undefined keeps the stored photo, null removes it, a data URL replaces it. */
+  photoClose?: string | null
+  photoCandid?: string | null
+}
+
+export const getTotwOverview = () =>
+  request<{ weeks: TotwAdminWeekSummary[]; access: TotwAccess }>('/api/admin/totw')
+
+export const saveTotwAccess = (access: TotwAccess) =>
+  request<{ access: TotwAccess }>('/api/admin/totw/access', {
+    method: 'PUT',
+    body: JSON.stringify(access),
+  }).then((r) => r.access)
+
+export const createTotwWeek = (label: string) =>
+  request<{ id: number }>('/api/admin/totw/weeks', {
+    method: 'POST',
+    body: JSON.stringify({ label }),
+  }).then((r) => r.id)
+
+export const getTotwWeek = (id: number) =>
+  request<{
+    week: { id: number; label: string; status: 'draft' | 'published'; publishedAt: string | null }
+    players: TotwAdminPlayer[]
+  }>(`/api/admin/totw/weeks/${id}`)
+
+export const updateTotwWeek = (
+  id: number,
+  input: { label?: string; status?: 'draft' | 'published' },
+) =>
+  request<{ ok: true }>(`/api/admin/totw/weeks/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  })
+
+export const deleteTotwWeek = (id: number) =>
+  request<{ ok: true }>(`/api/admin/totw/weeks/${id}`, { method: 'DELETE' })
+
+export const saveTotwSlot = (weekId: number, slot: number, input: TotwSlotInput) =>
+  request<{ player: TotwAdminPlayer | null }>(`/api/admin/totw/weeks/${weekId}/slots/${slot}`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  }).then((r) => r.player)
+
+export const deleteTotwSlot = (weekId: number, slot: number) =>
+  request<{ ok: true }>(`/api/admin/totw/weeks/${weekId}/slots/${slot}`, { method: 'DELETE' })
