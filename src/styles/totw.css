@@ -113,7 +113,7 @@
     display: grid;
     grid-template-columns: minmax(320px, 400px) minmax(0, 1fr);
     gap: 2.25rem;
-    align-items: center;
+    align-items: stretch;
     overflow: hidden;
   }
 }
@@ -124,7 +124,9 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
+  align-self: start;
+  padding-top: 1.25rem;
   z-index: 2;
 }
 
@@ -242,15 +244,71 @@
   box-sizing: border-box;
 }
 
+.totw__board-header {
+  width: 100%;
+  max-width: min(50rem, calc((100dvh - 160px) * 0.95));
+  margin: 0 auto 0.65rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  box-sizing: border-box;
+}
+
+.totw__download-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--totw-volt);
+  color: var(--totw-ink);
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 16px -2px rgb(200 255 61 / 0.45);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
+  flex-shrink: 0;
+}
+.totw__download-btn:hover:not(:disabled) {
+  transform: translateY(-2px) scale(1.06);
+  box-shadow: 0 8px 24px -4px rgb(200 255 61 / 0.7);
+}
+.totw__download-btn:active:not(:disabled) {
+  transform: translateY(0) scale(0.96);
+}
+.totw__download-btn:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.totw__spinner {
+  animation: totw-spin 0.9s linear infinite;
+}
+@keyframes totw-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.totw__error-msg {
+  width: 100%;
+  max-width: min(50rem, calc((100dvh - 160px) * 0.95));
+  margin: 0 auto 0.5rem;
+  font-size: 0.82rem;
+  color: #fca5a5;
+  text-align: right;
+}
+
 .totw__rows {
   width: 100%;
-  max-width: min(50rem, calc((100dvh - 120px) * 0.95));
+  max-width: min(50rem, calc((100dvh - 160px) * 0.95));
   margin: 0 auto;
   display: grid;
   grid-template-rows: repeat(4, minmax(0, 1fr));
   gap: 0.5rem;
   height: 100%;
-  max-height: calc(100dvh - 110px);
+  max-height: calc(100dvh - 160px);
   min-height: 0;
   box-sizing: border-box;
 }
@@ -282,25 +340,27 @@
   .totw__layout {
     display: flex;
     flex-direction: column;
-    gap: 2rem;
+    gap: 1.5rem;
     padding: 1.5rem 1rem 3rem;
   }
   .totw__hero {
-    text-align: center;
-    align-items: center;
+    text-align: left;
+    align-items: flex-start;
+    padding-top: 0;
   }
   .totw__eyebrow {
-    justify-content: center;
-  }
-  .totw__bar {
-    align-items: center;
-    justify-content: center;
-  }
-  .totw__weeks {
-    justify-content: center;
+    justify-content: flex-start;
   }
   .totw__board {
     height: auto;
+  }
+  .totw__board-header {
+    max-width: 44rem;
+    margin-bottom: 0.65rem;
+  }
+  .totw__error-msg {
+    max-width: 44rem;
+    text-align: left;
   }
   .totw__rows {
     max-width: 44rem;
@@ -636,10 +696,12 @@
   .totw-card__photo,
   .totw-card__club,
   .totw-card__paint i,
-  .totw__download {
+  .totw__download,
+  .totw__download-btn {
     transition: none;
   }
-  .totw__skeleton {
+  .totw__skeleton,
+  .totw__spinner {
     animation: none;
   }
 }

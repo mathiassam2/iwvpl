@@ -161,11 +161,13 @@ export default function TotwPage() {
             The standout eleven from across the league, picked in a 4-3-3. Hover a player to see
             their club.
           </p>
+        </header>
 
-          {week && (
-            <div className="totw__bar">
+        <section className="totw__board" aria-live="polite">
+          {week && data?.weeks && data.weeks.length > 0 && (
+            <div className="totw__board-header">
               <div className="totw__weeks" role="tablist" aria-label="Choose a week">
-                {data!.weeks.map((w) => (
+                {data.weeks.map((w) => (
                   <button
                     key={w.id}
                     type="button"
@@ -177,33 +179,41 @@ export default function TotwPage() {
                   </button>
                 ))}
               </div>
+
               <button
                 type="button"
-                className="totw__download"
+                className="totw__download-btn"
                 onClick={onDownload}
                 disabled={busy}
+                title={busy ? 'Preparing poster…' : 'Download poster'}
+                aria-label={busy ? 'Preparing poster…' : 'Download poster'}
               >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
-                  <path
-                    d="M8 2v8m0 0L4.8 6.8M8 10l3.2-3.2M2.5 13h11"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-                <span>{busy ? 'Preparing poster…' : 'Download poster'}</span>
+                {busy ? (
+                  <svg className="totw__spinner" width="16" height="16" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                  </svg>
+                ) : (
+                  <svg width="17" height="17" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <path
+                      d="M8 2.5v7.5m0 0L5 7m3 3l3-3M2.5 13h11"
+                      stroke="currentColor"
+                      strokeWidth="1.9"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                )}
               </button>
             </div>
           )}
+
           {downloadError && (
-            <p role="alert" className="mt-3 text-sm text-red-300">
+            <p role="alert" className="totw__error-msg">
               {downloadError}
             </p>
           )}
-        </header>
 
-        <section className="totw__board" aria-live="polite">
           {loading ? (
             <div className="totw__rows" aria-busy>
               {TOTW_ROWS.map((row, ri) => (
