@@ -51,12 +51,21 @@
   }
 }
 .totw__ambient::after {
-  right: 0;
-  bottom: 0;
-  width: 260px;
-  height: 150px;
-  clip-path: polygon(100% 0, 100% 100%, 0 100%);
-  opacity: 0.9;
+  right: -24px;
+  bottom: 60px;
+  width: 160px;
+  height: 24px;
+  transform: rotate(-28deg);
+  background: var(--totw-volt);
+  clip-path: polygon(12% 0, 100% 0, 88% 100%, 0 100%);
+  opacity: 0.85;
+}
+@media (max-width: 767px) {
+  .totw__ambient::after {
+    bottom: 40px;
+    width: 100px;
+    height: 18px;
+  }
 }
 .totw__mark {
   position: absolute;
@@ -65,10 +74,10 @@
   transform: translateX(-50%);
   font-family: var(--font-display);
   font-weight: 800;
-  font-size: clamp(9rem, 38vw, 34rem);
+  font-size: clamp(5rem, 18vw, 18rem);
   line-height: 1;
   letter-spacing: -0.04em;
-  color: rgb(255 255 255 / 0.035);
+  color: rgb(255 255 255 / 0.045);
   user-select: none;
   white-space: nowrap;
 }

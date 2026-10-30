@@ -155,22 +155,28 @@ function drawBackground(g: CanvasRenderingContext2D) {
   g.fillStyle = glow
   g.fillRect(0, 0, W, H)
 
-  // Oversized watermark.
+  // Watermark across the lower half. Sized dynamically so all 5 letters "IWVPL"
+  // are comfortably inside the canvas margins, matching the reference poster.
   g.save()
-  g.globalAlpha = 0.045
+  let markSize = 340
+  g.font = `800 ${markSize}px ${FONT}`
+  while (markSize > 80 && g.measureText('IWVPL').width > W * 0.88) {
+    markSize -= 4
+    g.font = `800 ${markSize}px ${FONT}`
+  }
+  g.globalAlpha = 0.06
   g.fillStyle = '#fff'
-  g.font = `800 560px ${FONT}`
   g.textAlign = 'center'
   g.textBaseline = 'alphabetic'
-  g.fillText('IWVPL', W / 2, H - 20)
+  g.fillText('IWVPL', W / 2, H - 36)
   g.restore()
 
-  // Volt slashes in the corners & margins.
+  // Volt slashes in the margins, placed well clear of the footer text.
   poly(g, [[0, 160], [80, 120], [115, 140], [0, 210]], VOLT, 0.9)
   poly(g, [[W, 250], [W, 330], [W - 110, 250]], VOLT)
-  poly(g, [[0, H - 330], [0, H - 240], [70, H - 330]], VOLT)
-  poly(g, [[W, H - 230], [W, H - 120], [W - 230, H]], VOLT, 0.95)
-  poly(g, [[W - 330, H], [W - 120, H], [W, H - 90], [W, H]], VOLT, 0.55)
+  poly(g, [[0, H - 330], [0, H - 240], [70, H - 290]], VOLT)
+  poly(g, [[W, H - 320], [W, H - 210], [W - 140, H - 270]], VOLT, 0.95)
+  poly(g, [[W, H - 190], [W - 70, H - 150], [W, H - 130]], VOLT, 0.6)
 }
 
 function drawCard(
@@ -340,6 +346,7 @@ export async function renderTotwPoster(label: string, players: TotwPlayer[]): Pr
   })
 
   // Footer.
+  g.textBaseline = 'alphabetic'
   g.fillStyle = 'rgba(255,255,255,0.85)'
   g.font = `700 18px ${FONT}`
   g.textAlign = 'left'
@@ -348,9 +355,9 @@ export async function renderTotwPoster(label: string, players: TotwPlayer[]): Pr
   g.fillText('THIS WEEK', 60, H - 50)
   g.fillStyle = VOLT
   g.fillRect(60, H - 34, 64, 4)
-  g.fillStyle = 'rgba(255,255,255,0.9)'
+  g.fillStyle = '#ffffff'
   g.textAlign = 'right'
-  g.fillText('IWVPL.ASIA', W - 60, H - 46)
+  g.fillText('IWVPL.ASIA', W - 60, H - 48)
   ;(g as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = '0px'
 
   return new Promise<Blob>((resolve, reject) =>
