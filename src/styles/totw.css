@@ -480,6 +480,7 @@
   -webkit-mask-image: linear-gradient(to bottom, #000 68%, transparent 100%);
   mask-image: linear-gradient(to bottom, #000 68%, transparent 100%);
   transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 2;
 }
 .totw-card__photo--close {
   right: 0;
@@ -523,6 +524,7 @@
   height: 44%;
   pointer-events: none;
   background: linear-gradient(to bottom, rgb(10 11 13 / 0), rgb(10 11 13 / 0.85));
+  z-index: 3;
 }
 
 .totw-card__info {
@@ -533,7 +535,7 @@
   display: flex;
   align-items: flex-end;
   gap: 0.45rem;
-  z-index: 2;
+  z-index: 4;
 }
 .totw-card__num {
   font-family: var(--font-display);
