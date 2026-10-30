@@ -165,8 +165,8 @@ function drawBackground(g: CanvasRenderingContext2D) {
   g.fillText('IWVPL', W / 2, H - 20)
   g.restore()
 
-  // Volt slashes in the corners.
-  poly(g, [[0, 0], [190, 0], [0, 82]], VOLT)
+  // Volt slashes in the corners & margins.
+  poly(g, [[0, 160], [80, 120], [115, 140], [0, 210]], VOLT, 0.9)
   poly(g, [[W, 250], [W, 330], [W - 110, 250]], VOLT)
   poly(g, [[0, H - 330], [0, H - 240], [70, H - 330]], VOLT)
   poly(g, [[W, H - 230], [W, H - 120], [W - 230, H]], VOLT, 0.95)

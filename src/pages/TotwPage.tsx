@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Container } from '@/components/ui'
 import { ApiError, getTotw, type TotwPlayer, type TotwResponse } from '@/lib/api'
+import { asset } from '@/lib/assets'
 import { useAuth } from '@/lib/auth'
+import { CLUB_PLACEHOLDER } from '@/lib/format'
 import {
   TOTW_ROWS,
   downloadBlob,
@@ -16,6 +18,7 @@ function PlayerCard({ player }: { player: TotwPlayer }) {
   const [first, rest] = splitName(player.name)
   const solo = !(player.closeUrl && player.candidUrl)
   const club = player.clubName?.trim()
+  const logo = player.clubLogo ? asset(player.clubLogo) : null
 
   return (
     <article
@@ -51,9 +54,23 @@ function PlayerCard({ player }: { player: TotwPlayer }) {
       )}
       <div className="totw-card__shade" aria-hidden />
 
-      {club && (
+      {(club || logo) && (
         <div className="totw-card__club" aria-hidden>
-          <span>{club}</span>
+          <div className="totw-card__club-pill">
+            {logo && (
+              <img
+                src={logo}
+                alt=""
+                className="totw-card__club-logo"
+                loading="lazy"
+                decoding="async"
+                onError={(e) => {
+                  e.currentTarget.src = CLUB_PLACEHOLDER
+                }}
+              />
+            )}
+            {club && <span className="totw-card__club-name">{club}</span>}
+          </div>
         </div>
       )}
 

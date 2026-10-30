@@ -95,16 +95,39 @@ interface PlayerRow {
   position: string
   club_id: number | null
   club_name: string | null
+  club_logo: string | null
   player_id: number | null
   has_close: number
   has_candid: number
   v: number
 }
 
-const PLAYER_COLUMNS = `id, week_id, slot, name, shirt_number, position, club_id, club_name, player_id,
-  (photo_close IS NOT NULL AND photo_close <> '') AS has_close,
-  (photo_candid IS NOT NULL AND photo_candid <> '') AS has_candid,
-  COALESCE(UNIX_TIMESTAMP(updated_at), 1) AS v`
+async function loadPlayersForWeek(weekId: number): Promise<PlayerRow[]> {
+  return queryAll<PlayerRow>(
+    `SELECT
+      p.id, p.week_id, p.slot, p.name, p.shirt_number, p.position,
+      COALESCE(p.club_id, c.id) AS club_id,
+      COALESCE(p.club_name, c.name) AS club_name,
+      CASE
+        WHEN LEFT(COALESCE(c.logo_local, c.logo_url, ''), 5) = 'data:'
+          THEN CONCAT('/api/clubs/', c.slug, '/logo?v=', COALESCE(UNIX_TIMESTAMP(c.updated_at), 1))
+        ELSE COALESCE(c.logo_local, c.logo_url)
+      END AS club_logo,
+      p.player_id,
+      (p.photo_close IS NOT NULL AND p.photo_close <> '') AS has_close,
+      (p.photo_candid IS NOT NULL AND p.photo_candid <> '') AS has_candid,
+      COALESCE(UNIX_TIMESTAMP(p.updated_at), 1) AS v
+     FROM totw_players p
+     LEFT JOIN clubs c ON (
+       (p.club_id IS NOT NULL AND c.id = p.club_id)
+       OR
+       (p.club_id IS NULL AND p.club_name IS NOT NULL AND LOWER(TRIM(c.name)) = LOWER(TRIM(p.club_name)))
+     )
+    WHERE p.week_id = ?
+    ORDER BY p.slot ASC`,
+    [weekId],
+  )
+}
 
 function serializePlayer(row: PlayerRow, photoBase: string) {
   const url = (kind: PhotoKind) => `${photoBase}/${row.id}/${kind}?v=${row.v}`
@@ -116,6 +139,7 @@ function serializePlayer(row: PlayerRow, photoBase: string) {
     position: row.position,
     clubId: row.club_id,
     clubName: row.club_name,
+    clubLogo: row.club_logo || null,
     playerId: row.player_id,
     closeUrl: row.has_close ? url('close') : null,
     candidUrl: row.has_candid ? url('candid') : null,
@@ -180,10 +204,7 @@ totw.get(
 
     let players: ReturnType<typeof serializePlayer>[] = []
     if (current) {
-      const rows = await queryAll<PlayerRow>(
-        `SELECT ${PLAYER_COLUMNS} FROM totw_players WHERE week_id = ? ORDER BY slot ASC`,
-        [current.id],
-      )
+      const rows = await loadPlayersForWeek(current.id)
       players = rows.map((r) => serializePlayer(r, '/api/totw/photo'))
     }
 
@@ -317,10 +338,7 @@ totwAdmin.get(
   '/weeks/:id',
   handler(async (req, res) => {
     const week = await loadWeek(weekId(req.params.id))
-    const rows = await queryAll<PlayerRow>(
-      `SELECT ${PLAYER_COLUMNS} FROM totw_players WHERE week_id = ? ORDER BY slot ASC`,
-      [week.id],
-    )
+    const rows = await loadPlayersForWeek(week.id)
     res.json({
       week: {
         id: week.id,
@@ -402,11 +420,35 @@ totwAdmin.put(
       shirtNumber = n
     }
 
-    const clubName = String(body.clubName ?? '').trim().slice(0, 160) || null
-    const clubIdRaw = Number.parseInt(String(body.clubId ?? ''), 10)
-    const clubId = Number.isSafeInteger(clubIdRaw) && clubIdRaw > 0 ? clubIdRaw : null
+    let clubName = String(body.clubName ?? '').trim().slice(0, 160) || null
+    let clubIdRaw = Number.parseInt(String(body.clubId ?? ''), 10)
+    let clubId = Number.isSafeInteger(clubIdRaw) && clubIdRaw > 0 ? clubIdRaw : null
     const playerIdRaw = Number.parseInt(String(body.playerId ?? ''), 10)
     const playerId = Number.isSafeInteger(playerIdRaw) && playerIdRaw > 0 ? playerIdRaw : null
+
+    // If clubId is missing but clubName is present, match against registered clubs
+    if (!clubId && clubName) {
+      const match = await queryOne<{ id: number; name: string }>(
+        'SELECT id, name FROM clubs WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1',
+        [clubName],
+      )
+      if (match) {
+        clubId = match.id
+        clubName = match.name
+      }
+    } else if (clubId && !clubName) {
+      const match = await queryOne<{ name: string }>('SELECT name FROM clubs WHERE id = ?', [clubId])
+      if (match) clubName = match.name
+    } else if (!clubId && playerId) {
+      const match = await queryOne<{ club_id: number | null; club_name: string | null }>(
+        'SELECT p.club_id, c.name AS club_name FROM players p LEFT JOIN clubs c ON c.id = p.club_id WHERE p.id = ?',
+        [playerId],
+      )
+      if (match?.club_id) {
+        clubId = match.club_id
+        if (!clubName && match.club_name) clubName = match.club_name
+      }
+    }
 
     const existing = await queryOne<{
       id: number
@@ -475,10 +517,8 @@ totwAdmin.put(
 
     await execute('UPDATE totw_weeks SET updated_at = NOW() WHERE id = ?', [week.id])
 
-    const saved = await queryOne<PlayerRow>(
-      `SELECT ${PLAYER_COLUMNS} FROM totw_players WHERE week_id = ? AND slot = ?`,
-      [week.id, slot],
-    )
+    const players = await loadPlayersForWeek(week.id)
+    const saved = players.find((p) => p.slot === slot) ?? null
     res.json({ player: saved ? serializePlayer(saved, '/api/admin/totw/photo') : null })
   }),
 )

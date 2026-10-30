@@ -35,11 +35,20 @@
   background: var(--totw-volt);
 }
 .totw__ambient::before {
-  top: 0;
-  left: 0;
-  width: 220px;
-  height: 90px;
-  clip-path: polygon(0 0, 100% 0, 0 100%);
+  top: 130px;
+  left: -20px;
+  width: 140px;
+  height: 22px;
+  transform: rotate(-28deg);
+  clip-path: polygon(12% 0, 100% 0, 88% 100%, 0 100%);
+  opacity: 0.85;
+}
+@media (max-width: 767px) {
+  .totw__ambient::before {
+    top: 105px;
+    width: 90px;
+    height: 16px;
+  }
 }
 .totw__ambient::after {
   right: 0;
@@ -408,7 +417,7 @@
   width: 52px;
 }
 
-/* Hover reveals the club. */
+/* Hover reveals the club crest & name. */
 .totw-card__club {
   position: absolute;
   top: 0.65rem;
@@ -420,22 +429,40 @@
   opacity: 0;
   transform: translateY(-8px);
   transition: opacity 0.28s ease, transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 5;
 }
-.totw-card__club span {
-  display: inline-block;
+.totw-card__club-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
   max-width: 100%;
+  padding: 0.26rem 0.65rem 0.26rem 0.35rem;
+  border-radius: 999px;
+  background: rgb(10 11 13 / 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgb(200 255 61 / 0.55);
+  box-shadow: 0 10px 24px -6px rgb(0 0 0 / 0.85), 0 0 14px -3px rgb(200 255 61 / 0.32);
+}
+.totw-card__club-logo {
+  width: 1.4rem;
+  height: 1.4rem;
+  object-fit: contain;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 0.08);
+  padding: 1px;
+}
+.totw-card__club-name {
+  display: inline-block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  padding: 0.34rem 0.7rem;
-  border-radius: 999px;
-  background: var(--totw-volt);
-  color: var(--totw-ink);
-  font-size: 0.68rem;
+  color: #fff;
+  font-size: 0.7rem;
   font-weight: 800;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  box-shadow: 0 8px 20px -8px rgb(0 0 0 / 0.7);
 }
 .totw-card:hover .totw-card__club,
 .totw-card:focus .totw-card__club,

@@ -311,6 +311,12 @@ export function TotwView({ guard, report }: { guard: Guard; report: Report }) {
     setFClubId(match ? match.id : null)
   }
 
+  const selectedClub = useMemo(() => {
+    if (fClubId) return clubs.find((c) => c.id === fClubId) ?? null
+    if (fClub.trim()) return clubs.find((c) => c.name.toLowerCase() === fClub.trim().toLowerCase()) ?? null
+    return null
+  }, [clubs, fClubId, fClub])
+
   const hasClose = fClose === undefined ? Boolean(editing?.closeUrl) : fClose !== null
   const hasCandid = fCandid === undefined ? Boolean(editing?.candidUrl) : fCandid !== null
 
@@ -549,6 +555,13 @@ export function TotwView({ guard, report }: { guard: Guard; report: Report }) {
                         <span className="totw-slot__meta">
                           <b>{p.shirtNumber ?? '–'}</b>
                           <i>{p.name}</i>
+                          {p.clubLogo && (
+                            <img
+                              src={p.clubLogo}
+                              alt=""
+                              style={{ width: 14, height: 14, objectFit: 'contain', borderRadius: '50%', margin: '2px auto 0' }}
+                            />
+                          )}
                         </span>
                       ) : (
                         <span className="totw-slot__meta totw-slot__meta--empty">Add player</span>
@@ -644,14 +657,32 @@ export function TotwView({ guard, report }: { guard: Guard; report: Report }) {
                 </div>
                 <label className="adm-field">
                   <span>Club (revealed on hover)</span>
-                  <input
-                    className="adm-input"
-                    list="totw-clubs"
-                    value={fClub}
-                    maxLength={160}
-                    onChange={(e) => onClubInput(e.target.value)}
-                    placeholder="Pick a club or type any name"
-                  />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    {(selectedClub?.logo_local || selectedClub?.logo_url) && (
+                      <img
+                        src={selectedClub.logo_local || selectedClub.logo_url || ''}
+                        alt=""
+                        style={{
+                          width: 32,
+                          height: 32,
+                          objectFit: 'contain',
+                          borderRadius: 6,
+                          background: 'rgba(255,255,255,0.06)',
+                          padding: 2,
+                          flexShrink: 0,
+                        }}
+                      />
+                    )}
+                    <input
+                      className="adm-input"
+                      style={{ flex: 1 }}
+                      list="totw-clubs"
+                      value={fClub}
+                      maxLength={160}
+                      onChange={(e) => onClubInput(e.target.value)}
+                      placeholder="Pick a club or type any name"
+                    />
+                  </div>
                   <datalist id="totw-clubs">
                     {clubs.map((c) => (
                       <option key={c.id} value={c.name} />

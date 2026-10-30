@@ -1455,6 +1455,7 @@ export interface TotwAdminPlayer {
   position: string
   clubId: number | null
   clubName: string | null
+  clubLogo?: string | null
   playerId: number | null
   closeUrl: string | null
   candidUrl: string | null
