@@ -914,7 +914,7 @@ export function MatchesStandingsView({
           void loadMatches()
         }}
         seasonId={selectedSeasonId ?? undefined}
-        divisions={divisions}
+        seasons={seasons}
       />
 
 

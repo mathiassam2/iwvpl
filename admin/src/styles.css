@@ -3453,9 +3453,19 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 
 /* Seasons & Divisions */
 .adm-season-controls {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
   gap: 16px;
+}
+
+.adm-season-controls > .adm-field {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+
+.adm-season-controls .adm-select {
+  width: 100%;
 }
 
 .adm-rollover-banner {
@@ -6097,6 +6107,16 @@ input:checked + .adm-slider:before {
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--surface-raised);
+  cursor: pointer;
+}
+
+.adm-season-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.adm-season-row .adm-row-actions {
+  cursor: default;
 }
 
 .adm-season-row.is-selected {
@@ -6120,7 +6140,6 @@ input:checked + .adm-slider:before {
   font-size: 14px;
   font-weight: 600;
   text-align: left;
-  cursor: pointer;
 }
 
 .adm-season-name span {

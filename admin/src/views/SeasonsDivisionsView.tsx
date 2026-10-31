@@ -138,6 +138,11 @@ export function SeasonsDivisionsView({
     () => seasons.filter((season) => !Boolean(season.is_draft)),
     [seasons],
   )
+  const featuredDivisionId =
+    workingSeason?.featured_division_id != null &&
+    Number(workingSeason.featured_division_id) > 0
+      ? String(workingSeason.featured_division_id)
+      : ''
 
   const loadSeasons = useCallback(async () => {
     try {
@@ -590,21 +595,24 @@ export function SeasonsDivisionsView({
             </span>
           </label>
 
-          {workingSeason?.is_current && (
+          {Boolean(workingSeason?.is_current) && divisions.length > 0 && (
             <label className="adm-field">
               <span>Homepage Featured Division Table</span>
               <select
-                value={workingSeason.featured_division_id ?? ''}
+                value={featuredDivisionId}
                 disabled={busy || !workingSeason}
                 onChange={(e) => void handleFeaturedDivision(e.target.value)}
                 className="adm-select"
               >
                 <option value="">Default (Highest-ranked active division)</option>
                 {divisions
-                  .filter((d) => Boolean(d.is_active))
+                  .filter(
+                    (d) => Boolean(d.is_active) || String(d.id) === featuredDivisionId,
+                  )
                   .map((d) => (
-                    <option key={d.id} value={d.id}>
+                    <option key={d.id} value={String(d.id)}>
                       {d.name}
+                      {!Boolean(d.is_active) ? ' (paused)' : ''}
                     </option>
                   ))}
               </select>
@@ -666,30 +674,33 @@ export function SeasonsDivisionsView({
               <div
                 key={season.id}
                 className={`adm-season-row ${selected ? 'is-selected' : ''}`}
+                role="button"
+                tabIndex={0}
+                aria-pressed={selected}
+                aria-label={`Open ${season.name} (${season.year})`}
+                title={`Open ${season.name} (${season.year})`}
+                onClick={() => setWorkingSeasonId(season.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    setWorkingSeasonId(season.id)
+                  }
+                }}
               >
                 <div className="adm-season-row-main">
-                  <button
-                    type="button"
-                    className="adm-season-name"
-                    onClick={() => setWorkingSeasonId(season.id)}
-                    title="Open this season's divisions"
-                  >
+                  <span className="adm-season-name">
                     {season.name} <span>({season.year})</span>
-                  </button>
+                  </span>
                   <span className={`adm-status-badge ${seasonStatusClass(season)}`}>
                     {seasonStatusLabel(season)}
                   </span>
                   {selected && <span className="adm-code-pill">Working here</span>}
                 </div>
-                <div className="adm-row-actions">
-                  <button
-                    type="button"
-                    className="adm-btn adm-btn-secondary adm-btn-sm"
-                    disabled={selected || busy}
-                    onClick={() => setWorkingSeasonId(season.id)}
-                  >
-                    Open
-                  </button>
+                <div
+                  className="adm-row-actions"
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => e.stopPropagation()}
+                >
                   {draft && (
                     <button
                       type="button"
@@ -1609,7 +1620,9 @@ function ManageDivisionClubs({
               <strong>{members.length}</strong>
               {division.max_teams ? ` / ${division.max_teams}` : ''} clubs in this division
             </span>
-            {division.max_teams && members.length >= division.max_teams && (
+            {division.max_teams != null &&
+              division.max_teams > 0 &&
+              members.length >= division.max_teams && (
               <span style={{ color: '#ef4444', fontWeight: 'bold' }}>FULL</span>
             )}
           </div>

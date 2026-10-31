@@ -115,20 +115,20 @@ const NAV_ITEMS: Array<{
     subtitle: 'Enter match scores, schedule fixtures, auto-generate round-robin seasons, and inspect league tables.',
   },
   {
-    id: 'leaderboards',
-    label: 'Leaderboards & Stats',
-    shortLabel: 'Stats',
-    icon: '🎖️',
-    title: 'Individual Honours & Stats',
-    subtitle: 'Manage top scorers, playmakers, and goalkeepers, key in performance tallies, and upload overflowing celebration cutouts for podium winners.',
-  },
-  {
     id: 'seasons',
     label: 'Seasons & Divisions',
     shortLabel: 'Seasons',
     icon: '🏆',
     title: 'Seasons & Division Tiers',
     subtitle: 'Manage the active season, division ladder, promotion/relegation rules, and season rollover wizard.',
+  },
+  {
+    id: 'leaderboards',
+    label: 'Leaderboards & Stats',
+    shortLabel: 'Stats',
+    icon: '🎖️',
+    title: 'Individual Honours & Stats',
+    subtitle: 'Manage top scorers, playmakers, and goalkeepers, key in performance tallies, and upload overflowing celebration cutouts for podium winners.',
   },
   {
     id: 'users',

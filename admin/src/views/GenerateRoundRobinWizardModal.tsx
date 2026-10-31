@@ -1,7 +1,9 @@
 import { useState, useEffect, useId, useRef, useMemo } from 'react'
 import {
+  getDivisions,
   previewFixtures,
   generateFixtures,
+  type AdminSeason,
   type Division,
   type FixturePreviewResult,
   type PreviewDivision,
@@ -12,7 +14,7 @@ interface GenerateRoundRobinWizardModalProps {
   onClose: () => void
   onSuccess: (summary: string) => void
   seasonId?: number
-  divisions: Division[]
+  seasons?: AdminSeason[]
 }
 
 const DAYS_OF_WEEK = [
@@ -49,13 +51,20 @@ export function GenerateRoundRobinWizardModal({
   onClose,
   onSuccess,
   seasonId,
-  divisions,
+  seasons = [],
 }: GenerateRoundRobinWizardModalProps) {
   const autoScheduleToggleId = useId()
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1)
 
-  // Step 1: Divisions & Format
-  const activeDivs = useMemo(() => divisions.filter((d) => Boolean(d.is_active)), [divisions])
+  // Step 1: Season, Divisions & Format
+  const [wizardSeasonId, setWizardSeasonId] = useState<number | null>(seasonId ?? null)
+  const [wizardDivisions, setWizardDivisions] = useState<Division[]>([])
+  const [loadingDivisions, setLoadingDivisions] = useState(false)
+  const [divisionError, setDivisionError] = useState<string | null>(null)
+  const activeDivs = useMemo(
+    () => wizardDivisions.filter((d) => Boolean(d.is_active)),
+    [wizardDivisions],
+  )
   const [selectedDivIds, setSelectedDivIds] = useState<Set<number>>(() => new Set())
   const [rounds, setRounds] = useState<1 | 2>(2)
 
@@ -107,11 +116,65 @@ export function GenerateRoundRobinWizardModal({
       setStep(1)
       setCommitError(null)
       setPreviewError(null)
-      const currentActive = divisions.filter((d) => Boolean(d.is_active))
-      setSelectedDivIds(new Set(currentActive.map((d) => d.id)))
+      setPreviewData(null)
+      setDivisionError(null)
+      const initialSeasonId =
+        seasonId ??
+        seasons.find((season) => Boolean(season.is_current))?.id ??
+        seasons[0]?.id ??
+        null
+      setWizardSeasonId(initialSeasonId)
+      // The division effect below always fetches the chosen season's list, so
+      // clear any stale divisions instead of seeding from the parent page.
+      setWizardDivisions([])
+      setSelectedDivIds(new Set())
     }
     prevOpenRef.current = isOpen
-  }, [isOpen, divisions])
+  }, [isOpen, seasonId, seasons])
+
+  // The page can open the wizard before the seasons request finishes. Once the
+  // list arrives, adopt the current season so the division loader has an id.
+  useEffect(() => {
+    if (!isOpen || wizardSeasonId != null || seasons.length === 0) return
+    const fallback =
+      seasonId ??
+      seasons.find((season) => Boolean(season.is_current))?.id ??
+      seasons[0]?.id ??
+      null
+    if (fallback != null) setWizardSeasonId(fallback)
+  }, [isOpen, wizardSeasonId, seasons, seasonId])
+
+  // Drafts are only editable while they are private, so always resolve the
+  // divisions for the season picked inside the wizard rather than trusting the
+  // standings page's current selection.
+  useEffect(() => {
+    if (!isOpen || wizardSeasonId == null) return
+    let cancelled = false
+    setLoadingDivisions(true)
+    setDivisionError(null)
+    void getDivisions(wizardSeasonId)
+      .then((list) => {
+        if (cancelled) return
+        setWizardDivisions(list)
+        setSelectedDivIds(
+          new Set(list.filter((d) => Boolean(d.is_active)).map((d) => d.id)),
+        )
+      })
+      .catch((err) => {
+        if (cancelled) return
+        setWizardDivisions([])
+        setSelectedDivIds(new Set())
+        setDivisionError(
+          err instanceof Error ? err.message : 'Could not load divisions for this season.',
+        )
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingDivisions(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen, wizardSeasonId])
 
   // Automatically fetch preview when entering Step 4
   useEffect(() => {
@@ -122,12 +185,15 @@ export function GenerateRoundRobinWizardModal({
 
   if (!isOpen) return null
 
+  const effectiveSeasonId = wizardSeasonId ?? seasonId
+  const selectedSeason = seasons.find((season) => season.id === wizardSeasonId) ?? null
+
   const loadPreview = async () => {
     setPreviewLoading(true)
     setPreviewError(null)
     try {
       const res = await previewFixtures({
-        seasonId,
+        seasonId: effectiveSeasonId,
         divisionIds: [...selectedDivIds],
         rounds,
         schedule: {
@@ -160,7 +226,7 @@ export function GenerateRoundRobinWizardModal({
     setCommitError(null)
     try {
       const res = await generateFixtures({
-        seasonId,
+        seasonId: effectiveSeasonId,
         divisionIds: [...selectedDivIds],
         rounds,
         schedule: {
@@ -232,7 +298,7 @@ export function GenerateRoundRobinWizardModal({
     setTimeSlots(timeSlots.filter((s) => s !== slot))
   }
 
-  const canProceedStep1 = selectedDivIds.size > 0
+  const canProceedStep1 = effectiveSeasonId != null && !loadingDivisions && selectedDivIds.size > 0
   const canProceedStep2 = !autoSchedule || (Boolean(startDate) && matchDays.length > 0)
   const canProceedStep3 =
     !autoSchedule ||
@@ -318,11 +384,48 @@ export function GenerateRoundRobinWizardModal({
           {step === 1 && (
             <div className="adm-wizard-step-pane">
               <div className="adm-wizard-step-desc">
-                <h4>Step 1: Choose Divisions & Tournament Format</h4>
+                <h4>Step 1: Choose Season, Divisions & Tournament Format</h4>
                 <p>
-                  Select the active divisions to include in this round-robin schedule and pick single
-                  or double leg pairings.
+                  Pick the season to build fixtures for, then select the divisions to include and
+                  choose single or double leg pairings. Draft seasons work here too.
                 </p>
+              </div>
+
+              {/* Season Selector */}
+              <div className="adm-wizard-card-group">
+                <div className="adm-wizard-group-head">
+                  <span className="adm-wizard-group-title">Season</span>
+                  {Boolean(selectedSeason?.is_draft) && (
+                    <span className="adm-pill adm-pill-accent">Draft · hidden from public</span>
+                  )}
+                </div>
+                <label className="adm-field">
+                  <span>Generate fixtures in</span>
+                  <select
+                    value={wizardSeasonId ?? ''}
+                    disabled={seasons.length === 0}
+                    onChange={(e) => {
+                      setWizardSeasonId(Number(e.target.value))
+                      setPreviewData(null)
+                      setPreviewError(null)
+                      setCommitError(null)
+                    }}
+                    className="adm-select"
+                  >
+                    {seasons.map((season) => (
+                      <option key={season.id} value={season.id}>
+                        {season.name} ({season.year}) ·{' '}
+                        {season.is_current ? 'Live' : season.is_draft ? 'Draft' : 'Archived'}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {Boolean(selectedSeason?.is_draft) && (
+                  <p className="adm-field-hint">
+                    These fixtures are saved inside the draft and stay hidden from the public site
+                    until the season is published.
+                  </p>
+                )}
               </div>
 
               {/* Division Selector */}
@@ -331,7 +434,7 @@ export function GenerateRoundRobinWizardModal({
                   <span className="adm-wizard-group-title">Divisions to Schedule</span>
                   <div className="adm-wizard-quick-links">
                     <button type="button" onClick={selectAllDivisions} className="adm-text-link">
-                      Select All
+                      Select Active
                     </button>
                     <span className="adm-sep">•</span>
                     <button type="button" onClick={clearAllDivisions} className="adm-text-link">
@@ -340,8 +443,12 @@ export function GenerateRoundRobinWizardModal({
                   </div>
                 </div>
 
+                {loadingDivisions && <p className="adm-field-hint">Loading divisions…</p>}
+                {divisionError && (
+                  <div className="adm-alert adm-alert-warning">{divisionError}</div>
+                )}
                 <div className="adm-check-grid">
-                  {activeDivs.map((d) => (
+                  {wizardDivisions.map((d) => (
                     <label
                       key={d.id}
                       className={`adm-check-card ${selectedDivIds.has(d.id) ? 'checked' : ''}`}
@@ -353,17 +460,20 @@ export function GenerateRoundRobinWizardModal({
                       />
                       <div className="adm-check-card-info">
                         <strong>{d.name}</strong>
-                        <span className="adm-text-faint">Tier {d.tier ?? 1}</span>
+                        <span className="adm-text-faint">
+                          Tier {d.tier ?? 1}
+                          {!Boolean(d.is_active) ? ' · Paused' : ''}
+                        </span>
                       </div>
                     </label>
                   ))}
-                  {activeDivs.length === 0 && (
+                  {!loadingDivisions && !divisionError && wizardDivisions.length === 0 && (
                     <div className="adm-alert adm-alert-warning">
-                      No active divisions found in the current season.
+                      No divisions found in this season. Add a division tier first.
                     </div>
                   )}
                 </div>
-                {selectedDivIds.size === 0 && (
+                {selectedDivIds.size === 0 && !loadingDivisions && (
                   <p className="adm-field-hint adm-text-danger">
                     Please select at least one division to continue.
                   </p>
