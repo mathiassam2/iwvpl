@@ -2294,13 +2294,14 @@ admin.post(
         sort_order: number
         promotion_count: number | null
         relegation_count: number | null
+        max_teams: number | null
         is_active: number
       }> = []
       let copiedFeaturedDivisionId: number | null = null
 
       if (sourceSeason) {
         const [divisionRows] = await conn.query(
-          `SELECT id, name, slug, sort_order, promotion_count, relegation_count, is_active
+          `SELECT id, name, slug, sort_order, promotion_count, relegation_count, max_teams, is_active
              FROM divisions
             WHERE season_id = ?
             ORDER BY sort_order, id`,
@@ -2313,14 +2314,15 @@ admin.post(
           sort_order: number
           promotion_count: number | null
           relegation_count: number | null
+          max_teams: number | null
           is_active: number
         }>) {
           const suffix = `-s${id}`
           const slug = `${division.slug.slice(0, 80 - suffix.length)}${suffix}`
           const [newDivisionResult] = await conn.execute(
             `INSERT INTO divisions
-               (season_id, name, slug, sort_order, promotion_count, relegation_count, is_active, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+               (season_id, name, slug, sort_order, promotion_count, relegation_count, max_teams, is_active, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
             [
               id,
               division.name,
@@ -2328,6 +2330,7 @@ admin.post(
               division.sort_order,
               division.promotion_count,
               division.relegation_count,
+              division.max_teams,
               // Copy the pause along with everything else, so opening a new
               // season does not quietly restart a league that was switched off.
               division.is_active,
@@ -2366,6 +2369,7 @@ admin.post(
             sort_order: division.sort_order,
             promotion_count: division.promotion_count,
             relegation_count: division.relegation_count,
+            max_teams: division.max_teams,
             is_active: division.is_active,
           })
         }

@@ -34,6 +34,7 @@ type DivisionRow = {
   sort_order: number
   promotion_count: number | null
   relegation_count: number | null
+  max_teams: number | null
   is_active: number
 }
 
@@ -180,7 +181,7 @@ export async function loadRolloverContext(
   const divisions = await rows<DivisionRow>(
     runner,
     `SELECT d.id, d.name, d.slug, d.sort_order, d.promotion_count, d.relegation_count,
-            d.is_active
+            d.max_teams, d.is_active
        FROM divisions d
       WHERE d.season_id = ?
       ORDER BY d.sort_order, d.id${lock}`,
@@ -241,6 +242,7 @@ export async function loadRolloverContext(
       sort_order: Number(division.sort_order),
       promotion_count: division.promotion_count === null ? null : Number(division.promotion_count),
       relegation_count: division.relegation_count === null ? null : Number(division.relegation_count),
+      max_teams: division.max_teams === null ? null : Number(division.max_teams),
       is_active: Number(division.is_active),
       clubs: grouped.get(Number(division.id)) ?? [],
     })),
@@ -572,8 +574,8 @@ export async function applySeasonRollover(
 
     const [divisionResult] = await runner.execute(
       `INSERT INTO divisions
-         (season_id, name, slug, sort_order, promotion_count, relegation_count, is_active, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+         (season_id, name, slug, sort_order, promotion_count, relegation_count, max_teams, is_active, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
       [
         seasonId,
         division.name,
@@ -581,6 +583,7 @@ export async function applySeasonRollover(
         division.sort_order,
         setting?.promotionCount ?? division.promotion_count,
         setting?.relegationCount ?? division.relegation_count,
+        division.max_teams,
         // A league paused at the end of a season opens the next one paused, so
         // rolling over does not quietly bring it back to life.
         division.is_active,
