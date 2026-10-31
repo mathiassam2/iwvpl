@@ -326,18 +326,6 @@ function drawCard(
   // Dynamic multi-tone grunge brushpaint pattern matching web view.
   drawPaintVariant(g, p.slot, x, y, w, h)
 
-  // Club crest behind the portrait, anchored bottom-right at the full content
-  // height, matching the web card.
-  if (photos.club) {
-    const scale = Math.min(w / photos.club.width, h / photos.club.height)
-    const crestW = photos.club.width * scale
-    const crestH = photos.club.height * scale
-    g.save()
-    g.globalAlpha = 0.3
-    g.drawImage(photos.club, x + w - crestW, y + h - crestH, crestW, crestH)
-    g.restore()
-  }
-
   const closeGray = photos.close ? monochrome(photos.close) : null
   const photoH = h * 0.86
   if (closeGray && photos.candid) {
@@ -369,6 +357,23 @@ function drawCard(
 
   // Number, position, name.
   const pad = w * 0.065
+
+  // Club crest in the lower right, matching height of player info block.
+  if (photos.club) {
+    const crestH = h * 0.26
+    const maxCrestW = w * 0.28
+    const scale = Math.min(crestH / photos.club.height, maxCrestW / photos.club.width)
+    const crestW = photos.club.width * scale
+    const finalH = photos.club.height * scale
+    const crestX = x + w - pad - crestW
+    const crestY = y + h * 0.95 - finalH
+    const clubGray = monochrome(photos.club)
+    g.save()
+    g.globalAlpha = 0.4
+    g.drawImage(clubGray, crestX, crestY, crestW, finalH)
+    g.restore()
+  }
+
   const numSize = Math.round(h * 0.19)
   g.textBaseline = 'alphabetic'
   g.textAlign = 'left'
@@ -380,7 +385,7 @@ function drawCard(
   if (num) g.fillText(num, x + pad, baseY)
 
   const tx = x + pad + numW + (num ? w * 0.04 : 0)
-  const maxW = x + w - pad - tx
+  const maxW = x + w - pad - tx - (photos.club ? (w * 0.28 + pad * 0.3) : 0)
   const [first, rest] = splitName(p.name.toUpperCase())
   const fit = (text: string, start: number, weight: number) => {
     let size = start

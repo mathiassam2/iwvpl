@@ -584,31 +584,32 @@
   text-decoration: none;
 }
 
-/* Large club crest watermark, layered behind the player portrait. */
+/* Club crest in lower right, matching height of the player info block. */
 .totw-card__club-watermark {
   position: absolute;
-  right: 0;
-  bottom: 0;
+  right: 5%;
+  bottom: 5%;
   left: auto;
   top: auto;
-  height: 100%;
+  height: 26%;
   width: auto;
-  max-width: none;
-  max-height: none;
+  max-width: 28%;
+  aspect-ratio: 1;
   object-fit: contain;
   object-position: right bottom;
-  opacity: 0.26;
+  opacity: 0.35;
   pointer-events: none;
   user-select: none;
   -webkit-user-drag: none;
-  filter: saturate(0.75);
-  transition: opacity 0.25s ease;
-  z-index: 1;
+  filter: grayscale(1);
+  transition: opacity 0.25s ease, filter 0.25s ease;
+  z-index: 4;
 }
 .totw-card:hover .totw-card__club-watermark,
 .totw-card:focus-visible .totw-card__club-watermark,
 .totw-card:focus-within .totw-card__club-watermark {
-  opacity: 0.7;
+  filter: grayscale(0) saturate(1);
+  opacity: 0.9;
 }
 
 .totw-card__photo {
@@ -674,6 +675,7 @@
   left: 6%;
   right: 5%;
   bottom: 5%;
+  padding-right: 28%;
   display: flex;
   align-items: flex-end;
   gap: 0.45rem;
