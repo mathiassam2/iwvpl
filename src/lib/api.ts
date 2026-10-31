@@ -435,6 +435,7 @@ export interface TotwPlayer {
   clubName: string | null
   clubLogo: string | null
   playerId?: number | null
+  playerSlug?: string | null
   closeUrl: string | null
   candidUrl: string | null
 }

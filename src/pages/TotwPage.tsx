@@ -24,15 +24,27 @@ function PlayerCard({ player }: { player: TotwPlayer }) {
   const solo = !(player.closeUrl && player.candidUrl)
   const club = player.clubName?.trim()
   const logo = player.clubLogo ? asset(player.clubLogo) : null
+  const profile = player.playerSlug?.trim()
+  const label = `${player.name}, ${player.position}${club ? `, ${club}` : ''}${
+    profile ? ', view profile' : ''
+  }`
 
-  return (
-    <article
-      className="totw-card"
-      data-solo={solo || undefined}
-      tabIndex={0}
-      aria-label={`${player.name}, ${player.position}${club ? `, ${club}` : ''}`}
-    >
+  const card = (
+    <>
       <TotwPaint variant={player.slot} />
+      {logo && (
+        <img
+          className="totw-card__club-watermark"
+          src={logo}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          draggable={false}
+          onError={(e) => {
+            e.currentTarget.src = CLUB_PLACEHOLDER
+          }}
+        />
+      )}
       {player.closeUrl && (
         <img
           className="totw-card__photo totw-card__photo--close"
@@ -55,22 +67,10 @@ function PlayerCard({ player }: { player: TotwPlayer }) {
       )}
       <div className="totw-card__shade" aria-hidden />
 
-      {(club || logo) && (
+      {club && (
         <div className="totw-card__club" aria-hidden>
           <div className="totw-card__club-pill">
-            {logo && (
-              <img
-                src={logo}
-                alt=""
-                className="totw-card__club-logo"
-                loading="lazy"
-                decoding="async"
-                onError={(e) => {
-                  e.currentTarget.src = CLUB_PLACEHOLDER
-                }}
-              />
-            )}
-            {club && <span className="totw-card__club-name">{club}</span>}
+            <span className="totw-card__club-name">{club}</span>
           </div>
         </div>
       )}
@@ -86,6 +86,25 @@ function PlayerCard({ player }: { player: TotwPlayer }) {
           <span className="totw-card__bar" />
         </div>
       </div>
+    </>
+  )
+
+  if (profile) {
+    return (
+      <Link
+        to={`/players/${encodeURIComponent(profile)}`}
+        className="totw-card"
+        data-solo={solo || undefined}
+        aria-label={label}
+      >
+        {card}
+      </Link>
+    )
+  }
+
+  return (
+    <article className="totw-card" data-solo={solo || undefined} tabIndex={0} aria-label={label}>
+      {card}
     </article>
   )
 }
@@ -190,20 +209,18 @@ export default function TotwPage() {
 
   return (
     <div className="totw">
-      <div className="totw__ambient" aria-hidden>
-        <span className="totw__mark">IWVPL</span>
-      </div>
+      <div className="totw__ambient" aria-hidden />
 
       <div className="totw__layout">
         <header className="totw__hero">
-          <span className="totw__eyebrow">IWVPL · Best XI</span>
+          <span className="totw__eyebrow">ISLAND-WIDE VIRTUAL PREMIER LEAGUE · Best XI</span>
           <h1 className="totw__title">
             <span>Team of the</span>
             <b>Week</b>
           </h1>
           <p className="totw__sub">
-            The standout eleven from across the league, picked in a 4-4-2. Every card shows the
-            player's club crest and name.
+            The standout eleven from across the league, picked in a 4-4-2. Every card carries the
+            player's club crest, with the club name on hover.
           </p>
         </header>
 

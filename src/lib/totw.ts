@@ -87,16 +87,6 @@ function makeCanvas(w: number, h: number): [HTMLCanvasElement, CanvasRenderingCo
   return [c, c.getContext('2d')!]
 }
 
-/** Recolours an image's opaque pixels, keeping its alpha. */
-function tint(img: Drawable, color: string): HTMLCanvasElement {
-  const [c, g] = makeCanvas(img.width, img.height)
-  g.drawImage(img, 0, 0)
-  g.globalCompositeOperation = 'source-in'
-  g.fillStyle = color
-  g.fillRect(0, 0, c.width, c.height)
-  return c
-}
-
 /** Desaturates with a touch of contrast, matching the monochrome close-ups. */
 function monochrome(img: Drawable): HTMLCanvasElement {
   const [c, g] = makeCanvas(img.width, img.height)
@@ -154,22 +144,6 @@ function drawBackground(g: CanvasRenderingContext2D) {
   glow.addColorStop(1, 'rgba(255,255,255,0)')
   g.fillStyle = glow
   g.fillRect(0, 0, W, H)
-
-  // Watermark across the lower half. Sized dynamically so all 5 letters "IWVPL"
-  // are comfortably inside the canvas margins, matching the reference poster.
-  g.save()
-  let markSize = 340
-  g.font = `800 ${markSize}px ${FONT}`
-  while (markSize > 80 && g.measureText('IWVPL').width > W * 0.88) {
-    markSize -= 4
-    g.font = `800 ${markSize}px ${FONT}`
-  }
-  g.globalAlpha = 0.06
-  g.fillStyle = '#fff'
-  g.textAlign = 'center'
-  g.textBaseline = 'alphabetic'
-  g.fillText('IWVPL', W / 2, H - 36)
-  g.restore()
 
   // Volt slashes in the margins, placed well clear of the title and footer text.
   poly(g, [[0, 420], [90, 380], [130, 400], [0, 470]], VOLT, 0.9)
@@ -323,34 +297,31 @@ function roundedRect(
   g.closePath()
 }
 
-function drawClubPill(
+function drawClubNamePill(
   g: CanvasRenderingContext2D,
   clubName: string | null | undefined,
-  club: Drawable | null,
   x: number,
   y: number,
   w: number,
   h: number,
 ) {
   const name = (clubName ?? '').trim()
-  if (!name && !club) return
+  if (!name) return
 
   const pad = Math.max(4, h * 0.014)
   const pillH = Math.max(18, h * 0.062)
-  const logoSize = pillH * 0.76
-  const gap = club && name ? Math.max(4, h * 0.012) : 0
   const fontSize = Math.max(9, h * 0.036)
   g.font = `800 ${fontSize}px ${FONT}`
-  const maxTextW = Math.max(24, w - pad * 3 - (club ? logoSize + gap : 0))
+  const maxTextW = Math.max(24, w - pad * 4)
   let text = name.toUpperCase()
-  if (text && g.measureText(text).width > maxTextW) {
+  if (g.measureText(text).width > maxTextW) {
     while (text.length > 1 && g.measureText(`${text}…`).width > maxTextW) {
       text = text.slice(0, -1)
     }
     text = `${text}…`
   }
-  const textW = text ? g.measureText(text).width : 0
-  const pillW = Math.min(w - pad * 2, pad * 2 + (club ? logoSize : 0) + gap + textW)
+  const textW = g.measureText(text).width
+  const pillW = Math.min(w - pad * 2, pad * 2 + textW)
   const pillX = x + pad
   const pillY = y + pad
 
@@ -366,25 +337,11 @@ function drawClubPill(
   g.lineWidth = 1
   g.stroke()
 
-  let cursor = pillX + pad
-  if (club) {
-    g.save()
-    g.beginPath()
-    g.arc(cursor + logoSize / 2, pillY + pillH / 2, logoSize / 2, 0, Math.PI * 2)
-    g.clip()
-    g.fillStyle = 'rgba(255,255,255,0.1)'
-    g.fillRect(cursor, pillY + (pillH - logoSize) / 2, logoSize, logoSize)
-    g.drawImage(club, cursor, pillY + (pillH - logoSize) / 2, logoSize, logoSize)
-    g.restore()
-    cursor += logoSize + gap
-  }
-  if (text) {
-    g.font = `800 ${fontSize}px ${FONT}`
-    g.fillStyle = '#ffffff'
-    g.textAlign = 'left'
-    g.textBaseline = 'middle'
-    g.fillText(text, cursor, pillY + pillH / 2 + 0.5)
-  }
+  g.font = `800 ${fontSize}px ${FONT}`
+  g.fillStyle = '#ffffff'
+  g.textAlign = 'left'
+  g.textBaseline = 'middle'
+  g.fillText(text, pillX + pad, pillY + pillH / 2 + 0.5)
   g.restore()
 }
 
@@ -404,6 +361,15 @@ function drawCard(
 
   // Dynamic multi-tone grunge brushpaint pattern matching web view.
   drawPaintVariant(g, p.slot, x, y, w, h)
+
+  // Large, faint club crest behind the portrait, matching the web card.
+  if (photos.club) {
+    const crest = Math.min(w * 0.52, h * 0.3)
+    g.save()
+    g.globalAlpha = 0.18
+    g.drawImage(photos.club, x + w * 0.04, y + h * 0.03, crest, crest)
+    g.restore()
+  }
 
   const closeGray = photos.close ? monochrome(photos.close) : null
   const photoH = h * 0.86
@@ -431,8 +397,8 @@ function drawCard(
   g.fillStyle = shade
   g.fillRect(x, y + h * 0.6, w, h * 0.4)
 
-  // Club crest + name, always visible on the poster.
-  drawClubPill(g, p.clubName, photos.club, x, y, w, h)
+  // Club name, always visible on the poster beneath the crest watermark.
+  drawClubNamePill(g, p.clubName, x, y, w, h)
 
   // Number, position, name.
   const pad = w * 0.065
@@ -496,24 +462,20 @@ export async function renderTotwPoster(label: string, players: TotwPlayer[]): Pr
     candid: p.candidUrl ? await loadBitmap(photoSrc(p.candidUrl), 'include') : null,
     club: p.clubLogo ? await loadBitmap(asset(p.clubLogo), 'include') : null,
   }))
-  const [photos, wordmark] = await Promise.all([
-    Promise.all(photoJobs),
-    loadBitmap(asset('/assets/brand/iwvpl-wordmark.png'), 'same-origin'),
-  ])
+  const photos = await Promise.all(photoJobs)
   const photoBySlot = new Map(photos.map((p) => [p.slot, p]))
 
   const [canvas, g] = makeCanvas(W, H)
   drawBackground(g)
 
   // Header.
-  if (wordmark) {
-    const lh = 66
-    const lw = (wordmark.width / wordmark.height) * lh
-    g.drawImage(tint(wordmark, '#ffffff'), 60, 56, lw, lh)
-  }
   g.textBaseline = 'alphabetic'
   g.textAlign = 'left'
   g.fillStyle = '#fff'
+  g.font = `800 26px ${FONT}`
+  ;(g as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = '3px'
+  g.fillText('ISLAND-WIDE VIRTUAL PREMIER LEAGUE', 60, 100)
+  ;(g as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = '0px'
   g.font = `800 92px ${FONT}`
   g.fillText('TEAM OF THE', 60, 236)
   g.fillStyle = VOLT
@@ -521,10 +483,6 @@ export async function renderTotwPoster(label: string, players: TotwPlayer[]): Pr
   g.fillText('WEEK', 56, 356)
 
   g.textAlign = 'right'
-  g.fillStyle = 'rgba(255,255,255,0.7)'
-  g.font = `700 17px ${FONT}`
-  ;(g as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = '4px'
-  g.fillText('PLAY  /  COMPETE  /  BELONG', W - 60, 92)
   g.fillStyle = VOLT
   g.font = `800 30px ${FONT}`
   ;(g as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = '2px'

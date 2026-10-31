@@ -97,6 +97,7 @@ interface PlayerRow {
   club_name: string | null
   club_logo: string | null
   player_id: number | null
+  player_slug: string | null
   has_close: number
   has_candid: number
   v: number
@@ -114,6 +115,7 @@ async function loadPlayersForWeek(weekId: number): Promise<PlayerRow[]> {
         ELSE COALESCE(c.logo_local, c.logo_url)
       END AS club_logo,
       p.player_id,
+      pl.slug AS player_slug,
       (p.photo_close IS NOT NULL AND p.photo_close <> '') AS has_close,
       (p.photo_candid IS NOT NULL AND p.photo_candid <> '') AS has_candid,
       COALESCE(UNIX_TIMESTAMP(p.updated_at), 1) AS v
@@ -123,6 +125,7 @@ async function loadPlayersForWeek(weekId: number): Promise<PlayerRow[]> {
        OR
        (p.club_id IS NULL AND p.club_name IS NOT NULL AND LOWER(TRIM(c.name)) = LOWER(TRIM(p.club_name)))
      )
+     LEFT JOIN players pl ON pl.id = p.player_id
     WHERE p.week_id = ?
     ORDER BY p.slot ASC`,
     [weekId],
@@ -141,6 +144,7 @@ function serializePlayer(row: PlayerRow, photoBase: string) {
     clubName: row.club_name,
     clubLogo: row.club_logo || null,
     playerId: row.player_id,
+    playerSlug: row.player_slug || null,
     closeUrl: row.has_close ? url('close') : null,
     candidUrl: row.has_candid ? url('candid') : null,
   }
