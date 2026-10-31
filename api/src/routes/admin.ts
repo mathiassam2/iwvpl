@@ -139,6 +139,42 @@ function parseKickoff(value: unknown): string | null {
 
 /* --------------------------------------------------------------- results */
 
+/** Take a match's player contributions back out of the season totals. */
+async function rollbackMatchPlayerStats(
+  conn: any,
+  matchId: number,
+  seasonId: number,
+  divisionId: number,
+): Promise<void> {
+  const [rows] = await conn.query(
+    `SELECT player_id, goals, assists, saves, clean_sheet
+       FROM match_player_stats WHERE match_id = ? FOR UPDATE`,
+    [matchId],
+  )
+  for (const os of rows as any[]) {
+    await conn.execute(
+      `UPDATE player_season_stats
+          SET appearances = GREATEST(0, CAST(appearances AS SIGNED) - 1),
+              goals = GREATEST(0, CAST(goals AS SIGNED) - ?),
+              assists = GREATEST(0, CAST(assists AS SIGNED) - ?),
+              saves = GREATEST(0, CAST(saves AS SIGNED) - ?),
+              clean_sheets = GREATEST(0, CAST(clean_sheets AS SIGNED) - ?),
+              updated_at = NOW()
+        WHERE player_id = ? AND season_id = ? AND division_id = ?`,
+      [
+        os.goals,
+        os.assists,
+        os.saves,
+        os.clean_sheet ? 1 : 0,
+        os.player_id,
+        seasonId,
+        divisionId,
+      ],
+    )
+  }
+  await conn.execute('DELETE FROM match_player_stats WHERE match_id = ?', [matchId])
+}
+
 async function replaceMatchPlayerStats(
   conn: any,
   match: { id: number; season_id: number; division_id: number; home_club_id: number; away_club_id: number },
@@ -1246,6 +1282,7 @@ admin.delete(
           awayScore: match.away_score,
         })
       }
+      await rollbackMatchPlayerStats(conn, match.id, match.season_id, match.division_id)
 
       await conn.execute('DELETE FROM match_events WHERE match_id = ?', [id])
       await conn.execute('DELETE FROM match_stats WHERE match_id = ?', [id])
@@ -1333,6 +1370,7 @@ admin.post(
             },
           )
         }
+        await rollbackMatchPlayerStats(conn, match.id, match.season_id, match.division_id)
       }
 
       await conn.query('DELETE FROM match_events WHERE match_id IN (?)', [ids])
