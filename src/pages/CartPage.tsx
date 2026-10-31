@@ -28,8 +28,6 @@ export function CartPanel() {
   const [panelBusy, setPanelBusy] = useState(false)
   const [panelError, setPanelError] = useState<string | null>(null)
 
-  if (user?.role === 'player') return null
-
   const handlePanelCheckout = async () => {
     if (detailed.length === 0) return
     setPanelBusy(true)
@@ -208,9 +206,11 @@ export function CartPanel() {
             <ButtonLink to="/shop" onClick={closePanel} variant="outline" className="w-full">
               View shop
             </ButtonLink>
-            <ButtonLink to="/cart" onClick={closePanel} variant="outline" className="w-full">
-              Go to full cart
-            </ButtonLink>
+            {user?.role !== 'player' && (
+              <ButtonLink to="/cart" onClick={closePanel} variant="outline" className="w-full">
+                Go to full cart
+              </ButtonLink>
+            )}
             <Button variant="ghost" onClick={clear} className="w-full">
               Clear cart
             </Button>

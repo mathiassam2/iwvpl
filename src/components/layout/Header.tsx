@@ -451,7 +451,7 @@ export function Header() {
       {/* Both the button and the panel are behind an account. A cart you can
           fill but not check out is a dead end, and the badge counting items a
           signed-out visitor cannot act on is noise. */}
-      {isManager && <CartPanel />}
+      {user && <CartPanel />}
 
       {/* ---------- mobile drawer ---------- */}
       {/* A scrim sits behind the sheet, and the sheet itself is fully opaque.
