@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { ButtonLink, Container, Section } from '@/components/ui'
 import { HeaderWash } from '@/components/layout/HeaderWash'
 import { getOrderSession, type OrderSessionResult } from '@/lib/api'
@@ -128,7 +128,7 @@ export default function CheckoutSuccessPage() {
                     <div>
                       <span className="text-[10px] uppercase font-bold text-[var(--text-faint)] tracking-wider block">Customer</span>
                       <p className="text-[var(--text-strong)] font-semibold mt-0.5 truncate">
-                        {order.customer_name || 'IWVPL Competitor'}
+                        {user?.name || order.customer_name || 'IWVPL Competitor'}
                       </p>
                       <p className="text-[var(--text-muted)] font-mono text-[11px] truncate">
                         {order.customer_email || session?.customer_email || '—'}
@@ -139,11 +139,9 @@ export default function CheckoutSuccessPage() {
                       <p className="text-[var(--text-strong)] font-semibold mt-0.5">
                         Card Payment (Stripe)
                       </p>
-                      {order.stripe_payment_intent_id && (
-                        <p className="text-[var(--text-muted)] font-mono text-[10px] truncate" title={order.stripe_payment_intent_id}>
-                          Tx: {order.stripe_payment_intent_id}
-                        </p>
-                      )}
+                      <p className="text-[var(--text-muted)] text-[11px]">
+                        {isPaid ? 'Payment confirmed' : 'Awaiting confirmation'}
+                      </p>
                     </div>
                   </div>
 

@@ -202,8 +202,8 @@ export default function TotwPage() {
             <b>Week</b>
           </h1>
           <p className="totw__sub">
-            The standout eleven from across the league, picked in a 4-3-3. Hover a player to see
-            their club.
+            The standout eleven from across the league, picked in a 4-4-2. Every card shows the
+            player's club crest and name.
           </p>
         </header>
 

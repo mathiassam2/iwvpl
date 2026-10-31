@@ -14,10 +14,10 @@ import { apiUrl, getTotwAccess, type TotwPlayer } from './api'
 import { asset } from './assets'
 import { useAuth } from './auth'
 
-/** Slots in display order. 0-2 attack, 3-5 midfield, 6-9 defence, 10 keeper. */
-export const TOTW_ROWS: number[][] = [[0, 1, 2], [3, 4, 5], [6, 7, 8, 9], [10]]
+/** Slots in display order for 4-4-2: 0-1 attack, 2-5 midfield, 6-9 defence, 10 keeper. */
+export const TOTW_ROWS: number[][] = [[0, 1], [2, 3, 4, 5], [6, 7, 8, 9], [10]]
 
-export const TOTW_DEFAULT_POSITIONS = ['LW', 'ST', 'RW', 'CM', 'CDM', 'CM', 'LB', 'CB', 'CB', 'RB', 'GK']
+export const TOTW_DEFAULT_POSITIONS = ['ST', 'ST', 'LM', 'CM', 'CM', 'RM', 'LB', 'CB', 'CB', 'RB', 'GK']
 
 export const photoSrc = (url: string) => (/^https?:\/\//i.test(url) ? url : apiUrl(url))
 
@@ -301,15 +301,101 @@ function drawPaintVariant(
   }
 }
 
-function drawCard(
+function roundedRect(
   g: CanvasRenderingContext2D,
-  p: TotwPlayer,
-  photos: { close: Drawable | null; candid: Drawable | null },
   x: number,
   y: number,
   w: number,
   h: number,
-  seed: number,
+  r: number,
+) {
+  const radius = Math.min(r, w / 2, h / 2)
+  g.beginPath()
+  g.moveTo(x + radius, y)
+  g.lineTo(x + w - radius, y)
+  g.quadraticCurveTo(x + w, y, x + w, y + radius)
+  g.lineTo(x + w, y + h - radius)
+  g.quadraticCurveTo(x + w, y + h, x + w - radius, y + h)
+  g.lineTo(x + radius, y + h)
+  g.quadraticCurveTo(x, y + h, x, y + h - radius)
+  g.lineTo(x, y + radius)
+  g.quadraticCurveTo(x, y, x + radius, y)
+  g.closePath()
+}
+
+function drawClubPill(
+  g: CanvasRenderingContext2D,
+  clubName: string | null | undefined,
+  club: Drawable | null,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+) {
+  const name = (clubName ?? '').trim()
+  if (!name && !club) return
+
+  const pad = Math.max(4, h * 0.014)
+  const pillH = Math.max(18, h * 0.062)
+  const logoSize = pillH * 0.76
+  const gap = club && name ? Math.max(4, h * 0.012) : 0
+  const fontSize = Math.max(9, h * 0.036)
+  g.font = `800 ${fontSize}px ${FONT}`
+  const maxTextW = Math.max(24, w - pad * 3 - (club ? logoSize + gap : 0))
+  let text = name.toUpperCase()
+  if (text && g.measureText(text).width > maxTextW) {
+    while (text.length > 1 && g.measureText(`${text}…`).width > maxTextW) {
+      text = text.slice(0, -1)
+    }
+    text = `${text}…`
+  }
+  const textW = text ? g.measureText(text).width : 0
+  const pillW = Math.min(w - pad * 2, pad * 2 + (club ? logoSize : 0) + gap + textW)
+  const pillX = x + pad
+  const pillY = y + pad
+
+  g.save()
+  g.shadowColor = 'rgba(0,0,0,0.55)'
+  g.shadowBlur = 10
+  g.shadowOffsetY = 3
+  roundedRect(g, pillX, pillY, pillW, pillH, pillH / 2)
+  g.fillStyle = 'rgba(10,11,13,0.92)'
+  g.fill()
+  g.shadowColor = 'transparent'
+  g.strokeStyle = 'rgba(200,255,61,0.55)'
+  g.lineWidth = 1
+  g.stroke()
+
+  let cursor = pillX + pad
+  if (club) {
+    g.save()
+    g.beginPath()
+    g.arc(cursor + logoSize / 2, pillY + pillH / 2, logoSize / 2, 0, Math.PI * 2)
+    g.clip()
+    g.fillStyle = 'rgba(255,255,255,0.1)'
+    g.fillRect(cursor, pillY + (pillH - logoSize) / 2, logoSize, logoSize)
+    g.drawImage(club, cursor, pillY + (pillH - logoSize) / 2, logoSize, logoSize)
+    g.restore()
+    cursor += logoSize + gap
+  }
+  if (text) {
+    g.font = `800 ${fontSize}px ${FONT}`
+    g.fillStyle = '#ffffff'
+    g.textAlign = 'left'
+    g.textBaseline = 'middle'
+    g.fillText(text, cursor, pillY + pillH / 2 + 0.5)
+  }
+  g.restore()
+}
+
+function drawCard(
+  g: CanvasRenderingContext2D,
+  p: TotwPlayer,
+  photos: { close: Drawable | null; candid: Drawable | null; club: Drawable | null },
+  x: number,
+  y: number,
+  w: number,
+  h: number,
 ) {
   g.save()
   g.beginPath()
@@ -344,6 +430,9 @@ function drawCard(
   shade.addColorStop(1, 'rgba(10,11,13,0.82)')
   g.fillStyle = shade
   g.fillRect(x, y + h * 0.6, w, h * 0.4)
+
+  // Club crest + name, always visible on the poster.
+  drawClubPill(g, p.clubName, photos.club, x, y, w, h)
 
   // Number, position, name.
   const pad = w * 0.065
@@ -405,6 +494,7 @@ export async function renderTotwPoster(label: string, players: TotwPlayer[]): Pr
     slot: p.slot,
     close: p.closeUrl ? await loadBitmap(photoSrc(p.closeUrl), 'include') : null,
     candid: p.candidUrl ? await loadBitmap(photoSrc(p.candidUrl), 'include') : null,
+    club: p.clubLogo ? await loadBitmap(asset(p.clubLogo), 'include') : null,
   }))
   const [photos, wordmark] = await Promise.all([
     Promise.all(photoJobs),
@@ -450,8 +540,8 @@ export async function renderTotwPoster(label: string, players: TotwPlayer[]): Pr
     row.forEach((slot, ci) => {
       const p = bySlot.get(slot)
       if (!p) return
-      const ph = photoBySlot.get(slot) ?? { close: null, candid: null }
-      drawCard(g, p, ph, startX + ci * cellW, top + ri * rowH, cellW, rowH, slot + 1)
+      const ph = photoBySlot.get(slot) ?? { close: null, candid: null, club: null }
+      drawCard(g, p, ph, startX + ci * cellW, top + ri * rowH, cellW, rowH)
     })
   })
 

@@ -4,10 +4,14 @@ import {
   addPlayer,
   assignClubManager,
   assignDivision,
+  cleanupClubDependencies,
   createAdminClub,
   decideClub,
   deleteAdminClub,
   getAdminClubs,
+  getClubDeleteDependencies,
+  type ClubDependencyBlocker,
+  type ClubDependencyKey,
   getAdminRegions,
   getAdminUsers,
   getClubDetail,
@@ -571,6 +575,12 @@ export function ClubsView({
   const [drawerBusy, setDrawerBusy] = useState(false)
   const [newPlayerTag, setNewPlayerTag] = useState('')
   const drawerLogoRef = useRef<HTMLInputElement | null>(null)
+  const [deleteBlocked, setDeleteBlocked] = useState<{
+    slug: string
+    name: string
+    blockers: ClubDependencyBlocker[]
+  } | null>(null)
+  const [deleteBlockedBusy, setDeleteBlockedBusy] = useState(false)
 
   // Starting XI / Squad Modal (Dedicated centered popup modal like before)
   const [squadModalClub, setSquadModalClub] = useState<Club | null>(null)
@@ -1248,43 +1258,71 @@ export function ClubsView({
     }
   }
 
-  const handleSingleDeleteClub = async (slug: string, name: string) => {
+  const attemptDeleteClub = async (slug: string, name: string, fromDrawer = false) => {
     if (
       !window.confirm(
-        `Delete ${name} permanently? This removes its fixtures and standings rows and releases its players to free agency.`,
+        `Delete ${name} permanently? If the club still has fixtures, players, managers or league records, you will be shown exactly what needs removing first.`,
       )
     ) {
       return
     }
+    if (fromDrawer) setDrawerBusy(true)
     try {
+      const check = await guard(
+        () => getClubDeleteDependencies(slug),
+        `Could not check linked records for ${name}`,
+      )
+      if (check.blockers.length > 0) {
+        setDeleteBlocked({ slug, name, blockers: check.blockers })
+        return
+      }
       await guard(() => deleteAdminClub(slug), 'Could not delete club')
       report('ok', `Deleted ${name}.`)
       if (drawerClubSlug === slug) closeDrawer()
       await loadData()
     } catch {
       /* reported */
+    } finally {
+      if (fromDrawer) setDrawerBusy(false)
     }
+  }
+
+  const handleSingleDeleteClub = async (slug: string, name: string) => {
+    await attemptDeleteClub(slug, name)
   }
 
   const handleDeleteClub = async () => {
     if (!drawerClubSlug) return
-    if (
-      !window.confirm(
-        `Delete ${currentClub?.name ?? drawerClubSlug} permanently? This removes its fixtures and standings rows and releases its players to free agency.`,
-      )
-    ) {
-      return
-    }
-    setDrawerBusy(true)
+    await attemptDeleteClub(drawerClubSlug, currentClub?.name ?? drawerClubSlug, true)
+  }
+
+  const resolveDeleteBlockers = async () => {
+    if (!deleteBlocked) return
+    setDeleteBlockedBusy(true)
     try {
-      await guard(() => deleteAdminClub(drawerClubSlug), 'Could not delete club')
-      report('ok', `Deleted ${currentClub?.name ?? drawerClubSlug}.`)
-      closeDrawer()
+      const actions = deleteBlocked.blockers.map((b) => b.key) as ClubDependencyKey[]
+      await guard(
+        () => cleanupClubDependencies(deleteBlocked.slug, actions),
+        `Could not remove linked records for ${deleteBlocked.name}`,
+      )
+      const check = await guard(
+        () => getClubDeleteDependencies(deleteBlocked.slug),
+        `Could not re-check linked records for ${deleteBlocked.name}`,
+      )
+      if (check.blockers.length > 0) {
+        setDeleteBlocked({ ...deleteBlocked, blockers: check.blockers })
+        report('info', 'Some linked records still remain. Review the list and try again.')
+        return
+      }
+      await guard(() => deleteAdminClub(deleteBlocked.slug), 'Could not delete club')
+      report('ok', `Removed linked records and deleted ${deleteBlocked.name}.`)
+      if (drawerClubSlug === deleteBlocked.slug) closeDrawer()
+      setDeleteBlocked(null)
       await loadData()
     } catch {
       /* reported */
     } finally {
-      setDrawerBusy(false)
+      setDeleteBlockedBusy(false)
     }
   }
 
@@ -3332,6 +3370,82 @@ export function ClubsView({
               </div>
             </div>
           </aside>
+        </div>
+      )}
+
+      {/* Club delete blockers modal */}
+      {deleteBlocked && (
+        <div className="adm-modal-backdrop" onClick={() => !deleteBlockedBusy && setDeleteBlocked(null)}>
+          <div
+            className="adm-modal"
+            style={{ maxWidth: 640, width: '94vw' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="adm-modal-head">
+              <div>
+                <span className="adm-eyebrow" style={{ color: '#f59e0b' }}>
+                  DELETE BLOCKED
+                </span>
+                <h3 style={{ margin: '2px 0 0' }}>{deleteBlocked.name} still has linked records</h3>
+              </div>
+              <button
+                type="button"
+                className="adm-close-btn"
+                onClick={() => setDeleteBlocked(null)}
+                disabled={deleteBlockedBusy}
+              >
+                ×
+              </button>
+            </div>
+            <div style={{ padding: '14px 0', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <p className="adm-text-muted" style={{ margin: 0, fontSize: 13 }}>
+                Remove the records below first. This can be done here without leaving this page.
+              </p>
+              {deleteBlocked.blockers.map((blocker) => (
+                <div
+                  key={blocker.key}
+                  style={{
+                    border: '1px solid var(--adm-border)',
+                    borderRadius: 8,
+                    padding: '10px 12px',
+                    background: 'rgba(255,255,255,0.02)',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                    <strong style={{ fontSize: 13 }}>{blocker.label}</strong>
+                    <span className="adm-badge">{blocker.count}</span>
+                  </div>
+                  <p style={{ margin: '3px 0 0', fontSize: 12, color: 'var(--adm-muted)' }}>
+                    {blocker.hint}
+                  </p>
+                  {blocker.sample.length > 0 && (
+                    <p style={{ margin: '5px 0 0', fontSize: 11, color: 'var(--adm-muted)' }}>
+                      {blocker.sample.join(' · ')}
+                      {blocker.count > blocker.sample.length ? ` · +${blocker.count - blocker.sample.length} more` : ''}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="adm-modal-foot">
+              <button
+                type="button"
+                className="adm-btn adm-btn-ghost"
+                onClick={() => setDeleteBlocked(null)}
+                disabled={deleteBlockedBusy}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="adm-btn adm-btn-danger"
+                onClick={() => void resolveDeleteBlockers()}
+                disabled={deleteBlockedBusy}
+              >
+                {deleteBlockedBusy ? 'Removing…' : 'Remove linked records and delete club'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

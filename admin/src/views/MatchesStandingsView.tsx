@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { GenerateRoundRobinWizardModal } from './GenerateRoundRobinWizardModal'
 import { EaMatchResultModal } from './EaMatchResultModal'
+import { ManualMatchStatsModal } from './ManualMatchStatsModal'
 import {
   createMatch,
   deleteMatch,
@@ -87,6 +88,7 @@ export function MatchesStandingsView({
   const [scheduleValue, setScheduleValue] = useState('')
   const [scheduleBusy, setScheduleBusy] = useState(false)
   const [eaModalMatch, setEaModalMatch] = useState<Match | null>(null)
+  const [manualStatsMatch, setManualStatsMatch] = useState<Match | null>(null)
 
   // Standings state
   const [standings, setStandings] = useState<Standing[]>([])
@@ -599,6 +601,15 @@ export function MatchesStandingsView({
                             >
                               EA Sync
                             </button>
+                            <button
+                              type="button"
+                              className="adm-btn adm-btn-secondary adm-btn-sm"
+                              title="Manually edit the score, player stats, team stats and match events"
+                              onClick={() => setManualStatsMatch(m)}
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}
+                            >
+                              Manual Stats
+                            </button>
                             {m.ea_match_id && (
                               <span
                                 className="adm-code-pill"
@@ -924,6 +935,19 @@ export function MatchesStandingsView({
         isOpen={eaModalMatch !== null}
         match={eaModalMatch}
         onClose={() => setEaModalMatch(null)}
+        onSuccess={(msg) => {
+          report('ok', msg)
+          void loadMatches()
+        }}
+        guard={guard}
+        report={report}
+      />
+
+      {/* Manual Match Stats Modal */}
+      <ManualMatchStatsModal
+        isOpen={manualStatsMatch !== null}
+        match={manualStatsMatch}
+        onClose={() => setManualStatsMatch(null)}
         onSuccess={(msg) => {
           report('ok', msg)
           void loadMatches()

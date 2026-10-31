@@ -143,6 +143,8 @@ export interface NewsPost {
 export interface Product {
   slug: string
   name: string
+  /** Shop section: 'Registration Fee' or 'Merchandise'. */
+  category?: string
   kicker: string
   price: string
   image: string

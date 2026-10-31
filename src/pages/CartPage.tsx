@@ -118,10 +118,10 @@ export function CartPanel() {
           {detailed.length === 0 ? (
             <div className="px-5 py-14 text-center">
               <p className="text-sm text-[var(--text-muted)]">
-                Your cart is empty. Add a registration to get started.
+                Your cart is empty. Visit the shop to add a registration or merchandise.
               </p>
-              <ButtonLink to="/register" variant="outline" className="mt-5">
-                Back to registration
+              <ButtonLink to="/shop" onClick={closePanel} variant="outline" className="mt-5">
+                Browse shop
               </ButtonLink>
             </div>
           ) : (
@@ -205,6 +205,9 @@ export function CartPanel() {
             >
               {panelBusy ? 'Opening Stripe…' : '💳 Pay with Stripe'}
             </Button>
+            <ButtonLink to="/shop" onClick={closePanel} variant="outline" className="w-full">
+              View shop
+            </ButtonLink>
             <ButtonLink to="/cart" onClick={closePanel} variant="outline" className="w-full">
               Go to full cart
             </ButtonLink>

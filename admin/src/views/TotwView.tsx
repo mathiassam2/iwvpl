@@ -20,9 +20,9 @@ import {
 } from '../api'
 import { compressImageFile, type Guard, type Report } from '../utils'
 
-/** Fixed 4-3-3, in display order: attack, midfield, defence, keeper. */
-const ROWS: number[][] = [[0, 1, 2], [3, 4, 5], [6, 7, 8, 9], [10]]
-const DEFAULT_POSITIONS = ['LW', 'ST', 'RW', 'CM', 'CDM', 'CM', 'LB', 'CB', 'CB', 'RB', 'GK']
+/** Fixed 4-4-2, in display order: attack, midfield, defence, keeper. */
+const ROWS: number[][] = [[0, 1], [2, 3, 4, 5], [6, 7, 8, 9], [10]]
+const DEFAULT_POSITIONS = ['ST', 'ST', 'LM', 'CM', 'CM', 'RM', 'LB', 'CB', 'CB', 'RB', 'GK']
 const POSITION_OPTIONS = ['GK', 'LB', 'CB', 'RB', 'LWB', 'RWB', 'CDM', 'CM', 'CAM', 'LM', 'RM', 'LW', 'RW', 'CF', 'ST']
 
 type Photo = string | null | undefined // undefined: unchanged, null: removed, string: new data URL
@@ -525,7 +525,7 @@ export function TotwView({ guard, report }: { guard: Guard; report: Report }) {
       {week ? (
         <section className="adm-card">
           <div className="totw-board__head">
-            <h3 style={{ margin: 0 }}>Starting XI · 4-3-3</h3>
+            <h3 style={{ margin: 0 }}>Starting XI · 4-4-2</h3>
             <span className="adm-text-muted" style={{ fontSize: 13 }}>
               Click a position to add or edit a player.
             </span>

@@ -774,6 +774,38 @@ export const createAdminClub = (input: AdminClubInput) =>
     body: JSON.stringify(input),
   }).then((r) => r.club)
 
+export type ClubDependencyKey =
+  | 'matches'
+  | 'players'
+  | 'managers'
+  | 'transferRequests'
+  | 'transfers'
+  | 'divisionAssignments'
+  | 'standings'
+  | 'movements'
+
+export interface ClubDependencyBlocker {
+  key: ClubDependencyKey
+  label: string
+  count: number
+  sample: string[]
+  hint: string
+}
+
+export const getClubDeleteDependencies = (slug: string) =>
+  request<{ club: { id: number; name: string; slug: string }; blockers: ClubDependencyBlocker[] }>(
+    `/api/admin/clubs/${encodeURIComponent(slug)}/dependencies`,
+  )
+
+export const cleanupClubDependencies = (slug: string, actions: ClubDependencyKey[]) =>
+  request<{ ok: true; blockers: ClubDependencyBlocker[] }>(
+    `/api/admin/clubs/${encodeURIComponent(slug)}/cleanup`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ actions }),
+    },
+  )
+
 export const deleteAdminClub = (slug: string, purgeManager?: boolean) =>
   request<{ ok: true; id: number; slug: string }>(
     `/api/admin/clubs/${encodeURIComponent(slug)}${purgeManager ? '?purgeManager=true' : ''}`,
@@ -1108,6 +1140,7 @@ export interface CmsAboutData {
 export interface CmsProduct {
   slug: string
   name: string
+  category?: string
   kicker: string
   price: string
   image: string
@@ -1323,6 +1356,102 @@ export const applyEaMatchResult = (
 ) =>
   request<{ ok: true; matchId: number; homeScore: number; awayScore: number }>(
     `/api/admin/matches/${matchId}/ea-result`,
+    {
+      method: 'POST',
+      body: JSON.stringify(data),
+    },
+  )
+
+export interface ManualMatchPlayerStat {
+  id?: number
+  player_id?: number | null
+  club_id: number
+  gamertag: string
+  rating: number
+  goals: number
+  assists: number
+  shots: number
+  passes: number
+  tackles: number
+  saves: number
+  clean_sheet: boolean | number
+  is_mom: boolean | number
+}
+
+export interface ManualMatchTeamStats {
+  possession_home: number | null
+  possession_away: number | null
+  shots_home: number | null
+  shots_away: number | null
+  on_target_home: number | null
+  on_target_away: number | null
+  corners_home: number | null
+  corners_away: number | null
+  fouls_home: number | null
+  fouls_away: number | null
+  offsides_home: number | null
+  offsides_away: number | null
+  pass_accuracy_home: number | null
+  pass_accuracy_away: number | null
+}
+
+export interface ManualMatchEvent {
+  minute: number
+  type: string
+  team_side: 'home' | 'away'
+  player_name: string | null
+  detail: string | null
+  score: string | null
+}
+
+export interface ManualMatchData {
+  match: Match & {
+    season_id: number
+    division_id: number
+    home_club_id: number
+    away_club_id: number
+  }
+  playerStats: ManualMatchPlayerStat[]
+  teamStats: ManualMatchTeamStats | null
+  events: ManualMatchEvent[]
+  homeSquad: Array<{ id: number; gamertag: string; shirt_number?: number | null }>
+  awaySquad: Array<{ id: number; gamertag: string; shirt_number?: number | null }>
+}
+
+export const getManualMatchData = (matchId: number) =>
+  request<ManualMatchData>(`/api/admin/matches/${matchId}/manual-stats`)
+
+export const saveManualMatchStats = (
+  matchId: number,
+  data: {
+    homeScore: number
+    awayScore: number
+    players: Array<{
+      clubId: number
+      gamertag: string
+      rating?: number
+      goals: number
+      assists: number
+      shots?: number
+      passes?: number
+      tackles?: number
+      saves: number
+      cleanSheet: boolean
+      isMom: boolean
+    }>
+    teamStats: Record<string, number | string | null>
+    events: Array<{
+      minute: number
+      type: string
+      teamSide: 'home' | 'away'
+      playerName?: string
+      detail?: string
+      score?: string
+    }>
+  },
+) =>
+  request<{ ok: true; matchId: number; homeScore: number; awayScore: number }>(
+    `/api/admin/matches/${matchId}/manual-stats`,
     {
       method: 'POST',
       body: JSON.stringify(data),

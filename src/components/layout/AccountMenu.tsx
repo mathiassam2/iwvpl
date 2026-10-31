@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/lib/auth'
+import { useCart } from '@/lib/cart'
 import { listNotifications, markNotificationsRead, type Notification } from '@/lib/api'
 import { cx } from '@/lib/format'
 import { AccountSettingsModal } from './AccountSettingsModal'
@@ -166,6 +167,7 @@ function NotificationBell() {
 
 export default function AccountMenu() {
   const { user, loading, signOut } = useAuth()
+  const { count: cartCount, openPanel: openCart } = useCart()
   const { open, setOpen, ref } = useDropdown()
   const [showSettings, setShowSettings] = useState(false)
   const navigate = useNavigate()
@@ -251,6 +253,21 @@ export default function AccountMenu() {
                   My Club
                 </Link>
               )}
+              <button
+                type="button"
+                role="menuitem"
+                className={row}
+                onClick={() => {
+                  setOpen(false)
+                  if (cartCount > 0) openCart()
+                  else navigate('/shop')
+                }}
+              >
+                <span className="w-4 text-center" aria-hidden>
+                  ▣
+                </span>
+                Shop
+              </button>
               <Link to="/dashboard#notifications" role="menuitem" className={row}>
                 <span className="w-4 text-center" aria-hidden>
                   ◎

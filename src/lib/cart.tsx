@@ -64,14 +64,17 @@ function read(): CartLine[] {
     if (!raw) return []
     const parsed: unknown = JSON.parse(raw)
     if (!Array.isArray(parsed)) return []
-    const known = new Set(siteData.products.map((p) => p.slug))
+    // Do not filter against the static catalogue here: admin-created shop
+    // products arrive after hydration, and dropping their saved cart lines on
+    // first paint would silently empty the cart. Unknown slugs are ignored by
+    // `detailed` until the live product list catches up.
     return parsed
       .filter(
         (l): l is CartLine =>
           !!l &&
           typeof l === 'object' &&
           typeof (l as CartLine).slug === 'string' &&
-          known.has((l as CartLine).slug),
+          l.slug.length > 0,
       )
       .map((l) => ({ slug: l.slug, qty: Math.max(1, Math.min(MAX_PER_LINE, Math.round(Number(l.qty) || 1))) }))
   } catch {

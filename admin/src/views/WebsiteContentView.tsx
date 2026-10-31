@@ -114,6 +114,7 @@ export function WebsiteContentView({
   const [editingPassIdx, setEditingPassIdx] = useState<number | null>(null)
   const [pName, setPName] = useState('')
   const [pSlug, setPSlug] = useState('')
+  const [pCategory, setPCategory] = useState('Registration Fee')
   const [pKicker, setPKicker] = useState('Team Registration')
   const [pPrice, setPPrice] = useState('SGD 35')
   const [pImage, setPImage] = useState('/assets/sponsors/pro-club-registration.webp')
@@ -220,8 +221,8 @@ export function WebsiteContentView({
 
   const handleSaveRegion = async (e: FormEvent) => {
     e.preventDefault()
-    if (!rName.trim() || !rIso.trim() || !rFlag.trim() || !rArt.trim()) {
-      report('error', 'Fill in country name, ISO code, flag emoji, and flag artwork.')
+    if (!rName.trim() || !rIso.trim() || !rArt.trim()) {
+      report('error', 'Fill in country name, ISO code, and flag artwork. The flag emoji is optional.')
       return
     }
     setBusy(true)
@@ -475,6 +476,7 @@ export function WebsiteContentView({
     setEditingPassIdx(null)
     setPName('')
     setPSlug('')
+    setPCategory('Registration Fee')
     setPKicker('Team Registration')
     setPPrice('SGD 35')
     setPImage('/assets/sponsors/pro-club-registration.webp')
@@ -491,6 +493,7 @@ export function WebsiteContentView({
     const displayName = prod.name || (prod as any).title || ''
     setPName(displayName)
     setPSlug(prod.slug || slugifyText(displayName))
+    setPCategory(prod.category === 'Merchandise' ? 'Merchandise' : 'Registration Fee')
     setPKicker(prod.kicker || (prod as any).category || 'Team Registration')
     setPPrice(prod.price || 'SGD 35')
     setPImage(prod.image || '/assets/sponsors/pro-club-registration.webp')
@@ -512,6 +515,7 @@ export function WebsiteContentView({
     const passObj: CmsProduct = {
       slug: pSlug.trim() || slugifyText(pName) || `pass-${Date.now()}`,
       name: pName.trim(),
+      category: pCategory,
       kicker: pKicker.trim() || 'Team Registration',
       price: pPrice.trim() || 'SGD 35',
       image: pImage.trim() || '/assets/sponsors/pro-club-registration.webp',
@@ -1624,11 +1628,10 @@ export function WebsiteContentView({
                     />
                   </label>
                   <label className="adm-field">
-                    <span>Flag Emoji *</span>
+                    <span>Flag Emoji (optional)</span>
                     <input
                       type="text"
-                      required
-                      placeholder="e.g. 🇲🇾"
+                      placeholder="e.g. 🇲🇾 — leave empty to show no flag"
                       value={rFlag}
                       onChange={(e) => setRFlag(e.target.value)}
                       className="adm-input"
@@ -1972,6 +1975,17 @@ export function WebsiteContentView({
                   />
                 </label>
                 <div className="adm-field-grid">
+                  <label className="adm-field">
+                    <span>Shop Section *</span>
+                    <select
+                      value={pCategory}
+                      onChange={(e) => setPCategory(e.target.value)}
+                      className="adm-select"
+                    >
+                      <option value="Registration Fee">Registration Fee</option>
+                      <option value="Merchandise">Merchandise</option>
+                    </select>
+                  </label>
                   <label className="adm-field">
                     <span>Price Label (e.g. SGD 35) *</span>
                     <input

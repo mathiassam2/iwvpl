@@ -2,28 +2,52 @@ import { useEffect, useMemo, useState } from 'react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { LeaderboardTable } from '@/components/league'
 import { LeaderboardPodium } from '@/components/league/LeaderboardPodium'
-import { Container, Section, Tabs } from '@/components/ui'
+import { Container, Section, Select, Tabs } from '@/components/ui'
 import { siteData } from '@/data'
 import { useSeasonName } from '@/lib/season'
 import {
   getLiveLeaderboardSummary,
-  peekLiveLeaderboards,
+  getLiveSeasons,
+  type LeagueSeason,
   type LiveLeaderboardSummary,
 } from '@/lib/liveLeague'
 import type { Leaderboard } from '@/types/site'
 
 export default function LeaderboardPage() {
   const seasonName = useSeasonName()
-  const [liveData, setLiveData] = useState<LiveLeaderboardSummary | null>(peekLiveLeaderboards())
+  const [seasons, setSeasons] = useState<LeagueSeason[]>([])
+  const [seasonId, setSeasonId] = useState<number | null>(null)
+  const [liveData, setLiveData] = useState<LiveLeaderboardSummary | null>(null)
 
   useEffect(() => {
-    void getLiveLeaderboardSummary().then((res) => {
-      if (res) setLiveData(res)
-    })
+    const controller = new AbortController()
+    void getLiveSeasons(controller.signal)
+      .then((list) => {
+        setSeasons(list)
+        const current = list.find((s) => Boolean(s.is_current)) ?? list[0]
+        setSeasonId(current?.id ?? null)
+      })
+      .catch(() => {
+        /* static fallback stays available */
+      })
+    return () => controller.abort()
   }, [])
 
+  useEffect(() => {
+    if (!seasonId) return
+    const controller = new AbortController()
+    setLiveData(null)
+    void getLiveLeaderboardSummary(controller.signal, seasonId).then((res) => {
+      if (res) setLiveData(res)
+    })
+    return () => controller.abort()
+  }, [seasonId])
+
+  const selectedSeason = seasons.find((s) => s.id === seasonId) ?? null
+  const seasonLabel = liveData?.season?.name || selectedSeason?.name || seasonName
+
   const effectiveBoards: Leaderboard[] = useMemo(() => {
-    if (liveData && liveData.boards.some((b) => b.rows.length > 0)) {
+    if (liveData) {
       return liveData.boards.map((b) => ({
         title: b.title,
         rows: b.rows.map((r, idx) => ({
@@ -66,11 +90,35 @@ export default function LeaderboardPage() {
       <PageHeader
         eyebrow="Individual honours"
         title="Leaderboard"
-        lede={`Top performers across the ${liveData?.season?.name || seasonName} IWVPL Pro Club League — goals, assists and goalkeeping.`}
+        lede={`Top performers across the ${seasonLabel} IWVPL Pro Club League — goals, assists and goalkeeping.`}
       />
 
       <Section>
         <Container size="narrow">
+          {seasons.length > 0 && (
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--text-faint)]">
+                  Season filter
+                </p>
+                <p className="mt-1 text-sm text-[var(--text-muted)]">
+                  Showing {seasonLabel}
+                </p>
+              </div>
+              <Select
+                value={seasonId ? String(seasonId) : ''}
+                onChange={(value) => setSeasonId(Number(value))}
+                options={seasons.map((s) => ({
+                  value: String(s.id),
+                  label: `${s.name}${Boolean(s.is_current) ? ' · Live' : ''}`,
+                }))}
+                ariaLabel="Select season"
+                size="sm"
+                className="min-w-[15rem]"
+              />
+            </div>
+          )}
+
           {/* bare tabs — no outer container */}
           <div className="mb-8 border-b border-[var(--border)]">
             <Tabs
@@ -104,7 +152,7 @@ export default function LeaderboardPage() {
 
           <p className="mt-6 text-xs leading-relaxed text-[var(--text-faint)]">
             Statistics are compiled from match reports submitted by team managers during{' '}
-            {liveData?.season?.name || seasonName}.
+            {seasonLabel}.
           </p>
         </Container>
       </Section>

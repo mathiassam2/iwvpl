@@ -2644,6 +2644,7 @@
     {
       "slug": "iwvpl-pro-club-season-1",
       "name": "IWVPL Pro Club Season 1",
+      "category": "Registration Fee",
       "kicker": "Team Registration",
       "price": "SGD 35",
       "image": "/assets/sponsors/pro-club-registration.webp",
@@ -2656,6 +2657,7 @@
     {
       "slug": "iwvpl-champions-league",
       "name": "IWVPL Champions League",
+      "category": "Registration Fee",
       "kicker": "Season 1 Registration",
       "price": "Entry Pass",
       "image": "/assets/sponsors/champions-league-registration.webp",

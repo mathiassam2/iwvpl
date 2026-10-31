@@ -697,9 +697,15 @@ export function peekLiveLeaderboards(): LiveLeaderboardSummary | null {
   return cachedLiveLeaderboards
 }
 
-export async function getLiveLeaderboardSummary(signal?: AbortSignal): Promise<LiveLeaderboardSummary | null> {
+export async function getLiveLeaderboardSummary(
+  signal?: AbortSignal,
+  seasonId?: number | null,
+): Promise<LiveLeaderboardSummary | null> {
   try {
-    const res = await get<LiveLeaderboardSummary>(`/api/leaderboards/summary?_=${Date.now()}`, signal)
+    const query = seasonId
+      ? `?seasonId=${encodeURIComponent(String(seasonId))}&_=${Date.now()}`
+      : `?_=${Date.now()}`
+    const res = await get<LiveLeaderboardSummary>(`/api/leaderboards/summary${query}`, signal)
     cachedLiveLeaderboards = res
     return res
   } catch {

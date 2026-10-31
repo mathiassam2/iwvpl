@@ -718,7 +718,7 @@
   width: 40px;
 }
 
-/* Hover reveals the club crest & name. */
+/* Club crest & name are always visible on every card. */
 .totw-card__club {
   position: absolute;
   top: 0.45rem;
@@ -727,9 +727,8 @@
   display: flex;
   justify-content: flex-start;
   pointer-events: none;
-  opacity: 0;
-  transform: translateY(-6px);
-  transition: opacity 0.24s ease, transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  opacity: 1;
+  transform: none;
   z-index: 5;
 }
 .totw-card__club-pill {
@@ -765,13 +764,6 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
-.totw-card:hover .totw-card__club,
-.totw-card:focus .totw-card__club,
-.totw-card:focus-visible .totw-card__club {
-  opacity: 1;
-  transform: translateY(0);
-}
-
 /* ---------------------------------------------------------------- states */
 
 .totw__state {

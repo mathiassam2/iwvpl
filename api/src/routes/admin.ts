@@ -139,6 +139,315 @@ function parseKickoff(value: unknown): string | null {
 
 /* --------------------------------------------------------------- results */
 
+async function replaceMatchPlayerStats(
+  conn: any,
+  match: { id: number; season_id: number; division_id: number; home_club_id: number; away_club_id: number },
+  playersList: any[],
+): Promise<void> {
+  // Roll back the previous contribution before replacing the rows, otherwise
+  // re-saving the same match would double-count every player's season totals.
+  const [oldStatsRows] = await conn.query(
+    `SELECT player_id, goals, assists, saves, clean_sheet
+       FROM match_player_stats WHERE match_id = ? FOR UPDATE`,
+    [match.id],
+  )
+  for (const os of oldStatsRows as any[]) {
+    await conn.execute(
+      `UPDATE player_season_stats
+          SET appearances = GREATEST(0, CAST(appearances AS SIGNED) - 1),
+              goals = GREATEST(0, CAST(goals AS SIGNED) - ?),
+              assists = GREATEST(0, CAST(assists AS SIGNED) - ?),
+              saves = GREATEST(0, CAST(saves AS SIGNED) - ?),
+              clean_sheets = GREATEST(0, CAST(clean_sheets AS SIGNED) - ?),
+              updated_at = NOW()
+        WHERE player_id = ? AND season_id = ? AND division_id = ?`,
+      [
+        os.goals,
+        os.assists,
+        os.saves,
+        os.clean_sheet ? 1 : 0,
+        os.player_id,
+        match.season_id,
+        match.division_id,
+      ],
+    )
+  }
+  await conn.execute('DELETE FROM match_player_stats WHERE match_id = ?', [match.id])
+
+  const seen = new Set<string>()
+  for (const p of playersList) {
+    const rawGamertag = String(p.gamertag ?? '').trim()
+    if (!rawGamertag) continue
+
+    const clubId = Number.parseInt(String(p.clubId), 10)
+    const validClubId =
+      clubId === match.home_club_id || clubId === match.away_club_id
+        ? clubId
+        : match.home_club_id
+    const gKey = gamertagKey(rawGamertag)
+    if (seen.has(gKey)) continue
+    seen.add(gKey)
+
+    const [existingPlayerRows] = await conn.query(
+      'SELECT id FROM players WHERE gamertag_key = ? LIMIT 1 FOR UPDATE',
+      [gKey],
+    )
+    let playerId = (existingPlayerRows as any[])[0]?.id
+    if (!playerId) {
+      const pSlug = clubSlug(rawGamertag) || `player-${Date.now()}`
+      const [ins] = await conn.execute(
+        `INSERT INTO players (gamertag, gamertag_key, slug, club_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, NOW(), NOW())`,
+        [rawGamertag, gKey, pSlug, validClubId],
+      )
+      playerId = (ins as any).insertId
+    } else {
+      await conn.execute(
+        'UPDATE players SET club_id = COALESCE(club_id, ?), updated_at = NOW() WHERE id = ?',
+        [validClubId, playerId],
+      )
+    }
+
+    const rating = Math.max(0, Math.min(10, Number.parseFloat(String(p.rating ?? 0)) || 0))
+    const goals = Math.max(0, Number.parseInt(String(p.goals ?? 0), 10) || 0)
+    const assists = Math.max(0, Number.parseInt(String(p.assists ?? 0), 10) || 0)
+    const shots = Math.max(0, Number.parseInt(String(p.shots ?? 0), 10) || 0)
+    const passes = Math.max(0, Number.parseInt(String(p.passes ?? 0), 10) || 0)
+    const tackles = Math.max(0, Number.parseInt(String(p.tackles ?? 0), 10) || 0)
+    const saves = Math.max(0, Number.parseInt(String(p.saves ?? 0), 10) || 0)
+    const cleanSheet = Boolean(p.cleanSheet)
+    const isMom = Boolean(p.isMom)
+
+    await conn.execute(
+      `INSERT INTO match_player_stats
+         (match_id, player_id, club_id, gamertag, rating, goals, assists, shots, passes, tackles, saves, clean_sheet, is_mom, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+      [
+        match.id,
+        playerId,
+        validClubId,
+        rawGamertag,
+        rating,
+        goals,
+        assists,
+        shots,
+        passes,
+        tackles,
+        saves,
+        cleanSheet ? 1 : 0,
+        isMom ? 1 : 0,
+      ],
+    )
+
+    await conn.execute(
+      `INSERT INTO player_season_stats
+         (player_id, season_id, division_id, appearances, goals, assists, saves, clean_sheets, updated_at)
+       VALUES (?, ?, ?, 1, ?, ?, ?, ?, NOW())
+       ON DUPLICATE KEY UPDATE
+         appearances = appearances + 1,
+         goals = goals + VALUES(goals),
+         assists = assists + VALUES(assists),
+         saves = saves + VALUES(saves),
+         clean_sheets = clean_sheets + VALUES(clean_sheets),
+         updated_at = NOW()`,
+      [playerId, match.season_id, match.division_id, goals, assists, saves, cleanSheet ? 1 : 0],
+    )
+  }
+}
+
+function manualStatValue(value: unknown, max: number): number | null {
+  if (value === null || value === undefined || value === '') return null
+  const n = Number(value)
+  if (!Number.isFinite(n)) return null
+  return Math.max(0, Math.min(max, Math.round(n)))
+}
+
+function manualEventType(value: unknown): string {
+  const type = String(value ?? '').trim().toLowerCase().replace(/\s+/g, '_')
+  if (['goal', 'own_goal', 'yellow', 'red', 'sub'].includes(type)) return type
+  return 'goal'
+}
+
+admin.get(
+  '/matches/:id/manual-stats',
+  handler(async (req, res) => {
+    const id = Number.parseInt(req.params.id, 10)
+    if (!Number.isSafeInteger(id) || id < 1) {
+      return res.status(400).json({ error: 'Match id must be a positive integer.' })
+    }
+
+    const match = await queryOne<any>(
+      `SELECT m.id, m.kickoff, m.status, m.home_score, m.away_score, m.ea_match_id,
+              m.season_id, m.division_id, m.home_club_id, m.away_club_id,
+              home.name AS home_name, away.name AS away_name
+         FROM matches m
+         JOIN clubs home ON home.id = m.home_club_id
+         JOIN clubs away ON away.id = m.away_club_id
+        WHERE m.id = ?`,
+      [id],
+    )
+    if (!match) return res.status(404).json({ error: 'Match not found.' })
+
+    const [playerStats, teamStats, events, homeSquad, awaySquad] = await Promise.all([
+      queryAll(
+        `SELECT id, player_id, club_id, gamertag, rating, goals, assists, shots, passes, tackles, saves, clean_sheet, is_mom
+           FROM match_player_stats WHERE match_id = ? ORDER BY club_id, gamertag`,
+        [id],
+      ),
+      queryOne('SELECT * FROM match_stats WHERE match_id = ?', [id]),
+      queryAll(
+        `SELECT minute, type, team_side, player_name, detail, score
+           FROM match_events WHERE match_id = ? ORDER BY minute, id`,
+        [id],
+      ),
+      queryAll(
+        `SELECT id, gamertag, shirt_number FROM players WHERE club_id = ? ORDER BY gamertag`,
+        [match.home_club_id],
+      ),
+      queryAll(
+        `SELECT id, gamertag, shirt_number FROM players WHERE club_id = ? ORDER BY gamertag`,
+        [match.away_club_id],
+      ),
+    ])
+
+    res.json({
+      match,
+      playerStats: playerStats ?? [],
+      teamStats: teamStats ?? null,
+      events: events ?? [],
+      homeSquad: homeSquad ?? [],
+      awaySquad: awaySquad ?? [],
+    })
+  }),
+)
+
+admin.post(
+  '/matches/:id/manual-stats',
+  handler(async (req, res) => {
+    const id = Number.parseInt(req.params.id, 10)
+    if (!Number.isSafeInteger(id) || id < 1) {
+      return res.status(400).json({ error: 'Match id must be a positive integer.' })
+    }
+
+    const homeScore = parseScore(req.body?.homeScore, 'homeScore')
+    const awayScore = parseScore(req.body?.awayScore, 'awayScore')
+    const playersList: any[] = Array.isArray(req.body?.players) ? req.body.players : []
+    const team = req.body?.teamStats && typeof req.body.teamStats === 'object' ? req.body.teamStats : {}
+    const eventList: any[] = Array.isArray(req.body?.events) ? req.body.events : []
+
+    const result = await withTransaction(async (conn) => {
+      const [rows] = await conn.query(
+        `SELECT id, season_id, division_id, home_club_id, away_club_id, home_score, away_score
+           FROM matches WHERE id = ? FOR UPDATE`,
+        [id],
+      )
+      const match = (rows as any[])[0]
+      if (!match) return { error: 'Match not found.' as const, status: 404 }
+
+      const ids = { seasonId: match.season_id, divisionId: match.division_id }
+      const wasPlayed = match.home_score !== null && match.away_score !== null
+      const previous = wasPlayed
+        ? {
+            homeClubId: match.home_club_id,
+            awayClubId: match.away_club_id,
+            homeScore: match.home_score,
+            awayScore: match.away_score,
+          }
+        : null
+
+      await setResult(
+        conn,
+        ids,
+        {
+          homeClubId: match.home_club_id,
+          awayClubId: match.away_club_id,
+          homeScore,
+          awayScore,
+        },
+        previous,
+      )
+
+      await conn.execute(
+        `UPDATE matches
+            SET home_score = ?, away_score = ?, status = 'finished', updated_at = NOW()
+          WHERE id = ?`,
+        [homeScore, awayScore, id] as Params,
+      )
+
+      await replaceMatchPlayerStats(conn, match, playersList)
+
+      // Team stats: one row per match, replaced wholesale so clearing a value
+      // actually removes it rather than leaving the previous number behind.
+      await conn.execute('DELETE FROM match_stats WHERE match_id = ?', [id])
+      const stat = (key: string, max = 999) => manualStatValue(team?.[key], max)
+      const values = {
+        possession_home: stat('possessionHome', 100),
+        possession_away: stat('possessionAway', 100),
+        shots_home: stat('shotsHome'),
+        shots_away: stat('shotsAway'),
+        on_target_home: stat('onTargetHome'),
+        on_target_away: stat('onTargetAway'),
+        corners_home: stat('cornersHome'),
+        corners_away: stat('cornersAway'),
+        fouls_home: stat('foulsHome'),
+        fouls_away: stat('foulsAway'),
+        offsides_home: stat('offsidesHome'),
+        offsides_away: stat('offsidesAway'),
+        pass_accuracy_home: stat('passAccuracyHome', 100),
+        pass_accuracy_away: stat('passAccuracyAway', 100),
+      }
+      if (Object.values(values).some((v) => v !== null)) {
+        await conn.execute(
+          `INSERT INTO match_stats
+             (match_id, possession_home, possession_away, shots_home, shots_away,
+              on_target_home, on_target_away, corners_home, corners_away,
+              fouls_home, fouls_away, offsides_home, offsides_away,
+              pass_accuracy_home, pass_accuracy_away)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            id,
+            values.possession_home,
+            values.possession_away,
+            values.shots_home,
+            values.shots_away,
+            values.on_target_home,
+            values.on_target_away,
+            values.corners_home,
+            values.corners_away,
+            values.fouls_home,
+            values.fouls_away,
+            values.offsides_home,
+            values.offsides_away,
+            values.pass_accuracy_home,
+            values.pass_accuracy_away,
+          ],
+        )
+      }
+
+      await conn.execute('DELETE FROM match_events WHERE match_id = ?', [id])
+      for (const event of eventList) {
+        const minute = Math.max(0, Math.min(130, Number.parseInt(String(event?.minute ?? 0), 10) || 0))
+        const teamSide = event?.teamSide === 'away' || event?.team_side === 'away' ? 'away' : 'home'
+        const playerName = optionalString(event?.playerName ?? event?.player_name, 120)
+        const detail = optionalString(event?.detail, 255)
+        const score = optionalString(event?.score, 16)
+        if (!playerName && !detail) continue
+        await conn.execute(
+          `INSERT INTO match_events
+             (match_id, minute, type, team_side, player_name, detail, score, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+          [id, minute, manualEventType(event?.type), teamSide, playerName, detail, score],
+        )
+      }
+
+      return { ok: true as const }
+    })
+
+    if ('error' in result) return res.status(result.status).json({ error: result.error })
+    res.json({ ok: true, matchId: id, homeScore, awayScore })
+  }),
+)
+
 admin.post(
   '/matches',
   handler(async (req, res) => {
@@ -1346,10 +1655,304 @@ admin.put(
   }),
 )
 
+type ClubDependencyKey =
+  | 'matches'
+  | 'players'
+  | 'managers'
+  | 'transferRequests'
+  | 'transfers'
+  | 'divisionAssignments'
+  | 'standings'
+  | 'movements'
+
+interface ClubDependencyBlocker {
+  key: ClubDependencyKey
+  label: string
+  count: number
+  sample: string[]
+  hint: string
+}
+
+async function clubDeleteBlockers(clubId: number): Promise<ClubDependencyBlocker[]> {
+  const counts = await queryOne<Record<ClubDependencyKey, number>>(
+    `SELECT
+       (SELECT COUNT(*) FROM matches WHERE home_club_id = ? OR away_club_id = ?) AS matches,
+       (SELECT COUNT(*) FROM players WHERE club_id = ?) AS players,
+       (SELECT COUNT(*) FROM users WHERE club_id = ?) AS managers,
+       (SELECT COUNT(*) FROM transfer_requests WHERE from_club_id = ? OR to_club_id = ?) AS transferRequests,
+       (SELECT COUNT(*) FROM transfers WHERE from_club_id = ? OR to_club_id = ?) AS transfers,
+       (SELECT COUNT(*) FROM division_clubs WHERE club_id = ?) AS divisionAssignments,
+       (SELECT COUNT(*) FROM standings_snapshot WHERE club_id = ?) AS standings,
+       (SELECT COUNT(*) FROM season_division_movements WHERE club_id = ?) AS movements`,
+    [clubId, clubId, clubId, clubId, clubId, clubId, clubId, clubId, clubId, clubId, clubId],
+  )
+
+  const [matchSamples, playerSamples, managerSamples, requestSamples, transferSamples] =
+    await Promise.all([
+      queryAll<{ id: number; home_name: string; away_name: string; kickoff: string | null }>(
+        `SELECT m.id, home.name AS home_name, away.name AS away_name, m.kickoff
+           FROM matches m
+           JOIN clubs home ON home.id = m.home_club_id
+           JOIN clubs away ON away.id = m.away_club_id
+          WHERE m.home_club_id = ? OR m.away_club_id = ?
+          ORDER BY m.kickoff DESC, m.id DESC
+          LIMIT 5`,
+        [clubId, clubId],
+      ),
+      queryAll<{ gamertag: string }>(
+        'SELECT gamertag FROM players WHERE club_id = ? ORDER BY gamertag LIMIT 5',
+        [clubId],
+      ),
+      queryAll<{ name: string }>(
+        `SELECT COALESCE(display_name, email) AS name
+           FROM users WHERE club_id = ? ORDER BY id LIMIT 5`,
+        [clubId],
+      ),
+      queryAll<{ gamertag: string; status: string }>(
+        `SELECT p.gamertag, tr.status
+           FROM transfer_requests tr
+           JOIN players p ON p.id = tr.player_id
+          WHERE tr.from_club_id = ? OR tr.to_club_id = ?
+          ORDER BY tr.created_at DESC LIMIT 5`,
+        [clubId, clubId],
+      ),
+      queryAll<{ gamertag: string }>(
+        `SELECT p.gamertag
+           FROM transfers t
+           JOIN players p ON p.id = t.player_id
+          WHERE t.from_club_id = ? OR t.to_club_id = ?
+          ORDER BY t.occurred_at DESC LIMIT 5`,
+        [clubId, clubId],
+      ),
+    ])
+
+  const blockers: ClubDependencyBlocker[] = []
+  const add = (
+    key: ClubDependencyKey,
+    label: string,
+    hint: string,
+    sample: string[],
+  ) => {
+    const count = Number(counts?.[key] ?? 0)
+    if (count > 0) blockers.push({ key, label, count, sample, hint })
+  }
+
+  add(
+    'matches',
+    'Fixtures & results',
+    'Delete these fixtures and their recorded results before deleting the club.',
+    matchSamples.map((m) => `${m.home_name} vs ${m.away_name}${m.kickoff ? ` · ${m.kickoff}` : ' · unscheduled'}`),
+  )
+  add(
+    'players',
+    'Registered players',
+    'Release these players to free agency before deleting the club.',
+    playerSamples.map((p) => p.gamertag),
+  )
+  add(
+    'managers',
+    'Linked accounts',
+    'Unassign these manager/admin accounts from the club.',
+    managerSamples.map((u) => u.name),
+  )
+  add(
+    'transferRequests',
+    'Transfer requests',
+    'Clear pending or historical transfer requests linked to this club.',
+    requestSamples.map((r) => `${r.gamertag} (${r.status})`),
+  )
+  add(
+    'transfers',
+    'Transfer history',
+    'Remove this club from historical transfer records.',
+    transferSamples.map((t) => t.gamertag),
+  )
+  add(
+    'divisionAssignments',
+    'Division assignments',
+    'Remove the club from its divisions.',
+    [],
+  )
+  add(
+    'standings',
+    'Standings rows',
+    'Remove the club from all league tables.',
+    [],
+  )
+  add(
+    'movements',
+    'Season movements',
+    'Remove promotion/relegation history for this club.',
+    [],
+  )
+
+  return blockers
+}
+
+async function cleanupClubDependencies(
+  conn: any,
+  club: { id: number; name: string },
+  actions: Set<ClubDependencyKey>,
+): Promise<void> {
+  if (actions.has('matches')) {
+    const [matchRows] = await conn.query(
+      `SELECT id, season_id, division_id, home_club_id, away_club_id, home_score, away_score
+         FROM matches
+        WHERE home_club_id = ? OR away_club_id = ?
+          FOR UPDATE`,
+      [club.id, club.id],
+    )
+    const clubMatches = matchRows as Array<{
+      id: number
+      season_id: number
+      division_id: number
+      home_club_id: number
+      away_club_id: number
+      home_score: number | null
+      away_score: number | null
+    }>
+
+    for (const match of clubMatches) {
+      if (match.home_score !== null && match.away_score !== null) {
+        await clearResult(
+          conn,
+          { seasonId: match.season_id, divisionId: match.division_id },
+          {
+            homeClubId: match.home_club_id,
+            awayClubId: match.away_club_id,
+            homeScore: match.home_score,
+            awayScore: match.away_score,
+          },
+        )
+      }
+    }
+
+    if (clubMatches.length > 0) {
+      const matchIds = clubMatches.map((m) => m.id)
+      for (let i = 0; i < matchIds.length; i += 500) {
+        const chunk = matchIds.slice(i, i + 500)
+        await conn.query('DELETE FROM match_events WHERE match_id IN (?)', [chunk])
+        await conn.query('DELETE FROM match_stats WHERE match_id IN (?)', [chunk])
+        await conn.query('DELETE FROM matches WHERE id IN (?)', [chunk])
+      }
+    }
+    await conn.execute('DELETE FROM match_player_stats WHERE club_id = ?', [club.id])
+  }
+
+  if (actions.has('players')) {
+    await conn.execute(
+      'UPDATE players SET club_id = NULL, is_free_agent = TRUE, updated_at = NOW() WHERE club_id = ?',
+      [club.id],
+    )
+  }
+
+  if (actions.has('managers')) {
+    await conn.execute(
+      "UPDATE users SET club_id = NULL, role = CASE WHEN role = 'club_manager' THEN 'player' ELSE role END, updated_at = NOW() WHERE club_id = ?",
+      [club.id],
+    )
+  }
+
+  if (actions.has('transferRequests')) {
+    await conn.execute(
+      'DELETE FROM transfer_requests WHERE from_club_id = ? OR to_club_id = ?',
+      [club.id, club.id],
+    )
+  }
+
+  if (actions.has('transfers')) {
+    await conn.execute('UPDATE transfers SET from_club_id = NULL WHERE from_club_id = ?', [club.id])
+    await conn.execute('UPDATE transfers SET to_club_id = NULL WHERE to_club_id = ?', [club.id])
+  }
+
+  if (actions.has('divisionAssignments')) {
+    await conn.execute('DELETE FROM division_clubs WHERE club_id = ?', [club.id])
+  }
+
+  if (actions.has('standings')) {
+    await conn.execute('DELETE FROM standings_snapshot WHERE club_id = ?', [club.id])
+  }
+
+  if (actions.has('movements')) {
+    await conn.execute('DELETE FROM season_division_movements WHERE club_id = ?', [club.id])
+  }
+}
+
+admin.get(
+  '/clubs/:slug/dependencies',
+  handler(async (req, res) => {
+    const slug = requiredString(req.params.slug, 'slug', 140)
+    const club = await queryOne<{ id: number; name: string; slug: string }>(
+      'SELECT id, name, slug FROM clubs WHERE slug = ?',
+      [slug],
+    )
+    if (!club) return res.status(404).json({ error: 'Club not found.' })
+    res.json({ club, blockers: await clubDeleteBlockers(club.id) })
+  }),
+)
+
+admin.post(
+  '/clubs/:slug/cleanup',
+  handler(async (req, res) => {
+    const slug = requiredString(req.params.slug, 'slug', 140)
+    const allowed = new Set<ClubDependencyKey>([
+      'matches',
+      'players',
+      'managers',
+      'transferRequests',
+      'transfers',
+      'divisionAssignments',
+      'standings',
+      'movements',
+    ])
+    const raw: unknown[] = Array.isArray(req.body?.actions) ? req.body.actions : []
+    const actions = new Set<ClubDependencyKey>()
+    for (const value of raw) {
+      if (typeof value === 'string' && allowed.has(value as ClubDependencyKey)) {
+        actions.add(value as ClubDependencyKey)
+      }
+    }
+    if (actions.size === 0) {
+      return res.status(400).json({ error: 'Choose at least one linked record group to remove.' })
+    }
+
+    const club = await queryOne<{ id: number; name: string }>(
+      'SELECT id, name FROM clubs WHERE slug = ?',
+      [slug],
+    )
+    if (!club) return res.status(404).json({ error: 'Club not found.' })
+
+    await withTransaction(async (conn) => {
+      const [rows] = await conn.query('SELECT id, name FROM clubs WHERE slug = ? FOR UPDATE', [slug])
+      const locked = (rows as Array<{ id: number; name: string }>)[0]
+      if (!locked) throw Object.assign(new Error('Club not found.'), { status: 404 })
+      await cleanupClubDependencies(conn, locked, actions)
+    })
+
+    res.json({ ok: true, blockers: await clubDeleteBlockers(club.id) })
+  }),
+)
+
 admin.delete(
   '/clubs/:slug',
   handler(async (req, res) => {
     const slug = requiredString(req.params.slug, 'slug', 140)
+
+    const blockers = await (async () => {
+      const club = await queryOne<{ id: number; name: string; slug: string }>(
+        'SELECT id, name, slug FROM clubs WHERE slug = ?',
+        [slug],
+      )
+      if (!club) return null
+      return { club, blockers: await clubDeleteBlockers(club.id) }
+    })()
+    if (!blockers) return res.status(404).json({ error: 'Club not found.' })
+    if (blockers.blockers.length > 0) {
+      return res.status(409).json({
+        error: `${blockers.club.name} still has linked records. Remove them before deleting the club.`,
+        blockers: blockers.blockers,
+      })
+    }
 
     const result = await withTransaction(async (conn) => {
       const [clubRows] = await conn.query(
@@ -1359,73 +1962,20 @@ admin.delete(
       const club = (clubRows as Array<{ id: number; name: string }>)[0]
       if (!club) return { error: 'Club not found.' as const, status: 404 }
 
-      const [matchRows] = await conn.query(
-        `SELECT id, season_id, division_id, home_club_id, away_club_id, home_score, away_score
-           FROM matches
-          WHERE home_club_id = ? OR away_club_id = ?
-            FOR UPDATE`,
-        [club.id, club.id],
+      await cleanupClubDependencies(
+        conn,
+        club,
+        new Set<ClubDependencyKey>([
+          'matches',
+          'players',
+          'managers',
+          'transferRequests',
+          'transfers',
+          'divisionAssignments',
+          'standings',
+          'movements',
+        ]),
       )
-      const clubMatches = matchRows as Array<{
-        id: number
-        season_id: number
-        division_id: number
-        home_club_id: number
-        away_club_id: number
-        home_score: number | null
-        away_score: number | null
-      }>
-
-      for (const match of clubMatches) {
-        if (match.home_score !== null && match.away_score !== null) {
-          await clearResult(
-            conn,
-            { seasonId: match.season_id, divisionId: match.division_id },
-            {
-              homeClubId: match.home_club_id,
-              awayClubId: match.away_club_id,
-              homeScore: match.home_score,
-              awayScore: match.away_score,
-            },
-          )
-        }
-      }
-
-      if (clubMatches.length > 0) {
-        const matchIds = clubMatches.map((m) => m.id)
-        await conn.query('DELETE FROM match_events WHERE match_id IN (?)', [matchIds])
-        await conn.query('DELETE FROM match_stats WHERE match_id IN (?)', [matchIds])
-        await conn.query('DELETE FROM matches WHERE id IN (?)', [matchIds])
-      }
-
-      const purgeManager = req.query.purgeManager === 'true' || req.body?.purgeManager === true
-      if (purgeManager) {
-        const [mgrRows] = await conn.query('SELECT id FROM users WHERE club_id = ?', [club.id])
-        const userIds = (mgrRows as Array<{ id: number }>).map((u) => u.id)
-        if (userIds.length > 0) {
-          await conn.query('DELETE FROM sessions WHERE user_id IN (?)', [userIds])
-          await conn.query('DELETE FROM notifications WHERE user_id IN (?)', [userIds])
-          await conn.query('UPDATE players SET user_id = NULL, updated_at = NOW() WHERE user_id IN (?)', [userIds])
-          await conn.query('DELETE FROM users WHERE id IN (?)', [userIds])
-        }
-      } else {
-        await conn.execute(
-          "UPDATE users SET club_id = NULL, role = CASE WHEN role = 'club_manager' THEN 'player' ELSE role END, updated_at = NOW() WHERE club_id = ?",
-          [club.id],
-        )
-      }
-      await conn.execute(
-        'UPDATE players SET club_id = NULL, is_free_agent = TRUE, updated_at = NOW() WHERE club_id = ?',
-        [club.id],
-      )
-      await conn.execute('UPDATE transfers SET from_club_id = NULL WHERE from_club_id = ?', [
-        club.id,
-      ])
-      await conn.execute('UPDATE transfers SET to_club_id = NULL WHERE to_club_id = ?', [club.id])
-      await conn.execute('DELETE FROM transfer_requests WHERE club_id = ?', [club.id])
-      await conn.execute('DELETE FROM season_division_movements WHERE club_id = ?', [club.id])
-      await conn.execute('DELETE FROM standings_snapshot WHERE club_id = ?', [club.id])
-      await conn.execute('DELETE FROM division_clubs WHERE club_id = ?', [club.id])
       await conn.execute('DELETE FROM clubs WHERE id = ?', [club.id])
 
       return { ok: true as const, id: club.id, slug }
@@ -1886,7 +2436,10 @@ admin.post(
         const userIds = (mgrRows as Array<{ id: number }>).map((u) => u.id)
 
         await conn.execute('DELETE FROM match_player_stats WHERE club_id = ?', [club.id])
-        await conn.execute('DELETE FROM transfer_requests WHERE club_id = ?', [club.id])
+        await conn.execute(
+          'DELETE FROM transfer_requests WHERE from_club_id = ? OR to_club_id = ?',
+          [club.id, club.id],
+        )
         await conn.execute('UPDATE transfers SET from_club_id = NULL WHERE from_club_id = ?', [club.id])
         await conn.execute('UPDATE transfers SET to_club_id = NULL WHERE to_club_id = ?', [club.id])
         await conn.execute('UPDATE players SET club_id = NULL, is_free_agent = TRUE, updated_at = NOW() WHERE club_id = ?', [club.id])
@@ -4113,7 +4666,7 @@ admin.post(
   handler(async (req, res) => {
     const name = requiredString(req.body?.name, 'Region name', 120)
     const iso = requiredString(req.body?.iso, 'ISO code', 16).toUpperCase()
-    const flag = requiredString(req.body?.flag, 'Flag emoji', 32)
+    const flag = optionalString(req.body?.flag, 32) ?? ''
     const artUrl = parseArtUrl(req.body?.artUrl ?? req.body?.art_url)
     const rawActive = req.body?.isActive ?? req.body?.is_active
     const isActive = rawActive === undefined ? true : Boolean(rawActive)
@@ -4196,7 +4749,7 @@ admin.put(
           : current.iso
       const flag =
         req.body?.flag !== undefined
-          ? requiredString(req.body.flag, 'Flag emoji', 32)
+          ? optionalString(req.body.flag, 32) ?? ''
           : current.flag
       const rawArt = req.body?.artUrl ?? req.body?.art_url
       const artUrl = rawArt !== undefined ? parseArtUrl(rawArt) : current.art_url
