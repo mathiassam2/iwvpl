@@ -144,7 +144,7 @@ const NAV_ITEMS: Array<{
     shortLabel: 'TOTW',
     icon: '★',
     title: 'Team of the Week',
-    subtitle: 'Build the weekly 4-3-3 best XI, upload player photos, publish it, and choose who can see the page.',
+    subtitle: 'Build the weekly 4-4-2 best XI, upload player photos, publish it, and choose who can see the page.',
   },
   {
     id: 'website',
