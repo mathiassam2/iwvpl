@@ -1575,9 +1575,20 @@ function ManagerPanel() {
                   >
                     {p.gamertag}
                   </Link>
+                  {Boolean(captainGamertag && p.gamertag.toLowerCase() === captainGamertag.toLowerCase()) && (
+                    <span
+                      className="shrink-0 rounded bg-amber-500/15 text-amber-500 border border-amber-500/30 px-1.5 py-0.5 text-[10px] font-bold"
+                      title="Starting XI captain"
+                    >
+                      👑 Captain
+                    </span>
+                  )}
                   {((user?.playerId === p.id || user?.id === p.user_id) || Boolean(user?.gamertag && p.gamertag.toLowerCase() === user.gamertag.toLowerCase())) && (
-                    <span className="shrink-0 rounded bg-amber-500/15 text-amber-500 border border-amber-500/30 px-1.5 py-0.5 text-[10px] font-bold">
-                      👑 Playing Captain
+                    <span
+                      className="shrink-0 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30 px-1.5 py-0.5 text-[10px] font-bold"
+                      title="Club manager registered as a player"
+                    >
+                      Player-Manager
                     </span>
                   )}
                 </div>
