@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { siteData } from '@/data'
+import { siteData, useSiteContentVersion } from '@/data'
 import type { Product } from '@/types/site'
 
 const STORAGE_KEY = 'iwvpl-cart-v1'
@@ -91,6 +91,7 @@ function numericPrice(price: string): number | null {
 }
 
 export function CartProvider({ children }: { children: ReactNode }) {
+  const contentVersion = useSiteContentVersion()
   const [lines, setLines] = useState<CartLine[]>(() => (typeof window === 'undefined' ? [] : read()))
   const [panelOpen, setPanelOpen] = useState(false)
   const [pulse, setPulse] = useState(0)
@@ -176,7 +177,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       closePanel: () => setPanelOpen(false),
       pulse,
     }
-  }, [lines, panelOpen, add, setQty, remove, clear, pulse])
+  }, [lines, panelOpen, add, setQty, remove, clear, pulse, contentVersion])
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>
 }

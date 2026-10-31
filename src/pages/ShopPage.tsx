@@ -15,7 +15,7 @@ function sectionFor(category: string | undefined): ShopSection {
 
 export default function ShopPage() {
   // Subscribe to the live CMS so products added in admin appear without a reload.
-  useSiteContentVersion()
+  const contentVersion = useSiteContentVersion()
   const { add, has, openPanel, count } = useCart()
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -23,7 +23,7 @@ export default function ShopPage() {
 
   const products = useMemo(
     () => siteData.products.filter((p) => sectionFor(p.category) === section),
-    [section],
+    [section, contentVersion],
   )
 
   return (
