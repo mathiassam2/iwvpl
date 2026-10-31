@@ -205,7 +205,7 @@ export async function previewFixtures(options: GenerateFixturesOptions): Promise
             JOIN divisions d ON d.id = dc.division_id
            WHERE d.season_id = ? AND d.id IN (?)
         )`,
-    [seasonId, seasonId, [divisionIds]],
+    [seasonId, seasonId, divisionIds],
   )
 
   const existingMatches = existingRows as Array<{ home_club_id: number; away_club_id: number }>
@@ -362,7 +362,7 @@ export async function executeGenerateFixtures(
               JOIN divisions d ON d.id = dc.division_id
              WHERE d.season_id = ? AND d.id IN (?)
           )`,
-      [seasonId, seasonId, [divisionIds]],
+      [seasonId, seasonId, divisionIds],
     )
 
     const existingFixtures = new Set(
