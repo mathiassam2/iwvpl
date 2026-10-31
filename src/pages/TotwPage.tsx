@@ -69,9 +69,7 @@ function PlayerCard({ player }: { player: TotwPlayer }) {
 
       {club && (
         <div className="totw-card__club" aria-hidden>
-          <div className="totw-card__club-pill">
-            <span className="totw-card__club-name">{club}</span>
-          </div>
+          <span className="totw-card__club-name">{club}</span>
         </div>
       )}
 

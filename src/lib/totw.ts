@@ -275,29 +275,7 @@ function drawPaintVariant(
   }
 }
 
-function roundedRect(
-  g: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  r: number,
-) {
-  const radius = Math.min(r, w / 2, h / 2)
-  g.beginPath()
-  g.moveTo(x + radius, y)
-  g.lineTo(x + w - radius, y)
-  g.quadraticCurveTo(x + w, y, x + w, y + radius)
-  g.lineTo(x + w, y + h - radius)
-  g.quadraticCurveTo(x + w, y + h, x + w - radius, y + h)
-  g.lineTo(x + radius, y + h)
-  g.quadraticCurveTo(x, y + h, x, y + h - radius)
-  g.lineTo(x, y + radius)
-  g.quadraticCurveTo(x, y, x + radius, y)
-  g.closePath()
-}
-
-function drawClubNamePill(
+function drawClubName(
   g: CanvasRenderingContext2D,
   clubName: string | null | undefined,
   x: number,
@@ -309,10 +287,10 @@ function drawClubNamePill(
   if (!name) return
 
   const pad = Math.max(4, h * 0.014)
-  const pillH = Math.max(18, h * 0.062)
   const fontSize = Math.max(9, h * 0.036)
+  const maxTextW = Math.max(24, w * 0.66)
+  g.save()
   g.font = `800 ${fontSize}px ${FONT}`
-  const maxTextW = Math.max(24, w - pad * 4)
   let text = name.toUpperCase()
   if (g.measureText(text).width > maxTextW) {
     while (text.length > 1 && g.measureText(`${text}…`).width > maxTextW) {
@@ -320,28 +298,14 @@ function drawClubNamePill(
     }
     text = `${text}…`
   }
-  const textW = g.measureText(text).width
-  const pillW = Math.min(w - pad * 2, pad * 2 + textW)
-  const pillX = x + pad
-  const pillY = y + pad
 
-  g.save()
-  g.shadowColor = 'rgba(0,0,0,0.55)'
-  g.shadowBlur = 10
-  g.shadowOffsetY = 3
-  roundedRect(g, pillX, pillY, pillW, pillH, pillH / 2)
-  g.fillStyle = 'rgba(10,11,13,0.92)'
-  g.fill()
-  g.shadowColor = 'transparent'
-  g.strokeStyle = 'rgba(200,255,61,0.55)'
-  g.lineWidth = 1
-  g.stroke()
-
-  g.font = `800 ${fontSize}px ${FONT}`
   g.fillStyle = '#ffffff'
-  g.textAlign = 'left'
-  g.textBaseline = 'middle'
-  g.fillText(text, pillX + pad, pillY + pillH / 2 + 0.5)
+  g.textAlign = 'right'
+  g.textBaseline = 'top'
+  g.shadowColor = 'rgba(0,0,0,0.9)'
+  g.shadowBlur = 6
+  g.shadowOffsetY = 2
+  g.fillText(text, x + w - pad, y + pad)
   g.restore()
 }
 
@@ -362,11 +326,11 @@ function drawCard(
   // Dynamic multi-tone grunge brushpaint pattern matching web view.
   drawPaintVariant(g, p.slot, x, y, w, h)
 
-  // Large, faint club crest behind the portrait, matching the web card.
+  // Club crest behind the portrait, matching the web card.
   if (photos.club) {
-    const crest = Math.min(w * 0.52, h * 0.3)
+    const crest = Math.min(w * 0.44, h * 0.26)
     g.save()
-    g.globalAlpha = 0.18
+    g.globalAlpha = 0.3
     g.drawImage(photos.club, x + w * 0.04, y + h * 0.03, crest, crest)
     g.restore()
   }
@@ -397,8 +361,8 @@ function drawCard(
   g.fillStyle = shade
   g.fillRect(x, y + h * 0.6, w, h * 0.4)
 
-  // Club name, always visible on the poster beneath the crest watermark.
-  drawClubNamePill(g, p.clubName, x, y, w, h)
+  // Club name, always visible at the top-right on the poster.
+  drawClubName(g, p.clubName, x, y, w, h)
 
   // Number, position, name.
   const pad = w * 0.065
