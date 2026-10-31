@@ -289,7 +289,7 @@ league.get(
         `SELECT d.id, d.name, d.slug
            FROM divisions d
            JOIN division_clubs dc ON dc.division_id = d.id
-           JOIN seasons s ON s.id = d.season_id AND s.is_current = TRUE AND s.is_draft = FALSE
+           JOIN seasons s ON s.id = d.season_id AND s.is_draft = FALSE
           WHERE dc.club_id = ?
           ORDER BY d.id DESC LIMIT 1`,
         [club.id],

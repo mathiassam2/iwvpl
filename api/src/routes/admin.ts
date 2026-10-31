@@ -2007,7 +2007,7 @@ admin.put(
     const name = requiredString(req.body?.name, 'name', 64)
     const season = await withTransaction(async (conn) => {
       const [seasonRows] = await conn.query(
-        'SELECT id, name, year, is_current, featured_division_id FROM seasons WHERE id = ? FOR UPDATE',
+        'SELECT id, name, year, is_current, is_draft, featured_division_id FROM seasons WHERE id = ? FOR UPDATE',
         [id],
       )
       const current = (seasonRows as Array<{
@@ -2015,6 +2015,7 @@ admin.put(
         name: string
         year: number
         is_current: number
+        is_draft: number
         featured_division_id: number | null
       }>)[0]
       if (!current) return null

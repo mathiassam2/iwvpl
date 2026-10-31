@@ -840,6 +840,10 @@ export async function undoSeasonRollover(
   }
 
   await runner.execute('DELETE FROM standings_snapshot WHERE season_id = ?', [seasonId])
+  await runner.execute('DELETE FROM player_season_stats WHERE season_id = ?', [seasonId])
+  // Moves the admin made inside the draft itself, if any. The ledger rows for
+  // the rollover live in the source season and were removed above.
+  await runner.execute('DELETE FROM season_division_movements WHERE season_id = ?', [seasonId])
   await runner.execute(
     `DELETE FROM division_clubs
       WHERE division_id IN (SELECT id FROM divisions WHERE season_id = ?)`,
