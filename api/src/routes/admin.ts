@@ -4643,6 +4643,19 @@ admin.put(
           WHERE id = ?`,
         [gamertag, key, slug, nextShirt, clubId, clubId === null ? 1 : 0, id],
       )
+
+      // A manual squad assignment settles any open offer or join request for
+      // that club. Leaving it pending makes the manager dashboard say
+      // "Awaiting reply" for a player who is already on the squad, and lets the
+      // player accept an offer that would log a club-to-itself transfer.
+      if (clubId !== null) {
+        await conn.execute(
+          `UPDATE transfer_requests
+              SET status = 'accepted', responded_at = NOW()
+            WHERE player_id = ? AND to_club_id = ? AND status = 'pending'`,
+          [id, clubId],
+        )
+      }
       return true
     })
 

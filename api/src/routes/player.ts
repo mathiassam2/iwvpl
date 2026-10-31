@@ -553,6 +553,19 @@ player.post(
 
     const accepting = decision === 'accept'
 
+    // The player may have been assigned to this club by an admin while the
+    // offer was still open. Accepting is harmless, but it must not write a
+    // transfer from the club to itself.
+    if (accepting && me.club_id === row.to_club_id) {
+      await execute(
+        `UPDATE transfer_requests
+            SET status = 'accepted', responded_at = NOW()
+          WHERE id = ? AND player_id = ? AND status = 'pending'`,
+        [requestId, me.id],
+      )
+      return res.json({ ok: true, status: 'accepted', alreadyMember: true })
+    }
+
     if (accepting) {
       await withTransaction(async (conn) => {
         const [claimed] = await conn.execute(
