@@ -326,12 +326,15 @@ function drawCard(
   // Dynamic multi-tone grunge brushpaint pattern matching web view.
   drawPaintVariant(g, p.slot, x, y, w, h)
 
-  // Club crest behind the portrait, matching the web card.
+  // Club crest behind the portrait, anchored bottom-right at the full content
+  // height, matching the web card.
   if (photos.club) {
-    const crest = Math.min(w * 0.44, h * 0.26)
+    const scale = Math.min(w / photos.club.width, h / photos.club.height)
+    const crestW = photos.club.width * scale
+    const crestH = photos.club.height * scale
     g.save()
     g.globalAlpha = 0.3
-    g.drawImage(photos.club, x + w * 0.04, y + h * 0.03, crest, crest)
+    g.drawImage(photos.club, x + w - crestW, y + h - crestH, crestW, crestH)
     g.restore()
   }
 

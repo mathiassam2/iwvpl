@@ -587,12 +587,16 @@
 /* Large club crest watermark, layered behind the player portrait. */
 .totw-card__club-watermark {
   position: absolute;
-  top: 0.35rem;
-  left: 0.35rem;
-  width: 44%;
-  max-width: 6.25rem;
-  aspect-ratio: 1;
+  right: 0;
+  bottom: 0;
+  left: auto;
+  top: auto;
+  height: 100%;
+  width: auto;
+  max-width: none;
+  max-height: none;
   object-fit: contain;
+  object-position: right bottom;
   opacity: 0.26;
   pointer-events: none;
   user-select: none;
