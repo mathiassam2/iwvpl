@@ -185,7 +185,10 @@ export function SeasonRollover({
       // Counted from the committed result rather than the preview: the server
       // re-plans inside the transaction, and this is what actually happened.
       const moved = new Set(outcome.movements.flatMap((movement) => movement.clubs.map((club) => club.clubId)))
-      report('ok', `${outcome.season.name} started. ${plural(moved.size, 'club')} changed league.`)
+      report(
+        'ok',
+        `${outcome.season.name} created as a draft. ${plural(moved.size, 'club')} changed league. Publish the draft when you are ready for it to go live.`,
+      )
     } catch {
       /* already reported */
     } finally {
@@ -230,12 +233,14 @@ export function SeasonRollover({
         >
           <header>
             <div>
-              <p className="eyebrow">SEASON COMPLETE</p>
-              <h2 id="rollover-summary-title">{result.season.name} has started</h2>
+              <p className="eyebrow">SEASON COMPLETE · DRAFT CREATED</p>
+              <h2 id="rollover-summary-title">{result.season.name} is ready to review</h2>
               <p className="club-edit-subtitle">
                 {result.movements.length === 0
                   ? 'No club changed league. Every league carried over exactly as it was.'
-                  : `${plural(resultMoved.size, 'club')} changed league. The finished season keeps its own table and results.`}
+                  : `${plural(resultMoved.size, 'club')} changed league. The finished season keeps its own table and results.`}{' '}
+                This season is a draft — the public site still shows the season you just finished
+                until you publish it from Seasons &amp; Divisions.
               </p>
             </div>
             <button type="button" className="icon-btn" aria-label="Close" onClick={onClose}>

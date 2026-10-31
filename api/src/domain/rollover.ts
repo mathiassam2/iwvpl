@@ -526,7 +526,7 @@ export async function previewSeasonRollover(
 /* ------------------------------------------------------------------ write */
 
 export type RolloverResult = {
-  season: { id: number; name: string; year: number; is_current: number }
+  season: { id: number; name: string; year: number; is_current: number; is_draft: number }
   divisions: Array<{ id: number; name: string; clubCount: number }>
   movements: Array<{
     type: RolloverDirection
@@ -555,7 +555,8 @@ export async function applySeasonRollover(
   input: { name: string; year: number; settings: Record<number, RolloverSetting> },
 ): Promise<RolloverResult> {
   const [inserted] = await runner.execute(
-    'INSERT INTO seasons (name, year, is_current, created_at) VALUES (?, ?, FALSE, NOW())',
+    `INSERT INTO seasons (name, year, is_current, is_draft, created_at)
+     VALUES (?, ?, FALSE, TRUE, NOW())`,
     [input.name, input.year],
   )
   const seasonId = Number((inserted as { insertId: number }).insertId)
@@ -681,48 +682,16 @@ export async function applySeasonRollover(
     }
   }
 
-  /* Managers hear about their club's move. The ids are kept so an undo can take
-     the messages back down with the movement. */
-  const movedClubIds = [...new Set(movements.flatMap((movement) => movement.clubs.map((c) => c.clubId)))]
-  const notificationIds: number[] = []
-  if (movedClubIds.length > 0) {
-    const movementByClub = new Map<number, (typeof movements)[number]>()
-    for (const movement of movements) {
-      for (const club of movement.clubs) movementByClub.set(club.clubId, movement)
-    }
-
-    const managers = await rows<{ id: number; club_id: number }>(
-      runner,
-      `SELECT id, club_id FROM users
-        WHERE club_id IN (${placeholders(movedClubIds.length)}) AND is_active = TRUE`,
-      movedClubIds,
-    )
-
-    for (const manager of managers) {
-      const movement = movementByClub.get(Number(manager.club_id))
-      if (!movement) continue
-      const club = movement.clubs.find((entry) => entry.clubId === Number(manager.club_id))
-      if (!club) continue
-      const [notification] = await runner.execute(
-        `INSERT INTO notifications (user_id, kind, title, body, link, is_read, created_at)
-         VALUES (?, 'club_division', ?, ?, '/dashboard', FALSE, NOW())`,
-        [
-          manager.id,
-          `${club.clubName} ${movement.type === 'promotion' ? 'promoted' : 'relegated'}`,
-          `${club.clubName} has been ${
-            movement.type === 'promotion' ? 'promoted' : 'relegated'
-          } to ${movement.destinationDivisionName} for the new season.`,
-        ],
-      )
-      notificationIds.push(Number((notification as { insertId: number }).insertId))
-    }
-  }
-
+  /* Manager notifications are deliberately not written here. The season this
+     opens is a draft, and telling a manager they were promoted into something
+     the admin may still edit or throw away would be premature. Publishing the
+     draft sends them (see notifyRolloverClubs in the admin routes), and the
+     notification ids are stored on this row then so an undo can remove them. */
   await runner.execute(
     `INSERT INTO season_rollovers
        (source_season_id, season_id, movements, notification_ids, completed_at)
      VALUES (?, ?, ?, ?, NOW())`,
-    [context.season.id, seasonId, JSON.stringify(movements), JSON.stringify(notificationIds)],
+    [context.season.id, seasonId, JSON.stringify(movements), JSON.stringify([])],
   )
 
   if (context.season.featuredDivisionId !== null) {
@@ -732,11 +701,12 @@ export async function applySeasonRollover(
     }
   }
 
-  await runner.execute('UPDATE seasons SET is_current = FALSE WHERE is_current = TRUE')
-  await runner.execute('UPDATE seasons SET is_current = TRUE WHERE id = ?', [seasonId])
+  /* The finished season stays live. The rollover produced a draft, and the
+     public site keeps serving the season that was actually played until the
+     admin publishes the new one. */
 
   return {
-    season: { id: seasonId, name: input.name, year: input.year, is_current: 1 },
+    season: { id: seasonId, name: input.name, year: input.year, is_current: 0, is_draft: 1 },
     divisions: plan.divisions.map((division) => {
       const copy = cloned.get(division.id) ?? 0
       return { id: copy, name: division.name, clubCount: division.nextSize }
@@ -792,9 +762,15 @@ export async function undoSeasonRollover(
     throw httpError(404, 'That season was not started by a rollover, so there is nothing to undo.')
   }
 
-  const seasonRows = await rows<{ id: number; name: string; year: number; is_current: number }>(
+  const seasonRows = await rows<{
+    id: number
+    name: string
+    year: number
+    is_current: number
+    is_draft: number
+  }>(
     runner,
-    `SELECT id, name, year, is_current FROM seasons WHERE id IN (?, ?) FOR UPDATE`,
+    `SELECT id, name, year, is_current, is_draft FROM seasons WHERE id IN (?, ?) FOR UPDATE`,
     [seasonId, Number(rollover.source_season_id)],
   )
   const target = seasonRows.find((season) => Number(season.id) === Number(seasonId))
@@ -803,10 +779,12 @@ export async function undoSeasonRollover(
   )
   if (!target || !source) throw httpError(404, 'Season not found.')
 
-  if (Number(target.is_current) !== 1) {
+  // A rollover now produces a draft, so the season being undone is normally not
+  // current. It is still undoable: nothing outside the draft references it yet.
+  if (Number(target.is_current) !== 1 && Number(target.is_draft) !== 1) {
     throw httpError(
       409,
-      `${target.name} is no longer the current season, so the rollover has already been moved on from.`,
+      `${target.name} is an archived season, so the rollover has already been moved on from.`,
     )
   }
 
@@ -867,9 +845,18 @@ export async function undoSeasonRollover(
   await runner.execute('DELETE FROM divisions WHERE season_id = ?', [seasonId])
   await runner.execute('DELETE FROM season_rollovers WHERE season_id = ?', [seasonId])
   await runner.execute('DELETE FROM seasons WHERE id = ?', [seasonId])
-  await runner.execute('UPDATE seasons SET is_current = TRUE WHERE id = ?', [
-    Number(rollover.source_season_id),
-  ])
+  // Normally the source season was still live (the rollover only created a
+  // draft), so this is a no-op. It only matters when the rollover had already
+  // been published and there is no live season left to fall back to.
+  const [currentAfter] = await rows<{ id: number }>(
+    runner,
+    'SELECT id FROM seasons WHERE is_current = TRUE LIMIT 1',
+  )
+  if (!currentAfter) {
+    await runner.execute('UPDATE seasons SET is_current = TRUE WHERE id = ?', [
+      Number(rollover.source_season_id),
+    ])
+  }
 
   return {
     season: { id: Number(target.id), name: target.name, year: Number(target.year) },
@@ -904,14 +891,27 @@ export type RolloverRecord = {
 }
 
 /**
- * The rollover that opened the current season, if there was one.
+ * The rollover that opened a season, if there was one.
  *
  * Read rather than remembered, so the undo button survives a page reload
- * instead of vanishing the moment the admin closes the tab.
+ * instead of vanishing the moment the admin closes the tab. With no season id
+ * it reads the live season; the admin page also asks for a draft's rollover so
+ * a freshly prepared season can be reviewed (or undone) before it is published.
  */
-export async function readCurrentSeasonRollover(
+export async function readSeasonRollover(
+  seasonId: number | null = null,
   runner: Runner = poolRunner,
 ): Promise<RolloverRecord | null> {
+  let targetSeasonId = seasonId
+  if (targetSeasonId === null) {
+    const [current] = await rows<{ id: number }>(
+      runner,
+      'SELECT id FROM seasons WHERE is_current = TRUE LIMIT 1',
+    )
+    if (!current) return null
+    targetSeasonId = Number(current.id)
+  }
+
   const [row] = await rows<{
     source_id: number
     source_name: string
@@ -933,8 +933,9 @@ export async function readCurrentSeasonRollover(
        FROM season_rollovers r
        JOIN seasons source ON source.id = r.source_season_id
        JOIN seasons target ON target.id = r.season_id
-      WHERE r.season_id = (SELECT id FROM seasons WHERE is_current = TRUE LIMIT 1)
+      WHERE r.season_id = ?
       LIMIT 1`,
+    [targetSeasonId],
   )
   if (!row) return null
 

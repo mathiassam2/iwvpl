@@ -245,7 +245,7 @@ export interface RolloverPlan {
 }
 
 export interface RolloverResult {
-  season: { id: number; name: string; year: number; is_current: number }
+  season: { id: number; name: string; year: number; is_current: number; is_draft: number }
   divisions: Array<{ id: number; name: string; clubCount: number }>
   movements: Array<{
     type: RolloverDirection
@@ -530,7 +530,10 @@ export interface AdminSeason {
   name: string
   year: number
   is_current: boolean | number
+  /** True while the season is a private workspace that the public site ignores. */
+  is_draft: boolean | number
   featured_division_id: number | null
+  published_at?: string | null
 }
 
 /**
@@ -553,10 +556,10 @@ export const getDivisions = (seasonId?: number) =>
  * Read from the server rather than remembered, so the undo button survives a
  * page reload.
  */
-export const getSeasonRollover = () =>
-  request<{ rollover: RolloverRecord | null }>('/api/admin/season-movements').then(
-    (r) => r.rollover,
-  )
+export const getSeasonRollover = (seasonId?: number) =>
+  request<{ rollover: RolloverRecord | null }>(
+    `/api/admin/season-movements${seasonId == null ? '' : `?seasonId=${seasonId}`}`,
+  ).then((r) => r.rollover)
 
 /**
  * What completing the season would do, without doing it.
@@ -650,6 +653,25 @@ export const createSeason = (name: string, year: number) =>
   })
 
 /**
+ * Make a draft season live.
+ *
+ * Everything inside the draft already exists; this is the single flip that
+ * makes the public site read it. Returns the number of manager notifications
+ * sent for a season opened by a rollover (those are deferred until now).
+ */
+export const publishSeason = (id: number) =>
+  request<{ season: AdminSeason; notificationCount: number }>(
+    `/api/admin/seasons/${id}/publish`,
+    { method: 'POST' },
+  )
+
+/** Delete a season the admin created. Refused for the live season and for played seasons. */
+export const deleteSeason = (id: number) =>
+  request<{ ok: true; season: { id: number; name: string } }>(`/api/admin/seasons/${id}`, {
+    method: 'DELETE',
+  })
+
+/**
  * Pause a league or bring it back.
  *
  * A separate call from `updateDivision` on purpose: the toggle is a one-button
@@ -668,7 +690,13 @@ export const setDivisionActive = (id: number, isActive: boolean) =>
   })
 
 /** `is_active` is read-only on the create/update body; use `setDivisionActive`. */
-export type DivisionInput = Omit<Division, 'id' | 'slug' | 'season' | 'sort_order' | 'is_active'>
+export type DivisionInput = Omit<
+  Division,
+  'id' | 'slug' | 'season' | 'sort_order' | 'is_active' | 'season_id'
+> & {
+  /** The season the division is created in. Omitted means the live season. */
+  seasonId?: number
+}
 
 export const createDivision = (division: DivisionInput) =>
   request<{ division: Division }>('/api/admin/divisions', {
@@ -682,10 +710,10 @@ export const updateDivision = (id: number, division: DivisionInput) =>
     body: JSON.stringify(division),
   }).then((r) => r.division)
 
-export const updateDivisionOrder = (divisionIds: number[]) =>
+export const updateDivisionOrder = (divisionIds: number[], seasonId?: number) =>
   request<{ ok: true }>('/api/admin/divisions/order', {
     method: 'PUT',
-    body: JSON.stringify({ divisionIds }),
+    body: JSON.stringify({ divisionIds, seasonId }),
   })
 
 /**
@@ -704,12 +732,12 @@ export const updateDivisionOrder = (divisionIds: number[]) =>
  * immediately rather than waiting to play a match that cannot be scheduled
  * without a table to enter.
  */
-export const assignDivision = (slug: string, divisionId: number | null) =>
-  request<{ ok: true; divisionId: number | null; divisionName: string | null }>(
+export const assignDivision = (slug: string, divisionId: number | null, seasonId?: number) =>
+  request<{ ok: true; divisionId: number | null; divisionName: string | null; draft?: boolean }>(
     `/api/admin/clubs/${slug}/division`,
     {
       method: 'POST',
-      body: JSON.stringify({ divisionId }),
+      body: JSON.stringify({ divisionId, seasonId }),
     },
   )
 

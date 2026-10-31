@@ -29,7 +29,7 @@ import {
   loadSeasonFixtureStats,
   planSeasonRollover,
   previewSeasonRollover,
-  readCurrentSeasonRollover,
+  readSeasonRollover,
   undoSeasonRollover,
   type RolloverSetting,
 } from '../domain/rollover.js'
@@ -1933,13 +1933,65 @@ admin.post(
 
 /* ------------------------------------------------------ division management */
 
+/**
+ * A season the admin is allowed to edit structurally.
+ *
+ * Only the live season and drafts are editable. Archived seasons stay read-only
+ * so a correction to a past ladder cannot disappear into an archive nobody
+ * looks at. Drafts are the whole point of this feature: everything inside them
+ * is invisible to the public routes until the season is published.
+ */
+type EditableSeason = {
+  id: number
+  name: string
+  year: number
+  is_current: number | boolean
+  is_draft: number | boolean
+  featured_division_id: number | null
+}
+
+async function resolveEditableSeason(
+  conn: any,
+  rawSeasonId: unknown,
+  options: { lock?: boolean } = {},
+): Promise<EditableSeason | null> {
+  const lock = options.lock ? ' FOR UPDATE' : ''
+  const columns =
+    'id, name, year, is_current, is_draft, featured_division_id'
+  const requested =
+    rawSeasonId === undefined || rawSeasonId === null || rawSeasonId === ''
+      ? null
+      : Number(rawSeasonId)
+  if (requested !== null && (!Number.isSafeInteger(requested) || requested < 1)) {
+    throw Object.assign(new Error('seasonId must be a positive integer.'), { status: 400 })
+  }
+
+  const [rows] =
+    requested === null
+      ? await conn.query(
+          `SELECT ${columns} FROM seasons WHERE is_current = TRUE LIMIT 1${lock}`,
+        )
+      : await conn.query(`SELECT ${columns} FROM seasons WHERE id = ?${lock}`, [requested])
+  const season = (rows as EditableSeason[])[0]
+  if (!season) return null
+  if (!Boolean(season.is_current) && !Boolean(season.is_draft)) {
+    throw Object.assign(
+      new Error(
+        `${season.name} is an archived season. Only the live season or a draft can be edited.`,
+      ),
+      { status: 409 },
+    )
+  }
+  return season
+}
+
 admin.get(
   '/seasons',
   handler(async (_req, res) => {
     const seasons = await queryAll(
-      `SELECT id, name, year, is_current, featured_division_id
+      `SELECT id, name, year, is_current, is_draft, featured_division_id, published_at
          FROM seasons
-        ORDER BY is_current DESC, year DESC, id DESC`,
+        ORDER BY is_current DESC, is_draft DESC, year DESC, id DESC`,
     )
     res.json({ seasons })
   }),
@@ -2172,16 +2224,24 @@ admin.put(
         'SELECT id FROM seasons WHERE is_current = TRUE LIMIT 1 FOR UPDATE',
       )
       const [targetRows] = await conn.query(
-        'SELECT id, name, year, featured_division_id FROM seasons WHERE id = ? FOR UPDATE',
+        'SELECT id, name, year, is_current, is_draft, featured_division_id FROM seasons WHERE id = ? FOR UPDATE',
         [id],
       )
       const target = (targetRows as Array<{
         id: number
         name: string
         year: number
+        is_current: number
+        is_draft: number
         featured_division_id: number | null
       }>)[0]
       if (!target) return null
+      if (Boolean(target.is_draft)) {
+        throw Object.assign(
+          new Error(`${target.name} is still a draft. Publish it before making it the live season.`),
+          { status: 409 },
+        )
+      }
       const current = (currentRows as Array<{ id: number }>)[0]
       if (current?.id !== target.id) {
         await conn.execute('UPDATE seasons SET is_current = FALSE WHERE is_current = TRUE')
@@ -2219,8 +2279,11 @@ admin.post(
         throw Object.assign(new Error('A season with that name already exists.'), { status: 409 })
       }
 
+      // Always a draft. Publishing is a separate, explicit decision — creating
+      // a season is a planning action, not a live-site change.
       const [inserted] = await conn.execute(
-        'INSERT INTO seasons (name, year, is_current, created_at) VALUES (?, ?, FALSE, NOW())',
+        `INSERT INTO seasons (name, year, is_current, is_draft, created_at)
+         VALUES (?, ?, FALSE, TRUE, NOW())`,
         [name, year],
       )
       const id = (inserted as { insertId: number }).insertId
@@ -2311,15 +2374,14 @@ admin.post(
           copiedFeaturedDivisionId,
           id,
         ])
-        await conn.execute('UPDATE seasons SET is_current = FALSE WHERE is_current = TRUE')
       }
-      await conn.execute('UPDATE seasons SET is_current = TRUE WHERE id = ?', [id])
       return {
         season: {
           id,
           name,
           year,
-          is_current: 1,
+          is_current: 0,
+          is_draft: 1,
           featured_division_id: copiedFeaturedDivisionId,
         },
         divisions: copiedDivisions,
@@ -2329,6 +2391,252 @@ admin.post(
   }),
 )
 
+/**
+ * Publish a draft season.
+ *
+ * The one moment a draft becomes visible. Everything inside it — divisions,
+ * club memberships, standings rows — already exists; this only flips the flags
+ * and makes it the season every public route reads.
+ *
+ * Publishing accepts a draft that would not make a sensible competition:
+ * empty divisions, a division with one club, no active league at all. The UI
+ * warns first but the decision belongs to the admin, who may be deliberately
+ * publishing a skeleton before the transfer window closes. `featured_division`
+ * is the one thing corrected silently, because the homepage cannot render a
+ * paused or foreign league.
+ */
+admin.post(
+  '/seasons/:id/publish',
+  handler(async (req, res) => {
+    const id = Number.parseInt(req.params.id, 10)
+    if (!Number.isSafeInteger(id) || id < 1) {
+      return res.status(400).json({ error: 'Season id must be a positive integer.' })
+    }
+
+    const published = await withTransaction(async (conn) => {
+      const [seasonRows] = await conn.query(
+        `SELECT id, name, year, is_current, is_draft, featured_division_id
+           FROM seasons
+          WHERE id = ?
+          FOR UPDATE`,
+        [id],
+      )
+      const season = (seasonRows as EditableSeason[])[0]
+      if (!season) return { error: 'Season not found.' as const, status: 404 }
+      if (!Boolean(season.is_draft)) {
+        return {
+          error: Boolean(season.is_current)
+            ? `${season.name} is already the live season.`
+            : `${season.name} is an archived season. Only a draft can be published.`,
+          status: 409,
+        } as const
+      }
+
+      let featured = season.featured_division_id
+      if (featured !== null) {
+        const [divisionRows] = await conn.query(
+          'SELECT id, is_active FROM divisions WHERE id = ? AND season_id = ?',
+          [featured, id],
+        )
+        const division = (divisionRows as Array<{ id: number; is_active: number }>)[0]
+        if (!division || !Boolean(division.is_active)) featured = null
+      }
+
+      await conn.execute('UPDATE seasons SET is_current = FALSE WHERE is_current = TRUE AND id <> ?', [
+        id,
+      ])
+      await conn.execute(
+        `UPDATE seasons
+            SET is_current = TRUE, is_draft = FALSE, featured_division_id = ?, published_at = NOW()
+          WHERE id = ?`,
+        [featured, id],
+      )
+
+      // A rollover defers its manager notifications until the season is
+      // actually live: telling a manager they were promoted into a draft that
+      // may still be edited or discarded would be premature.
+      const notificationIds = await notifyRolloverClubs(conn, id)
+
+      return {
+        season: {
+          ...season,
+          is_current: 1,
+          is_draft: 0,
+          featured_division_id: featured,
+        },
+        notificationCount: notificationIds.length,
+      }
+    })
+
+    if ('error' in published) {
+      return res.status(published.status).json({ error: published.error })
+    }
+    res.json(published)
+  }),
+)
+
+/**
+ * Delete a season the admin created.
+ *
+ * Drafts are safe to remove by definition. Published seasons can be removed
+ * too, but only once they hold no fixture or result: those are the archive, and
+ * a stray click must not delete a season that was actually played. The current
+ * season is never deletable — switch the live season first, so the public site
+ * is never left pointing at a season that no longer exists.
+ */
+admin.delete(
+  '/seasons/:id',
+  handler(async (req, res) => {
+    const id = Number.parseInt(req.params.id, 10)
+    if (!Number.isSafeInteger(id) || id < 1) {
+      return res.status(400).json({ error: 'Season id must be a positive integer.' })
+    }
+
+    const result = await withTransaction(async (conn) => {
+      const [seasonRows] = await conn.query(
+        'SELECT id, name, year, is_current, is_draft FROM seasons WHERE id = ? FOR UPDATE',
+        [id],
+      )
+      const season = (seasonRows as Array<{
+        id: number
+        name: string
+        year: number
+        is_current: number
+        is_draft: number
+      }>)[0]
+      if (!season) return { error: 'Season not found.' as const, status: 404 }
+      if (Boolean(season.is_current)) {
+        return {
+          error: `${season.name} is the live season. Switch the live season to another season before deleting it.`,
+          status: 409,
+        } as const
+      }
+
+      const [rolloverSource] = await conn.query(
+        'SELECT season_id FROM season_rollovers WHERE source_season_id = ? LIMIT 1',
+        [id],
+      )
+      if ((rolloverSource as unknown[]).length > 0) {
+        return {
+          error: `${season.name} was used to open another season. Undo that rollover before deleting it.`,
+          status: 409,
+        } as const
+      }
+
+      if (!Boolean(season.is_draft)) {
+        const [usage] = await conn.query(
+          `SELECT (SELECT COUNT(*) FROM matches WHERE season_id = ?) AS fixtures,
+                  (SELECT COUNT(*) FROM standings_snapshot WHERE season_id = ? AND played > 0) AS played`,
+          [id, id],
+        )
+        const fixtures = Number((usage as Array<{ fixtures: number }>)[0]?.fixtures ?? 0)
+        const played = Number((usage as Array<{ played: number }>)[0]?.played ?? 0)
+        if (fixtures > 0 || played > 0) {
+          return {
+            error: `${season.name} has fixtures or results in it. Only empty seasons can be deleted.`,
+            status: 409,
+          } as const
+        }
+      }
+
+      await conn.execute('DELETE FROM player_season_stats WHERE season_id = ?', [id])
+      await conn.execute('DELETE FROM standings_snapshot WHERE season_id = ?', [id])
+      await conn.execute('DELETE FROM season_division_movements WHERE season_id = ?', [id])
+      await conn.execute(
+        'DELETE FROM division_clubs WHERE division_id IN (SELECT id FROM divisions WHERE season_id = ?)',
+        [id],
+      )
+      await conn.execute('DELETE FROM season_rollovers WHERE season_id = ?', [id])
+      await conn.execute('DELETE FROM divisions WHERE season_id = ?', [id])
+      await conn.execute('DELETE FROM seasons WHERE id = ?', [id])
+
+      return { ok: true as const, season: { id, name: season.name } }
+    })
+
+    if ('error' in result) return res.status(result.status).json({ error: result.error })
+    res.json(result)
+  }),
+)
+
+/**
+ * Tell the managers of moved clubs that their move is now real.
+ *
+ * Notifications are written on publish rather than during the rollover, because
+ * until then the move is still a draft. The ids are stored on the rollover row
+ * so undoing the rollover can take the messages back down with it, and a second
+ * publish attempt finds them already recorded instead of sending duplicates.
+ */
+async function notifyRolloverClubs(conn: any, seasonId: number): Promise<number[]> {
+  const [rolloverRows] = await conn.query(
+    'SELECT id, movements, notification_ids FROM season_rollovers WHERE season_id = ? FOR UPDATE',
+    [seasonId],
+  )
+  const rollover = (rolloverRows as Array<{
+    id: number
+    movements: string
+    notification_ids: string
+  }>)[0]
+  if (!rollover) return []
+
+  const existing = (JSON.parse(String(rollover.notification_ids ?? '[]')) as unknown[])
+    .map(Number)
+    .filter((id) => Number.isSafeInteger(id) && id > 0)
+  if (existing.length > 0) return existing
+
+  const movements = JSON.parse(String(rollover.movements ?? '[]')) as Array<{
+    type: 'promotion' | 'relegation'
+    destinationDivisionName: string
+    clubs: Array<{ clubId: number; clubName: string }>
+  }>
+
+  const byClub = new Map<
+    number,
+    { type: 'promotion' | 'relegation'; destination: string; clubName: string }
+  >()
+  for (const movement of movements) {
+    for (const club of movement.clubs) {
+      byClub.set(Number(club.clubId), {
+        type: movement.type,
+        destination: movement.destinationDivisionName,
+        clubName: club.clubName,
+      })
+    }
+  }
+  if (byClub.size === 0) return []
+
+  const ids = [...byClub.keys()]
+  const placeholders = ids.map(() => '?').join(', ')
+  const [managerRows] = await conn.query(
+    `SELECT id, club_id FROM users
+      WHERE club_id IN (${placeholders}) AND is_active = TRUE`,
+    ids,
+  )
+
+  const notificationIds: number[] = []
+  for (const manager of managerRows as Array<{ id: number; club_id: number }>) {
+    const movement = byClub.get(Number(manager.club_id))
+    if (!movement) continue
+    const [inserted] = await conn.execute(
+      `INSERT INTO notifications (user_id, kind, title, body, link, is_read, created_at)
+       VALUES (?, 'club_division', ?, ?, '/dashboard', FALSE, NOW())`,
+      [
+        manager.id,
+        `${movement.clubName} ${movement.type === 'promotion' ? 'promoted' : 'relegated'}`,
+        `${movement.clubName} has been ${
+          movement.type === 'promotion' ? 'promoted' : 'relegated'
+        } to ${movement.destination} for the new season.`,
+      ],
+    )
+    notificationIds.push(Number((inserted as { insertId: number }).insertId))
+  }
+
+  await conn.execute('UPDATE season_rollovers SET notification_ids = ? WHERE id = ?', [
+    JSON.stringify(notificationIds),
+    rollover.id,
+  ])
+  return notificationIds
+}
+
 admin.post(
   '/divisions',
   handler(async (req, res) => {
@@ -2336,10 +2644,7 @@ admin.post(
     const movement = parseDivisionMovement(req.body)
     const maxTeams = parseMaxTeams(req.body?.max_teams ?? req.body?.maxTeams)
     const division = await withTransaction(async (conn) => {
-      const [seasonRows] = await conn.query(
-        'SELECT id, name, year FROM seasons WHERE is_current = TRUE LIMIT 1 FOR UPDATE',
-      )
-      const season = (seasonRows as Array<{ id: number; name: string; year: number }>)[0]
+      const season = await resolveEditableSeason(conn, req.body?.seasonId, { lock: true })
       if (!season) return null
 
       const [duplicates] = await conn.query(
@@ -2413,10 +2718,7 @@ admin.put(
     }
 
     const reordered = await withTransaction(async (conn) => {
-      const [seasonRows] = await conn.query(
-        'SELECT id FROM seasons WHERE is_current = TRUE LIMIT 1 FOR UPDATE',
-      )
-      const season = (seasonRows as Array<{ id: number }>)[0]
+      const season = await resolveEditableSeason(conn, req.body?.seasonId, { lock: true })
       if (!season) return null
 
       const [divisionRows] = await conn.query(
@@ -2440,9 +2742,11 @@ admin.put(
       return true
     })
 
-    if (reordered === null) return res.status(404).json({ error: 'There is no current season.' })
+    if (reordered === null) return res.status(404).json({ error: 'Season not found.' })
     if (!reordered) {
-      return res.status(400).json({ error: 'divisionIds must include every current-season division.' })
+      return res
+        .status(400)
+        .json({ error: 'divisionIds must include every division in the season being reordered.' })
     }
     res.json({ ok: true })
   }),
@@ -2461,9 +2765,9 @@ admin.put(
     const division = await withTransaction(async (conn) => {
       const [divisionRows] = await conn.query(
           `SELECT d.id, d.name, d.slug, d.season_id, d.sort_order, d.is_active,
-                  s.name AS season, s.year
+                  s.name AS season, s.year, s.is_current, s.is_draft
            FROM divisions d
-           JOIN seasons s ON s.id = d.season_id AND s.is_current = TRUE
+           JOIN seasons s ON s.id = d.season_id
           WHERE d.id = ? FOR UPDATE`,
         [id],
       )
@@ -2476,8 +2780,18 @@ admin.put(
           is_active: number
           season: string
           year: number
+          is_current: number
+          is_draft: number
       }>)[0]
       if (!current) return null
+      if (!Boolean(current.is_current) && !Boolean(current.is_draft)) {
+        throw Object.assign(
+          new Error(
+            `${current.season} is an archived season. Only the live season or a draft can be edited.`,
+          ),
+          { status: 409 },
+        )
+      }
 
       const [duplicates] = await conn.query(
         'SELECT id FROM divisions WHERE season_id = ? AND LOWER(name) = LOWER(?) AND id <> ? LIMIT 1',
@@ -2577,9 +2891,10 @@ admin.put(
 
     const result = await withTransaction(async (conn) => {
       const [divisionRows] = await conn.query(
-        `SELECT d.id, d.name, d.season_id, d.is_active
+        `SELECT d.id, d.name, d.season_id, d.is_active, s.name AS season_name,
+                s.is_current, s.is_draft
            FROM divisions d
-           JOIN seasons s ON s.id = d.season_id AND s.is_current = TRUE
+           JOIN seasons s ON s.id = d.season_id
           WHERE d.id = ? FOR UPDATE`,
         [id],
       )
@@ -2588,8 +2903,17 @@ admin.put(
         name: string
         season_id: number
         is_active: number
+        season_name: string
+        is_current: number
+        is_draft: number
       }>)[0]
-      if (!division) return { error: 'Current-season division not found.' as const, status: 404 }
+      if (!division) return { error: 'Division not found.' as const, status: 404 }
+      if (!Boolean(division.is_current) && !Boolean(division.is_draft)) {
+        return {
+          error: `${division.season_name} is an archived season. Only the live season or a draft can be edited.`,
+          status: 409,
+        }
+      }
       if (Boolean(division.is_active) === isActive) {
         return { division, season: null, clearedFeature: false }
       }
@@ -2603,7 +2927,9 @@ admin.put(
         const activeCount = Number(
           (activeRows as Array<{ active_count: number }>)[0]?.active_count ?? 0,
         )
-        if (activeCount <= 1) {
+        // A draft may legitimately have no active league while it is being
+        // built; only the live season must keep at least one visible.
+        if (activeCount <= 1 && !Boolean(division.is_draft)) {
           return {
             error: `${division.name} is the only active league in this season. Add another league or switch this one back on before pausing it.` as const,
             status: 400,
@@ -2684,8 +3010,14 @@ async function notifyClubManagers(
  */
 admin.get(
   '/season-movements',
-  handler(async (_req, res) => {
-    const rollover = await readCurrentSeasonRollover()
+  handler(async (req, res) => {
+    const requested = req.query.seasonId
+    const seasonId =
+      requested === undefined ? null : Number.parseInt(String(requested), 10)
+    if (seasonId !== null && (!Number.isSafeInteger(seasonId) || seasonId < 1)) {
+      return res.status(400).json({ error: 'seasonId must be a positive integer.' })
+    }
+    const rollover = await readSeasonRollover(seasonId)
     res.json({ rollover })
   }),
 )
@@ -2834,10 +3166,10 @@ admin.post(
     if (!club) return res.status(404).json({ error: 'Club not found.' })
 
     if (unassign) {
-      const season = await queryOne<{ id: number; name: string }>(
-        'SELECT id, name FROM seasons WHERE is_current = TRUE LIMIT 1',
+      const season = await withTransaction((conn) =>
+        resolveEditableSeason(conn, req.body?.seasonId, { lock: true }),
       )
-      if (!season) return res.status(404).json({ error: 'No current season.' })
+      if (!season) return res.status(404).json({ error: 'No season to unassign from.' })
 
       const previous = await queryOne<{ name: string }>(
         `SELECT d.name
@@ -2868,27 +3200,43 @@ admin.post(
       })
 
       if (previous) {
-        await notifyClubManagers(
-          club.id,
-          'club_division',
-          `${club.name} left ${previous.name}`,
-          `${club.name} has been taken out of ${previous.name} and is no longer in the league table.`,
-        )
+        // A draft is invisible to managers until it is published, so a change
+        // made inside one must not notify anyone.
+        if (!Boolean(season.is_draft)) {
+          await notifyClubManagers(
+            club.id,
+            'club_division',
+            `${club.name} left ${previous.name}`,
+            `${club.name} has been taken out of ${previous.name} and is no longer in the league table.`,
+          )
+        }
       }
 
       return res.json({ ok: true, divisionId: null, divisionName: null })
     }
 
-    const division = await queryOne<SeasonDivision & { is_active: number; max_teams: number | null }>(
+    const division = await queryOne<
+      SeasonDivision & {
+        is_active: number
+        max_teams: number | null
+        is_draft: number
+        is_current: number
+      }
+    >(
       `SELECT d.id, d.name, d.season_id, d.sort_order, d.promotion_count, d.relegation_count,
-              d.is_active, d.max_teams
+              d.is_active, d.max_teams, s.is_draft, s.is_current
          FROM divisions d
-         JOIN seasons s ON s.id = d.season_id AND s.is_current = TRUE
+         JOIN seasons s ON s.id = d.season_id
         WHERE d.id = ?`,
       [raw],
     )
     if (!division) return res.status(404).json({ error: 'Division not found.' })
-    if (!division.is_active) {
+    if (!Boolean(division.is_current) && !Boolean(division.is_draft)) {
+      return res
+        .status(409)
+        .json({ error: 'That division belongs to an archived season and cannot be edited.' })
+    }
+    if (!division.is_active && !Boolean(division.is_draft)) {
       return res
         .status(400)
         .json({ error: `${division.name} is paused. Switch it back on before moving a club into it.` })
@@ -2920,17 +3268,20 @@ admin.post(
     })
     if (!moved) return res.status(404).json({ error: 'Club not found.' })
 
-    await notifyClubManagers(
-      club.id,
-      'club_division',
-      `${club.name} entered ${division.name}`,
-      `${club.name} has been entered into ${division.name} and now appears in the league table.`,
-    )
+    if (!Boolean(division.is_draft)) {
+      await notifyClubManagers(
+        club.id,
+        'club_division',
+        `${club.name} entered ${division.name}`,
+        `${club.name} has been entered into ${division.name} and now appears in the league table.`,
+      )
+    }
 
     res.json({
       ok: true,
       divisionId: division.id,
       divisionName: division.name,
+      draft: Boolean(division.is_draft),
     })
   }),
 )

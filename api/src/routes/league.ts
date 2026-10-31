@@ -75,6 +75,7 @@ league.get(
     const seasons = await queryAll(
       `SELECT id, name, year, is_current, featured_division_id
          FROM seasons
+        WHERE is_draft = FALSE
         ORDER BY is_current DESC, year DESC, id DESC`,
     )
     res.json({ seasons })
@@ -91,7 +92,7 @@ league.get(
       is_current: number
       featured_division_id: number | null
     }>(
-      'SELECT id, name, year, is_current, featured_division_id FROM seasons WHERE is_current = TRUE LIMIT 1',
+      'SELECT id, name, year, is_current, featured_division_id FROM seasons WHERE is_current = TRUE AND is_draft = FALSE LIMIT 1',
     )
     if (!season) return res.status(404).json({ error: 'No current season' })
 
@@ -143,7 +144,7 @@ league.get(
       if (!Number.isSafeInteger(seasonId) || seasonId < 1) {
         return res.status(400).json({ error: 'seasonId must be a positive integer.' })
       }
-      const season = await queryOne<{ id: number }>('SELECT id FROM seasons WHERE id = ?', [seasonId])
+      const season = await queryOne<{ id: number }>('SELECT id FROM seasons WHERE id = ? AND is_draft = FALSE', [seasonId])
       if (!season) return res.status(404).json({ error: 'Season not found.' })
     } else {
       const cur = await queryOne<{ id: number }>(
@@ -288,6 +289,7 @@ league.get(
         `SELECT d.id, d.name, d.slug
            FROM divisions d
            JOIN division_clubs dc ON dc.division_id = d.id
+           JOIN seasons s ON s.id = d.season_id AND s.is_current = TRUE AND s.is_draft = FALSE
           WHERE dc.club_id = ?
           ORDER BY d.id DESC LIMIT 1`,
         [club.id],
@@ -396,7 +398,7 @@ league.get(
         return res.status(400).json({ error: 'seasonId must be a positive integer.' })
       }
       const season = await queryOne<{ id: number }>(
-        'SELECT id FROM seasons WHERE id = ?',
+        'SELECT id FROM seasons WHERE id = ? AND is_draft = FALSE',
         [seasonId],
       )
       if (!season) return res.status(404).json({ error: 'Season not found.' })
@@ -657,7 +659,7 @@ league.get(
         return res.status(400).json({ error: 'seasonId must be a positive integer.' })
       }
       season = await queryOne(
-        'SELECT id, name, year, is_current, featured_division_id FROM seasons WHERE id = ?',
+        'SELECT id, name, year, is_current, featured_division_id FROM seasons WHERE id = ? AND is_draft = FALSE',
         [seasonId],
       )
     }
@@ -764,7 +766,7 @@ league.get(
     }
 
     const currentSeason = await queryOne<{ id: number; name: string }>(
-      'SELECT id, name FROM seasons WHERE id = ?',
+      'SELECT id, name FROM seasons WHERE id = ? AND is_draft = FALSE',
       [seasonId],
     )
 
@@ -854,6 +856,7 @@ league.get(
 league.get(
   '/divisions',
   handler(async (_req, res) => {
+    const includeInactive = _req.query.includeInactive === 'true'
     const requestedSeasonId = _req.query.seasonId
     let seasonId: number
     if (requestedSeasonId === undefined) {
@@ -867,10 +870,17 @@ league.get(
       if (!Number.isSafeInteger(seasonId) || seasonId < 1) {
         return res.status(400).json({ error: 'seasonId must be a positive integer.' })
       }
-      const season = await queryOne<{ id: number }>('SELECT id FROM seasons WHERE id = ?', [seasonId])
-      if (!season) return res.status(404).json({ error: 'Season not found.' })
+      // The admin asks with `includeInactive` (the same call it uses to list
+      // paused leagues) and needs to see a draft while building it. The public
+      // page never sets that flag, so a draft id cannot be used to read one.
+      const season = await queryOne<{ id: number; is_draft: number }>(
+        'SELECT id, is_draft FROM seasons WHERE id = ?',
+        [seasonId],
+      )
+      if (!season || (Boolean(season.is_draft) && !includeInactive)) {
+        return res.status(404).json({ error: 'Season not found.' })
+      }
     }
-    const includeInactive = _req.query.includeInactive === 'true'
     const rows = await queryAll(
       `SELECT d.id, d.name, d.slug, s.id AS season_id, s.name AS season,
               d.sort_order, d.promotion_count, d.relegation_count, d.is_active, d.max_teams
