@@ -26,6 +26,19 @@ interface RoundGroup {
   completedCount: number
 }
 
+function divisionSortRank(name: string): number {
+  const lower = name.toLowerCase().trim()
+  if (lower.includes('premier') || lower.includes('super')) return 0
+  if (/\b(one|1|i)\b/.test(lower)) return 1
+  if (/\b(two|2|ii)\b/.test(lower)) return 2
+  if (/\b(three|3|iii)\b/.test(lower)) return 3
+  if (/\b(four|4|iv)\b/.test(lower)) return 4
+  if (/\b(five|5|v)\b/.test(lower)) return 5
+  const numMatch = lower.match(/\d+/)
+  if (numMatch) return Number(numMatch[0])
+  return 999
+}
+
 function buildRoundGroups(matches: Match[]): RoundGroup[] {
   if (matches.length === 0) return []
 
@@ -37,7 +50,10 @@ function buildRoundGroups(matches: Match[]): RoundGroup[] {
       const ra = a.roundNumber ?? 9999
       const rb = b.roundNumber ?? 9999
       if (ra !== rb) return ra - rb
-      return (a.kickoff || '').localeCompare(b.kickoff || '')
+      const ka = a.kickoff || '9999-12-31'
+      const kb = b.kickoff || '9999-12-31'
+      if (ka !== kb) return ka.localeCompare(kb)
+      return (a.id ?? 0) - (b.id ?? 0)
     })
     for (const m of sorted) {
       const key = m.roundNumber != null && m.roundNumber > 0 ? `round-${m.roundNumber}` : 'unscheduled'
@@ -51,7 +67,9 @@ function buildRoundGroups(matches: Match[]): RoundGroup[] {
       if (!a.kickoff && !b.kickoff) return (a.id ?? 0) - (b.id ?? 0)
       if (!a.kickoff) return 1
       if (!b.kickoff) return -1
-      return a.kickoff.localeCompare(b.kickoff)
+      const cmp = a.kickoff.localeCompare(b.kickoff)
+      if (cmp !== 0) return cmp
+      return (a.id ?? 0) - (b.id ?? 0)
     })
     for (const m of sorted) {
       const dayKey = m.kickoff ? m.kickoff.slice(0, 10) : m.date || 'unscheduled'
@@ -85,7 +103,7 @@ function buildRoundGroups(matches: Match[]): RoundGroup[] {
     idx += 1
   }
 
-  return groups
+  return groups.sort((a, b) => a.roundNum - b.roundNum)
 }
 
 export default function MatchesPage() {
@@ -187,7 +205,7 @@ export default function MatchesPage() {
     return () => controller.abort()
   }, [seasonId, reload])
 
-  // Available divisions in this season's matches
+  // Available divisions in this season's matches (sorted in natural tier order: Division One -> Division Two -> ...)
   const divisions = useMemo(() => {
     const map = new Map<string, string>()
     for (const m of allMatches) {
@@ -196,7 +214,18 @@ export default function MatchesPage() {
         map.set(key, m.divisionName)
       }
     }
-    return Array.from(map.entries()).map(([id, name]) => ({ id, name }))
+    return Array.from(map.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => {
+        const rankDiff = divisionSortRank(a.name) - divisionSortRank(b.name)
+        if (rankDiff !== 0) return rankDiff
+        const numA = Number(a.id)
+        const numB = Number(b.id)
+        if (Number.isFinite(numA) && Number.isFinite(numB) && numA !== numB) {
+          return numA - numB
+        }
+        return a.name.localeCompare(b.name)
+      })
   }, [allMatches])
 
   // Clubs filter options
@@ -221,8 +250,8 @@ export default function MatchesPage() {
       .sort((a, b) => a.label.localeCompare(b.label))
   }, [allMatches, seasonClubs])
 
-  // Filter matches by division, club, and status
-  const filteredMatches = useMemo(() => {
+  // Matches scoped to selected division & club (before status filter)
+  const scopedMatches = useMemo(() => {
     let result = allMatches
 
     if (divisionFilter !== 'all') {
@@ -250,14 +279,19 @@ export default function MatchesPage() {
       })
     }
 
-    if (statusFilter === 'upcoming') {
-      result = result.filter((m) => m.hs === '' || m.as === '')
-    } else if (statusFilter === 'results') {
-      result = result.filter((m) => m.hs !== '' && m.as !== '')
-    }
-
     return result
-  }, [allMatches, divisionFilter, team, statusFilter])
+  }, [allMatches, divisionFilter, team])
+
+  // Filter matches by status
+  const filteredMatches = useMemo(() => {
+    if (statusFilter === 'upcoming') {
+      return scopedMatches.filter((m) => m.hs === '' || m.as === '')
+    }
+    if (statusFilter === 'results') {
+      return scopedMatches.filter((m) => m.hs !== '' && m.as !== '')
+    }
+    return scopedMatches
+  }, [scopedMatches, statusFilter])
 
   // Build Round-by-Round groups (like Step 4 of Round-Robin generator)
   const roundGroups = useMemo(() => buildRoundGroups(filteredMatches), [filteredMatches])
@@ -267,13 +301,13 @@ export default function MatchesPage() {
     return roundGroups.filter((rg) => rg.key === selectedRoundKey)
   }, [roundGroups, selectedRoundKey])
 
-  // Overall stats
+  // Scoped stats (reflects selected division & club)
   const totalCompleted = useMemo(
-    () => allMatches.filter((m) => m.hs !== '' && m.as !== '').length,
-    [allMatches],
+    () => scopedMatches.filter((m) => m.hs !== '' && m.as !== '').length,
+    [scopedMatches],
   )
-  const totalUpcoming = allMatches.length - totalCompleted
-  const totalRoundsCount = useMemo(() => buildRoundGroups(allMatches).length, [allMatches])
+  const totalUpcoming = scopedMatches.length - totalCompleted
+  const totalRoundsCount = useMemo(() => buildRoundGroups(scopedMatches).length, [scopedMatches])
 
   const handleStatusChange = (next: 'all' | 'upcoming' | 'results') => {
     setStatusFilter(next)
@@ -306,7 +340,7 @@ export default function MatchesPage() {
         <Container size="wide">
           {/* Top summary stats (matching Round-Robin Step 4 summary boxes) */}
           <div className="mb-8 grid gap-4 sm:grid-cols-4">
-            <StatTile label="Total Fixtures" value={allMatches.length} hint="This season" />
+            <StatTile label="Total Fixtures" value={scopedMatches.length} hint="In current view" />
             <StatTile label="Total Rounds" value={totalRoundsCount} hint="Match rounds" />
             <StatTile label="Upcoming Matches" value={totalUpcoming} hint="Awaiting kick-off" />
             <StatTile label="Completed Results" value={totalCompleted} hint="Scores recorded" />
@@ -362,7 +396,7 @@ export default function MatchesPage() {
             <div className="flex flex-wrap items-center gap-1.5 rounded-lg bg-[var(--surface-2)] p-1">
               {(
                 [
-                  { id: 'all', label: `All (${allMatches.length})` },
+                  { id: 'all', label: `All (${scopedMatches.length})` },
                   { id: 'upcoming', label: `Upcoming (${totalUpcoming})` },
                   { id: 'results', label: `Results (${totalCompleted})` },
                 ] as const
@@ -385,8 +419,8 @@ export default function MatchesPage() {
 
             {/* Filters & Expand/Collapse Controls */}
             <div className="flex flex-wrap items-center gap-2.5">
-              {seasons.length > 1 && (
-                <div className="w-44">
+              {seasons.length > 0 && (
+                <div className="w-full sm:w-auto sm:min-w-64">
                   <Select
                     value={seasonId != null ? String(seasonId) : ''}
                     onChange={(val) => setSeasonId(Number(val))}
@@ -399,7 +433,7 @@ export default function MatchesPage() {
               )}
 
               {roundGroups.length > 1 && (
-                <div className="w-44">
+                <div className="w-full sm:w-auto sm:min-w-48">
                   <Select
                     value={selectedRoundKey}
                     onChange={(val) => setSelectedRoundKey(val || 'all')}
@@ -414,7 +448,7 @@ export default function MatchesPage() {
                 </div>
               )}
 
-              <div className="w-48">
+              <div className="w-full sm:w-auto sm:min-w-52">
                 <Select
                   value={team}
                   onChange={(val) => setTeam(val || 'all')}

@@ -631,7 +631,7 @@ export function Select({
           open ? 'border-[var(--accent-ring)]' : 'border-[var(--border-strong)]',
         )}
       >
-        <span className={cx('truncate', !selected && 'text-[var(--text-faint)]')}>
+        <span className={cx('whitespace-nowrap', !selected && 'text-[var(--text-faint)]')}>
           {selected?.label ?? placeholder}
         </span>
         <svg
@@ -670,7 +670,7 @@ export function Select({
                  scrolled, detaching it from the trigger. */
               top: box.top,
               left: box.left,
-              width: box.width,
+              minWidth: box.width,
               maxHeight: 320,
             }}
             data-overflowing={overflowing || undefined}

@@ -189,6 +189,7 @@ function ClubFixtureCalendar({
   const [viewMonth, setViewMonth] = useState(() => new Date().getMonth())
   const [selectedYmd, setSelectedYmd] = useState<string | null>(null)
   const [listMode, setListMode] = useState<'upcoming' | 'results'>('upcoming')
+  const [fixturePage, setFixturePage] = useState(1)
 
   useEffect(() => {
     if (!clubSlug && !clubName) {
@@ -239,6 +240,16 @@ function ClubFixtureCalendar({
 
   const cleanMyClub = stripFlag(clubName || '').toLowerCase().trim()
 
+  const sortFixturesAsc = (a: Match, b: Match) => {
+    const ra = a.roundNumber ?? 9999
+    const rb = b.roundNumber ?? 9999
+    if (ra !== rb) return ra - rb
+    const ka = a.kickoff || '9999-12-31'
+    const kb = b.kickoff || '9999-12-31'
+    if (ka !== kb) return ka.localeCompare(kb)
+    return (a.id ?? 0) - (b.id ?? 0)
+  }
+
   const matchesByYmd = useMemo(() => {
     const map = new Map<string, Match[]>()
     for (const m of matches) {
@@ -248,6 +259,9 @@ function ClubFixtureCalendar({
       const list = map.get(key) ?? []
       list.push(m)
       map.set(key, list)
+    }
+    for (const [k, list] of map.entries()) {
+      map.set(k, list.slice().sort(sortFixturesAsc))
     }
     return map
   }, [matches])
@@ -314,13 +328,17 @@ function ClubFixtureCalendar({
   }, [viewYear, viewMonth, matchesByYmd])
 
   const upcomingMatches = useMemo(
-    () => matches.filter((m) => m.hs === '' || m.as === ''),
+    () => matches.filter((m) => m.hs === '' || m.as === '').slice().sort(sortFixturesAsc),
     [matches],
   )
   const completedMatches = useMemo(
-    () => matches.filter((m) => m.hs !== '' && m.as !== '').slice().reverse(),
+    () => matches.filter((m) => m.hs !== '' && m.as !== '').slice().sort(sortFixturesAsc),
     [matches],
   )
+
+  useEffect(() => {
+    setFixturePage(1)
+  }, [selectedYmd, listMode, clubSlug, clubName])
 
   const prevMonth = () => {
     setSelectedYmd(null)
@@ -374,6 +392,14 @@ function ClubFixtureCalendar({
     : listMode === 'upcoming'
       ? upcomingMatches
       : completedMatches
+
+  const FIXTURES_PER_PAGE = 4
+  const totalFixturePages = Math.max(1, Math.ceil(activeSideList.length / FIXTURES_PER_PAGE))
+  const safeFixturePage = Math.min(fixturePage, totalFixturePages)
+  const paginatedSideList = activeSideList.slice(
+    (safeFixturePage - 1) * FIXTURES_PER_PAGE,
+    safeFixturePage * FIXTURES_PER_PAGE,
+  )
 
   const getFixtureContext = (m: Match) => {
     const isHome = stripFlag(m.home).toLowerCase().trim() === cleanMyClub
@@ -627,76 +653,102 @@ function ClubFixtureCalendar({
                 </p>
               </div>
             ) : (
-              <ul className="scroll-slim max-h-80 space-y-2.5 overflow-y-auto pr-1">
-                {activeSideList.map((m, idx) => {
-                  const ctx = getFixtureContext(m)
-                  return (
-                    <li key={m.id ?? idx}>
-                      <Link
-                        to={m.id ? `/matches/${m.id}` : '/matches'}
-                        className="flex items-center justify-between gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 transition-colors hover:border-[var(--accent-ring)]"
-                      >
-                        <div className="flex min-w-0 items-center gap-3">
-                          <img
-                            src={ctx.oppLogo || CLUB_PLACEHOLDER}
-                            alt=""
-                            onError={(e) => {
-                              e.currentTarget.src = CLUB_PLACEHOLDER
-                            }}
-                            className="h-9 w-9 shrink-0 object-contain"
-                          />
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-1.5">
+              <div className="flex flex-1 flex-col justify-between gap-3">
+                <ul className="space-y-2.5">
+                  {paginatedSideList.map((m, idx) => {
+                    const ctx = getFixtureContext(m)
+                    return (
+                      <li key={m.id ?? idx}>
+                        <Link
+                          to={m.id ? `/matches/${m.id}` : '/matches'}
+                          className="flex items-center justify-between gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 transition-colors hover:border-[var(--accent-ring)]"
+                        >
+                          <div className="flex min-w-0 items-center gap-3">
+                            <img
+                              src={ctx.oppLogo || CLUB_PLACEHOLDER}
+                              alt=""
+                              onError={(e) => {
+                                e.currentTarget.src = CLUB_PLACEHOLDER
+                              }}
+                              className="h-9 w-9 shrink-0 object-contain"
+                            />
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span
+                                  className={cx(
+                                    'rounded px-1.5 py-0.5 text-[9px] font-extrabold uppercase',
+                                    ctx.isHome
+                                      ? 'bg-emerald-500/20 text-emerald-300'
+                                      : 'bg-sky-500/20 text-sky-300',
+                                  )}
+                                >
+                                  {ctx.isHome ? 'HOME' : 'AWAY'}
+                                </span>
+                                {m.roundNumber && (
+                                  <span className="text-[10px] font-bold text-[var(--text-faint)]">
+                                    Round {m.roundNumber}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="mt-0.5 truncate text-xs font-extrabold text-[var(--text-strong)]">
+                                vs {ctx.opponent}
+                              </p>
+                              <p className="text-[11px] text-[var(--text-muted)]">
+                                {m.date || 'Date TBD'} · {m.time || 'Kick-off TBD'}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="shrink-0 text-right">
+                            {ctx.played ? (
                               <span
                                 className={cx(
-                                  'rounded px-1.5 py-0.5 text-[9px] font-extrabold uppercase',
-                                  ctx.isHome
+                                  'numeric inline-block rounded-lg px-2.5 py-1 text-xs font-extrabold',
+                                  ctx.outcome === 'W'
                                     ? 'bg-emerald-500/20 text-emerald-300'
-                                    : 'bg-sky-500/20 text-sky-300',
+                                    : ctx.outcome === 'L'
+                                      ? 'bg-rose-500/20 text-rose-300'
+                                      : 'bg-amber-500/20 text-amber-300',
                                 )}
                               >
-                                {ctx.isHome ? 'HOME' : 'AWAY'}
+                                {ctx.outcome} · {m.hs}:{m.as}
                               </span>
-                              {m.roundNumber && (
-                                <span className="text-[10px] font-bold text-[var(--text-faint)]">
-                                  Round {m.roundNumber}
-                                </span>
-                              )}
-                            </div>
-                            <p className="mt-0.5 truncate text-xs font-extrabold text-[var(--text-strong)]">
-                              vs {ctx.opponent}
-                            </p>
-                            <p className="text-[11px] text-[var(--text-muted)]">
-                              {m.date || 'Date TBD'} · {m.time || 'Kick-off TBD'}
-                            </p>
+                            ) : (
+                              <span className="inline-block rounded-lg bg-[var(--accent-tint)] px-2.5 py-1 text-[11px] font-extrabold text-[var(--accent-text)]">
+                                Match →
+                              </span>
+                            )}
                           </div>
-                        </div>
+                        </Link>
+                      </li>
+                    )
+                  })}
+                </ul>
 
-                        <div className="shrink-0 text-right">
-                          {ctx.played ? (
-                            <span
-                              className={cx(
-                                'numeric inline-block rounded-lg px-2.5 py-1 text-xs font-extrabold',
-                                ctx.outcome === 'W'
-                                  ? 'bg-emerald-500/20 text-emerald-300'
-                                  : ctx.outcome === 'L'
-                                    ? 'bg-rose-500/20 text-rose-300'
-                                    : 'bg-amber-500/20 text-amber-300',
-                              )}
-                            >
-                              {ctx.outcome} · {m.hs}:{m.as}
-                            </span>
-                          ) : (
-                            <span className="inline-block rounded-lg bg-[var(--accent-tint)] px-2.5 py-1 text-[11px] font-extrabold text-[var(--accent-text)]">
-                              Match →
-                            </span>
-                          )}
-                        </div>
-                      </Link>
-                    </li>
-                  )
-                })}
-              </ul>
+                {totalFixturePages > 1 && (
+                  <div className="flex items-center justify-between border-t border-[var(--border)] pt-3">
+                    <button
+                      type="button"
+                      disabled={safeFixturePage <= 1}
+                      onClick={() => setFixturePage((p) => Math.max(1, p - 1))}
+                      className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1 text-[11px] font-bold text-[var(--text-strong)] transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      ‹ Prev
+                    </button>
+                    <span className="numeric text-[11px] font-bold text-[var(--text-muted)]">
+                      Page {safeFixturePage} of {totalFixturePages}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={safeFixturePage >= totalFixturePages}
+                      onClick={() => setFixturePage((p) => Math.min(totalFixturePages, p + 1))}
+                      className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1 text-[11px] font-bold text-[var(--text-strong)] transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Next ›
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>

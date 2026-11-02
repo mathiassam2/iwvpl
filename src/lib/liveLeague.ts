@@ -91,14 +91,30 @@ const apiBase = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '')
 
 export const liveLeagueEnabled = Boolean(apiBase) || import.meta.env.BASE_URL === '/'
 
+function divisionTierRank(name: string): number {
+  const lower = name.toLowerCase().trim()
+  if (lower.includes('premier') || lower.includes('super')) return 0
+  if (/\b(one|1|i)\b/.test(lower)) return 1
+  if (/\b(two|2|ii)\b/.test(lower)) return 2
+  if (/\b(three|3|iii)\b/.test(lower)) return 3
+  if (/\b(four|4|iv)\b/.test(lower)) return 4
+  if (/\b(five|5|v)\b/.test(lower)) return 5
+  const numMatch = lower.match(/\d+/)
+  if (numMatch) return Number(numMatch[0])
+  return 999
+}
+
 export function orderedStandingDivisions(
   divisions: Record<string, StandingDivision>,
 ): Array<[string, StandingDivision]> {
-  return Object.entries(divisions).sort(
-    ([, a], [, b]) =>
-      (a.sortOrder ?? Number.MAX_SAFE_INTEGER) -
-      (b.sortOrder ?? Number.MAX_SAFE_INTEGER),
-  )
+  return Object.entries(divisions).sort(([nameA, a], [nameB, b]) => {
+    const orderA = a.sortOrder ?? Number.MAX_SAFE_INTEGER
+    const orderB = b.sortOrder ?? Number.MAX_SAFE_INTEGER
+    if (orderA !== orderB) return orderA - orderB
+    const rankDiff = divisionTierRank(nameA) - divisionTierRank(nameB)
+    if (rankDiff !== 0) return rankDiff
+    return nameA.localeCompare(nameB)
+  })
 }
 
 export function featuredStandingDivision(

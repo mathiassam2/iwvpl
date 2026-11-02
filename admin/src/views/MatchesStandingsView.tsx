@@ -315,11 +315,29 @@ export function MatchesStandingsView({
     }
   }, [subView, loadStandingsTable])
 
-  // Compute division match counts & rounds
-  const activeDivisions = useMemo(
-    () => divisions.filter((d) => Boolean(d.is_active)),
-    [divisions],
-  )
+  // Compute division match counts & rounds (sorted by tier rank / sort_order)
+  const activeDivisions = useMemo(() => {
+    const rank = (name: string) => {
+      const lower = name.toLowerCase().trim()
+      if (lower.includes('premier') || lower.includes('super')) return 0
+      if (/\b(one|1|i)\b/.test(lower)) return 1
+      if (/\b(two|2|ii)\b/.test(lower)) return 2
+      if (/\b(three|3|iii)\b/.test(lower)) return 3
+      if (/\b(four|4|iv)\b/.test(lower)) return 4
+      if (/\b(five|5|v)\b/.test(lower)) return 5
+      return 999
+    }
+    return divisions
+      .filter((d) => Boolean(d.is_active))
+      .slice()
+      .sort((a, b) => {
+        const rankDiff = rank(a.name) - rank(b.name)
+        if (rankDiff !== 0) return rankDiff
+        const orderDiff = (a.sort_order ?? 999) - (b.sort_order ?? 999)
+        if (orderDiff !== 0) return orderDiff
+        return a.id - b.id
+      })
+  }, [divisions])
 
   const divisionMatchesMap = useMemo(() => {
     const map = new Map<number, Match[]>()

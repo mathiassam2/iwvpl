@@ -322,14 +322,14 @@ function resolveTeamSummary(
   const aTackles = stats?.tackles?.[1] ?? (aTackleAtt > 0 ? aTackleAtt : aTacklesWon)
 
   const hDribRate =
-    stats?.dribbleSuccessRate?.[0] ??
+    stats?.dribbleSuccess?.[0] ??
     avgWeightedOrSimple(
       hp,
       (p) => p.dribbleSuccessRate,
       (p) => p.dribbles,
     )
   const aDribRate =
-    stats?.dribbleSuccessRate?.[1] ??
+    stats?.dribbleSuccess?.[1] ??
     avgWeightedOrSimple(
       ap,
       (p) => p.dribbleSuccessRate,
@@ -396,7 +396,7 @@ function resolveTeamSummary(
     offsides: stats?.offsides ?? [sum(hp, (p) => p.offsides), sum(ap, (p) => p.offsides)],
     corners: stats?.corners ?? null,
     freeKicks: stats?.freeKicks ?? null,
-    penaltyKicks: stats?.penaltyKicks ?? null,
+    penaltyKicks: stats?.penalties ?? null,
     yellowCards: stats?.yellowCards ?? [sum(hp, (p) => p.yellowCards), sum(ap, (p) => p.yellowCards)],
     redCards: stats?.redCards ?? [sum(hp, (p) => p.redCards), sum(ap, (p) => p.redCards)],
   }
