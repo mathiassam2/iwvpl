@@ -340,9 +340,27 @@ export function EaMatchResultModal({
 
           {/* EA Candidates Selector */}
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, gap: 8 }}>
               <strong>Available EA Pro Clubs Matches</strong>
               {loading && <span style={{ fontSize: '0.82rem', color: 'var(--adm-muted)' }}>Searching EA servers…</span>}
+            </div>
+
+            <div
+              style={{
+                marginBottom: 10,
+                padding: '9px 12px',
+                borderRadius: 6,
+                background: 'rgba(56, 189, 248, 0.06)',
+                border: '1px solid rgba(56, 189, 248, 0.22)',
+                fontSize: '0.78rem',
+                color: '#cbd5e1',
+                lineHeight: 1.45,
+              }}
+            >
+              <strong style={{ color: '#38bdf8' }}>ℹ️ Why is a Friendly Match missing?</strong> EA Sports servers only log{' '}
+              <strong>Friendly Match (Public Search)</strong> games where both captains advance to the post-match summary screen.{' '}
+              <strong>Private Club Invites</strong> (inviting by club name) are not logged by EA's public API — use{' '}
+              <strong>Manual Stats</strong> if a fixture was played via private invite.
             </div>
 
             {loading ? (

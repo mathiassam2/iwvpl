@@ -759,7 +759,7 @@ function ClubFixtureCalendar({
 
 /* ================================================================ manager */
 
-function ManagerPanel({ transferWindowOpen }: { transferWindowOpen: boolean }) {
+function ManagerPanel({ transferWindowOpen, maxSquadSize = 23 }: { transferWindowOpen: boolean; maxSquadSize?: number }) {
   const { user, refresh } = useAuth()
   const [notice, setNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
@@ -2116,19 +2116,23 @@ function ManagerPanel({ transferWindowOpen }: { transferWindowOpen: boolean }) {
       {/* ---- squad ---- */}
       <section className={card}>
         <PanelHead
-          label="Squad"
+          label={`Squad (${squadList.length} / ${maxSquadSize} Players)`}
           title={myClub?.name ?? 'Your squad'}
           action={
             <Button
               size="sm"
-              disabled={!transferWindowOpen}
+              disabled={!transferWindowOpen || squadList.length >= maxSquadSize}
               onClick={() => setShowSignModal(true)}
               className="gap-1.5 font-bold shadow-sm"
             >
               <svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden>
                 <path d="M10 4v12M4 10h12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
               </svg>
-              {transferWindowOpen ? 'Sign a Player' : '🔒 Window Closed'}
+              {!transferWindowOpen
+                ? '🔒 Window Closed'
+                : squadList.length >= maxSquadSize
+                  ? `Squad Full (${squadList.length}/${maxSquadSize})`
+                  : 'Sign a Player'}
             </Button>
           }
         />
@@ -2875,13 +2879,18 @@ export default function DashboardPage() {
   const sent = useRef(false)
   const [showSettingsModal, setShowSettingsModal] = useState(false)
   const [transferWindowOpen, setTransferWindowOpen] = useState(true)
+  const [maxSquadSize, setMaxSquadSize] = useState(23)
 
   useEffect(() => {
     let active = true
     getTransferWindowStatus()
       .then((res) => {
-        if (active && typeof res.open === 'boolean') {
+        if (!active) return
+        if (typeof res.open === 'boolean') {
           setTransferWindowOpen(res.open)
+        }
+        if (typeof res.maxSquadSize === 'number' && res.maxSquadSize >= 5) {
+          setMaxSquadSize(res.maxSquadSize)
         }
       })
       .catch(() => {})
@@ -2955,7 +2964,7 @@ export default function DashboardPage() {
         {isPlayer ? (
           <PlayerPanel transferWindowOpen={transferWindowOpen} />
         ) : (
-          <ManagerPanel transferWindowOpen={transferWindowOpen} />
+          <ManagerPanel transferWindowOpen={transferWindowOpen} maxSquadSize={maxSquadSize} />
         )}
         <OrdersSection />
       </Container>

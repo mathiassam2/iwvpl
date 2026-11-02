@@ -186,6 +186,8 @@ export function UsersPlayersView({
   const [busy, setBusy] = useState(false)
   const [transferWindowOpen, setTransferWindowOpen] = useState(true)
   const [togglingWindow, setTogglingWindow] = useState(false)
+  const [maxSquadSizeInput, setMaxSquadSizeInput] = useState('23')
+  const [savingMaxSquad, setSavingMaxSquad] = useState(false)
 
   const loadAll = useCallback(async () => {
     if (!hasLoadedRef.current) setLoading(true)
@@ -194,12 +196,13 @@ export function UsersPlayersView({
         guard(getAdminUsers, 'Could not load registered accounts'),
         guard(getAdminPlayers, 'Could not load league players'),
         guard(() => getAdminClubs(), 'Could not load clubs'),
-        getTransferWindowSettings().catch(() => ({ open: true })),
+        getTransferWindowSettings().catch(() => ({ open: true, maxSquadSize: 23 })),
       ])
       setUsers(usersList)
       setPlayers(playersList)
       setClubs(clubsList)
       setTransferWindowOpen(Boolean(tw.open))
+      setMaxSquadSizeInput(String(tw.maxSquadSize ?? 23))
       hasLoadedRef.current = true
     } catch {
       /* reported */
@@ -227,6 +230,28 @@ export function UsersPlayersView({
       /* reported */
     } finally {
       setTogglingWindow(false)
+    }
+  }
+
+  const handleSaveMaxSquadSize = async () => {
+    const parsed = Math.floor(Number(maxSquadSizeInput))
+    if (!Number.isFinite(parsed) || parsed < 5 || parsed > 99) {
+      report('error', 'Max squad size must be between 5 and 99 players.')
+      return
+    }
+    setSavingMaxSquad(true)
+    try {
+      const res = await guard(
+        () => updateTransferWindowSettings(undefined, parsed),
+        'Could not update max squad size',
+      )
+      const saved = res.settings.maxSquadSize ?? parsed
+      setMaxSquadSizeInput(String(saved))
+      report('ok', `Maximum squad size updated to ${saved} players per club.`)
+    } catch {
+      /* reported */
+    } finally {
+      setSavingMaxSquad(false)
     }
   }
 
@@ -841,18 +866,66 @@ export function UsersPlayersView({
           </div>
         </div>
 
-        <button
-          type="button"
-          className={`adm-btn adm-btn-sm ${transferWindowOpen ? 'adm-btn-danger' : 'adm-btn-primary'}`}
-          disabled={togglingWindow}
-          onClick={() => void handleToggleTransferWindow()}
-        >
-          {togglingWindow
-            ? 'Updating…'
-            : transferWindowOpen
-            ? '🔒 Close Transfer Window'
-            : '🔓 Open Transfer Window'}
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '6px 10px',
+              borderRadius: 8,
+              border: '1px solid var(--adm-border)',
+              background: 'rgba(0,0,0,0.28)',
+            }}
+          >
+            <label
+              htmlFor="max-squad-size-input"
+              style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--adm-muted)', whiteSpace: 'nowrap' }}
+            >
+              Max Squad Size:
+            </label>
+            <input
+              id="max-squad-size-input"
+              type="number"
+              min={5}
+              max={99}
+              value={maxSquadSizeInput}
+              onChange={(e) => setMaxSquadSizeInput(e.target.value)}
+              style={{
+                width: 64,
+                padding: '4px 8px',
+                borderRadius: 6,
+                border: '1px solid var(--adm-border)',
+                background: 'var(--adm-bg)',
+                color: '#fff',
+                fontWeight: 700,
+                textAlign: 'center',
+                fontSize: '0.85rem',
+              }}
+            />
+            <button
+              type="button"
+              className="adm-btn adm-btn-sm adm-btn-secondary"
+              disabled={savingMaxSquad}
+              onClick={() => void handleSaveMaxSquadSize()}
+            >
+              {savingMaxSquad ? 'Saving…' : 'Save Limit'}
+            </button>
+          </div>
+
+          <button
+            type="button"
+            className={`adm-btn adm-btn-sm ${transferWindowOpen ? 'adm-btn-danger' : 'adm-btn-primary'}`}
+            disabled={togglingWindow}
+            onClick={() => void handleToggleTransferWindow()}
+          >
+            {togglingWindow
+              ? 'Updating…'
+              : transferWindowOpen
+              ? '🔒 Close Transfer Window'
+              : '🔓 Open Transfer Window'}
+          </button>
+        </div>
       </div>
 
       {/* Subnav & Pill Tabs */}

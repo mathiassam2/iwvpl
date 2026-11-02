@@ -5002,8 +5002,16 @@ admin.put(
   '/settings/transfer-window',
   handler(async (req, res) => {
     try {
-      const open = Boolean(req.body?.open)
-      const updated = await updateTransferWindowSettings(open)
+      const open = req.body?.open !== undefined ? Boolean(req.body.open) : undefined
+      let maxSquadSize: number | undefined = undefined
+      if (req.body?.maxSquadSize !== undefined) {
+        const parsed = Number.parseInt(String(req.body.maxSquadSize), 10)
+        if (!Number.isInteger(parsed) || parsed < 5 || parsed > 99) {
+          return res.status(400).json({ error: 'Max squad size must be a whole number between 5 and 99.' })
+        }
+        maxSquadSize = parsed
+      }
+      const updated = await updateTransferWindowSettings(open, maxSquadSize)
       res.json({ ok: true, settings: updated })
     } catch (err) {
       console.error('Failed to update transfer window settings:', err)

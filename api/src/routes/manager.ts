@@ -13,7 +13,7 @@ import { execute, queryAll, queryOne, withTransaction } from '../db.js'
 import { requireAuth, requireManager } from '../middleware/auth.js'
 import { clubSlug, gamertagKey } from '../domain/slug.js'
 import { notify } from '../domain/auth.js'
-import { getTransferWindowSettings } from '../domain/settings.js'
+import { getTransferWindowSettings, requireClubSquadCapacity } from '../domain/settings.js'
 
 export const manager = Router()
 
@@ -291,6 +291,7 @@ manager.post(
     if (player.club_id === club.id) {
       throw Object.assign(new Error('That player already plays for your club.'), { status: 400 })
     }
+    await requireClubSquadCapacity(club.id, player.id, club.name)
 
     const requestId = await withTransaction(async (conn) => {
       const [open] = await conn.query(
@@ -454,6 +455,7 @@ manager.post(
 
     if (decision === 'accept') {
       await requireOpenTransferWindow()
+      await requireClubSquadCapacity(club.id, player.id, club.name)
       await withTransaction(async (conn) => {
         // Mark request accepted
         const [upd] = await conn.execute(
@@ -954,6 +956,7 @@ manager.post(
     }
 
     if (playerId > 0) {
+      await requireClubSquadCapacity(club.id, playerId, club.name)
       await execute(
         `UPDATE players
             SET gamertag = ?,
@@ -968,6 +971,7 @@ manager.post(
         [gamertag, key, slug, req.user!.id, club.id, shirtNumber, playerId],
       )
     } else {
+      await requireClubSquadCapacity(club.id, undefined, club.name)
       await execute(
         `INSERT INTO players
            (gamertag, gamertag_key, slug, shirt_number, club_id, is_free_agent, user_id, created_at, updated_at)

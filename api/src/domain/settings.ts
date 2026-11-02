@@ -2,7 +2,7 @@
  * League system settings (e.g. manager passcode, registration controls).
  */
 
-import { execute, queryAll } from '../db.js'
+import { execute, queryAll, queryOne } from '../db.js'
 
 export interface ManagerPasscodeSettings {
   enabled: boolean
@@ -79,34 +79,89 @@ export async function updateManagerPasscodeSettings(
 
 export interface TransferWindowSettings {
   open: boolean
+  maxSquadSize: number
 }
+
+const DEFAULT_MAX_SQUAD_SIZE = 23
 
 export async function getTransferWindowSettings(): Promise<TransferWindowSettings> {
   try {
     await ensureSettingsTable()
     const rows = await queryAll<{ setting_key: string; setting_value: string }>(
       `SELECT setting_key, setting_value FROM system_settings
-        WHERE setting_key = 'transfer_window_open'`,
+        WHERE setting_key IN ('transfer_window_open', 'max_squad_size')`,
     )
     if (!rows || rows.length === 0) {
-      return { open: true }
+      return { open: true, maxSquadSize: DEFAULT_MAX_SQUAD_SIZE }
     }
-    const raw = rows[0].setting_value
-    return { open: raw !== 'false' && raw !== '0' }
+    const map = new Map(rows.map((r) => [r.setting_key, r.setting_value]))
+    const rawOpen = map.get('transfer_window_open')
+    const rawMax = map.get('max_squad_size')
+    const parsedMax = rawMax !== undefined ? Number.parseInt(rawMax, 10) : DEFAULT_MAX_SQUAD_SIZE
+    const maxSquadSize =
+      Number.isInteger(parsedMax) && parsedMax >= 5 && parsedMax <= 99
+        ? parsedMax
+        : DEFAULT_MAX_SQUAD_SIZE
+    return {
+      open: rawOpen !== undefined ? rawOpen !== 'false' && rawOpen !== '0' : true,
+      maxSquadSize,
+    }
   } catch {
-    return { open: true }
+    return { open: true, maxSquadSize: DEFAULT_MAX_SQUAD_SIZE }
   }
 }
 
-export async function updateTransferWindowSettings(open: boolean): Promise<TransferWindowSettings> {
+export async function updateTransferWindowSettings(
+  open?: boolean,
+  maxSquadSize?: number,
+): Promise<TransferWindowSettings> {
   await ensureSettingsTable()
-  const val = open ? 'true' : 'false'
+  const current = await getTransferWindowSettings()
+  const nextOpen = open !== undefined ? Boolean(open) : current.open
+  const nextMax =
+    maxSquadSize !== undefined && Number.isInteger(maxSquadSize) && maxSquadSize >= 5 && maxSquadSize <= 99
+      ? maxSquadSize
+      : current.maxSquadSize
+
+  const val = nextOpen ? 'true' : 'false'
   await execute(
     `INSERT INTO system_settings (setting_key, setting_value, updated_at)
      VALUES ('transfer_window_open', ?, NOW())
      ON DUPLICATE KEY UPDATE setting_value = ?, updated_at = NOW()`,
     [val, val],
   )
-  return { open }
+
+  const maxStr = String(nextMax)
+  await execute(
+    `INSERT INTO system_settings (setting_key, setting_value, updated_at)
+     VALUES ('max_squad_size', ?, NOW())
+     ON DUPLICATE KEY UPDATE setting_value = ?, updated_at = NOW()`,
+    [maxStr, maxStr],
+  )
+
+  return { open: nextOpen, maxSquadSize: nextMax }
+}
+
+export async function requireClubSquadCapacity(
+  clubId: number,
+  excludePlayerId?: number,
+  clubLabel = 'This club',
+): Promise<void> {
+  const { maxSquadSize } = await getTransferWindowSettings()
+  const row = await queryOne<{ cnt: number }>(
+    excludePlayerId
+      ? 'SELECT COUNT(*) AS cnt FROM players WHERE club_id = ? AND id <> ?'
+      : 'SELECT COUNT(*) AS cnt FROM players WHERE club_id = ?',
+    excludePlayerId ? [clubId, excludePlayerId] : [clubId],
+  )
+  const currentCount = Number(row?.cnt ?? 0)
+  if (currentCount >= maxSquadSize) {
+    throw Object.assign(
+      new Error(
+        `${clubLabel} has reached the maximum squad limit of ${maxSquadSize} players (${currentCount}/${maxSquadSize}).`,
+      ),
+      { status: 400 },
+    )
+  }
 }
 

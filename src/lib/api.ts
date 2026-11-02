@@ -460,4 +460,4 @@ export const getTotw = (weekId?: number | null) =>
 /* --------------------------------------------------------- transfer window */
 
 export const getTransferWindowStatus = () =>
-  request<{ open: boolean }>('/api/transfer-window')
+  request<{ open: boolean; maxSquadSize?: number }>('/api/transfer-window')

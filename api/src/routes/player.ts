@@ -17,7 +17,7 @@ import { requireAuth } from '../middleware/auth.js'
 import { notify } from '../domain/auth.js'
 import { clubSlug, gamertagKey } from '../domain/slug.js'
 import { execute } from '../db.js'
-import { getTransferWindowSettings } from '../domain/settings.js'
+import { getTransferWindowSettings, requireClubSquadCapacity } from '../domain/settings.js'
 
 export const player = Router()
 
@@ -433,6 +433,7 @@ player.post(
     if (me.club_id === clubId) {
       throw Object.assign(new Error('You are already a member of this club.'), { status: 400 })
     }
+    await requireClubSquadCapacity(clubId, me.id, targetClub.name)
 
     // Check if player already has an open pending join request to this club
     const existing = await queryOne<{ id: number }>(
@@ -580,6 +581,7 @@ player.post(
 
     if (accepting) {
       await requireOpenTransferWindow()
+      await requireClubSquadCapacity(row.to_club_id, me.id, 'That club')
       await withTransaction(async (conn) => {
         const [claimed] = await conn.execute(
           `UPDATE transfer_requests SET status = 'accepted', responded_at = NOW()

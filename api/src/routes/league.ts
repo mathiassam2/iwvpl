@@ -19,7 +19,7 @@ league.get(
   handler(async (_req, res) => {
     const s = await getTransferWindowSettings()
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
-    res.json({ open: s.open })
+    res.json({ open: s.open, maxSquadSize: s.maxSquadSize })
   }),
 )
 

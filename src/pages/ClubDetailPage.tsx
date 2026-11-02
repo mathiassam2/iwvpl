@@ -58,13 +58,18 @@ export default function ClubDetailPage() {
   const [myJoinRequests, setMyJoinRequests] = useState<JoinRequest[]>([])
   const [joinBusy, setJoinBusy] = useState(false)
   const [transferWindowOpen, setTransferWindowOpen] = useState(true)
+  const [maxSquadSize, setMaxSquadSize] = useState(23)
 
   useEffect(() => {
     let active = true
     getTransferWindowStatus()
       .then((res) => {
-        if (active && typeof res.open === 'boolean') {
+        if (!active) return
+        if (typeof res.open === 'boolean') {
           setTransferWindowOpen(res.open)
+        }
+        if (typeof res.maxSquadSize === 'number' && res.maxSquadSize >= 5) {
+          setMaxSquadSize(res.maxSquadSize)
         }
       })
       .catch(() => {})
@@ -771,14 +776,18 @@ export default function ClubDetailPage() {
                 user ? (
                   <Button
                     size="md"
-                    disabled={!transferWindowOpen}
+                    disabled={!transferWindowOpen || (liveClub?.roster?.length ?? 0) >= maxSquadSize}
                     onClick={() => setShowJoinModal(true)}
                     className="gap-1.5 font-bold shadow-md"
                   >
                     <svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden>
                       <path d="M10 4v12M4 10h12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
                     </svg>
-                    {transferWindowOpen ? 'Request to Join Club' : '🔒 Window Closed'}
+                    {!transferWindowOpen
+                      ? '🔒 Window Closed'
+                      : (liveClub?.roster?.length ?? 0) >= maxSquadSize
+                        ? `Squad Full (${liveClub?.roster?.length ?? maxSquadSize}/${maxSquadSize})`
+                        : 'Request to Join Club'}
                   </Button>
                 ) : (
                   <ButtonLink to="/login" variant="outline" size="md">

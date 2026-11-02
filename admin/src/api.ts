@@ -1671,17 +1671,21 @@ export const updateManagerSecuritySettings = (settings: Partial<ManagerSecurityS
 
 export interface TransferWindowSettings {
   open: boolean
+  maxSquadSize?: number
 }
 
 export const getTransferWindowSettings = () =>
   request<TransferWindowSettings>('/api/admin/settings/transfer-window')
 
-export const updateTransferWindowSettings = (open: boolean) =>
+export const updateTransferWindowSettings = (
+  open?: boolean,
+  maxSquadSize?: number,
+) =>
   request<{ ok: true; settings: TransferWindowSettings }>(
     '/api/admin/settings/transfer-window',
     {
       method: 'PUT',
-      body: JSON.stringify({ open }),
+      body: JSON.stringify({ open, maxSquadSize }),
     },
   )
 
