@@ -22,14 +22,14 @@ function CloseIcon() {
  * listing the entries, reachable from the header at any width.
  */
 export function CartPanel() {
-  const { detailed, count, total, canTotal, panelOpen, closePanel, setQty, remove, clear } = useCart()
+  const { detailed, count, total, canTotal, hasOutOfStock, panelOpen, closePanel, setQty, remove, clear } = useCart()
   const { user } = useAuth()
   const closeRef = useRef<HTMLButtonElement>(null)
   const [panelBusy, setPanelBusy] = useState(false)
   const [panelError, setPanelError] = useState<string | null>(null)
 
   const handlePanelCheckout = async () => {
-    if (detailed.length === 0) return
+    if (detailed.length === 0 || hasOutOfStock) return
     setPanelBusy(true)
     setPanelError(null)
     try {
@@ -39,6 +39,7 @@ export function CartPanel() {
       }
 
       const items = detailed.map(({ product, qty }) => ({
+        slug: product.slug,
         name: product.name,
         amount: parsePrice(product.price),
         quantity: qty,
@@ -141,6 +142,11 @@ export function CartPanel() {
                       <p className="mt-1 text-sm font-semibold leading-snug text-[var(--text-strong)]">
                         {product.name}
                       </p>
+                      {product.outOfStock && (
+                        <span className="mt-1 inline-block rounded bg-rose-500/20 px-1.5 py-0.5 text-[10px] font-extrabold uppercase text-rose-300">
+                          Out of Stock · Payment Closed
+                        </span>
+                      )}
                       <p className="mt-1 text-sm font-semibold text-[var(--text-muted)]">
                         {product.price}
                       </p>
@@ -192,16 +198,25 @@ export function CartPanel() {
               </span>
             </div>
           )}
+          {hasOutOfStock && (
+            <p className="mb-2 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-300">
+              One or more items in your cart are currently Out of Stock. Remove them to proceed.
+            </p>
+          )}
           {panelError && (
             <p className="mb-2 text-xs text-red-400 font-medium">{panelError}</p>
           )}
           <div className="flex flex-col gap-2">
             <Button
               className="w-full"
-              disabled={panelBusy || detailed.length === 0}
+              disabled={panelBusy || detailed.length === 0 || hasOutOfStock}
               onClick={handlePanelCheckout}
             >
-              {panelBusy ? 'Opening Stripe…' : '💳 Pay with Stripe'}
+              {hasOutOfStock
+                ? 'Out of Stock — Payment Closed'
+                : panelBusy
+                  ? 'Opening Stripe…'
+                  : '💳 Pay with Stripe'}
             </Button>
             <ButtonLink to="/shop" onClick={closePanel} variant="outline" className="w-full">
               View shop
@@ -223,7 +238,7 @@ export function CartPanel() {
 
 /** Full-page cart, mirroring the WooCommerce checkout layout. */
 export function CartView() {
-  const { detailed, count, total, canTotal, setQty, remove, clear, add, has } = useCart()
+  const { detailed, count, total, canTotal, hasOutOfStock, setQty, remove, clear, add, has } = useCart()
   const { user } = useAuth()
   const navigate = useNavigate()
 
@@ -238,7 +253,7 @@ export function CartView() {
   const [error, setError] = useState<string | null>(null)
 
   const handleCheckout = async () => {
-    if (detailed.length === 0) return
+    if (detailed.length === 0 || hasOutOfStock) return
     setBusy(true)
     setError(null)
     try {
@@ -248,6 +263,7 @@ export function CartView() {
       }
 
       const items = detailed.map(({ product, qty }) => ({
+        slug: product.slug,
         name: product.name,
         amount: parsePrice(product.price),
         quantity: qty,
@@ -314,6 +330,11 @@ export function CartView() {
                     <h2 className="mt-1.5 text-lg font-bold text-[var(--text-strong)]">
                       {product.name}
                     </h2>
+                    {product.outOfStock && (
+                      <span className="mt-1 inline-block rounded bg-rose-500/20 px-2 py-0.5 text-[10px] font-extrabold uppercase text-rose-300">
+                        Out of Stock · Payment Closed
+                      </span>
+                    )}
                     <p className="mt-2 text-sm leading-relaxed text-[var(--text-muted)]">
                       {product.summary}
                     </p>
@@ -365,6 +386,12 @@ export function CartView() {
                 </span>
               </div>
 
+              {hasOutOfStock && (
+                <div className="mt-4 rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-xs font-semibold text-rose-300">
+                  One or more items in your cart are currently marked Out of Stock. Please remove them to proceed to payment.
+                </div>
+              )}
+
               {error && (
                 <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-400 font-medium">
                   {error}
@@ -372,8 +399,12 @@ export function CartView() {
               )}
 
               <div className="mt-6 flex flex-wrap items-center gap-3">
-                <Button size="lg" disabled={busy} onClick={handleCheckout}>
-                  {busy ? 'Redirecting to Stripe…' : '💳 Proceed to payment (Stripe)'}
+                <Button size="lg" disabled={busy || hasOutOfStock} onClick={handleCheckout}>
+                  {hasOutOfStock
+                    ? 'Out of Stock — Payment Closed'
+                    : busy
+                      ? 'Redirecting to Stripe…'
+                      : '💳 Proceed to payment (Stripe)'}
                 </Button>
                 <Button variant="outline" size="lg" disabled={busy} onClick={clear}>
                   Clear cart
@@ -413,6 +444,7 @@ export function CartView() {
           <ul className="mt-6 grid gap-5 sm:grid-cols-2">
             {siteData.products.map((p) => {
               const inCart = has(p.slug)
+              const isOutOfStock = Boolean(p.outOfStock)
               return (
                 <li key={p.slug} className="surface flex gap-4 rounded-card p-4">
                   <img
@@ -423,7 +455,14 @@ export function CartView() {
                     className="h-20 w-20 shrink-0 rounded-lg object-cover"
                   />
                   <div className="flex min-w-0 flex-1 flex-col">
-                    <Badge tone="neutral">{p.kicker}</Badge>
+                    <div className="flex items-center justify-between gap-2">
+                      <Badge tone="neutral">{p.kicker}</Badge>
+                      {isOutOfStock && (
+                        <span className="rounded bg-rose-500/20 px-1.5 py-0.5 text-[9px] font-extrabold uppercase text-rose-300">
+                          Out of Stock
+                        </span>
+                      )}
+                    </div>
                     <h3 className="mt-1.5 text-sm font-bold leading-snug text-[var(--text-strong)]">
                       {p.name}
                     </h3>
@@ -431,9 +470,15 @@ export function CartView() {
                       <span className="numeric text-base font-bold text-[var(--accent-text)]">
                         {p.price}
                       </span>
-                      <Button size="sm" variant={inCart ? 'outline' : 'primary'} onClick={() => add(p.slug)}>
-                        {inCart ? 'Add another' : 'Add to cart'}
-                      </Button>
+                      {isOutOfStock ? (
+                        <Button size="sm" variant="outline" disabled>
+                          Out of Stock
+                        </Button>
+                      ) : (
+                        <Button size="sm" variant={inCart ? 'outline' : 'primary'} onClick={() => add(p.slug)}>
+                          {inCart ? 'Add another' : 'Add to cart'}
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </li>

@@ -10,8 +10,18 @@ import { Router } from 'express'
 import { queryAll, queryOne, ping } from '../db.js'
 import type { Row } from '../db.js'
 import { loadSiteContent } from '../domain/siteContent.js'
+import { getTransferWindowSettings } from '../domain/settings.js'
 
 export const league = Router()
+
+league.get(
+  '/transfer-window',
+  handler(async (_req, res) => {
+    const s = await getTransferWindowSettings()
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+    res.json({ open: s.open })
+  }),
+)
 
 /**
  * Express 4 does not catch rejected promises from async handlers — an
@@ -390,18 +400,29 @@ league.get(
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
     res.setHeader('Pragma', 'no-cache')
     res.setHeader('Expires', '0')
+    const includeDrafts = req.query.includeDrafts === 'true'
     const requestedSeasonId = req.query.seasonId
     let seasonId: number | null = null
-    if (requestedSeasonId !== undefined) {
+    if (requestedSeasonId !== undefined && requestedSeasonId !== '' && requestedSeasonId !== 'all') {
       seasonId = Number(requestedSeasonId)
       if (!Number.isSafeInteger(seasonId) || seasonId < 1) {
         return res.status(400).json({ error: 'seasonId must be a positive integer.' })
       }
       const season = await queryOne<{ id: number }>(
-        'SELECT id FROM seasons WHERE id = ? AND is_draft = FALSE',
+        includeDrafts
+          ? 'SELECT id FROM seasons WHERE id = ?'
+          : 'SELECT id FROM seasons WHERE id = ? AND is_draft = FALSE',
         [seasonId],
       )
       if (!season) return res.status(404).json({ error: 'Season not found.' })
+    }
+    const requestedDivisionId = req.query.divisionId
+    let divisionId: number | null = null
+    if (requestedDivisionId !== undefined && requestedDivisionId !== '' && requestedDivisionId !== 'all') {
+      divisionId = Number(requestedDivisionId)
+      if (!Number.isSafeInteger(divisionId) || divisionId < 1) {
+        return res.status(400).json({ error: 'divisionId must be a positive integer.' })
+      }
     }
     const requestedClubSlug = req.query.clubSlug
     const clubSlug =
@@ -429,6 +450,7 @@ league.get(
       : '1 = 1'
     const where = `(? IS NULL OR m.status = ?)
       AND (? IS NULL OR m.season_id = ?)
+      AND (? IS NULL OR m.division_id = ?)
       AND (? IS NULL OR home.slug = ? OR away.slug = ?)
       AND ${scoreFilter}
       AND ${searchFilter}`
@@ -437,6 +459,8 @@ league.get(
       status,
       seasonId,
       seasonId,
+      divisionId,
+      divisionId,
       clubSlug,
       clubSlug,
       clubSlug,
@@ -461,6 +485,8 @@ league.get(
       queryAll(
         `SELECT m.id, m.kickoff, m.status, m.home_score, m.away_score, m.source_url,
                 m.venue, m.stream_url, m.ea_match_id,
+                m.division_id, m.season_id, m.round_number,
+                d.name AS division_name, d.slug AS division_slug,
                 home.id AS home_club_id, home.name AS home_name, home.slug AS home_slug, home.short_code AS home_code,
                 home.ea_club_id AS home_ea_club_id, home.ea_club_name AS home_ea_club_name,
                 ${clubLogoSql('home')} AS home_logo, home.flag AS home_flag,
@@ -470,6 +496,7 @@ league.get(
            FROM matches m
            JOIN clubs home ON home.id = m.home_club_id
            JOIN clubs away ON away.id = m.away_club_id
+           LEFT JOIN divisions d ON d.id = m.division_id
           WHERE ${where}
           ${ordering}
           LIMIT ? OFFSET ?`,
@@ -494,7 +521,10 @@ league.get(
         `SELECT COUNT(*) AS all_total,
                 SUM(m.home_score IS NULL OR m.away_score IS NULL) AS pending_total,
                 SUM(m.home_score IS NOT NULL AND m.away_score IS NOT NULL) AS completed_total
-           FROM matches m`,
+           FROM matches m
+          WHERE (? IS NULL OR m.season_id = ?)
+            AND (? IS NULL OR m.division_id = ?)`,
+        [seasonId, seasonId, divisionId, divisionId],
       ),
     ])
 
@@ -579,6 +609,8 @@ league.get(
     const match = await queryOne<any>(
       `SELECT m.id, m.kickoff, m.status, m.home_score, m.away_score,
               m.venue, m.stream_url, m.source_url, m.ea_match_id,
+              m.division_id, m.season_id, m.round_number,
+              d.name AS division_name, d.slug AS division_slug,
               home.id AS home_club_id, home.name AS home_name, home.slug AS home_slug, home.short_code AS home_code,
               home.ea_club_id AS home_ea_club_id, home.ea_club_name AS home_ea_club_name,
               ${clubLogoSql('home')} AS home_logo, home.flag AS home_flag,
@@ -588,6 +620,7 @@ league.get(
          FROM matches m
          JOIN clubs home ON home.id = m.home_club_id
          JOIN clubs away ON away.id = m.away_club_id
+         LEFT JOIN divisions d ON d.id = m.division_id
         WHERE ${isNum ? 'm.id = ?' : 'CONCAT(home.slug, "-vs-", away.slug) = ? OR m.id = ?'}`,
       isNum ? [numericId] : [rawParam.toLowerCase(), numericId || 0],
     )
@@ -595,8 +628,7 @@ league.get(
 
     const [playerStats, events, matchStats, homeSquad, awaySquad] = await Promise.all([
       queryAll(
-        `SELECT id, player_id, club_id, gamertag, rating, goals, assists, shots, passes, tackles, saves, clean_sheet, is_mom
-           FROM match_player_stats WHERE match_id = ? ORDER BY club_id, gamertag`,
+        `SELECT * FROM match_player_stats WHERE match_id = ? ORDER BY club_id, gamertag`,
         [match.id],
       ),
       queryAll(

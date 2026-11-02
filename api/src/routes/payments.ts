@@ -14,6 +14,7 @@ import {
   verifyStripeWebhook,
   type StripeLineItem,
 } from '../domain/stripe.js'
+import { loadSiteContent } from '../domain/siteContent.js'
 
 export const payments = Router()
 
@@ -54,16 +55,31 @@ payments.post(
       return res.status(400).json({ error: 'At least one item is required in the cart.' })
     }
 
+    const cms = await loadSiteContent()
+    const cmsProducts = Array.isArray((cms as any)?.products) ? (cms as any).products : []
+
     const items: StripeLineItem[] = []
     let totalAmount = 0
 
     for (const it of rawItems) {
       const name = String(it.name || '').trim()
+      const slug = it.slug ? String(it.slug).trim().toLowerCase() : ''
       const amount = Number(it.amount)
       const quantity = Math.max(1, Number.parseInt(String(it.quantity || 1), 10))
 
       if (!name || isNaN(amount) || amount <= 0) {
         return res.status(400).json({ error: `Invalid item details for: ${name || 'item'}` })
+      }
+
+      const matchedProduct = cmsProducts.find(
+        (p: any) =>
+          (slug && String(p?.slug || '').trim().toLowerCase() === slug) ||
+          String(p?.name || '').trim().toLowerCase() === name.toLowerCase(),
+      )
+      if (matchedProduct && matchedProduct.outOfStock) {
+        return res.status(400).json({
+          error: `${matchedProduct.name || name} is currently out of stock and cannot be purchased.`,
+        })
       }
 
       items.push({

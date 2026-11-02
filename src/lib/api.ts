@@ -309,6 +309,7 @@ export const verifyInvite = (params: { code: string; email?: string; clubName?: 
 /* ----------------------------------------------------------------- payments */
 
 export interface CheckoutItem {
+  slug?: string
   name: string
   amount: number
   quantity: number
@@ -455,3 +456,8 @@ export const getTotwAccess = () => request<{ allowed: boolean }>('/api/totw/acce
 
 export const getTotw = (weekId?: number | null) =>
   request<TotwResponse>(`/api/totw${weekId ? `?week=${weekId}` : ''}`)
+
+/* --------------------------------------------------------- transfer window */
+
+export const getTransferWindowStatus = () =>
+  request<{ open: boolean }>('/api/transfer-window')

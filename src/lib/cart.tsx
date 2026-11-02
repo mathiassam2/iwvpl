@@ -24,6 +24,8 @@ interface CartApi {
   count: number
   /** True when every line carries a numeric price we can total. */
   canTotal: boolean
+  /** True when any item currently in the cart is marked out of stock. */
+  hasOutOfStock: boolean
   total: string
   panelOpen: boolean
   add: (slug: string, qty?: number) => void
@@ -42,6 +44,7 @@ const defaultCartApi: CartApi = {
   detailed: [],
   count: 0,
   canTotal: false,
+  hasOutOfStock: false,
   total: '$0.00',
   panelOpen: false,
   add: () => {},
@@ -115,6 +118,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }, [panelOpen])
 
   const add = useCallback((slug: string, qty = 1) => {
+    const product = siteData.products.find((p) => p.slug === slug)
+    if (product?.outOfStock) return
     setLines((prev) => {
       const found = prev.find((l) => l.slug === slug)
       if (found) {
@@ -158,6 +163,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     // quietly inventing a number for an "Entry Pass" line.
     const prices = detailed.map((l) => numericPrice(l.product.price))
     const canTotal = prices.length > 0 && prices.every((p) => p !== null)
+    const hasOutOfStock = detailed.some((l) => Boolean(l.product.outOfStock))
     const sum = prices.reduce<number>((a, p) => a + (p ?? 0), 0)
     const total = canTotal ? `SGD ${sum % 1 === 0 ? sum.toFixed(0) : sum.toFixed(2)}` : ''
 
@@ -166,6 +172,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       detailed,
       count,
       canTotal,
+      hasOutOfStock,
       total,
       panelOpen,
       add,

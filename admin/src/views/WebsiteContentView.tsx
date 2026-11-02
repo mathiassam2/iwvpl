@@ -123,6 +123,7 @@ export function WebsiteContentView({
   const [pAccess, setPAccess] = useState('Full access to Tournament & League Matches')
   const [pFeatures, setPFeatures] = useState('')
   const [pNote, setPNote] = useState('')
+  const [pOutOfStock, setPOutOfStock] = useState(false)
   const passImgRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
@@ -485,6 +486,7 @@ export function WebsiteContentView({
     setPAccess('Full access to Tournament & League Matches')
     setPFeatures('Official Roster Submission rights, Match Schedule access, and Prize Pool Eligibility.')
     setPNote('Please allow 24 to 48 hours for our admin team to process your entry.')
+    setPOutOfStock(false)
     setPassDrawerOpen(true)
   }
 
@@ -506,7 +508,35 @@ export function WebsiteContentView({
         : String(prod.features ?? ''),
     )
     setPNote(prod.note ?? '')
+    setPOutOfStock(Boolean(prod.outOfStock))
     setPassDrawerOpen(true)
+  }
+
+  const handleTogglePassOutOfStock = async (idx: number) => {
+    const target = products[idx]
+    if (!target) return
+    const nextOutOfStock = !Boolean(target.outOfStock)
+    const nextProducts = products.map((p, i) =>
+      i === idx ? { ...p, outOfStock: nextOutOfStock } : p,
+    )
+    setBusy(true)
+    try {
+      const updated = await guard(
+        () => updateSiteContent('products', nextProducts),
+        'Could not update stock status',
+      )
+      setProducts(Array.isArray(updated.products) ? updated.products : nextProducts)
+      report(
+        'ok',
+        nextOutOfStock
+          ? `Marked "${target.name}" as Out of Stock (Payments closed).`
+          : `Marked "${target.name}" as In Stock (Payments open).`,
+      )
+    } catch {
+      /* reported */
+    } finally {
+      setBusy(false)
+    }
   }
 
   const handleSavePass = async (e: FormEvent) => {
@@ -524,6 +554,7 @@ export function WebsiteContentView({
       access: pAccess.trim(),
       features: pFeatures.trim(),
       note: pNote.trim(),
+      outOfStock: pOutOfStock,
     }
 
     const nextProducts = [...products]
@@ -1238,14 +1269,39 @@ export function WebsiteContentView({
                         <h3>{displayName}</h3>
                       </div>
                       <span className="adm-code-pill">{prod.price}</span>
+                      <span
+                        className="adm-code-pill"
+                        style={{
+                          color: prod.outOfStock ? '#f87171' : '#4ade80',
+                          border: prod.outOfStock
+                            ? '1px solid rgba(248,113,113,0.4)'
+                            : '1px solid rgba(74,222,128,0.4)',
+                          background: prod.outOfStock
+                            ? 'rgba(248,113,113,0.1)'
+                            : 'rgba(74,222,128,0.1)',
+                          fontWeight: 700,
+                        }}
+                      >
+                        {prod.outOfStock ? 'OUT OF STOCK · Payment Closed' : 'IN STOCK · Payment Open'}
+                      </span>
                     </div>
-                    <button
-                      type="button"
-                      className="adm-btn adm-btn-secondary adm-btn-sm"
-                      onClick={() => openEditPass(prod, idx)}
-                    >
-                      Edit Pass →
-                    </button>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        className={`adm-btn adm-btn-sm ${prod.outOfStock ? 'adm-btn-primary' : 'adm-btn-danger'}`}
+                        disabled={busy}
+                        onClick={() => void handleTogglePassOutOfStock(idx)}
+                      >
+                        {prod.outOfStock ? 'Re-Open Payment (Set In Stock)' : 'Set Out of Stock (Close Payment)'}
+                      </button>
+                      <button
+                        type="button"
+                        className="adm-btn adm-btn-secondary adm-btn-sm"
+                        onClick={() => openEditPass(prod, idx)}
+                      >
+                        Edit Pass →
+                      </button>
+                    </div>
                   </div>
                   <p className="adm-text-muted">{displaySummary}</p>
                   {featText && (
@@ -2050,6 +2106,29 @@ export function WebsiteContentView({
                     onChange={(e) => setPNote(e.target.value)}
                     className="adm-textarea"
                   />
+                </label>
+
+                <label
+                  className="adm-check-row"
+                  style={{
+                    padding: '10px 12px',
+                    borderRadius: 8,
+                    border: pOutOfStock
+                      ? '1px solid rgba(248,113,113,0.4)'
+                      : '1px solid rgba(74,222,128,0.3)',
+                    background: pOutOfStock
+                      ? 'rgba(248,113,113,0.08)'
+                      : 'rgba(74,222,128,0.05)',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={pOutOfStock}
+                    onChange={(e) => setPOutOfStock(e.target.checked)}
+                  />
+                  <span>
+                    <strong>Mark as Out of Stock (Close Payment)</strong> — Users will see an "Out of Stock" badge and will not be able to add this item to cart or proceed to Stripe checkout.
+                  </span>
                 </label>
 
                 <div className="adm-row-actions">

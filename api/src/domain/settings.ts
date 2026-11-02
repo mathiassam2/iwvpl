@@ -76,3 +76,37 @@ export async function updateManagerPasscodeSettings(
     passcode: nextPasscode,
   }
 }
+
+export interface TransferWindowSettings {
+  open: boolean
+}
+
+export async function getTransferWindowSettings(): Promise<TransferWindowSettings> {
+  try {
+    await ensureSettingsTable()
+    const rows = await queryAll<{ setting_key: string; setting_value: string }>(
+      `SELECT setting_key, setting_value FROM system_settings
+        WHERE setting_key = 'transfer_window_open'`,
+    )
+    if (!rows || rows.length === 0) {
+      return { open: true }
+    }
+    const raw = rows[0].setting_value
+    return { open: raw !== 'false' && raw !== '0' }
+  } catch {
+    return { open: true }
+  }
+}
+
+export async function updateTransferWindowSettings(open: boolean): Promise<TransferWindowSettings> {
+  await ensureSettingsTable()
+  const val = open ? 'true' : 'false'
+  await execute(
+    `INSERT INTO system_settings (setting_key, setting_value, updated_at)
+     VALUES ('transfer_window_open', ?, NOW())
+     ON DUPLICATE KEY UPDATE setting_value = ?, updated_at = NOW()`,
+    [val, val],
+  )
+  return { open }
+}
+

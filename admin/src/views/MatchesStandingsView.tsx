@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { GenerateRoundRobinWizardModal } from './GenerateRoundRobinWizardModal'
 import { EaMatchResultModal } from './EaMatchResultModal'
 import { ManualMatchStatsModal } from './ManualMatchStatsModal'
@@ -7,7 +7,6 @@ import {
   deleteMatch,
   deleteMatches,
   deleteUnscheduledMatches,
-  generateFixtures,
   getAdminSeasons,
   getClubs,
   getDivisions,
@@ -20,7 +19,6 @@ import {
   type Club,
   type Division,
   type Match,
-  type MatchSort,
   type Standing,
 } from '../api'
 import {
@@ -31,6 +29,124 @@ import {
 } from '../utils'
 
 type SubView = 'fixtures' | 'standings'
+
+interface GroupedRound {
+  roundNumber: number
+  date: string | null
+  dayName: string | null
+  matches: Match[]
+  completedCount: number
+}
+
+function extractDatePart(kickoff: string | null | undefined): string | null {
+  if (!kickoff) return null
+  const m = String(kickoff).trim().match(/^(\d{4}-\d{2}-\d{2})/)
+  return m ? m[1] : null
+}
+
+function extractTimePart(kickoff: string | null | undefined): string | null {
+  if (!kickoff) return null
+  const str = String(kickoff).trim()
+  const m = str.match(/[T ](\d{2}:\d{2})/)
+  if (m) return m[1]
+  const d = new Date(str)
+  if (!Number.isNaN(d.getTime())) {
+    return d.toLocaleTimeString('en-GB', {
+      timeZone: 'Asia/Kuala_Lumpur',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    })
+  }
+  return null
+}
+
+function formatDayName(dateStr: string | null): string | null {
+  if (!dateStr) return null
+  const [y, m, d] = dateStr.split('-').map(Number)
+  if (!y || !m || !d) return null
+  const dt = new Date(Date.UTC(y, m - 1, d))
+  return ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][dt.getUTCDay()] ?? null
+}
+
+function groupMatchesIntoRounds(matches: Match[]): GroupedRound[] {
+  if (matches.length === 0) return []
+
+  // Sort chronologically first so greedy round assignment follows schedule order
+  const sorted = [...matches].sort((a, b) => {
+    const rA = a.round_number ?? 999999
+    const rB = b.round_number ?? 999999
+    if (rA !== rB) return rA - rB
+    const kA = a.kickoff ? String(a.kickoff) : '9999-99-99'
+    const kB = b.kickoff ? String(b.kickoff) : '9999-99-99'
+    if (kA !== kB) return kA.localeCompare(kB)
+    return a.id - b.id
+  })
+
+  const roundBuckets = new Map<number, Match[]>()
+  const roundUsedClubs = new Map<number, Set<string>>()
+  const roundDateMap = new Map<number, string | null>()
+
+  for (const m of sorted) {
+    const homeKey = String(m.home_club_id ?? m.home_slug)
+    const awayKey = String(m.away_club_id ?? m.away_slug)
+    const mDate = extractDatePart(m.kickoff)
+
+    let targetRound = m.round_number && m.round_number > 0 ? m.round_number : null
+
+    if (targetRound === null) {
+      // Find earliest round where neither team has played (and if dated, matches round date)
+      let candidate = 1
+      while (true) {
+        const used = roundUsedClubs.get(candidate)
+        const rDate = roundDateMap.get(candidate)
+        const dateCompatible = !mDate || !rDate || mDate === rDate
+        if (!used) {
+          targetRound = candidate
+          break
+        }
+        if (!used.has(homeKey) && !used.has(awayKey) && dateCompatible) {
+          targetRound = candidate
+          break
+        }
+        candidate++
+      }
+    }
+
+    const list = roundBuckets.get(targetRound) ?? []
+    list.push(m)
+    roundBuckets.set(targetRound, list)
+
+    const used = roundUsedClubs.get(targetRound) ?? new Set<string>()
+    used.add(homeKey)
+    used.add(awayKey)
+    roundUsedClubs.set(targetRound, used)
+
+    if (mDate && !roundDateMap.get(targetRound)) {
+      roundDateMap.set(targetRound, mDate)
+    }
+  }
+
+  const rounds: GroupedRound[] = [...roundBuckets.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([roundNumber, roundMatches]) => {
+      const firstDated = roundMatches.find((x) => extractDatePart(x.kickoff))
+      const date = firstDated ? extractDatePart(firstDated.kickoff) : null
+      const dayName = formatDayName(date)
+      const completedCount = roundMatches.filter(
+        (x) => x.home_score !== null && x.away_score !== null,
+      ).length
+      return {
+        roundNumber,
+        date,
+        dayName,
+        matches: roundMatches,
+        completedCount,
+      }
+    })
+
+  return rounds
+}
 
 export function MatchesStandingsView({
   guard,
@@ -50,19 +166,18 @@ export function MatchesStandingsView({
   const [divisions, setDivisions] = useState<Division[]>([])
   const [clubs, setClubs] = useState<Club[]>([])
   const [selectedSeasonId, setSelectedSeasonId] = useState<number | null>(null)
+  const [selectedDivisionId, setSelectedDivisionId] = useState<number | 'all'>('all')
   const [selectedDivisionSlug, setSelectedDivisionSlug] = useState<string>('')
 
   // Matches state
   const [matches, setMatches] = useState<Match[]>([])
-  const [total, setTotal] = useState(0)
   const [allTotal, setAllTotal] = useState(0)
-  const [pendingTotal, setPendingTotal] = useState(0)
-  const [completedTotal, setCompletedTotal] = useState(0)
-  const [resultFilter, setResultFilter] = useState<'all' | 'pending' | 'completed'>('pending')
-  const [sort, setSort] = useState<MatchSort>('priority')
+  const [, setPendingTotal] = useState(0)
+  const [, setCompletedTotal] = useState(0)
+  const [resultFilter, setResultFilter] = useState<'all' | 'pending' | 'completed'>('all')
+  const [roundFilter, setRoundFilter] = useState<string>('all')
+  const [collapsedRounds, setCollapsedRounds] = useState<Set<number>>(new Set())
   const [search, setSearch] = useState('')
-  const [offset, setOffset] = useState(0)
-  const limit = 30
   const [loadingMatches, setLoadingMatches] = useState(true)
   const hasLoadedMatchesRef = useRef(false)
   const hasLoadedStandingsRef = useRef(false)
@@ -106,16 +221,18 @@ export function MatchesStandingsView({
 
   const loadMeta = useCallback(async () => {
     try {
-      const [seasonsList, divsList, clubsList] = await Promise.all([
-        guard(getAdminSeasons, 'Could not load seasons'),
-        guard(() => getDivisions(), 'Could not load divisions'),
-        guard(() => getClubs(), 'Could not load clubs'),
-      ])
+      const seasonsList = await guard(getAdminSeasons, 'Could not load seasons')
       setSeasons(seasonsList)
       const current = seasonsList.find((s) => Boolean(s.is_current)) ?? seasonsList[0] ?? null
+      const activeSeasonId = selectedSeasonId ?? current?.id ?? null
       if (current && selectedSeasonId === null) {
         setSelectedSeasonId(current.id)
       }
+
+      const [divsList, clubsList] = await Promise.all([
+        guard(() => getDivisions(activeSeasonId ?? undefined), 'Could not load divisions'),
+        guard(() => getClubs(activeSeasonId ?? undefined), 'Could not load clubs'),
+      ])
       setDivisions(divsList)
       const activeDivs = divsList.filter((d) => Boolean(d.is_active))
       if (activeDivs.length > 0 && !createDivisionId) {
@@ -137,16 +254,16 @@ export function MatchesStandingsView({
       const page = await guard(
         () =>
           getMatches({
-            limit,
-            offset,
-            result: resultFilter,
-            search: search.trim(),
-            sort,
+            limit: 500,
+            offset: 0,
+            result: 'all',
+            search: '',
+            seasonId: selectedSeasonId,
+            includeDrafts: true,
           }),
         'Could not load matches',
       )
       setMatches(page.matches)
-      setTotal(page.total)
       setAllTotal(page.allTotal)
       setPendingTotal(page.pendingTotal)
       setCompletedTotal(page.completedTotal)
@@ -165,7 +282,7 @@ export function MatchesStandingsView({
     } finally {
       setLoadingMatches(false)
     }
-  }, [guard, limit, offset, resultFilter, search, sort])
+  }, [guard, selectedSeasonId])
 
   useEffect(() => {
     void loadMatches()
@@ -197,6 +314,112 @@ export function MatchesStandingsView({
       void loadStandingsTable()
     }
   }, [subView, loadStandingsTable])
+
+  // Compute division match counts & rounds
+  const activeDivisions = useMemo(
+    () => divisions.filter((d) => Boolean(d.is_active)),
+    [divisions],
+  )
+
+  const divisionMatchesMap = useMemo(() => {
+    const map = new Map<number, Match[]>()
+    for (const m of matches) {
+      if (m.division_id != null) {
+        const list = map.get(m.division_id) ?? []
+        list.push(m)
+        map.set(m.division_id, list)
+      }
+    }
+    return map
+  }, [matches])
+
+  // Matches scoped to selected division
+  const divisionScopedMatches = useMemo(() => {
+    if (selectedDivisionId === 'all') return matches
+    return matches.filter((m) => m.division_id === selectedDivisionId)
+  }, [matches, selectedDivisionId])
+
+  // Group into rounds BEFORE filtering by search/result so round numbers remain stable
+  const allRounds = useMemo(() => {
+    if (selectedDivisionId === 'all' && divisionMatchesMap.size > 1) {
+      // Group per division then merge by roundNumber
+      const mergedMap = new Map<number, Match[]>()
+      for (const divMatches of divisionMatchesMap.values()) {
+        const divRounds = groupMatchesIntoRounds(divMatches)
+        for (const r of divRounds) {
+          const list = mergedMap.get(r.roundNumber) ?? []
+          list.push(...r.matches)
+          mergedMap.set(r.roundNumber, list)
+        }
+      }
+      // Also include any matches without division_id
+      const noDivMatches = matches.filter((m) => m.division_id == null)
+      if (noDivMatches.length > 0) {
+        const extra = groupMatchesIntoRounds(noDivMatches)
+        for (const r of extra) {
+          const list = mergedMap.get(r.roundNumber) ?? []
+          list.push(...r.matches)
+          mergedMap.set(r.roundNumber, list)
+        }
+      }
+      return [...mergedMap.entries()]
+        .sort((a, b) => a[0] - b[0])
+        .map(([roundNumber, roundMatches]) => {
+          const firstDated = roundMatches.find((x) => extractDatePart(x.kickoff))
+          const date = firstDated ? extractDatePart(firstDated.kickoff) : null
+          const dayName = formatDayName(date)
+          const completedCount = roundMatches.filter(
+            (x) => x.home_score !== null && x.away_score !== null,
+          ).length
+          return { roundNumber, date, dayName, matches: roundMatches, completedCount }
+        })
+    }
+    return groupMatchesIntoRounds(divisionScopedMatches)
+  }, [selectedDivisionId, divisionMatchesMap, divisionScopedMatches, matches])
+
+  // Apply search, resultFilter, and roundFilter to rounds
+  const displayedRounds = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return allRounds
+      .filter((r) => roundFilter === 'all' || String(r.roundNumber) === roundFilter)
+      .map((r) => {
+        const filteredMatches = r.matches.filter((m) => {
+          const hasScore = m.home_score !== null && m.away_score !== null
+          if (resultFilter === 'pending' && hasScore) return false
+          if (resultFilter === 'completed' && !hasScore) return false
+          if (q) {
+            const matchText = `${m.home_name} ${m.home_code ?? ''} ${m.away_name} ${m.away_code ?? ''} ${m.division_name ?? ''}`.toLowerCase()
+            if (!matchText.includes(q)) return false
+          }
+          return true
+        })
+        return {
+          ...r,
+          matches: filteredMatches,
+        }
+      })
+      .filter((r) => r.matches.length > 0)
+  }, [allRounds, roundFilter, resultFilter, search])
+
+  const scopedAllCount = divisionScopedMatches.length
+  const scopedCompletedCount = divisionScopedMatches.filter(
+    (m) => m.home_score !== null && m.away_score !== null,
+  ).length
+  const scopedPendingCount = scopedAllCount - scopedCompletedCount
+
+  const toggleRoundCollapse = (roundNumber: number) => {
+    if (roundFilter !== 'all') return
+    setCollapsedRounds((prev) => {
+      const next = new Set(prev)
+      if (next.has(roundNumber)) next.delete(roundNumber)
+      else next.add(roundNumber)
+      return next
+    })
+  }
+
+  const expandAllRounds = () => setCollapsedRounds(new Set())
+  const collapseAllRounds = () =>
+    setCollapsedRounds(new Set(allRounds.map((r) => r.roundNumber)))
 
   const handleSaveScore = async (match: Match) => {
     const pair = scores[match.id] ?? { hs: '', as: '' }
@@ -297,7 +520,7 @@ export function MatchesStandingsView({
     setCreateBusy(true)
     try {
       const m = await guard(
-        () => createMatch(homeSlug, awaySlug, kickoffInput || null),
+        () => createMatch(homeSlug, awaySlug, kickoffInput || null, selectedSeasonId ?? undefined),
         'Could not create fixture',
       )
       report('ok', `Created fixture: ${m.home_name} vs ${m.away_name}`)
@@ -312,8 +535,6 @@ export function MatchesStandingsView({
       setCreateBusy(false)
     }
   }
-
-
 
   const handleSetUnscheduled = async () => {
     if (!scheduleTarget) return
@@ -357,7 +578,6 @@ export function MatchesStandingsView({
     }
   }
 
-  const activeDivisions = divisions.filter((d) => Boolean(d.is_active))
   const clubsInSelectedCreateDiv = clubs.filter(
     (c) => c.status === 'active' && String(c.division_id) === createDivisionId,
   )
@@ -380,7 +600,7 @@ export function MatchesStandingsView({
             className={`adm-pill-tab ${subView === 'fixtures' ? 'is-active' : ''}`}
             onClick={() => setSubView('fixtures')}
           >
-            ⚽ Fixtures & Score Entry ({allTotal})
+            ⚽ Match Centre & Round Schedule ({allTotal})
           </button>
           <button
             type="button"
@@ -392,6 +612,23 @@ export function MatchesStandingsView({
         </div>
 
         <div className="adm-row-actions">
+          <select
+            value={selectedSeasonId ?? ''}
+            onChange={(e) => {
+              const nextId = Number(e.target.value)
+              setSelectedSeasonId(nextId)
+              setSelectedDivisionId('all')
+              setRoundFilter('all')
+            }}
+            className="adm-select"
+            aria-label="Select season"
+          >
+            {seasons.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name} ({s.year}){Boolean(s.is_current) ? ' · Live' : Boolean(s.is_draft) ? ' · Draft' : ''}
+              </option>
+            ))}
+          </select>
           <button
             type="button"
             className="adm-btn adm-btn-secondary"
@@ -411,284 +648,156 @@ export function MatchesStandingsView({
 
       {subView === 'fixtures' ? (
         <section className="adm-card">
-          <div className="adm-card-head">
-            <div className="adm-pill-tabs">
+          {/* Summary Metric Stats (Matching Step 4 of Round-Robin Wizard) */}
+          <div className="adm-wizard-stats" style={{ marginBottom: 16 }}>
+            <div className="adm-stat-box">
+              <span className="adm-stat-label">Total Matchdays</span>
+              <strong className="adm-stat-val">{allRounds.length} Rounds</strong>
+            </div>
+            <div className="adm-stat-box">
+              <span className="adm-stat-label">Total Fixtures</span>
+              <strong className="adm-stat-val">{scopedAllCount} Matches</strong>
+            </div>
+            <div className="adm-stat-box">
+              <span className="adm-stat-label">Needs Score / Unplayed</span>
+              <strong className="adm-stat-val" style={{ color: '#f59e0b' }}>
+                {scopedPendingCount}
+              </strong>
+            </div>
+            <div className="adm-stat-box">
+              <span className="adm-stat-label">Completed Results</span>
+              <strong className="adm-stat-val adm-text-accent">
+                {scopedCompletedCount}
+              </strong>
+            </div>
+          </div>
+
+          {/* Division Tabs (Matching Step 4 of Round-Robin Wizard) */}
+          {activeDivisions.length > 0 && (
+            <div className="adm-division-tabs" style={{ marginBottom: 14 }}>
               <button
                 type="button"
-                className={`adm-pill-tab ${resultFilter === 'pending' ? 'is-active' : ''}`}
+                className={`adm-division-tab ${selectedDivisionId === 'all' ? 'active' : ''}`}
                 onClick={() => {
-                  setResultFilter('pending')
-                  setOffset(0)
+                  setSelectedDivisionId('all')
+                  setRoundFilter('all')
                 }}
               >
-                Needs Score / Unplayed ({pendingTotal})
+                All Divisions
+                <span className="adm-pill adm-pill-sm">{matches.length} matches</span>
               </button>
-              <button
-                type="button"
-                className={`adm-pill-tab ${resultFilter === 'completed' ? 'is-active' : ''}`}
-                onClick={() => {
-                  setResultFilter('completed')
-                  setOffset(0)
-                }}
-              >
-                Completed Results ({completedTotal})
-              </button>
-              <button
-                type="button"
-                className={`adm-pill-tab ${resultFilter === 'all' ? 'is-active' : ''}`}
-                onClick={() => {
-                  setResultFilter('all')
-                  setOffset(0)
-                }}
-              >
-                All Fixtures ({allTotal})
-              </button>
+              {activeDivisions.map((div) => {
+                const count = divisionMatchesMap.get(div.id)?.length ?? 0
+                return (
+                  <button
+                    key={div.id}
+                    type="button"
+                    className={`adm-division-tab ${selectedDivisionId === div.id ? 'active' : ''}`}
+                    onClick={() => {
+                      setSelectedDivisionId(div.id)
+                      setRoundFilter('all')
+                    }}
+                  >
+                    {div.name}
+                    <span className="adm-pill adm-pill-sm">{count} matches</span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Filter / Jump to Round Bar */}
+          <div className="adm-preview-filter-bar" style={{ flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <div className="adm-field-inline">
+                <span>Jump to Round:</span>
+                <select
+                  value={roundFilter}
+                  onChange={(e) => setRoundFilter(e.target.value)}
+                  className="adm-select adm-select-sm"
+                >
+                  <option value="all">All Rounds ({allRounds.length})</option>
+                  {allRounds.map((r) => (
+                    <option key={r.roundNumber} value={String(r.roundNumber)}>
+                      Round {r.roundNumber} {r.date ? `(${r.date})` : ''} · {r.matches.length} matches
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="adm-pill-tabs">
+                <button
+                  type="button"
+                  className={`adm-pill-tab ${resultFilter === 'all' ? 'is-active' : ''}`}
+                  onClick={() => setResultFilter('all')}
+                >
+                  All ({scopedAllCount})
+                </button>
+                <button
+                  type="button"
+                  className={`adm-pill-tab ${resultFilter === 'pending' ? 'is-active' : ''}`}
+                  onClick={() => setResultFilter('pending')}
+                >
+                  Needs Score ({scopedPendingCount})
+                </button>
+                <button
+                  type="button"
+                  className={`adm-pill-tab ${resultFilter === 'completed' ? 'is-active' : ''}`}
+                  onClick={() => setResultFilter('completed')}
+                >
+                  Completed ({scopedCompletedCount})
+                </button>
+              </div>
+
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search club name or code…"
+                className="adm-input adm-input-sm"
+                style={{ minWidth: 210 }}
+              />
             </div>
 
-            <div className="adm-row-actions">
+            <div className="adm-preview-actions" style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              {roundFilter === 'all' && allRounds.length > 0 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={expandAllRounds}
+                    className="adm-btn adm-btn-ghost adm-btn-sm"
+                  >
+                    Expand All
+                  </button>
+                  <button
+                    type="button"
+                    onClick={collapseAllRounds}
+                    className="adm-btn adm-btn-ghost adm-btn-sm"
+                  >
+                    Collapse All
+                  </button>
+                </>
+              )}
+              <button
+                type="button"
+                onClick={() => void loadMatches()}
+                className="adm-btn adm-btn-ghost adm-btn-sm"
+                title="Refresh fixtures"
+              >
+                ↻ Refresh
+              </button>
               <button
                 type="button"
                 className="adm-btn adm-btn-ghost adm-btn-sm"
                 onClick={() => void handleClearUnscheduled()}
               >
-                Clear All Unscheduled
+                Clear Unscheduled
               </button>
             </div>
           </div>
 
-          <div className="adm-toolbar">
-            <input
-              type="search"
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value)
-                setOffset(0)
-              }}
-              placeholder="Search fixture by club name or code…"
-              className="adm-input adm-search-input"
-            />
-            <select
-              value={sort}
-              onChange={(e) => setSort(e.target.value as MatchSort)}
-              className="adm-select"
-              aria-label="Sort fixtures"
-            >
-              <option value="priority">Sort: Priority (Unscheduled & Overdue first)</option>
-              <option value="latest">Sort: Latest Kickoff First</option>
-            </select>
-          </div>
-
-          {loadingMatches ? (
-            <div className="adm-empty">Loading fixtures…</div>
-          ) : matches.length === 0 ? (
-            <div className="adm-empty">
-              <p>No fixtures match this filter.</p>
-            </div>
-          ) : (
-            <div className="adm-table-wrap">
-              <table className="adm-table">
-                <thead>
-                  <tr>
-                    <th style={{ width: 38 }}>
-                      <input
-                        type="checkbox"
-                        checked={
-                          matches.length > 0 && matches.every((m) => selectedMatchIds.has(m.id))
-                        }
-                        onChange={() => {
-                          if (matches.every((m) => selectedMatchIds.has(m.id))) {
-                            setSelectedMatchIds(new Set())
-                          } else {
-                            setSelectedMatchIds(new Set(matches.map((m) => m.id)))
-                          }
-                        }}
-                      />
-                    </th>
-                    <th>Kickoff (MYT)</th>
-                    <th>Home Club</th>
-                    <th style={{ textAlign: 'center' }}>Score Entry</th>
-                    <th>Away Club</th>
-                    <th style={{ textAlign: 'right' }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {matches.map((m) => {
-                    const pair = scores[m.id] ?? { hs: '', as: '' }
-                    const hasResult = m.home_score !== null && m.away_score !== null
-                    const isBusy = busyMatchId === m.id
-                    return (
-                      <tr key={m.id}>
-                        <td>
-                          <input
-                            type="checkbox"
-                            checked={selectedMatchIds.has(m.id)}
-                            onChange={() => {
-                              setSelectedMatchIds((prev) => {
-                                const next = new Set(prev)
-                                if (next.has(m.id)) next.delete(m.id)
-                                else next.add(m.id)
-                                return next
-                              })
-                            }}
-                          />
-                        </td>
-                        <td>
-                          <button
-                            type="button"
-                            className={`adm-kickoff-btn ${!m.kickoff ? 'is-unscheduled' : ''}`}
-                            onClick={() => {
-                              setScheduleTarget(m)
-                              setScheduleValue(toDatetimeLocalValue(m.kickoff))
-                            }}
-                          >
-                            📅 {formatKickoffDisplay(m.kickoff)}
-                          </button>
-                        </td>
-                        <td>
-                          <div className="adm-row-title">
-                            {m.home_logo && (
-                              <img src={m.home_logo} alt="" className="adm-crest-xs" />
-                            )}
-                            <strong>{m.home_name}</strong>
-                            {m.home_code && <span className="adm-code-pill">{m.home_code}</span>}
-                          </div>
-                        </td>
-                        <td>
-                          <div className="adm-score-inline" style={{ justifyContent: 'center' }}>
-                            <input
-                              type="number"
-                              min={0}
-                              max={99}
-                              placeholder="H"
-                              value={pair.hs}
-                              onChange={(e) =>
-                                setScores((prev) => ({
-                                  ...prev,
-                                  [m.id]: { ...pair, hs: e.target.value },
-                                }))
-                              }
-                              className="adm-score-input"
-                            />
-                            <span>–</span>
-                            <input
-                              type="number"
-                              min={0}
-                              max={99}
-                              placeholder="A"
-                              value={pair.as}
-                              onChange={(e) =>
-                                setScores((prev) => ({
-                                  ...prev,
-                                  [m.id]: { ...pair, as: e.target.value },
-                                }))
-                              }
-                              className="adm-score-input"
-                            />
-                            <button
-                              type="button"
-                              className="adm-btn adm-btn-primary adm-btn-sm"
-                              disabled={isBusy || pair.hs === '' || pair.as === ''}
-                              onClick={() => void handleSaveScore(m)}
-                            >
-                              {isBusy ? '…' : hasResult ? 'Update' : 'Save'}
-                            </button>
-                            <button
-                              type="button"
-                              className="adm-btn adm-btn-secondary adm-btn-sm"
-                              title="Fetch match score and player stats from EA Sports Pro Clubs"
-                              onClick={() => setEaModalMatch(m)}
-                              style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}
-                            >
-                              EA Sync
-                            </button>
-                            <button
-                              type="button"
-                              className="adm-btn adm-btn-secondary adm-btn-sm"
-                              title="Manually edit the score, player stats, team stats and match events"
-                              onClick={() => setManualStatsMatch(m)}
-                              style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}
-                            >
-                              Manual Stats
-                            </button>
-                            {m.ea_match_id && (
-                              <span
-                                className="adm-code-pill"
-                                title={`Linked EA Match #${m.ea_match_id}`}
-                                style={{ color: '#38bdf8', border: '1px solid rgba(56,189,248,0.4)', fontSize: '0.72rem' }}
-                              >
-                                EA Linked
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td>
-                          <div className="adm-row-title">
-                            {m.away_logo && (
-                              <img src={m.away_logo} alt="" className="adm-crest-xs" />
-                            )}
-                            <strong>{m.away_name}</strong>
-                            {m.away_code && <span className="adm-code-pill">{m.away_code}</span>}
-                          </div>
-                        </td>
-                        <td style={{ textAlign: 'right' }}>
-                          <div className="adm-row-actions" style={{ justifyContent: 'flex-end' }}>
-                            {hasResult && (
-                              <button
-                                type="button"
-                                className="adm-btn adm-btn-ghost adm-btn-sm"
-                                disabled={isBusy}
-                                onClick={() => void handleWithdrawScore(m)}
-                              >
-                                Clear Score
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              className="adm-btn adm-btn-danger adm-btn-sm"
-                              disabled={isBusy}
-                              onClick={() => void handleDeleteOne(m)}
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {/* Pagination */}
-          {total > limit && (
-            <div className="adm-pagination">
-              <span>
-                Showing {offset + 1}–{Math.min(offset + limit, total)} of {total}
-              </span>
-              <div className="adm-row-actions">
-                <button
-                  type="button"
-                  className="adm-btn adm-btn-secondary adm-btn-sm"
-                  disabled={offset === 0}
-                  onClick={() => setOffset(Math.max(0, offset - limit))}
-                >
-                  ← Previous
-                </button>
-                <button
-                  type="button"
-                  className="adm-btn adm-btn-secondary adm-btn-sm"
-                  disabled={offset + limit >= total}
-                  onClick={() => setOffset(offset + limit)}
-                >
-                  Next →
-                </button>
-              </div>
-            </div>
-          )}
-
           {selectedMatchIds.size > 0 && (
-            <div className="adm-bulk-bar">
+            <div className="adm-bulk-bar" style={{ marginBottom: 14 }}>
               <strong>{selectedMatchIds.size} fixture(s) selected</strong>
               <button
                 type="button"
@@ -711,6 +820,269 @@ export function MatchesStandingsView({
               >
                 Clear Selection
               </button>
+            </div>
+          )}
+
+          {loadingMatches ? (
+            <div className="adm-empty">Loading fixtures…</div>
+          ) : displayedRounds.length === 0 ? (
+            <div className="adm-empty">
+              <p>No fixtures match this filter.</p>
+            </div>
+          ) : (
+            <div className="adm-preview-rounds-container" style={{ maxHeight: 'none', overflow: 'visible' }}>
+              {displayedRounds.map((rnd) => {
+                const isCollapsed = collapsedRounds.has(rnd.roundNumber) && roundFilter === 'all'
+                const allInRoundSelected =
+                  rnd.matches.length > 0 && rnd.matches.every((m) => selectedMatchIds.has(m.id))
+
+                return (
+                  <div key={rnd.roundNumber} className="adm-preview-round-card">
+                    <div
+                      className="adm-preview-round-header"
+                      onClick={() => toggleRoundCollapse(rnd.roundNumber)}
+                      style={{ cursor: roundFilter === 'all' ? 'pointer' : 'default' }}
+                    >
+                      <div className="adm-round-title">
+                        <input
+                          type="checkbox"
+                          checked={allInRoundSelected}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={() => {
+                            setSelectedMatchIds((prev) => {
+                              const next = new Set(prev)
+                              if (allInRoundSelected) {
+                                for (const m of rnd.matches) next.delete(m.id)
+                              } else {
+                                for (const m of rnd.matches) next.add(m.id)
+                              }
+                              return next
+                            })
+                          }}
+                          title={`Select all fixtures in Round ${rnd.roundNumber}`}
+                        />
+                        <span className="adm-round-badge">Round {rnd.roundNumber}</span>
+                        {rnd.date ? (
+                          <span className="adm-round-date">
+                            📅 {rnd.dayName}, {rnd.date}
+                          </span>
+                        ) : (
+                          <span className="adm-round-date adm-text-muted">
+                            ⚪ Unscheduled Kickoff
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="adm-round-header-right">
+                        <span
+                          className={`adm-pill adm-pill-sm ${
+                            rnd.completedCount === rnd.matches.length
+                              ? 'adm-pill-success'
+                              : rnd.completedCount > 0
+                              ? 'adm-pill-accent'
+                              : ''
+                          }`}
+                        >
+                          {rnd.completedCount}/{rnd.matches.length} played
+                        </span>
+                        <span className="adm-round-count">{rnd.matches.length} fixtures</span>
+                        {roundFilter === 'all' && (
+                          <span className="adm-collapse-arrow">{isCollapsed ? '▼' : '▲'}</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {!isCollapsed && (
+                      <div className="adm-preview-matches-list">
+                        {rnd.matches.map((m) => {
+                          const pair = scores[m.id] ?? { hs: '', as: '' }
+                          const hasResult = m.home_score !== null && m.away_score !== null
+                          const isBusy = busyMatchId === m.id
+                          const timeStr = extractTimePart(m.kickoff)
+
+                          return (
+                            <div
+                              key={m.id}
+                              className="adm-preview-match-row"
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                flexWrap: 'wrap',
+                                gap: 10,
+                                padding: '10px 14px',
+                              }}
+                            >
+                              {/* Left: Checkbox + Kickoff Time Button + Division Badge */}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 165 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={selectedMatchIds.has(m.id)}
+                                  onChange={() => {
+                                    setSelectedMatchIds((prev) => {
+                                      const next = new Set(prev)
+                                      if (next.has(m.id)) next.delete(m.id)
+                                      else next.add(m.id)
+                                      return next
+                                    })
+                                  }}
+                                />
+                                <button
+                                  type="button"
+                                  className={`adm-kickoff-btn ${!m.kickoff ? 'is-unscheduled' : ''}`}
+                                  onClick={() => {
+                                    setScheduleTarget(m)
+                                    setScheduleValue(toDatetimeLocalValue(m.kickoff))
+                                  }}
+                                  title={`Edit Kickoff (${formatKickoffDisplay(m.kickoff)})`}
+                                >
+                                  {timeStr ? `🕐 ${timeStr}` : `📅 ${formatKickoffDisplay(m.kickoff)}`}
+                                </button>
+                                {selectedDivisionId === 'all' && m.division_name && (
+                                  <span className="adm-code-pill" style={{ fontSize: '0.7rem' }}>
+                                    {m.division_name}
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Center: Home Club + Inline Score Inputs + Away Club */}
+                              <div
+                                className="adm-preview-pairing"
+                                style={{
+                                  flex: 1,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: 12,
+                                  minWidth: 340,
+                                }}
+                              >
+                                <div className="adm-team-cell home" style={{ flex: 1, justifyContent: 'flex-end' }}>
+                                  <span className="adm-team-name">{m.home_name}</span>
+                                  {m.home_code && <span className="adm-code-pill">{m.home_code}</span>}
+                                  {m.home_logo ? (
+                                    <img src={m.home_logo} alt="" className="adm-team-avatar" />
+                                  ) : (
+                                    <span className="adm-team-avatar-ph">
+                                      {m.home_name.slice(0, 2).toUpperCase()}
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="adm-score-inline" style={{ justifyContent: 'center', gap: 6 }}>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    max={99}
+                                    placeholder="H"
+                                    value={pair.hs}
+                                    onChange={(e) =>
+                                      setScores((prev) => ({
+                                        ...prev,
+                                        [m.id]: { ...pair, hs: e.target.value },
+                                      }))
+                                    }
+                                    className="adm-score-input"
+                                  />
+                                  <span className="adm-vs-pill">{hasResult ? ':' : 'VS'}</span>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    max={99}
+                                    placeholder="A"
+                                    value={pair.as}
+                                    onChange={(e) =>
+                                      setScores((prev) => ({
+                                        ...prev,
+                                        [m.id]: { ...pair, as: e.target.value },
+                                      }))
+                                    }
+                                    className="adm-score-input"
+                                  />
+                                  <button
+                                    type="button"
+                                    className="adm-btn adm-btn-primary adm-btn-xs"
+                                    disabled={isBusy || pair.hs === '' || pair.as === ''}
+                                    onClick={() => void handleSaveScore(m)}
+                                  >
+                                    {isBusy ? '…' : hasResult ? 'Update' : 'Save'}
+                                  </button>
+                                </div>
+
+                                <div className="adm-team-cell away" style={{ flex: 1, justifyContent: 'flex-start' }}>
+                                  {m.away_logo ? (
+                                    <img src={m.away_logo} alt="" className="adm-team-avatar" />
+                                  ) : (
+                                    <span className="adm-team-avatar-ph">
+                                      {m.away_name.slice(0, 2).toUpperCase()}
+                                    </span>
+                                  )}
+                                  <span className="adm-team-name">{m.away_name}</span>
+                                  {m.away_code && <span className="adm-code-pill">{m.away_code}</span>}
+                                </div>
+                              </div>
+
+                              {/* Right: EA Sync, Manual Stats, Clear, Delete */}
+                              <div
+                                className="adm-row-actions"
+                                style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}
+                              >
+                                <button
+                                  type="button"
+                                  className="adm-btn adm-btn-secondary adm-btn-xs"
+                                  title="Fetch Friendly Match score & player stats from EA Sports Pro Clubs"
+                                  onClick={() => setEaModalMatch(m)}
+                                >
+                                  EA Sync
+                                </button>
+                                <button
+                                  type="button"
+                                  className="adm-btn adm-btn-secondary adm-btn-xs"
+                                  title="Open full EA FC 26 Match Summary & Player Performance Editor"
+                                  onClick={() => setManualStatsMatch(m)}
+                                >
+                                  Manual Stats
+                                </button>
+                                {m.ea_match_id && (
+                                  <span
+                                    className="adm-code-pill"
+                                    title={`Linked EA Match #${m.ea_match_id}`}
+                                    style={{
+                                      color: '#38bdf8',
+                                      border: '1px solid rgba(56,189,248,0.4)',
+                                      fontSize: '0.68rem',
+                                    }}
+                                  >
+                                    EA Linked
+                                  </span>
+                                )}
+                                {hasResult && (
+                                  <button
+                                    type="button"
+                                    className="adm-btn adm-btn-ghost adm-btn-xs"
+                                    disabled={isBusy}
+                                    onClick={() => void handleWithdrawScore(m)}
+                                  >
+                                    Clear
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  className="adm-btn adm-btn-danger adm-btn-xs"
+                                  disabled={isBusy}
+                                  onClick={() => void handleDeleteOne(m)}
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           )}
         </section>
@@ -927,8 +1299,6 @@ export function MatchesStandingsView({
         seasonId={selectedSeasonId ?? undefined}
         seasons={seasons}
       />
-
-
 
       {/* EA FC Pro Clubs Match Result Modal */}
       <EaMatchResultModal

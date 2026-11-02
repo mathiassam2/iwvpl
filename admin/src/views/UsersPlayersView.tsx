@@ -7,8 +7,10 @@ import {
   getAdminClubs,
   getAdminPlayers,
   getAdminUsers,
+  getTransferWindowSettings,
   updateAdminPlayer,
   updateAdminUser,
+  updateTransferWindowSettings,
   getServerTimeOffset,
   type AdminPlayer,
   type AdminUser,
@@ -182,18 +184,22 @@ export function UsersPlayersView({
   const [attachPlayer, setAttachPlayer] = useState(false)
 
   const [busy, setBusy] = useState(false)
+  const [transferWindowOpen, setTransferWindowOpen] = useState(true)
+  const [togglingWindow, setTogglingWindow] = useState(false)
 
   const loadAll = useCallback(async () => {
     if (!hasLoadedRef.current) setLoading(true)
     try {
-      const [usersList, playersList, clubsList] = await Promise.all([
+      const [usersList, playersList, clubsList, tw] = await Promise.all([
         guard(getAdminUsers, 'Could not load registered accounts'),
         guard(getAdminPlayers, 'Could not load league players'),
         guard(() => getAdminClubs(), 'Could not load clubs'),
+        getTransferWindowSettings().catch(() => ({ open: true })),
       ])
       setUsers(usersList)
       setPlayers(playersList)
       setClubs(clubsList)
+      setTransferWindowOpen(Boolean(tw.open))
       hasLoadedRef.current = true
     } catch {
       /* reported */
@@ -201,6 +207,28 @@ export function UsersPlayersView({
       setLoading(false)
     }
   }, [guard])
+
+  const handleToggleTransferWindow = async () => {
+    const nextOpen = !transferWindowOpen
+    setTogglingWindow(true)
+    try {
+      const res = await guard(
+        () => updateTransferWindowSettings(nextOpen),
+        'Could not update transfer window status',
+      )
+      setTransferWindowOpen(Boolean(res.settings.open))
+      report(
+        'ok',
+        res.settings.open
+          ? 'Transfer Window is now OPEN — managers and players can make transfers & signings.'
+          : 'Transfer Window is now CLOSED — all player offers, signings, releases, and departures are blocked.',
+      )
+    } catch {
+      /* reported */
+    } finally {
+      setTogglingWindow(false)
+    }
+  }
 
   useEffect(() => {
     void loadAll()
@@ -761,6 +789,72 @@ export function UsersPlayersView({
 
   return (
     <div className="adm-stack">
+      {/* Transfer Window Control Banner */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: 12,
+          padding: '12px 16px',
+          borderRadius: 10,
+          border: transferWindowOpen
+            ? '1px solid rgba(74,222,128,0.35)'
+            : '1px solid rgba(248,113,113,0.45)',
+          background: transferWindowOpen
+            ? 'rgba(74,222,128,0.06)'
+            : 'rgba(248,113,113,0.08)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span
+            style={{
+              width: 10,
+              height: 10,
+              borderRadius: '50%',
+              background: transferWindowOpen ? '#4ade80' : '#f87171',
+              boxShadow: transferWindowOpen ? '0 0 8px #4ade80' : '0 0 8px #f87171',
+            }}
+          />
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <strong style={{ fontSize: '0.95rem' }}>
+                League Transfer Window: {transferWindowOpen ? 'OPEN' : 'CLOSED'}
+              </strong>
+              <span
+                className="adm-code-pill"
+                style={{
+                  color: transferWindowOpen ? '#4ade80' : '#f87171',
+                  borderColor: transferWindowOpen ? 'rgba(74,222,128,0.4)' : 'rgba(248,113,113,0.4)',
+                  fontWeight: 700,
+                }}
+              >
+                {transferWindowOpen ? 'Transfers & Signings Allowed' : 'All Moves Locked'}
+              </span>
+            </div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--adm-muted)', marginTop: 2 }}>
+              {transferWindowOpen
+                ? 'Managers can send/accept offers and release players; players can request to join or leave clubs.'
+                : 'No contract offers, join requests, player signings, squad releases, or departures are permitted.'}
+            </div>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          className={`adm-btn adm-btn-sm ${transferWindowOpen ? 'adm-btn-danger' : 'adm-btn-primary'}`}
+          disabled={togglingWindow}
+          onClick={() => void handleToggleTransferWindow()}
+        >
+          {togglingWindow
+            ? 'Updating…'
+            : transferWindowOpen
+            ? '🔒 Close Transfer Window'
+            : '🔓 Open Transfer Window'}
+        </button>
+      </div>
+
       {/* Subnav & Pill Tabs */}
       <div className="adm-subnav-bar">
         <div className="adm-pill-tabs">

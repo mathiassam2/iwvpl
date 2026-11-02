@@ -34,7 +34,12 @@ import {
   type RolloverSetting,
 } from '../domain/rollover.js'
 import { clubSlug, gamertagKey } from '../domain/slug.js'
-import { getManagerPasscodeSettings, updateManagerPasscodeSettings } from '../domain/settings.js'
+import {
+  getManagerPasscodeSettings,
+  updateManagerPasscodeSettings,
+  getTransferWindowSettings,
+  updateTransferWindowSettings,
+} from '../domain/settings.js'
 import { listManagerInvites, createManagerInvite, deleteManagerInvite } from '../domain/invites.js'
 import {
   ALLOWED_SECTIONS,
@@ -254,24 +259,68 @@ async function replaceMatchPlayerStats(
     const cleanSheet = Boolean(p.cleanSheet)
     const isMom = Boolean(p.isMom)
 
+    const pos = optionalString(p.pos, 24)
+    const platform = optionalString(p.platform, 16)
+    const proName = optionalString(p.proName ?? p.pro_name, 120)
+    const shotAccuracy = manualStatValue(p.shotAccuracy ?? p.shot_accuracy, 100)
+    const passAttempts = manualStatValue(p.passAttempts ?? p.pass_attempts, 999)
+    const passAccuracy = manualStatValue(p.passAccuracy ?? p.pass_accuracy, 100)
+    const dribbles = manualStatValue(p.dribbles, 999)
+    const dribbleSuccessRate = manualStatValue(p.dribbleSuccessRate ?? p.dribble_success_rate, 100)
+    const tackleAttempts = manualStatValue(p.tackleAttempts ?? p.tackle_attempts, 999)
+    const tackleSuccessRate = manualStatValue(p.tackleSuccessRate ?? p.tackle_success_rate, 100)
+    const offsides = manualStatValue(p.offsides, 99)
+    const foulsCommitted = manualStatValue(p.foulsCommitted ?? p.fouls_committed, 99)
+    const possessionWon = manualStatValue(p.possessionWon ?? p.possession_won, 999)
+    const possessionLost = manualStatValue(p.possessionLost ?? p.possession_lost, 999)
+    const minutesPlayed = manualStatValue(p.minutesPlayed ?? p.minutes_played, 130)
+    const distanceCovered = manualDecimalValue(p.distanceCovered ?? p.distance_covered, 99.9)
+    const distanceSprinted = manualDecimalValue(p.distanceSprinted ?? p.distance_sprinted, 99.9)
+    const yellowCards = Math.max(0, Math.min(2, Number.parseInt(String(p.yellowCards ?? p.yellow_cards ?? 0), 10) || 0))
+    const redCards = Math.max(0, Math.min(1, Number.parseInt(String(p.redCards ?? p.red_cards ?? 0), 10) || 0))
+
     await conn.execute(
       `INSERT INTO match_player_stats
-         (match_id, player_id, club_id, gamertag, rating, goals, assists, shots, passes, tackles, saves, clean_sheet, is_mom, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+         (match_id, player_id, club_id, gamertag, pos, platform, pro_name,
+          rating, goals, assists, shots, shot_accuracy, passes, pass_attempts, pass_accuracy,
+          dribbles, dribble_success_rate, tackles, tackle_attempts, tackle_success_rate,
+          offsides, fouls_committed, possession_won, possession_lost,
+          minutes_played, distance_covered, distance_sprinted,
+          saves, clean_sheet, is_mom, yellow_cards, red_cards, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
       [
         match.id,
         playerId,
         validClubId,
         rawGamertag,
+        pos,
+        platform,
+        proName,
         rating,
         goals,
         assists,
         shots,
+        shotAccuracy,
         passes,
+        passAttempts,
+        passAccuracy,
+        dribbles,
+        dribbleSuccessRate,
         tackles,
+        tackleAttempts,
+        tackleSuccessRate,
+        offsides,
+        foulsCommitted,
+        possessionWon,
+        possessionLost,
+        minutesPlayed,
+        distanceCovered,
+        distanceSprinted,
         saves,
         cleanSheet ? 1 : 0,
         isMom ? 1 : 0,
+        yellowCards,
+        redCards,
       ],
     )
 
@@ -296,6 +345,13 @@ function manualStatValue(value: unknown, max: number): number | null {
   const n = Number(value)
   if (!Number.isFinite(n)) return null
   return Math.max(0, Math.min(max, Math.round(n)))
+}
+
+function manualDecimalValue(value: unknown, max: number): number | null {
+  if (value === null || value === undefined || value === '') return null
+  const n = Number(value)
+  if (!Number.isFinite(n)) return null
+  return Math.max(0, Math.min(max, Math.round(n * 100) / 100))
 }
 
 function manualEventType(value: unknown): string {
@@ -326,8 +382,7 @@ admin.get(
 
     const [playerStats, teamStats, events, homeSquad, awaySquad] = await Promise.all([
       queryAll(
-        `SELECT id, player_id, club_id, gamertag, rating, goals, assists, shots, passes, tackles, saves, clean_sheet, is_mom
-           FROM match_player_stats WHERE match_id = ? ORDER BY club_id, gamertag`,
+        `SELECT * FROM match_player_stats WHERE match_id = ? ORDER BY club_id, gamertag`,
         [id],
       ),
       queryOne('SELECT * FROM match_stats WHERE match_id = ?', [id]),
@@ -416,6 +471,7 @@ admin.post(
       // actually removes it rather than leaving the previous number behind.
       await conn.execute('DELETE FROM match_stats WHERE match_id = ?', [id])
       const stat = (key: string, max = 999) => manualStatValue(team?.[key], max)
+      const dec = (key: string, max = 99.99) => manualDecimalValue(team?.[key], max)
       const values = {
         possession_home: stat('possessionHome', 100),
         possession_away: stat('possessionAway', 100),
@@ -431,6 +487,32 @@ admin.post(
         offsides_away: stat('offsidesAway'),
         pass_accuracy_home: stat('passAccuracyHome', 100),
         pass_accuracy_away: stat('passAccuracyAway', 100),
+        dribble_success_home: stat('dribbleSuccessHome', 100),
+        dribble_success_away: stat('dribbleSuccessAway', 100),
+        shot_accuracy_home: stat('shotAccuracyHome', 100),
+        shot_accuracy_away: stat('shotAccuracyAway', 100),
+        ball_recovery_time_home: stat('ballRecoveryTimeHome', 999),
+        ball_recovery_time_away: stat('ballRecoveryTimeAway', 999),
+        xg_home: dec('xgHome', 99.99),
+        xg_away: dec('xgAway', 99.99),
+        passes_home: stat('passesHome', 9999),
+        passes_away: stat('passesAway', 9999),
+        tackles_home: stat('tacklesHome', 999),
+        tackles_away: stat('tacklesAway', 999),
+        tackles_won_home: stat('tacklesWonHome', 999),
+        tackles_won_away: stat('tacklesWonAway', 999),
+        interceptions_home: stat('interceptionsHome', 999),
+        interceptions_away: stat('interceptionsAway', 999),
+        saves_home: stat('savesHome', 999),
+        saves_away: stat('savesAway', 999),
+        free_kicks_home: stat('freeKicksHome', 99),
+        free_kicks_away: stat('freeKicksAway', 99),
+        penalties_home: stat('penaltiesHome', 99),
+        penalties_away: stat('penaltiesAway', 99),
+        yellow_cards_home: stat('yellowCardsHome', 99),
+        yellow_cards_away: stat('yellowCardsAway', 99),
+        red_cards_home: stat('redCardsHome', 99),
+        red_cards_away: stat('redCardsAway', 99),
       }
       if (Object.values(values).some((v) => v !== null)) {
         await conn.execute(
@@ -438,8 +520,16 @@ admin.post(
              (match_id, possession_home, possession_away, shots_home, shots_away,
               on_target_home, on_target_away, corners_home, corners_away,
               fouls_home, fouls_away, offsides_home, offsides_away,
-              pass_accuracy_home, pass_accuracy_away)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              pass_accuracy_home, pass_accuracy_away,
+              dribble_success_home, dribble_success_away,
+              shot_accuracy_home, shot_accuracy_away,
+              ball_recovery_time_home, ball_recovery_time_away,
+              xg_home, xg_away, passes_home, passes_away,
+              tackles_home, tackles_away, tackles_won_home, tackles_won_away,
+              interceptions_home, interceptions_away, saves_home, saves_away,
+              free_kicks_home, free_kicks_away, penalties_home, penalties_away,
+              yellow_cards_home, yellow_cards_away, red_cards_home, red_cards_away)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             id,
             values.possession_home,
@@ -456,6 +546,32 @@ admin.post(
             values.offsides_away,
             values.pass_accuracy_home,
             values.pass_accuracy_away,
+            values.dribble_success_home,
+            values.dribble_success_away,
+            values.shot_accuracy_home,
+            values.shot_accuracy_away,
+            values.ball_recovery_time_home,
+            values.ball_recovery_time_away,
+            values.xg_home,
+            values.xg_away,
+            values.passes_home,
+            values.passes_away,
+            values.tackles_home,
+            values.tackles_away,
+            values.tackles_won_home,
+            values.tackles_won_away,
+            values.interceptions_home,
+            values.interceptions_away,
+            values.saves_home,
+            values.saves_away,
+            values.free_kicks_home,
+            values.free_kicks_away,
+            values.penalties_home,
+            values.penalties_away,
+            values.yellow_cards_home,
+            values.yellow_cards_away,
+            values.red_cards_home,
+            values.red_cards_away,
           ],
         )
       }
@@ -961,8 +1077,7 @@ admin.get(
     const [candidates, existingPlayerStats, homeSquad, awaySquad] = await Promise.all([
       getCandidateMatchesForFixture(match.home_ea_club_id, match.away_ea_club_id),
       queryAll(
-        `SELECT id, player_id, club_id, gamertag, rating, goals, assists, shots, passes, tackles, saves, clean_sheet, is_mom
-           FROM match_player_stats WHERE match_id = ? ORDER BY club_id, gamertag`,
+        `SELECT * FROM match_player_stats WHERE match_id = ? ORDER BY club_id, gamertag`,
         [id],
       ),
       queryAll(
@@ -1050,129 +1165,82 @@ admin.post(
         [homeScore, awayScore, eaMatchId, id] as Params,
       )
 
-      // 1. Roll back previous match_player_stats contribution if any existed for this match
-      const [oldStatsRows] = await conn.query(
-        `SELECT player_id, goals, assists, saves, clean_sheet
-           FROM match_player_stats WHERE match_id = ? FOR UPDATE`,
-        [id],
+      await replaceMatchPlayerStats(conn, match, playersList)
+
+      // Populate team match_stats from EA player rows / suggestedTeamStats (preserving any manual stats if already present)
+      const homeRows = playersList.filter((p) => Number(p.clubId) === match.home_club_id)
+      const awayRows = playersList.filter((p) => Number(p.clubId) === match.away_club_id)
+      const sumField = (list: any[], key: string) =>
+        list.reduce((acc, item) => acc + (Math.max(0, Number.parseInt(String(item[key] ?? 0), 10)) || 0), 0)
+
+      const shotsH = sumField(homeRows, 'shots')
+      const shotsA = sumField(awayRows, 'shots')
+      const passesH = sumField(homeRows, 'passes')
+      const passesA = sumField(awayRows, 'passes')
+      const passAttH = homeRows.reduce(
+        (acc, p) => acc + (Math.max(0, Number.parseInt(String(p.passAttempts ?? p.passes ?? 0), 10)) || 0),
+        0,
       )
-      const oldStats = oldStatsRows as Array<{
-        player_id: number
-        goals: number
-        assists: number
-        saves: number
-        clean_sheet: number | boolean
-      }>
+      const passAttA = awayRows.reduce(
+        (acc, p) => acc + (Math.max(0, Number.parseInt(String(p.passAttempts ?? p.passes ?? 0), 10)) || 0),
+        0,
+      )
+      const passAccH = passAttH > 0 ? Math.min(100, Math.round((passesH / passAttH) * 100)) : null
+      const passAccA = passAttA > 0 ? Math.min(100, Math.round((passesA / passAttA) * 100)) : null
+      const tacklesWonH = sumField(homeRows, 'tackles')
+      const tacklesWonA = sumField(awayRows, 'tackles')
+      const tacklesH = homeRows.reduce(
+        (acc, p) => acc + (Math.max(0, Number.parseInt(String(p.tackleAttempts ?? p.tackles ?? 0), 10)) || 0),
+        0,
+      )
+      const tacklesA = awayRows.reduce(
+        (acc, p) => acc + (Math.max(0, Number.parseInt(String(p.tackleAttempts ?? p.tackles ?? 0), 10)) || 0),
+        0,
+      )
+      const savesH = sumField(homeRows, 'saves')
+      const savesA = sumField(awayRows, 'saves')
+      const redH = sumField(homeRows, 'redCards')
+      const redA = sumField(awayRows, 'redCards')
 
-      for (const os of oldStats) {
+      if (playersList.length > 0) {
         await conn.execute(
-          `UPDATE player_season_stats
-              SET appearances = GREATEST(0, CAST(appearances AS SIGNED) - 1),
-                  goals = GREATEST(0, CAST(goals AS SIGNED) - ?),
-                  assists = GREATEST(0, CAST(assists AS SIGNED) - ?),
-                  saves = GREATEST(0, CAST(saves AS SIGNED) - ?),
-                  clean_sheets = GREATEST(0, CAST(clean_sheets AS SIGNED) - ?),
-                  updated_at = NOW()
-            WHERE player_id = ? AND season_id = ? AND division_id = ?`,
-          [
-            os.goals,
-            os.assists,
-            os.saves,
-            os.clean_sheet ? 1 : 0,
-            os.player_id,
-            match.season_id,
-            match.division_id,
-          ],
-        )
-      }
-
-      await conn.execute('DELETE FROM match_player_stats WHERE match_id = ?', [id])
-
-      // 2. Insert new match_player_stats and update player_season_stats
-      for (const p of playersList) {
-        const rawGamertag = String(p.gamertag ?? '').trim()
-        if (!rawGamertag) continue
-
-        const clubId = Number.parseInt(String(p.clubId), 10)
-        const validClubId =
-          clubId === match.home_club_id || clubId === match.away_club_id ? clubId : match.home_club_id
-
-        const gKey = gamertagKey(rawGamertag)
-
-        // Find or create player
-        const [existingPlayerRows] = await conn.query(
-          'SELECT id FROM players WHERE gamertag_key = ? LIMIT 1 FOR UPDATE',
-          [gKey],
-        )
-        let playerId = (existingPlayerRows as any[])[0]?.id
-
-        if (!playerId) {
-          const pSlug = clubSlug(rawGamertag) || `player-${Date.now()}`
-          const [ins] = await conn.execute(
-            `INSERT INTO players (gamertag, gamertag_key, slug, club_id, created_at, updated_at)
-             VALUES (?, ?, ?, ?, NOW(), NOW())`,
-            [rawGamertag, gKey, pSlug, validClubId],
-          )
-          playerId = (ins as any).insertId
-        } else {
-          // If player has no club assigned, link them to this club
-          await conn.execute(
-            'UPDATE players SET club_id = COALESCE(club_id, ?), updated_at = NOW() WHERE id = ?',
-            [validClubId, playerId],
-          )
-        }
-
-        const rating = Math.max(0, Math.min(10, Number.parseFloat(String(p.rating ?? 0)) || 0))
-        const goals = Math.max(0, Number.parseInt(String(p.goals ?? 0), 10) || 0)
-        const assists = Math.max(0, Number.parseInt(String(p.assists ?? 0), 10) || 0)
-        const shots = Math.max(0, Number.parseInt(String(p.shots ?? 0), 10) || 0)
-        const passes = Math.max(0, Number.parseInt(String(p.passes ?? 0), 10) || 0)
-        const tackles = Math.max(0, Number.parseInt(String(p.tackles ?? 0), 10) || 0)
-        const saves = Math.max(0, Number.parseInt(String(p.saves ?? 0), 10) || 0)
-        const cleanSheet = Boolean(p.cleanSheet)
-        const isMom = Boolean(p.isMom)
-
-        await conn.execute(
-          `INSERT INTO match_player_stats
-             (match_id, player_id, club_id, gamertag, rating, goals, assists, shots, passes, tackles, saves, clean_sheet, is_mom, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+          `INSERT INTO match_stats
+             (match_id, shots_home, shots_away, passes_home, passes_away,
+              pass_accuracy_home, pass_accuracy_away, tackles_home, tackles_away,
+              tackles_won_home, tackles_won_away, saves_home, saves_away,
+              red_cards_home, red_cards_away)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE
+             shots_home = VALUES(shots_home),
+             shots_away = VALUES(shots_away),
+             passes_home = VALUES(passes_home),
+             passes_away = VALUES(passes_away),
+             pass_accuracy_home = COALESCE(VALUES(pass_accuracy_home), pass_accuracy_home),
+             pass_accuracy_away = COALESCE(VALUES(pass_accuracy_away), pass_accuracy_away),
+             tackles_home = VALUES(tackles_home),
+             tackles_away = VALUES(tackles_away),
+             tackles_won_home = VALUES(tackles_won_home),
+             tackles_won_away = VALUES(tackles_won_away),
+             saves_home = VALUES(saves_home),
+             saves_away = VALUES(saves_away),
+             red_cards_home = VALUES(red_cards_home),
+             red_cards_away = VALUES(red_cards_away)`,
           [
             id,
-            playerId,
-            validClubId,
-            rawGamertag,
-            rating,
-            goals,
-            assists,
-            shots,
-            passes,
-            tackles,
-            saves,
-            cleanSheet ? 1 : 0,
-            isMom ? 1 : 0,
-          ],
-        )
-
-        // Increment player_season_stats strictly for this official season & division
-        await conn.execute(
-          `INSERT INTO player_season_stats
-             (player_id, season_id, division_id, appearances, goals, assists, saves, clean_sheets, updated_at)
-           VALUES (?, ?, ?, 1, ?, ?, ?, ?, NOW())
-           ON DUPLICATE KEY UPDATE
-             appearances = appearances + 1,
-             goals = goals + VALUES(goals),
-             assists = assists + VALUES(assists),
-             saves = saves + VALUES(saves),
-             clean_sheets = clean_sheets + VALUES(clean_sheets),
-             updated_at = NOW()`,
-          [
-            playerId,
-            match.season_id,
-            match.division_id,
-            goals,
-            assists,
-            saves,
-            cleanSheet ? 1 : 0,
+            shotsH,
+            shotsA,
+            passesH,
+            passesA,
+            passAccH,
+            passAccA,
+            tacklesH,
+            tacklesA,
+            tacklesWonH,
+            tacklesWonA,
+            savesH,
+            savesA,
+            redH,
+            redA,
           ],
         )
       }
@@ -4918,6 +4986,28 @@ admin.put(
     } catch (err) {
       console.error('Failed to update manager passcode settings:', err)
       res.status(500).json({ error: err instanceof Error ? err.message : 'Database error while saving passcode.' })
+    }
+  }),
+)
+
+admin.get(
+  '/settings/transfer-window',
+  handler(async (_req, res) => {
+    const settings = await getTransferWindowSettings()
+    res.json(settings)
+  }),
+)
+
+admin.put(
+  '/settings/transfer-window',
+  handler(async (req, res) => {
+    try {
+      const open = Boolean(req.body?.open)
+      const updated = await updateTransferWindowSettings(open)
+      res.json({ ok: true, settings: updated })
+    } catch (err) {
+      console.error('Failed to update transfer window settings:', err)
+      res.status(500).json({ error: err instanceof Error ? err.message : 'Database error while saving transfer window.' })
     }
   }),
 )

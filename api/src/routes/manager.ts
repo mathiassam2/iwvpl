@@ -13,8 +13,19 @@ import { execute, queryAll, queryOne, withTransaction } from '../db.js'
 import { requireAuth, requireManager } from '../middleware/auth.js'
 import { clubSlug, gamertagKey } from '../domain/slug.js'
 import { notify } from '../domain/auth.js'
+import { getTransferWindowSettings } from '../domain/settings.js'
 
 export const manager = Router()
+
+async function requireOpenTransferWindow(): Promise<void> {
+  const s = await getTransferWindowSettings()
+  if (!s.open) {
+    throw Object.assign(
+      new Error('The transfer window is currently closed. No transfers, signings, or squad releases are allowed right now.'),
+      { status: 403 },
+    )
+  }
+}
 
 /* Both are factories, so both are called. requireAuth must come first:
  * requireRole only inspects req.user, which nothing has populated yet, so
@@ -259,6 +270,7 @@ manager.get(
 manager.post(
   '/offers',
   handler(async (req, res) => {
+    await requireOpenTransferWindow()
     const user = req.user!
     const club = await ownClub(user.id)
     const playerId = id(req.body?.playerId, 'Player')
@@ -441,6 +453,7 @@ manager.post(
     if (!player) throw Object.assign(new Error('Player not found.'), { status: 404 })
 
     if (decision === 'accept') {
+      await requireOpenTransferWindow()
       await withTransaction(async (conn) => {
         // Mark request accepted
         const [upd] = await conn.execute(
@@ -703,6 +716,7 @@ manager.put(
 manager.post(
   '/players/:playerId/release',
   handler(async (req, res) => {
+    await requireOpenTransferWindow()
     const club = await ownClub(req.user!.id)
     const playerId = id(req.params.playerId, 'Player')
 
@@ -876,6 +890,7 @@ manager.patch(
 manager.post(
   '/self-player',
   handler(async (req, res) => {
+    await requireOpenTransferWindow()
     const club = await ownClub(req.user!.id)
     const gamertag = String(req.body?.gamertag ?? '').trim().replace(/\s+/g, ' ')
     if (!gamertag) bad('Gamertag is required.')

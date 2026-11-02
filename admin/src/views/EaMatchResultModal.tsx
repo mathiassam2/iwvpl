@@ -69,35 +69,42 @@ export function EaMatchResultModal({
           setAwayScore(match.away_score != null ? match.away_score : '')
           const hId = data.homeClub.id
           const aId = data.awayClub.id
+          const mapExisting = (p: any): EaPlayerStatItem => ({
+            gamertag: p.gamertag,
+            proName: p.pro_name || '',
+            pos: p.pos || 'midfielder',
+            platform: p.platform || 'ps',
+            rating: Number(p.rating) || 6.0,
+            goals: Number(p.goals) || 0,
+            assists: Number(p.assists) || 0,
+            shots: Number(p.shots) || 0,
+            shotAccuracy: Number(p.shot_accuracy) || 0,
+            passes: Number(p.passes) || 0,
+            passAttempts: Number(p.pass_attempts) || 0,
+            passAccuracy: Number(p.pass_accuracy) || 0,
+            dribbles: Number(p.dribbles) || 0,
+            dribbleSuccessRate: Number(p.dribble_success_rate) || 0,
+            tackles: Number(p.tackles) || 0,
+            tackleAttempts: Number(p.tackle_attempts) || 0,
+            tackleSuccessRate: Number(p.tackle_success_rate) || 0,
+            offsides: Number(p.offsides) || 0,
+            foulsCommitted: Number(p.fouls_committed) || 0,
+            possessionWon: Number(p.possession_won) || 0,
+            possessionLost: Number(p.possession_lost) || 0,
+            minutesPlayed: p.minutes_played != null ? Number(p.minutes_played) : 90,
+            distanceCovered: Number(p.distance_covered) || 0,
+            distanceSprinted: Number(p.distance_sprinted) || 0,
+            saves: Number(p.saves) || 0,
+            cleanSheet: Boolean(p.clean_sheet),
+            isMom: Boolean(p.is_mom),
+            yellowCards: Number(p.yellow_cards) || 0,
+            redCards: Number(p.red_cards) || 0,
+          })
           setHomePlayers(
-            data.existingPlayerStats.filter((p: any) => p.club_id === hId).map((p: any) => ({
-              gamertag: p.gamertag,
-              pos: p.pos || 'midfielder',
-              rating: Number(p.rating) || 6.0,
-              goals: Number(p.goals) || 0,
-              assists: Number(p.assists) || 0,
-              shots: Number(p.shots) || 0,
-              passes: Number(p.passes) || 0,
-              tackles: Number(p.tackles) || 0,
-              saves: Number(p.saves) || 0,
-              cleanSheet: Boolean(p.clean_sheet),
-              isMom: Boolean(p.is_mom),
-            }))
+            data.existingPlayerStats.filter((p: any) => p.club_id === hId).map(mapExisting),
           )
           setAwayPlayers(
-            data.existingPlayerStats.filter((p: any) => p.club_id === aId).map((p: any) => ({
-              gamertag: p.gamertag,
-              pos: p.pos || 'midfielder',
-              rating: Number(p.rating) || 6.0,
-              goals: Number(p.goals) || 0,
-              assists: Number(p.assists) || 0,
-              shots: Number(p.shots) || 0,
-              passes: Number(p.passes) || 0,
-              tackles: Number(p.tackles) || 0,
-              saves: Number(p.saves) || 0,
-              cleanSheet: Boolean(p.clean_sheet),
-              isMom: Boolean(p.is_mom),
-            }))
+            data.existingPlayerStats.filter((p: any) => p.club_id === aId).map(mapExisting),
           )
         } else {
           setHomeScore(match.home_score != null ? match.home_score : '')
@@ -266,13 +273,13 @@ export function EaMatchResultModal({
         <div className="adm-modal-head" style={{ borderBottom: '1px solid var(--adm-border)', paddingBottom: 14 }}>
           <div>
             <span className="adm-eyebrow" style={{ color: '#38bdf8', letterSpacing: '0.08em', fontWeight: 700 }}>
-              EA SPORTS FC · FIXTURE RESULT
+              EA SPORTS FC · FRIENDLY MATCH SYNC
             </span>
             <h3 style={{ margin: '2px 0 0', fontSize: '1.2rem', fontWeight: 800 }}>
-              Import Official Match Score & Stats
+              Import Official Friendly Match Score & Stats
             </h3>
             <p style={{ margin: '2px 0 0', fontSize: '0.85rem', color: 'var(--adm-muted)' }}>
-              {match.home_name} vs {match.away_name}
+              {match.home_name} vs {match.away_name} · Only EA Pro Clubs Friendly Matches are synced
             </p>
           </div>
           <button type="button" className="adm-close-btn" onClick={onClose}>

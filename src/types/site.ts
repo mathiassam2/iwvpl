@@ -72,6 +72,9 @@ export interface Match {
   kickoff?: string | null
   rawDate?: string | null
   status?: string
+  divisionId?: number | null
+  divisionName?: string | null
+  roundNumber?: number | null
   date: string
   time: string
   home: string
@@ -153,6 +156,7 @@ export interface Product {
   access: string
   features: string
   note: string
+  outOfStock?: boolean
 }
 
 export interface AssetRecord {

@@ -427,17 +427,19 @@ export async function executeGenerateFixtures(
           }
 
           const { kickoff } = computeMatchKickoff(roundIdx, matchIdx, matchDates, schedule)
+          const roundNumber = roundIdx + 1
 
           await conn.execute(
             `INSERT INTO matches
-               (division_id, season_id, home_club_id, away_club_id, kickoff, status,
+               (division_id, season_id, home_club_id, away_club_id, round_number, kickoff, status,
                 home_score, away_score, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, NOW(), NOW())`,
+             VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, NOW(), NOW())`,
             [
               divisionId,
               seasonId,
               homeId,
               awayId,
+              roundNumber,
               kickoff,
               kickoff ? 'scheduled' : 'unscheduled',
             ],

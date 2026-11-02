@@ -31,7 +31,7 @@ import type { Match, Standing, Transfer } from '@/types/site'
 import { buildSquadFromLineup } from '@/lib/fixtures'
 import { useAuth } from '@/lib/auth'
 import { RequestJoinClubModal } from '@/components/club/RequestJoinClubModal'
-import { getPlayerJoinRequests, cancelJoinRequest, type JoinRequest } from '@/lib/api'
+import { getPlayerJoinRequests, cancelJoinRequest, getTransferWindowStatus, type JoinRequest } from '@/lib/api'
 import { updateClubDescription } from '@/lib/api'
 
 
@@ -57,6 +57,21 @@ export default function ClubDetailPage() {
   const [showJoinModal, setShowJoinModal] = useState(false)
   const [myJoinRequests, setMyJoinRequests] = useState<JoinRequest[]>([])
   const [joinBusy, setJoinBusy] = useState(false)
+  const [transferWindowOpen, setTransferWindowOpen] = useState(true)
+
+  useEffect(() => {
+    let active = true
+    getTransferWindowStatus()
+      .then((res) => {
+        if (active && typeof res.open === 'boolean') {
+          setTransferWindowOpen(res.open)
+        }
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [])
 
   const loadMyJoinRequests = useCallback(async () => {
     if (!user) {
@@ -756,13 +771,14 @@ export default function ClubDetailPage() {
                 user ? (
                   <Button
                     size="md"
+                    disabled={!transferWindowOpen}
                     onClick={() => setShowJoinModal(true)}
                     className="gap-1.5 font-bold shadow-md"
                   >
                     <svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden>
                       <path d="M10 4v12M4 10h12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
                     </svg>
-                    Request to Join Club
+                    {transferWindowOpen ? 'Request to Join Club' : '🔒 Window Closed'}
                   </Button>
                 ) : (
                   <ButtonLink to="/login" variant="outline" size="md">

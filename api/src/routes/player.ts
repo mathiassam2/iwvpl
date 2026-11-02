@@ -17,8 +17,19 @@ import { requireAuth } from '../middleware/auth.js'
 import { notify } from '../domain/auth.js'
 import { clubSlug, gamertagKey } from '../domain/slug.js'
 import { execute } from '../db.js'
+import { getTransferWindowSettings } from '../domain/settings.js'
 
 export const player = Router()
+
+async function requireOpenTransferWindow(): Promise<void> {
+  const s = await getTransferWindowSettings()
+  if (!s.open) {
+    throw Object.assign(
+      new Error('The transfer window is currently closed. No transfers, signings, or club departures are allowed right now.'),
+      { status: 403 },
+    )
+  }
+}
 
 player.use(requireAuth())
 
@@ -403,6 +414,7 @@ player.get(
 player.post(
   '/join-requests',
   handler(async (req, res) => {
+    await requireOpenTransferWindow()
     const me = await ownPlayer(req.user!.id)
     const clubId = Number(req.body?.clubId)
     if (!Number.isSafeInteger(clubId) || clubId < 1) {
@@ -567,6 +579,7 @@ player.post(
     }
 
     if (accepting) {
+      await requireOpenTransferWindow()
       await withTransaction(async (conn) => {
         const [claimed] = await conn.execute(
           `UPDATE transfer_requests SET status = 'accepted', responded_at = NOW()
@@ -659,6 +672,7 @@ player.post(
 player.post(
   '/leave',
     handler(async (req, res) => {
+    await requireOpenTransferWindow()
     const me = await ownPlayer(req.user!.id)
     if (!me.club_id) {
       throw Object.assign(new Error('You are not currently in a club.'), { status: 409 })

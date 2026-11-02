@@ -33,6 +33,9 @@ interface ApiMatch {
   home_score: number | null
   away_score: number | null
   source_url: string | null
+  division_id?: number | null
+  division_name?: string | null
+  round_number?: number | null
   home_name: string
   home_logo: string | null
   away_name: string
@@ -220,6 +223,9 @@ export function toMatch(match: ApiMatch): Match {
     rawDate,
     kickoff: match.kickoff,
     status: match.status,
+    divisionId: match.division_id ?? null,
+    divisionName: match.division_name ?? null,
+    roundNumber: match.round_number ?? null,
     home: match.home_name,
     home_flag: '',
     home_logo: '',
@@ -741,15 +747,34 @@ export interface LiveMatchPlayerStat {
   playerId: number | null
   clubId: number
   gamertag: string
+  proName: string | null
+  pos: string
+  platform: 'ps' | 'pc' | 'xbox'
   rating: number | null
   goals: number
   assists: number
   shots: number | null
+  shotAccuracy: number | null
   passes: number | null
+  passAttempts: number | null
+  passAccuracy: number | null
+  dribbles: number | null
+  dribbleSuccessRate: number | null
   tackles: number | null
+  tackleAttempts: number | null
+  tackleSuccessRate: number | null
+  offsides: number | null
+  foulsCommitted: number | null
+  possessionWon: number | null
+  possessionLost: number | null
+  minutesPlayed: number | null
+  distanceCovered: number | null
+  distanceSprinted: number | null
   saves: number
   cleanSheet: boolean
   isMom: boolean
+  yellowCards: number
+  redCards: number
 }
 
 export interface LiveMatchEvent {
@@ -784,6 +809,7 @@ export interface LiveMatchDetail {
   streamUrl: string | null
   eaMatchId: string | null
   divisionName?: string
+  roundNumber?: number | null
   home: {
     id: number
     name: string
@@ -803,15 +829,26 @@ export interface LiveMatchDetail {
   playerStats: LiveMatchPlayerStat[]
   events: LiveMatchEvent[]
   stats: {
+    dribbleSuccess: [number, number] | null
+    shotAccuracy: [number, number] | null
+    passAccuracy: [number, number] | null
     possession: [number, number] | null
+    ballRecoveryTime: [number, number] | null
+    xg: [number, number] | null
     shots: [number, number] | null
     onTarget: [number, number] | null
-    passAccuracy: [number, number] | null
-    corners: [number, number] | null
+    passes: [number, number] | null
+    tackles: [number, number] | null
+    tacklesWon: [number, number] | null
+    interceptions: [number, number] | null
+    saves: [number, number] | null
     fouls: [number, number] | null
     offsides: [number, number] | null
-    tackles: [number, number] | null
-    saves: [number, number] | null
+    corners: [number, number] | null
+    freeKicks: [number, number] | null
+    penalties: [number, number] | null
+    yellowCards: [number, number] | null
+    redCards: [number, number] | null
   }
   hasStats: boolean
   homeSquad: LiveMatchSquadMember[]
@@ -834,15 +871,34 @@ export async function getLiveMatchDetail(
       playerId: p.player_id ?? null,
       clubId: p.club_id,
       gamertag: p.gamertag,
+      proName: p.pro_name || null,
+      pos: p.pos || 'CM',
+      platform: p.platform === 'pc' || p.platform === 'xbox' ? p.platform : 'ps',
       rating: p.rating != null ? Number(p.rating) : null,
       goals: Number(p.goals) || 0,
       assists: Number(p.assists) || 0,
       shots: p.shots != null ? Number(p.shots) : null,
+      shotAccuracy: p.shot_accuracy != null ? Number(p.shot_accuracy) : null,
       passes: p.passes != null ? Number(p.passes) : null,
+      passAttempts: p.pass_attempts != null ? Number(p.pass_attempts) : null,
+      passAccuracy: p.pass_accuracy != null ? Number(p.pass_accuracy) : null,
+      dribbles: p.dribbles != null ? Number(p.dribbles) : null,
+      dribbleSuccessRate: p.dribble_success_rate != null ? Number(p.dribble_success_rate) : null,
       tackles: p.tackles != null ? Number(p.tackles) : null,
+      tackleAttempts: p.tackle_attempts != null ? Number(p.tackle_attempts) : null,
+      tackleSuccessRate: p.tackle_success_rate != null ? Number(p.tackle_success_rate) : null,
+      offsides: p.offsides != null ? Number(p.offsides) : null,
+      foulsCommitted: p.fouls_committed != null ? Number(p.fouls_committed) : null,
+      possessionWon: p.possession_won != null ? Number(p.possession_won) : null,
+      possessionLost: p.possession_lost != null ? Number(p.possession_lost) : null,
+      minutesPlayed: p.minutes_played != null ? Number(p.minutes_played) : null,
+      distanceCovered: p.distance_covered != null ? Number(p.distance_covered) : null,
+      distanceSprinted: p.distance_sprinted != null ? Number(p.distance_sprinted) : null,
       saves: Number(p.saves) || 0,
       cleanSheet: Boolean(p.clean_sheet),
       isMom: Boolean(p.is_mom),
+      yellowCards: Number(p.yellow_cards) || 0,
+      redCards: Number(p.red_cards) || 0,
     }))
 
     const events: LiveMatchEvent[] = (raw.events ?? []).map((e: any) => ({
@@ -871,39 +927,33 @@ export async function getLiveMatchDetail(
     }))
 
     const ms = raw.stats
-    let possession: [number, number] | null = null
-    let shots: [number, number] | null = null
-    let onTarget: [number, number] | null = null
-    let passAccuracy: [number, number] | null = null
-    let corners: [number, number] | null = null
-    let fouls: [number, number] | null = null
-    let offsides: [number, number] | null = null
-    let tackles: [number, number] | null = null
-    let saves: [number, number] | null = null
-
-    if (ms) {
-      if (ms.possession_home != null && ms.possession_away != null) {
-        possession = [Number(ms.possession_home), Number(ms.possession_away)]
+    const pairOrNull = (h: unknown, a: unknown): [number, number] | null => {
+      if (h != null && h !== '' && a != null && a !== '') {
+        return [Number(h), Number(a)]
       }
-      if (ms.shots_home != null && ms.shots_away != null) {
-        shots = [Number(ms.shots_home), Number(ms.shots_away)]
-      }
-      if (ms.on_target_home != null && ms.on_target_away != null) {
-        onTarget = [Number(ms.on_target_home), Number(ms.on_target_away)]
-      }
-      if (ms.pass_accuracy_home != null && ms.pass_accuracy_away != null) {
-        passAccuracy = [Number(ms.pass_accuracy_home), Number(ms.pass_accuracy_away)]
-      }
-      if (ms.corners_home != null && ms.corners_away != null) {
-        corners = [Number(ms.corners_home), Number(ms.corners_away)]
-      }
-      if (ms.fouls_home != null && ms.fouls_away != null) {
-        fouls = [Number(ms.fouls_home), Number(ms.fouls_away)]
-      }
-      if (ms.offsides_home != null && ms.offsides_away != null) {
-        offsides = [Number(ms.offsides_home), Number(ms.offsides_away)]
-      }
+      return null
     }
+
+    let dribbleSuccess = ms ? pairOrNull(ms.dribble_success_home, ms.dribble_success_away) : null
+    let shotAccuracy = ms ? pairOrNull(ms.shot_accuracy_home, ms.shot_accuracy_away) : null
+    let passAccuracy = ms ? pairOrNull(ms.pass_accuracy_home, ms.pass_accuracy_away) : null
+    let possession = ms ? pairOrNull(ms.possession_home, ms.possession_away) : null
+    let ballRecoveryTime = ms ? pairOrNull(ms.ball_recovery_time_home, ms.ball_recovery_time_away) : null
+    let xg = ms ? pairOrNull(ms.xg_home, ms.xg_away) : null
+    let shots = ms ? pairOrNull(ms.shots_home, ms.shots_away) : null
+    let onTarget = ms ? pairOrNull(ms.on_target_home, ms.on_target_away) : null
+    let passes = ms ? pairOrNull(ms.passes_home, ms.passes_away) : null
+    let tackles = ms ? pairOrNull(ms.tackles_home, ms.tackles_away) : null
+    let tacklesWon = ms ? pairOrNull(ms.tackles_won_home, ms.tackles_won_away) : null
+    let interceptions = ms ? pairOrNull(ms.interceptions_home, ms.interceptions_away) : null
+    let saves = ms ? pairOrNull(ms.saves_home, ms.saves_away) : null
+    let fouls = ms ? pairOrNull(ms.fouls_home, ms.fouls_away) : null
+    let offsides = ms ? pairOrNull(ms.offsides_home, ms.offsides_away) : null
+    let corners = ms ? pairOrNull(ms.corners_home, ms.corners_away) : null
+    let freeKicks = ms ? pairOrNull(ms.free_kicks_home, ms.free_kicks_away) : null
+    let penalties = ms ? pairOrNull(ms.penalties_home, ms.penalties_away) : null
+    let yellowCards = ms ? pairOrNull(ms.yellow_cards_home, ms.yellow_cards_away) : null
+    let redCards = ms ? pairOrNull(ms.red_cards_home, ms.red_cards_away) : null
 
     if (playerStats.length > 0) {
       const homeP = playerStats.filter((p) => p.clubId === raw.home_club_id)
@@ -914,18 +964,52 @@ export async function getLiveMatchDetail(
         const aShots = awayP.reduce((acc, p) => acc + (p.shots ?? 0), 0)
         if (hShots > 0 || aShots > 0) shots = [hShots, aShots]
       }
-      const hSaves = homeP.reduce((acc, p) => acc + p.saves, 0)
-      const aSaves = awayP.reduce((acc, p) => acc + p.saves, 0)
-      if (hSaves > 0 || aSaves > 0) saves = [hSaves, aSaves]
-
-      const hTackles = homeP.reduce((acc, p) => acc + (p.tackles ?? 0), 0)
-      const aTackles = awayP.reduce((acc, p) => acc + (p.tackles ?? 0), 0)
-      if (hTackles > 0 || aTackles > 0) tackles = [hTackles, aTackles]
+      if (!passes) {
+        const hPasses = homeP.reduce((acc, p) => acc + (p.passes ?? 0), 0)
+        const aPasses = awayP.reduce((acc, p) => acc + (p.passes ?? 0), 0)
+        if (hPasses > 0 || aPasses > 0) passes = [hPasses, aPasses]
+      }
+      if (!saves) {
+        const hSaves = homeP.reduce((acc, p) => acc + p.saves, 0)
+        const aSaves = awayP.reduce((acc, p) => acc + p.saves, 0)
+        if (hSaves > 0 || aSaves > 0) saves = [hSaves, aSaves]
+      }
+      if (!tacklesWon) {
+        const hTackles = homeP.reduce((acc, p) => acc + (p.tackles ?? 0), 0)
+        const aTackles = awayP.reduce((acc, p) => acc + (p.tackles ?? 0), 0)
+        if (hTackles > 0 || aTackles > 0) tacklesWon = [hTackles, aTackles]
+      }
+      if (!tackles) {
+        const hTackleAtt = homeP.reduce((acc, p) => acc + (p.tackleAttempts ?? p.tackles ?? 0), 0)
+        const aTackleAtt = awayP.reduce((acc, p) => acc + (p.tackleAttempts ?? p.tackles ?? 0), 0)
+        if (hTackleAtt > 0 || aTackleAtt > 0) tackles = [hTackleAtt, aTackleAtt]
+      }
     }
 
-    const hasStats = Boolean(
-      possession || shots || onTarget || passAccuracy || corners || fouls || offsides || tackles || saves,
-    )
+    const statsObj = {
+      dribbleSuccess,
+      shotAccuracy,
+      passAccuracy,
+      possession,
+      ballRecoveryTime,
+      xg,
+      shots,
+      onTarget,
+      passes,
+      tackles,
+      tacklesWon,
+      interceptions,
+      saves,
+      fouls,
+      offsides,
+      corners,
+      freeKicks,
+      penalties,
+      yellowCards,
+      redCards,
+    }
+
+    const hasStats = Object.values(statsObj).some(Boolean)
 
     return {
       id: raw.id,
@@ -942,6 +1026,7 @@ export async function getLiveMatchDetail(
       streamUrl: raw.stream_url ?? null,
       eaMatchId: raw.ea_match_id ?? null,
       divisionName: raw.division_name ?? undefined,
+      roundNumber: raw.round_number ?? null,
       home: {
         id: raw.home_club_id,
         name: raw.home_name,
@@ -960,17 +1045,7 @@ export async function getLiveMatchDetail(
       },
       playerStats,
       events,
-      stats: {
-        possession,
-        shots,
-        onTarget,
-        passAccuracy,
-        corners,
-        fouls,
-        offsides,
-        tackles,
-        saves,
-      },
+      stats: statsObj,
       hasStats,
       homeSquad,
       awaySquad,

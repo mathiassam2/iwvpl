@@ -11,7 +11,9 @@ import {
   getMatchPriorities,
   getPendingClubs,
   getSiteContent,
+  getTransferWindowSettings,
   setResult,
+  updateTransferWindowSettings,
   type AdminSeason,
   type Club,
   type Division,
@@ -42,6 +44,8 @@ export function OverviewView({
   const [userCount, setUserCount] = useState(0)
   const [playerCount, setPlayerCount] = useState(0)
   const [newsCount, setNewsCount] = useState(0)
+  const [transferWindowOpen, setTransferWindowOpen] = useState(true)
+  const [togglingWindow, setTogglingWindow] = useState(false)
   const [scores, setScores] = useState<Record<number, { hs: string; as: string }>>({})
   const [busyId, setBusyId] = useState<string | number | null>(null)
 
@@ -55,7 +59,7 @@ export function OverviewView({
   const loadAll = useCallback(async () => {
     if (!hasLoadedRef.current) setLoading(true)
     try {
-      const [seasonsList, clubsList, pendingList, prioritiesRes, divsList, usersList, playersList, cms] =
+      const [seasonsList, clubsList, pendingList, prioritiesRes, divsList, usersList, playersList, cms, tw] =
         await Promise.all([
           guard(getAdminSeasons, 'Could not load seasons'),
           guard(() => getAdminClubs(), 'Could not load clubs'),
@@ -65,6 +69,7 @@ export function OverviewView({
           guard(getAdminUsers, 'Could not load users'),
           guard(getAdminPlayers, 'Could not load players'),
           guard(getSiteContent, 'Could not load site content'),
+          getTransferWindowSettings().catch(() => ({ open: true })),
         ])
       const activeSeason = seasonsList.find((s) => Boolean(s.is_current)) ?? seasonsList[0] ?? null
       setCurrentSeason(activeSeason)
@@ -77,6 +82,7 @@ export function OverviewView({
       setUserCount(usersList.length)
       setPlayerCount(playersList.length)
       setNewsCount(Array.isArray(cms?.news) ? cms.news.length : 0)
+      setTransferWindowOpen(Boolean(tw.open))
 
       const nextScores: Record<number, { hs: string; as: string }> = {}
       for (const m of prioritiesRes.matches) {
@@ -468,6 +474,44 @@ export function OverviewView({
             <div>
               <strong>Publish News or Update Site Info</strong>
               <small>Post articles, edit entry passes, fees & FAQ</small>
+            </div>
+          </button>
+          <button
+            type="button"
+            className="adm-action-tile"
+            disabled={togglingWindow}
+            onClick={async () => {
+              const nextOpen = !transferWindowOpen
+              setTogglingWindow(true)
+              try {
+                const res = await guard(
+                  () => updateTransferWindowSettings(nextOpen),
+                  'Could not toggle transfer window',
+                )
+                setTransferWindowOpen(Boolean(res.settings.open))
+                report(
+                  'ok',
+                  res.settings.open
+                    ? 'Transfer Window is now OPEN.'
+                    : 'Transfer Window is now CLOSED.',
+                )
+              } catch {
+                /* reported */
+              } finally {
+                setTogglingWindow(false)
+              }
+            }}
+          >
+            <span className="adm-action-icon">{transferWindowOpen ? '🔓' : '🔒'}</span>
+            <div>
+              <strong>
+                Transfer Window: {transferWindowOpen ? 'OPEN' : 'CLOSED'}
+              </strong>
+              <small>
+                {transferWindowOpen
+                  ? 'Click to close & block all signings/transfers'
+                  : 'Click to open & allow player transfers'}
+              </small>
             </div>
           </button>
         </div>

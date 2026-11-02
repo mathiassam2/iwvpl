@@ -26,16 +26,40 @@ export interface EaClubSearchResult {
 
 export interface EaPlayerStatItem {
   gamertag: string
+  proName?: string
   pos: string
   rating: number
   goals: number
   assists: number
   shots: number
   passes: number
+  passAttempts?: number
+  passAccuracy?: number
   tackles: number
+  tackleAttempts?: number
+  tackleSuccessRate?: number
   saves: number
   cleanSheet: boolean
   isMom: boolean
+  redCards?: number
+  minutesPlayed?: number
+}
+
+export interface EaSuggestedTeamStats {
+  shotsHome: number | null
+  shotsAway: number | null
+  passesHome: number | null
+  passesAway: number | null
+  passAccuracyHome: number | null
+  passAccuracyAway: number | null
+  tacklesHome: number | null
+  tacklesAway: number | null
+  tacklesWonHome: number | null
+  tacklesWonAway: number | null
+  savesHome: number | null
+  savesAway: number | null
+  redCardsHome: number | null
+  redCardsAway: number | null
 }
 
 export interface EaMatchCandidate {
@@ -55,6 +79,7 @@ export interface EaMatchCandidate {
   }
   suggestedHomeScore: number | null
   suggestedAwayScore: number | null
+  suggestedTeamStats?: EaSuggestedTeamStats
   homePlayers: EaPlayerStatItem[]
   awayPlayers: EaPlayerStatItem[]
 }
@@ -204,11 +229,11 @@ export async function searchEaClubs(name: string, platform = 'common-gen5'): Pro
 }
 
 /**
- * Fetch raw matches from EA Pro Clubs for a given clubId.
+ * Fetch raw matches from EA Pro Clubs for a given clubId (friendlies only).
  */
 async function fetchMatchesForClub(
   clubId: string,
-  matchType: 'leagueMatch' | 'playoffMatch',
+  matchType: 'friendlyMatch' = 'friendlyMatch',
   platform = 'common-gen5',
 ): Promise<any[]> {
   try {
@@ -233,9 +258,19 @@ function parsePlayersForClub(rawPlayers: any, conceded: number): EaPlayerStatIte
     const saves = Math.max(0, Number.parseInt(String(p.saves ?? 0), 10) || 0)
     const shots = Math.max(0, Number.parseInt(String(p.shots ?? 0), 10) || 0)
     const passes = Math.max(0, Number.parseInt(String(p.passesmade ?? 0), 10) || 0)
+    const passAttempts = Math.max(passes, Number.parseInt(String(p.passattempts ?? passes), 10) || 0)
+    const passAccuracy =
+      passAttempts > 0 ? Math.min(100, Math.round((passes / passAttempts) * 100)) : undefined
     const tackles = Math.max(0, Number.parseInt(String(p.tacklesmade ?? 0), 10) || 0)
+    const tackleAttempts = Math.max(tackles, Number.parseInt(String(p.tackleattempts ?? tackles), 10) || 0)
+    const tackleSuccessRate =
+      tackleAttempts > 0 ? Math.min(100, Math.round((tackles / tackleAttempts) * 100)) : undefined
     const rating = Math.max(0, Math.min(10, Number.parseFloat(String(p.rating ?? 0)) || 0))
     const isMom = String(p.mom) === '1' || p.mom === 1
+    const redCards = Math.max(0, Number.parseInt(String(p.redcards ?? 0), 10) || 0)
+    const rawSec = Number.parseInt(String(p.secondsPlayed ?? p.gameTime ?? 0), 10) || 0
+    const minutesPlayed = rawSec > 0 ? Math.min(120, Math.max(1, Math.round(rawSec / 60))) : 90
+    const proName = p.vproname ? String(p.vproname).trim() : undefined
 
     const hasGkCs = String(p.cleansheetsgk) === '1' || p.cleansheetsgk === 1
     const hasDefCs = String(p.cleansheetsdef) === '1' || p.cleansheetsdef === 1
@@ -243,22 +278,72 @@ function parsePlayersForClub(rawPlayers: any, conceded: number): EaPlayerStatIte
 
     return {
       gamertag: String(p.playername ?? '').trim(),
+      proName,
       pos: String(p.pos ?? 'midfielder').toLowerCase(),
       rating,
       goals,
       assists,
       shots,
       passes,
+      passAttempts,
+      passAccuracy,
       tackles,
+      tackleAttempts,
+      tackleSuccessRate,
       saves,
       cleanSheet,
       isMom,
+      redCards,
+      minutesPlayed,
     }
   })
 }
 
+function summarizeSideAggregates(players: EaPlayerStatItem[], rawAgg: any) {
+  const shots =
+    rawAgg?.shots != null
+      ? Math.max(0, Number.parseInt(String(rawAgg.shots), 10) || 0)
+      : players.reduce((acc, p) => acc + p.shots, 0)
+  const passesMade =
+    rawAgg?.passesmade != null
+      ? Math.max(0, Number.parseInt(String(rawAgg.passesmade), 10) || 0)
+      : players.reduce((acc, p) => acc + p.passes, 0)
+  const passAttempts =
+    rawAgg?.passattempts != null
+      ? Math.max(passesMade, Number.parseInt(String(rawAgg.passattempts), 10) || 0)
+      : players.reduce((acc, p) => acc + (p.passAttempts ?? p.passes), 0)
+  const passAccuracy =
+    passAttempts > 0 ? Math.min(100, Math.round((passesMade / passAttempts) * 100)) : null
+  const tacklesWon =
+    rawAgg?.tacklesmade != null
+      ? Math.max(0, Number.parseInt(String(rawAgg.tacklesmade), 10) || 0)
+      : players.reduce((acc, p) => acc + p.tackles, 0)
+  const tackles =
+    rawAgg?.tackleattempts != null
+      ? Math.max(tacklesWon, Number.parseInt(String(rawAgg.tackleattempts), 10) || 0)
+      : players.reduce((acc, p) => acc + (p.tackleAttempts ?? p.tackles), 0)
+  const saves =
+    rawAgg?.saves != null
+      ? Math.max(0, Number.parseInt(String(rawAgg.saves), 10) || 0)
+      : players.reduce((acc, p) => acc + p.saves, 0)
+  const redCards =
+    rawAgg?.redcards != null
+      ? Math.max(0, Number.parseInt(String(rawAgg.redcards), 10) || 0)
+      : players.reduce((acc, p) => acc + (p.redCards ?? 0), 0)
+
+  return {
+    shots,
+    passes: passesMade,
+    passAccuracy,
+    tackles,
+    tacklesWon,
+    saves,
+    redCards,
+  }
+}
+
 /**
- * Retrieve candidate EA matches for an IWVPL fixture between home and away clubs.
+ * Retrieve candidate EA friendly matches for an IWVPL fixture between home and away clubs.
  */
 export async function getCandidateMatchesForFixture(
   homeEaClubId: string | null | undefined,
@@ -275,12 +360,9 @@ export async function getCandidateMatchesForFixture(
   const rawMatchesMap = new Map<string, any>()
 
   for (const cid of queryClubIds) {
-    const [leagues, playoffs] = await Promise.all([
-      fetchMatchesForClub(cid, 'leagueMatch', platform),
-      fetchMatchesForClub(cid, 'playoffMatch', platform),
-    ])
+    const friendlies = await fetchMatchesForClub(cid, 'friendlyMatch', platform)
 
-    for (const m of [...leagues, ...playoffs]) {
+    for (const m of friendlies) {
       if (m && m.matchId) {
         rawMatchesMap.set(String(m.matchId), m)
       }
@@ -314,16 +396,23 @@ export async function getCandidateMatchesForFixture(
     let suggestedAwayScore: number | null = null
     let homePlayers: EaPlayerStatItem[] = []
     let awayPlayers: EaPlayerStatItem[] = []
+    let homeSideKey = idA
+    let awaySideKey = idB
 
     const playersObj = m.players ?? {}
+    const aggObj = m.aggregate ?? {}
 
     if (homeId && (idA === homeId || idB === homeId)) {
       if (idA === homeId) {
         suggestedHomeScore = goalsA
         homePlayers = parsePlayersForClub(playersObj[idA], goalsB)
+        homeSideKey = idA
+        awaySideKey = idB
       } else {
         suggestedHomeScore = goalsB
         homePlayers = parsePlayersForClub(playersObj[idB], goalsA)
+        homeSideKey = idB
+        awaySideKey = idA
       }
     }
 
@@ -331,19 +420,28 @@ export async function getCandidateMatchesForFixture(
       if (idA === awayId) {
         suggestedAwayScore = goalsA
         awayPlayers = parsePlayersForClub(playersObj[idA], goalsB)
+        awaySideKey = idA
+        if (!homeId) homeSideKey = idB
       } else {
         suggestedAwayScore = goalsB
         awayPlayers = parsePlayersForClub(playersObj[idB], goalsA)
+        awaySideKey = idB
+        if (!homeId) homeSideKey = idA
       }
     }
 
     // If only one club was matched, or clubs were in neutral, map players according to clubA / clubB
-    if (homePlayers.length === 0 && idA) {
-      homePlayers = parsePlayersForClub(playersObj[idA], goalsB)
+    if (homePlayers.length === 0 && homeSideKey) {
+      const conc = homeSideKey === idA ? goalsB : goalsA
+      homePlayers = parsePlayersForClub(playersObj[homeSideKey], conc)
     }
-    if (awayPlayers.length === 0 && idB) {
-      awayPlayers = parsePlayersForClub(playersObj[idB], goalsA)
+    if (awayPlayers.length === 0 && awaySideKey) {
+      const conc = awaySideKey === idA ? goalsB : goalsA
+      awayPlayers = parsePlayersForClub(playersObj[awaySideKey], conc)
     }
+
+    const homeAgg = summarizeSideAggregates(homePlayers, aggObj[homeSideKey])
+    const awayAgg = summarizeSideAggregates(awayPlayers, aggObj[awaySideKey])
 
     const ts = Number(m.timestamp) || Math.floor(Date.now() / 1000)
     const dateFormatted = new Date(ts * 1000).toLocaleString('en-GB', {
@@ -369,6 +467,22 @@ export async function getCandidateMatchesForFixture(
       },
       suggestedHomeScore,
       suggestedAwayScore,
+      suggestedTeamStats: {
+        shotsHome: homeAgg.shots,
+        shotsAway: awayAgg.shots,
+        passesHome: homeAgg.passes,
+        passesAway: awayAgg.passes,
+        passAccuracyHome: homeAgg.passAccuracy,
+        passAccuracyAway: awayAgg.passAccuracy,
+        tacklesHome: homeAgg.tackles,
+        tacklesAway: awayAgg.tackles,
+        tacklesWonHome: homeAgg.tacklesWon,
+        tacklesWonAway: awayAgg.tacklesWon,
+        savesHome: homeAgg.saves,
+        savesAway: awayAgg.saves,
+        redCardsHome: homeAgg.redCards,
+        redCardsAway: awayAgg.redCards,
+      },
       homePlayers,
       awayPlayers,
     })
@@ -446,7 +560,7 @@ export async function fetchEaClubDeepProfile(
     const [statsRes, membersRes, matchesRes] = await Promise.all([
       fetch(`https://proclubs.ea.com/api/fc/clubs/overallStats?clubIds=${cid}&platform=${platform}`, { headers: EA_HEADERS }),
       fetch(`https://proclubs.ea.com/api/fc/members/stats?clubId=${cid}&platform=${platform}`, { headers: EA_HEADERS }),
-      fetch(`https://proclubs.ea.com/api/fc/clubs/matches?clubIds=${cid}&platform=${platform}&matchType=leagueMatch`, { headers: EA_HEADERS }),
+      fetch(`https://proclubs.ea.com/api/fc/clubs/matches?clubIds=${cid}&platform=${platform}&matchType=friendlyMatch`, { headers: EA_HEADERS }),
     ])
 
     const statsData = statsRes.ok ? ((await statsRes.json()) as any[]) : []

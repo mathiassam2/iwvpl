@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { getLiveTransfers, peekLiveTransfers } from '@/lib/liveLeague'
+import { getTransferWindowStatus } from '@/lib/api'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { StatTile } from '@/components/league'
 import { Badge, Button, Container, EmptyState, Section, Select, SmartImage, Tabs } from '@/components/ui'
@@ -70,6 +71,7 @@ function ClubCell({ side }: { side: Side }) {
 
 export default function TransferPage() {
   const [liveRows, setLiveRows] = useState<Row[] | null>(() => peekLiveTransfers() as Row[] | null)
+  const [transferWindowOpen, setTransferWindowOpen] = useState(true)
   const [page, setPage] = useState(1)
   const pageSize = 25
 
@@ -81,6 +83,13 @@ export default function TransferPage() {
         setLiveRows(data as Row[])
       }
     })
+    getTransferWindowStatus()
+      .then((res) => {
+        if (active && typeof res.open === 'boolean') {
+          setTransferWindowOpen(res.open)
+        }
+      })
+      .catch(() => {})
     return () => {
       active = false
       ctrl.abort()
@@ -160,6 +169,45 @@ export default function TransferPage() {
 
       <Section>
         <Container size="wide">
+          {/* Transfer Window Live Status Banner */}
+          <div
+            className={cx(
+              'mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3.5 text-xs',
+              transferWindowOpen
+                ? 'border-emerald-500/35 bg-emerald-500/10 text-emerald-200'
+                : 'border-amber-500/40 bg-amber-500/10 text-amber-200',
+            )}
+          >
+            <div className="flex items-center gap-3">
+              <span
+                className={cx(
+                  'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-base',
+                  transferWindowOpen ? 'bg-emerald-500/20' : 'bg-amber-500/20',
+                )}
+              >
+                {transferWindowOpen ? '🟢' : '🔒'}
+              </span>
+              <div>
+                <p
+                  className={cx(
+                    'font-extrabold uppercase tracking-wider',
+                    transferWindowOpen ? 'text-emerald-300' : 'text-amber-300',
+                  )}
+                >
+                  {transferWindowOpen ? 'Transfer Window Open' : 'Transfer Window Closed'}
+                </p>
+                <p className="mt-0.5 text-[var(--text-muted)]">
+                  {transferWindowOpen
+                    ? 'Clubs and players may actively send offers, accept join requests, and complete transfers.'
+                    : 'All player signings, offers, join requests, and squad releases are currently locked by league administration.'}
+                </p>
+              </div>
+            </div>
+            <Badge tone={transferWindowOpen ? 'volt' : 'muted'}>
+              {transferWindowOpen ? 'ACTIVE WINDOW' : 'ROSTERS LOCKED'}
+            </Badge>
+          </div>
+
           <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatTile label="Logged moves" value={counts.all} hint="This window" />
             <StatTile label="Signings" value={counts.in} hint="Free agent → club" />

@@ -40,6 +40,7 @@ import {
   decideJoinRequest,
   getPlayerJoinRequests,
   cancelJoinRequest,
+  getTransferWindowStatus,
   type JoinRequest,
   type UserOrder,
   type ManagerClub,
@@ -53,8 +54,9 @@ import {
   type ClubLineupBench,
   type ClubLineupSlot,
 } from '@/lib/fixtures'
-import { AVATAR_PLACEHOLDER, CLUB_PLACEHOLDER, compressClubLogo, cx } from '@/lib/format'
-import { invalidateLiveClubCache } from '@/lib/liveLeague'
+import { AVATAR_PLACEHOLDER, CLUB_PLACEHOLDER, compressClubLogo, cx, stripFlag } from '@/lib/format'
+import { getLiveMatches, invalidateLiveClubCache } from '@/lib/liveLeague'
+import type { Match } from '@/types/site'
 
 /**
  * Panel.
@@ -111,9 +113,601 @@ function Notice({ kind, text }: { kind: 'ok' | 'error'; text: string | null }) {
 
 const msg = (err: unknown) => (err instanceof ApiError ? err.message : 'Something went wrong.')
 
+/* ===================================================== Transfer Window Banner */
+
+function TransferWindowClosedBanner({ open }: { open: boolean }) {
+  if (open) return null
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3.5 text-xs text-amber-200">
+      <div className="flex items-center gap-3">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/20 text-base">
+          🔒
+        </span>
+        <div>
+          <p className="font-extrabold uppercase tracking-wider text-amber-300">
+            Transfer Window Closed
+          </p>
+          <p className="mt-0.5 text-[var(--text-muted)]">
+            Player signings, contract offers, join requests, and squad releases are currently locked by league administration.
+          </p>
+        </div>
+      </div>
+      <span className="rounded-full border border-amber-500/40 bg-amber-500/20 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider text-amber-300">
+        Roster Locked
+      </span>
+    </div>
+  )
+}
+
+/* ===================================================== Club Fixture Calendar */
+
+const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+const MONTH_NAMES = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+]
+
+function parseKickoffDate(m: Match): Date | null {
+  if (m.kickoff) {
+    const d = new Date(m.kickoff.replace(' ', 'T'))
+    if (!Number.isNaN(d.getTime())) return d
+  }
+  if (m.date) {
+    const d = new Date(m.date)
+    if (!Number.isNaN(d.getTime())) return d
+  }
+  return null
+}
+
+function toYmd(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function ClubFixtureCalendar({
+  clubSlug,
+  clubName,
+}: {
+  clubSlug?: string | null
+  clubName?: string | null
+}) {
+  const [matches, setMatches] = useState<Match[]>([])
+  const [loading, setLoading] = useState(false)
+  const [viewYear, setViewYear] = useState(() => new Date().getFullYear())
+  const [viewMonth, setViewMonth] = useState(() => new Date().getMonth())
+  const [selectedYmd, setSelectedYmd] = useState<string | null>(null)
+  const [listMode, setListMode] = useState<'upcoming' | 'results'>('upcoming')
+
+  useEffect(() => {
+    if (!clubSlug && !clubName) {
+      setMatches([])
+      return
+    }
+    const controller = new AbortController()
+    setLoading(true)
+
+    getLiveMatches(controller.signal, {
+      clubSlug: clubSlug || undefined,
+      limit: 200,
+    })
+      .then(({ matches: fetched }) => {
+        let clubMatches = fetched
+        if (clubName && (!clubSlug || clubMatches.length === 0)) {
+          const target = stripFlag(clubName).toLowerCase().trim()
+          clubMatches = fetched.filter(
+            (m) =>
+              stripFlag(m.home).toLowerCase().trim() === target ||
+              stripFlag(m.away).toLowerCase().trim() === target,
+          )
+        }
+        setMatches(clubMatches)
+
+        // Auto-focus the calendar month to the next upcoming fixture (or most recent fixture)
+        const dated = clubMatches
+          .map((m) => ({ m, d: parseKickoffDate(m) }))
+          .filter((x): x is { m: Match; d: Date } => x.d !== null)
+          .sort((a, b) => a.d.getTime() - b.d.getTime())
+
+        if (dated.length > 0) {
+          const upcoming = dated.find((x) => x.m.hs === '' || x.m.as === '')
+          const focusDate = upcoming ? upcoming.d : dated[dated.length - 1].d
+          setViewYear(focusDate.getFullYear())
+          setViewMonth(focusDate.getMonth())
+        }
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setMatches([])
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false)
+      })
+
+    return () => controller.abort()
+  }, [clubSlug, clubName])
+
+  const cleanMyClub = stripFlag(clubName || '').toLowerCase().trim()
+
+  const matchesByYmd = useMemo(() => {
+    const map = new Map<string, Match[]>()
+    for (const m of matches) {
+      const d = parseKickoffDate(m)
+      if (!d) continue
+      const key = toYmd(d)
+      const list = map.get(key) ?? []
+      list.push(m)
+      map.set(key, list)
+    }
+    return map
+  }, [matches])
+
+  // Calendar cells for (viewYear, viewMonth) starting Monday
+  const calendarDays = useMemo(() => {
+    const firstDay = new Date(viewYear, viewMonth, 1)
+    const lastDay = new Date(viewYear, viewMonth + 1, 0)
+    const startDow = (firstDay.getDay() + 6) % 7 // 0 = Mon, 6 = Sun
+    const daysInMonth = lastDay.getDate()
+
+    const cells: Array<{
+      ymd: string
+      day: number
+      inMonth: boolean
+      isToday: boolean
+      fixtures: Match[]
+    }> = []
+
+    const todayYmd = toYmd(new Date())
+
+    // Previous month trailing days
+    const prevMonthLast = new Date(viewYear, viewMonth, 0).getDate()
+    for (let i = startDow - 1; i >= 0; i--) {
+      const d = new Date(viewYear, viewMonth - 1, prevMonthLast - i)
+      const ymd = toYmd(d)
+      cells.push({
+        ymd,
+        day: d.getDate(),
+        inMonth: false,
+        isToday: ymd === todayYmd,
+        fixtures: matchesByYmd.get(ymd) ?? [],
+      })
+    }
+
+    // Current month days
+    for (let day = 1; day <= daysInMonth; day++) {
+      const d = new Date(viewYear, viewMonth, day)
+      const ymd = toYmd(d)
+      cells.push({
+        ymd,
+        day,
+        inMonth: true,
+        isToday: ymd === todayYmd,
+        fixtures: matchesByYmd.get(ymd) ?? [],
+      })
+    }
+
+    // Next month leading days to complete 6 rows or end of week
+    const remainder = (7 - (cells.length % 7)) % 7
+    for (let day = 1; day <= remainder; day++) {
+      const d = new Date(viewYear, viewMonth + 1, day)
+      const ymd = toYmd(d)
+      cells.push({
+        ymd,
+        day,
+        inMonth: false,
+        isToday: ymd === todayYmd,
+        fixtures: matchesByYmd.get(ymd) ?? [],
+      })
+    }
+
+    return cells
+  }, [viewYear, viewMonth, matchesByYmd])
+
+  const upcomingMatches = useMemo(
+    () => matches.filter((m) => m.hs === '' || m.as === ''),
+    [matches],
+  )
+  const completedMatches = useMemo(
+    () => matches.filter((m) => m.hs !== '' && m.as !== '').slice().reverse(),
+    [matches],
+  )
+
+  const prevMonth = () => {
+    setSelectedYmd(null)
+    if (viewMonth === 0) {
+      setViewMonth(11)
+      setViewYear((y) => y - 1)
+    } else {
+      setViewMonth((m) => m - 1)
+    }
+  }
+
+  const nextMonth = () => {
+    setSelectedYmd(null)
+    if (viewMonth === 11) {
+      setViewMonth(0)
+      setViewYear((y) => y + 1)
+    } else {
+      setViewMonth((m) => m + 1)
+    }
+  }
+
+  const goToday = () => {
+    const now = new Date()
+    setViewYear(now.getFullYear())
+    setViewMonth(now.getMonth())
+    setSelectedYmd(toYmd(now))
+  }
+
+  if (!clubSlug && !clubName) {
+    return (
+      <section className={card}>
+        <PanelHead
+          label="Schedule & Calendar"
+          title="Fixture Calendar"
+          action={
+            <ButtonLink to="/matches" variant="outline" size="sm">
+              All League Matches
+            </ButtonLink>
+          }
+        />
+        <EmptyState
+          title="No Club Assigned Yet"
+          hint="Join or create a club to see your personalised fixture calendar and upcoming kick-offs."
+        />
+      </section>
+    )
+  }
+
+  const activeSideList = selectedYmd
+    ? matchesByYmd.get(selectedYmd) ?? []
+    : listMode === 'upcoming'
+      ? upcomingMatches
+      : completedMatches
+
+  const getFixtureContext = (m: Match) => {
+    const isHome = stripFlag(m.home).toLowerCase().trim() === cleanMyClub
+    const opponent = isHome ? stripFlag(m.away) : stripFlag(m.home)
+    const oppLogo = isHome ? m.awayLogo : m.homeLogo
+    const played = m.hs !== '' && m.as !== ''
+    let outcome: 'W' | 'D' | 'L' | null = null
+    if (played) {
+      const myScore = Number(isHome ? m.hs : m.as)
+      const oppScore = Number(isHome ? m.as : m.hs)
+      if (myScore > oppScore) outcome = 'W'
+      else if (myScore < oppScore) outcome = 'L'
+      else outcome = 'D'
+    }
+    return { isHome, opponent, oppLogo, played, outcome }
+  }
+
+  return (
+    <section className={card}>
+      <PanelHead
+        label="Schedule & Calendar"
+        title={`${stripFlag(clubName || 'Club')} Fixture Calendar`}
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-lg bg-[var(--surface-2)] px-2.5 py-1 text-[11px] font-bold text-[var(--text-muted)]">
+              {upcomingMatches.length} Upcoming · {completedMatches.length} Played
+            </span>
+            <ButtonLink to="/matches" variant="outline" size="sm">
+              Full Schedule
+            </ButtonLink>
+          </div>
+        }
+      />
+
+      {loading ? (
+        <div className="py-10 text-center text-xs text-[var(--text-muted)]">
+          Loading scheduled fixtures…
+        </div>
+      ) : (
+        <div className="grid gap-6 lg:grid-cols-12">
+          {/* LEFT (7 cols): Interactive Monthly Calendar Grid */}
+          <div className="lg:col-span-7 rounded-xl border border-[var(--border)] bg-[var(--bg)] p-3.5 sm:p-4">
+            {/* Month Header Controls */}
+            <div className="mb-3.5 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={prevMonth}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface)] text-xs font-bold text-[var(--text-strong)] hover:bg-white/10"
+                  aria-label="Previous month"
+                >
+                  ‹
+                </button>
+                <button
+                  type="button"
+                  onClick={nextMonth}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface)] text-xs font-bold text-[var(--text-strong)] hover:bg-white/10"
+                  aria-label="Next month"
+                >
+                  ›
+                </button>
+                <h3 className="ml-1 font-display text-sm font-extrabold tracking-wide text-[var(--text-strong)] sm:text-base">
+                  {MONTH_NAMES[viewMonth]} {viewYear}
+                </h3>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                {selectedYmd && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedYmd(null)}
+                    className="rounded-lg border border-[var(--border)] px-2.5 py-1 text-[11px] font-bold text-[var(--text-muted)] hover:text-white"
+                  >
+                    Show All
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={goToday}
+                  className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1 text-[11px] font-bold text-[var(--accent-text)] hover:bg-white/10"
+                >
+                  Today
+                </button>
+              </div>
+            </div>
+
+            {/* Weekday Header */}
+            <div className="grid grid-cols-7 gap-1 border-b border-[var(--border)] pb-2 text-center text-[10px] font-extrabold uppercase tracking-wider text-[var(--text-faint)]">
+              {WEEKDAYS.map((wd) => (
+                <div key={wd}>{wd}</div>
+              ))}
+            </div>
+
+            {/* Days Grid */}
+            <div className="mt-1.5 grid grid-cols-7 gap-1.5">
+              {calendarDays.map((cell) => {
+                const hasMatch = cell.fixtures.length > 0
+                const isSelected = selectedYmd === cell.ymd
+                const firstFixture = cell.fixtures[0]
+                const ctx = firstFixture ? getFixtureContext(firstFixture) : null
+
+                return (
+                  <button
+                    key={cell.ymd}
+                    type="button"
+                    onClick={() => setSelectedYmd(isSelected ? null : cell.ymd)}
+                    className={cx(
+                      'group relative flex min-h-16 flex-col justify-between rounded-lg border p-1.5 text-left transition-all',
+                      !cell.inMonth && 'opacity-35',
+                      isSelected
+                        ? 'border-[var(--accent-solid)] bg-[var(--accent-tint)] ring-1 ring-[var(--accent-solid)]'
+                        : hasMatch
+                          ? 'border-[var(--accent-ring)] bg-[var(--surface)] hover:border-[var(--accent-solid)]'
+                          : 'border-white/5 bg-[var(--surface)]/40 hover:border-white/15',
+                    )}
+                  >
+                    <div className="flex w-full items-center justify-between">
+                      <span
+                        className={cx(
+                          'numeric text-[11px] font-bold',
+                          cell.isToday
+                            ? 'rounded bg-[var(--accent-solid)] px-1 text-[var(--on-volt)] font-extrabold'
+                            : hasMatch
+                              ? 'text-white'
+                              : 'text-[var(--text-muted)]',
+                        )}
+                      >
+                        {cell.day}
+                      </span>
+                      {ctx && (
+                        <span
+                          className={cx(
+                            'rounded px-1 text-[9px] font-extrabold uppercase',
+                            ctx.isHome
+                              ? 'bg-emerald-500/20 text-emerald-300'
+                              : 'bg-sky-500/20 text-sky-300',
+                          )}
+                        >
+                          {ctx.isHome ? 'H' : 'A'}
+                        </span>
+                      )}
+                    </div>
+
+                    {ctx && firstFixture && (
+                      <div className="mt-1 flex flex-col gap-0.5">
+                        <div className="flex items-center gap-1">
+                          <img
+                            src={ctx.oppLogo || CLUB_PLACEHOLDER}
+                            alt=""
+                            onError={(e) => {
+                              e.currentTarget.src = CLUB_PLACEHOLDER
+                            }}
+                            className="h-3.5 w-3.5 shrink-0 object-contain"
+                          />
+                          <span className="truncate text-[10px] font-bold text-[var(--text-strong)]">
+                            {ctx.opponent}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          {ctx.played ? (
+                            <span
+                              className={cx(
+                                'numeric rounded px-1 text-[9px] font-extrabold',
+                                ctx.outcome === 'W'
+                                  ? 'bg-emerald-500/20 text-emerald-300'
+                                  : ctx.outcome === 'L'
+                                    ? 'bg-rose-500/20 text-rose-300'
+                                    : 'bg-amber-500/20 text-amber-300',
+                              )}
+                            >
+                              {ctx.outcome} {firstFixture.hs}-{firstFixture.as}
+                            </span>
+                          ) : (
+                            <span className="numeric text-[9px] font-bold text-[var(--accent-text)]">
+                              {firstFixture.time || 'TBC'}
+                            </span>
+                          )}
+                          {cell.fixtures.length > 1 && (
+                            <span className="text-[9px] font-extrabold text-[var(--text-faint)]">
+                              +{cell.fixtures.length - 1}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* RIGHT (5 cols): Upcoming / Selected Day Fixture Cards */}
+          <div className="lg:col-span-5 flex flex-col rounded-xl border border-[var(--border)] bg-[var(--bg)] p-3.5 sm:p-4">
+            <div className="mb-3 flex items-center justify-between gap-2 border-b border-[var(--border)] pb-2.5">
+              {selectedYmd ? (
+                <div className="flex items-center justify-between w-full">
+                  <span className="text-xs font-extrabold uppercase tracking-wider text-[var(--accent-text)]">
+                    📅 Fixtures on {selectedYmd}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedYmd(null)}
+                    className="text-[11px] font-bold text-[var(--text-muted)] hover:text-white"
+                  >
+                    ✕ Clear Day
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 rounded-lg bg-[var(--surface)] p-1 w-full">
+                  <button
+                    type="button"
+                    onClick={() => setListMode('upcoming')}
+                    className={cx(
+                      'flex-1 rounded-md py-1.5 text-xs font-bold transition-colors',
+                      listMode === 'upcoming'
+                        ? 'bg-[var(--accent-solid)] text-[var(--on-volt)]'
+                        : 'text-[var(--text-muted)] hover:text-white',
+                    )}
+                  >
+                    Upcoming ({upcomingMatches.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setListMode('results')}
+                    className={cx(
+                      'flex-1 rounded-md py-1.5 text-xs font-bold transition-colors',
+                      listMode === 'results'
+                        ? 'bg-[var(--accent-solid)] text-[var(--on-volt)]'
+                        : 'text-[var(--text-muted)] hover:text-white',
+                    )}
+                  >
+                    Results ({completedMatches.length})
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {activeSideList.length === 0 ? (
+              <div className="flex flex-1 flex-col items-center justify-center py-10 text-center">
+                <p className="text-xs font-bold text-[var(--text-strong)]">
+                  {selectedYmd
+                    ? 'No fixtures scheduled on this date'
+                    : listMode === 'upcoming'
+                      ? 'No upcoming fixtures scheduled'
+                      : 'No completed results yet'}
+                </p>
+                <p className="mt-1 text-[11px] text-[var(--text-faint)]">
+                  {selectedYmd
+                    ? 'Click a highlighted date on the calendar or clear the day filter.'
+                    : 'Once league admins publish fixtures for your division, they will appear here.'}
+                </p>
+              </div>
+            ) : (
+              <ul className="scroll-slim max-h-80 space-y-2.5 overflow-y-auto pr-1">
+                {activeSideList.map((m, idx) => {
+                  const ctx = getFixtureContext(m)
+                  return (
+                    <li key={m.id ?? idx}>
+                      <Link
+                        to={m.id ? `/matches/${m.id}` : '/matches'}
+                        className="flex items-center justify-between gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 transition-colors hover:border-[var(--accent-ring)]"
+                      >
+                        <div className="flex min-w-0 items-center gap-3">
+                          <img
+                            src={ctx.oppLogo || CLUB_PLACEHOLDER}
+                            alt=""
+                            onError={(e) => {
+                              e.currentTarget.src = CLUB_PLACEHOLDER
+                            }}
+                            className="h-9 w-9 shrink-0 object-contain"
+                          />
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span
+                                className={cx(
+                                  'rounded px-1.5 py-0.5 text-[9px] font-extrabold uppercase',
+                                  ctx.isHome
+                                    ? 'bg-emerald-500/20 text-emerald-300'
+                                    : 'bg-sky-500/20 text-sky-300',
+                                )}
+                              >
+                                {ctx.isHome ? 'HOME' : 'AWAY'}
+                              </span>
+                              {m.roundNumber && (
+                                <span className="text-[10px] font-bold text-[var(--text-faint)]">
+                                  Round {m.roundNumber}
+                                </span>
+                              )}
+                            </div>
+                            <p className="mt-0.5 truncate text-xs font-extrabold text-[var(--text-strong)]">
+                              vs {ctx.opponent}
+                            </p>
+                            <p className="text-[11px] text-[var(--text-muted)]">
+                              {m.date || 'Date TBD'} · {m.time || 'Kick-off TBD'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="shrink-0 text-right">
+                          {ctx.played ? (
+                            <span
+                              className={cx(
+                                'numeric inline-block rounded-lg px-2.5 py-1 text-xs font-extrabold',
+                                ctx.outcome === 'W'
+                                  ? 'bg-emerald-500/20 text-emerald-300'
+                                  : ctx.outcome === 'L'
+                                    ? 'bg-rose-500/20 text-rose-300'
+                                    : 'bg-amber-500/20 text-amber-300',
+                              )}
+                            >
+                              {ctx.outcome} · {m.hs}:{m.as}
+                            </span>
+                          ) : (
+                            <span className="inline-block rounded-lg bg-[var(--accent-tint)] px-2.5 py-1 text-[11px] font-extrabold text-[var(--accent-text)]">
+                              Match →
+                            </span>
+                          )}
+                        </div>
+                      </Link>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
+    </section>
+  )
+}
+
 /* ================================================================ manager */
 
-function ManagerPanel() {
+function ManagerPanel({ transferWindowOpen }: { transferWindowOpen: boolean }) {
   const { user, refresh } = useAuth()
   const [notice, setNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
@@ -701,6 +1295,7 @@ function ManagerPanel() {
   return (
     <div className="space-y-8">
       <Notice {...(notice ?? { kind: 'ok', text: null })} />
+      <TransferWindowClosedBanner open={transferWindowOpen} />
 
       {/* ---- approval status ---- */}
       {user.clubStatus === 'pending' && (
@@ -803,6 +1398,12 @@ function ManagerPanel() {
           </form>
         </div>
       </section>
+
+      {/* ---- club fixture calendar ---- */}
+      <ClubFixtureCalendar
+        clubSlug={myClub?.slug}
+        clubName={myClub?.name ?? user.clubName}
+      />
 
       {/* ---- starting xi & lineup ---- */}
       <section className={card}>
@@ -1423,11 +2024,11 @@ function ManagerPanel() {
                         <>
                           <Button
                             size="sm"
-                            disabled={busy}
+                            disabled={busy || !transferWindowOpen}
                             onClick={() => handleDecideJoinRequest(req.id, 'accept')}
                             className="gap-1 font-bold bg-emerald-600 hover:bg-emerald-500 text-white"
                           >
-                            ✓ Accept
+                            {transferWindowOpen ? '✓ Accept' : '🔒 Window Closed'}
                           </Button>
                           <Button
                             size="sm"
@@ -1468,17 +2069,18 @@ function ManagerPanel() {
           action={
             <Button
               size="sm"
+              disabled={!transferWindowOpen}
               onClick={() => setShowSignModal(true)}
               className="gap-1.5 font-bold shadow-sm"
             >
               <svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden>
                 <path d="M10 4v12M4 10h12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
               </svg>
-              Sign a Player
+              {transferWindowOpen ? 'Sign a Player' : '🔒 Window Closed'}
             </Button>
           }
         />
-        {!isManagerInSquad && (
+        {!isManagerInSquad && transferWindowOpen && (
           <div className="mb-4 rounded-xl border border-[var(--accent-ring)] bg-[var(--accent-tint)]/40 p-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="space-y-1">
@@ -1548,11 +2150,16 @@ function ManagerPanel() {
           <div className="py-6 text-center">
             <EmptyState title="No players signed yet" hint="Search for players and send contract offers to build your roster." />
             <div className="mt-3">
-              <Button size="sm" onClick={() => setShowSignModal(true)} className="gap-1.5 font-bold">
+              <Button
+                size="sm"
+                disabled={!transferWindowOpen}
+                onClick={() => setShowSignModal(true)}
+                className="gap-1.5 font-bold"
+              >
                 <svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden>
                   <path d="M10 4v12M4 10h12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
                 </svg>
-                Sign First Player
+                {transferWindowOpen ? 'Sign First Player' : '🔒 Window Closed'}
               </Button>
             </div>
           </div>
@@ -1618,10 +2225,10 @@ function ManagerPanel() {
                   />
                   <button
                     type="button"
-                    disabled={busy}
+                    disabled={busy || !transferWindowOpen}
                     onClick={() => handleReleasePlayer(p)}
                     className="ml-1 shrink-0 rounded-lg border border-red-500/25 bg-red-500/10 px-2.5 py-1 text-xs font-semibold text-red-400 transition-all duration-150 hover:border-red-500/60 hover:bg-red-500 hover:text-white active:scale-95 disabled:opacity-50"
-                    title={(user?.playerId && p.id === user.playerId) || (user?.id && p.user_id === user.id) || (user?.gamertag && p.gamertag.toLowerCase() === user.gamertag.toLowerCase()) ? "Leave Squad" : "Release Player"}
+                    title={!transferWindowOpen ? 'Transfer window is closed' : (user?.playerId && p.id === user.playerId) || (user?.id && p.user_id === user.id) || (user?.gamertag && p.gamertag.toLowerCase() === user.gamertag.toLowerCase()) ? "Leave Squad" : "Release Player"}
                   >
                     {(user?.playerId && p.id === user.playerId) || (user?.id && p.user_id === user.id) || (user?.gamertag && p.gamertag.toLowerCase() === user.gamertag.toLowerCase()) ? "Leave" : "Release"}
                   </button>
@@ -1728,7 +2335,7 @@ function ManagerPanel() {
 
 /* ================================================================= player */
 
-function PlayerPanel() {
+function PlayerPanel({ transferWindowOpen }: { transferWindowOpen: boolean }) {
   const { refresh } = useAuth()
   const [notice, setNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
@@ -1828,6 +2435,7 @@ function PlayerPanel() {
   return (
     <div className="space-y-8">
       <Notice {...(notice ?? { kind: 'ok', text: null })} />
+      <TransferWindowClosedBanner open={transferWindowOpen} />
 
       <section className={card}>
         <PanelHead label="Your status" title={club ? club.name : 'Free agent'} />
@@ -1849,8 +2457,13 @@ function PlayerPanel() {
             <ButtonLink to={`/clubs/${club.slug}`} variant="outline" size="sm">
               View club
             </ButtonLink>
-            <Button size="sm" variant="danger" disabled={busy} onClick={() => void onLeave()}>
-              Leave club
+            <Button
+              size="sm"
+              variant="danger"
+              disabled={busy || !transferWindowOpen}
+              onClick={() => void onLeave()}
+            >
+              {transferWindowOpen ? 'Leave club' : '🔒 Window Closed'}
             </Button>
           </div>
         )}
@@ -1876,6 +2489,9 @@ function PlayerPanel() {
         </form>
       </section>
 
+      {/* ---- club fixture calendar ---- */}
+      <ClubFixtureCalendar clubSlug={club?.slug} clubName={club?.name} />
+
       <section className={card}>
         <PanelHead label="Inbox" title="Offers" />
         {offers.length === 0 ? (
@@ -1898,8 +2514,12 @@ function PlayerPanel() {
                   <p className={`mt-2 ${prose}`}>{o.message}</p>
                 )}
                 <div className="mt-4 flex flex-wrap gap-2.5">
-                  <Button size="sm" disabled={busy} onClick={() => void onDecide(o.id, 'accept')}>
-                    Accept
+                  <Button
+                    size="sm"
+                    disabled={busy || !transferWindowOpen}
+                    onClick={() => void onDecide(o.id, 'accept')}
+                  >
+                    {transferWindowOpen ? 'Accept' : '🔒 Window Closed'}
                   </Button>
                   <Button
                     size="sm"
@@ -2149,6 +2769,21 @@ export default function DashboardPage() {
   const navigate = useNavigate()
   const sent = useRef(false)
   const [showSettingsModal, setShowSettingsModal] = useState(false)
+  const [transferWindowOpen, setTransferWindowOpen] = useState(true)
+
+  useEffect(() => {
+    let active = true
+    getTransferWindowStatus()
+      .then((res) => {
+        if (active && typeof res.open === 'boolean') {
+          setTransferWindowOpen(res.open)
+        }
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [])
 
   useEffect(() => {
     if (window.location.hash.includes('settings')) {
@@ -2212,7 +2847,11 @@ export default function DashboardPage() {
       </div>
 
       <Container size="default" className="pb-20">
-        {isPlayer ? <PlayerPanel /> : <ManagerPanel />}
+        {isPlayer ? (
+          <PlayerPanel transferWindowOpen={transferWindowOpen} />
+        ) : (
+          <ManagerPanel transferWindowOpen={transferWindowOpen} />
+        )}
         <OrdersSection />
       </Container>
 

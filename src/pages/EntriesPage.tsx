@@ -19,12 +19,13 @@
 import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Badge, Button, ButtonLink, Card, Container, Section, SectionHead } from '@/components/ui'
-import { SITE, siteData } from '@/data'
+import { SITE, siteData, useSiteContentVersion } from '@/data'
 import { useAuth } from '@/lib/auth'
 import { useCart } from '@/lib/cart'
 import { useSeasonName } from '@/lib/season'
 
 export default function EntriesPage() {
+  useSiteContentVersion()
   const seasonName = useSeasonName()
   const { add, has, openPanel } = useCart()
   const { user } = useAuth()
@@ -48,49 +49,63 @@ export default function EntriesPage() {
             <div>
               <SectionHead eyebrow="Available entries" title="What is on offer" />
               <ul className="grid gap-6 sm:grid-cols-2">
-                {siteData.products.map((p) => (
-                  <li key={p.slug}>
-                    <Card className="flex h-full flex-col overflow-hidden p-0">
-                      <img
-                        src={p.image}
-                        alt=""
-                        loading="lazy"
-                        decoding="async"
-                        className="h-36 w-full object-cover"
-                      />
-                      <div className="flex flex-1 flex-col p-6">
-                        <Badge tone="neutral">{p.kicker}</Badge>
-                        <h3 className="mt-2.5 font-display text-base font-bold leading-snug text-[var(--text-strong)]">
-                          {p.name}
-                        </h3>
-                        <p className="mt-2 flex-1 text-sm leading-relaxed text-[var(--text-muted)]">
-                          {p.summary}
-                        </p>
-                        <div className="mt-6 flex items-center justify-between gap-3">
-                          <span className="numeric text-xl font-bold text-[var(--accent-text)]">
-                            {p.price}
-                          </span>
-                          {user?.role === 'player' ? (
-                            <span className="text-[12px] font-semibold text-[var(--text-faint)]">
-                              Managers only
+                {siteData.products.map((p) => {
+                  const isOutOfStock = Boolean(p.outOfStock)
+                  return (
+                    <li key={p.slug}>
+                      <Card className="flex h-full flex-col overflow-hidden p-0">
+                        <div className="relative">
+                          <img
+                            src={p.image}
+                            alt=""
+                            loading="lazy"
+                            decoding="async"
+                            className="h-36 w-full object-cover"
+                          />
+                          {isOutOfStock && (
+                            <span className="absolute right-3 top-3 rounded-full border border-rose-500/40 bg-rose-500/20 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider text-rose-300 backdrop-blur-md">
+                              Out of Stock · Payment Closed
                             </span>
-                          ) : (
-                            <Button
-                              size="sm"
-                              onClick={() => {
-                                if (!has(p.slug)) add(p.slug)
-                                if (user) openPanel()
-                                else navigate('/cart')
-                              }}
-                            >
-                              {has(p.slug) ? 'In cart' : 'Add to cart'}
-                            </Button>
                           )}
                         </div>
-                      </div>
-                    </Card>
-                  </li>
-                ))}
+                        <div className="flex flex-1 flex-col p-6">
+                          <Badge tone="neutral">{p.kicker}</Badge>
+                          <h3 className="mt-2.5 font-display text-base font-bold leading-snug text-[var(--text-strong)]">
+                            {p.name}
+                          </h3>
+                          <p className="mt-2 flex-1 text-sm leading-relaxed text-[var(--text-muted)]">
+                            {p.summary}
+                          </p>
+                          <div className="mt-6 flex items-center justify-between gap-3">
+                            <span className="numeric text-xl font-bold text-[var(--accent-text)]">
+                              {p.price}
+                            </span>
+                            {isOutOfStock ? (
+                              <Button size="sm" variant="outline" disabled>
+                                Out of Stock
+                              </Button>
+                            ) : user?.role === 'player' ? (
+                              <span className="text-[12px] font-semibold text-[var(--text-faint)]">
+                                Managers only
+                              </span>
+                            ) : (
+                              <Button
+                                size="sm"
+                                onClick={() => {
+                                  if (!has(p.slug)) add(p.slug)
+                                  if (user) openPanel()
+                                  else navigate('/cart')
+                                }}
+                              >
+                                {has(p.slug) ? 'In cart' : 'Add to cart'}
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </Card>
+                    </li>
+                  )
+                })}
               </ul>
 
               {user?.role !== 'player' && (

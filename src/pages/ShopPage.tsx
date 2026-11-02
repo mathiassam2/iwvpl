@@ -80,22 +80,30 @@ export default function ShopPage() {
               <ul className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
                 {products.map((product) => {
                   const inCart = has(product.slug)
+                  const isOutOfStock = Boolean(product.outOfStock)
                   return (
                     <li key={product.slug}>
                       <Card className="flex h-full flex-col overflow-hidden p-0">
-                        {product.image ? (
-                          <img
-                            src={product.image}
-                            alt=""
-                            loading="lazy"
-                            decoding="async"
-                            className="h-44 w-full object-cover"
-                          />
-                        ) : (
-                          <div className="grid h-44 place-items-center bg-[var(--surface-2)] text-sm text-[var(--text-faint)]">
-                            IWVPL
-                          </div>
-                        )}
+                        <div className="relative">
+                          {product.image ? (
+                            <img
+                              src={product.image}
+                              alt=""
+                              loading="lazy"
+                              decoding="async"
+                              className="h-44 w-full object-cover"
+                            />
+                          ) : (
+                            <div className="grid h-44 place-items-center bg-[var(--surface-2)] text-sm text-[var(--text-faint)]">
+                              IWVPL
+                            </div>
+                          )}
+                          {isOutOfStock && (
+                            <span className="absolute right-3 top-3 rounded-full border border-rose-500/40 bg-rose-500/20 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider text-rose-300 backdrop-blur-md">
+                              Out of Stock · Payment Closed
+                            </span>
+                          )}
+                        </div>
                         <div className="flex flex-1 flex-col p-6">
                           <div className="flex items-center justify-between gap-3">
                             <Badge tone="neutral">{product.kicker || section}</Badge>
@@ -119,7 +127,11 @@ export default function ShopPage() {
                             <span className="numeric text-xl font-bold text-[var(--accent-text)]">
                               {product.price}
                             </span>
-                            {user?.role === 'player' && section === 'Registration Fee' ? (
+                            {isOutOfStock ? (
+                              <Button size="sm" variant="outline" disabled>
+                                Out of Stock
+                              </Button>
+                            ) : user?.role === 'player' && section === 'Registration Fee' ? (
                               <span className="text-[12px] font-semibold text-[var(--text-faint)]">
                                 Managers only
                               </span>

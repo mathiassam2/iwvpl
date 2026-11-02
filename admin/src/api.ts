@@ -128,6 +128,11 @@ export interface Match {
   status: string
   home_score: number | null
   away_score: number | null
+  division_id?: number | null
+  division_name?: string | null
+  division_slug?: string | null
+  season_id?: number | null
+  round_number?: number | null
   home_club_id?: number
   home_name: string
   home_slug: string
@@ -310,12 +315,18 @@ export const getMatches = ({
   result,
   search,
   sort,
+  seasonId,
+  divisionId,
+  includeDrafts,
 }: {
   limit: number
   offset: number
   result: 'all' | 'pending' | 'completed'
   search: string
   sort?: MatchSort
+  seasonId?: number | null
+  divisionId?: number | null
+  includeDrafts?: boolean
 }) => {
   const params = new URLSearchParams({
     limit: String(limit),
@@ -324,6 +335,9 @@ export const getMatches = ({
     search,
   })
   if (sort === 'latest') params.set('sort', 'latest')
+  if (seasonId != null) params.set('seasonId', String(seasonId))
+  if (divisionId != null) params.set('divisionId', String(divisionId))
+  if (includeDrafts) params.set('includeDrafts', 'true')
   return request<MatchPage>(`/api/matches?${params}`)
 }
 
@@ -1149,6 +1163,7 @@ export interface CmsProduct {
   access: string
   features: string
   note: string
+  outOfStock?: boolean
 }
 
 export interface CmsNewsPost {
@@ -1280,16 +1295,34 @@ export interface EaClubSearchResult {
 
 export interface EaPlayerStatItem {
   gamertag: string
+  proName?: string
   pos: string
+  platform?: string
   rating: number
   goals: number
   assists: number
   shots: number
+  shotAccuracy?: number
   passes: number
+  passAttempts?: number
+  passAccuracy?: number
+  dribbles?: number
+  dribbleSuccessRate?: number
   tackles: number
+  tackleAttempts?: number
+  tackleSuccessRate?: number
+  offsides?: number
+  foulsCommitted?: number
+  possessionWon?: number
+  possessionLost?: number
+  minutesPlayed?: number
+  distanceCovered?: number
+  distanceSprinted?: number
   saves: number
   cleanSheet: boolean
   isMom: boolean
+  yellowCards?: number
+  redCards?: number
 }
 
 export interface EaMatchCandidate {
@@ -1311,6 +1344,7 @@ export interface EaMatchCandidate {
   suggestedAwayScore: number | null
   homePlayers: EaPlayerStatItem[]
   awayPlayers: EaPlayerStatItem[]
+  suggestedTeamStats?: Record<string, number | null>
 }
 
 export const searchEaClubs = (query: string) =>
@@ -1341,16 +1375,34 @@ export const applyEaMatchResult = (
     players: Array<{
       clubId: number
       gamertag: string
+      proName?: string
       pos?: string
+      platform?: string
       rating?: number
       goals: number
       assists: number
       shots?: number
+      shotAccuracy?: number
       passes?: number
+      passAttempts?: number
+      passAccuracy?: number
+      dribbles?: number
+      dribbleSuccessRate?: number
       tackles?: number
+      tackleAttempts?: number
+      tackleSuccessRate?: number
+      offsides?: number
+      foulsCommitted?: number
+      possessionWon?: number
+      possessionLost?: number
+      minutesPlayed?: number
+      distanceCovered?: number
+      distanceSprinted?: number
       saves: number
       cleanSheet: boolean
       isMom: boolean
+      yellowCards?: number
+      redCards?: number
     }>
   },
 ) =>
@@ -1367,15 +1419,34 @@ export interface ManualMatchPlayerStat {
   player_id?: number | null
   club_id: number
   gamertag: string
+  pro_name?: string | null
+  pos?: string | null
+  platform?: string | null
   rating: number
   goals: number
   assists: number
   shots: number
+  shot_accuracy?: number
   passes: number
+  pass_attempts?: number
+  pass_accuracy?: number
+  dribbles?: number
+  dribble_success_rate?: number
   tackles: number
+  tackle_attempts?: number
+  tackle_success_rate?: number
+  offsides?: number
+  fouls_committed?: number
+  possession_won?: number
+  possession_lost?: number
+  minutes_played?: number
+  distance_covered?: number
+  distance_sprinted?: number
   saves: number
   clean_sheet: boolean | number
   is_mom: boolean | number
+  yellow_cards?: number
+  red_cards?: number
 }
 
 export interface ManualMatchTeamStats {
@@ -1393,6 +1464,32 @@ export interface ManualMatchTeamStats {
   offsides_away: number | null
   pass_accuracy_home: number | null
   pass_accuracy_away: number | null
+  dribble_success_home?: number | null
+  dribble_success_away?: number | null
+  shot_accuracy_home?: number | null
+  shot_accuracy_away?: number | null
+  ball_recovery_time_home?: number | null
+  ball_recovery_time_away?: number | null
+  xg_home?: number | string | null
+  xg_away?: number | string | null
+  passes_home?: number | null
+  passes_away?: number | null
+  tackles_home?: number | null
+  tackles_away?: number | null
+  tackles_won_home?: number | null
+  tackles_won_away?: number | null
+  interceptions_home?: number | null
+  interceptions_away?: number | null
+  saves_home?: number | null
+  saves_away?: number | null
+  free_kicks_home?: number | null
+  free_kicks_away?: number | null
+  penalties_home?: number | null
+  penalties_away?: number | null
+  yellow_cards_home?: number | null
+  yellow_cards_away?: number | null
+  red_cards_home?: number | null
+  red_cards_away?: number | null
 }
 
 export interface ManualMatchEvent {
@@ -1429,15 +1526,34 @@ export const saveManualMatchStats = (
     players: Array<{
       clubId: number
       gamertag: string
+      proName?: string
+      pos?: string
+      platform?: string
       rating?: number
       goals: number
       assists: number
       shots?: number
+      shotAccuracy?: number
       passes?: number
+      passAttempts?: number
+      passAccuracy?: number
+      dribbles?: number
+      dribbleSuccessRate?: number
       tackles?: number
+      tackleAttempts?: number
+      tackleSuccessRate?: number
+      offsides?: number
+      foulsCommitted?: number
+      possessionWon?: number
+      possessionLost?: number
+      minutesPlayed?: number
+      distanceCovered?: number
+      distanceSprinted?: number
       saves: number
       cleanSheet: boolean
       isMom: boolean
+      yellowCards?: number
+      redCards?: number
     }>
     teamStats: Record<string, number | string | null>
     events: Array<{
@@ -1550,6 +1666,22 @@ export const updateManagerSecuritySettings = (settings: Partial<ManagerSecurityS
     {
       method: 'PUT',
       body: JSON.stringify(settings),
+    },
+  )
+
+export interface TransferWindowSettings {
+  open: boolean
+}
+
+export const getTransferWindowSettings = () =>
+  request<TransferWindowSettings>('/api/admin/settings/transfer-window')
+
+export const updateTransferWindowSettings = (open: boolean) =>
+  request<{ ok: true; settings: TransferWindowSettings }>(
+    '/api/admin/settings/transfer-window',
+    {
+      method: 'PUT',
+      body: JSON.stringify({ open }),
     },
   )
 
