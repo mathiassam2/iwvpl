@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { buildPlayerRowsFromRoster, parseMatchScreenshots } from '../screenshotOcr'
 import {
   getManualMatchData,
   saveManualMatchStats,
@@ -278,6 +279,10 @@ export function ManualMatchStatsModal({
   const [activeTab, setActiveTab] = useState<'all' | 'summary' | 'players' | 'events'>('all')
   const [playerMode, setPlayerMode] = useState<'quick' | 'advanced'>('quick')
   const [expandedPlayerKey, setExpandedPlayerKey] = useState<string | null>(null)
+  const [ocrBusy, setOcrBusy] = useState(false)
+  const [ocrStatus, setOcrStatus] = useState<string | null>(null)
+  const [ocrSummaryNote, setOcrSummaryNote] = useState<string | null>(null)
+  const screenshotInputRef = useRef<HTMLInputElement | null>(null)
 
   const homeClubId = data?.match.home_club_id ?? match?.home_club_id ?? 0
   const awayClubId = data?.match.away_club_id ?? match?.away_club_id ?? 0
@@ -492,6 +497,218 @@ export function ManualMatchStatsModal({
     report('info', 'Aggregated team summary stats from player rows.')
   }
 
+  const swapHomeAndAwaySides = () => {
+    setHomeScore(awayScore)
+    setAwayScore(homeScore)
+    setTeam((prev) => ({
+      dribbleSuccessHome: prev.dribbleSuccessAway,
+      dribbleSuccessAway: prev.dribbleSuccessHome,
+      shotAccuracyHome: prev.shotAccuracyAway,
+      shotAccuracyAway: prev.shotAccuracyHome,
+      passAccuracyHome: prev.passAccuracyAway,
+      passAccuracyAway: prev.passAccuracyHome,
+      possessionHome: prev.possessionAway,
+      possessionAway: prev.possessionHome,
+      ballRecoveryTimeHome: prev.ballRecoveryTimeAway,
+      ballRecoveryTimeAway: prev.ballRecoveryTimeHome,
+      xgHome: prev.xgAway,
+      xgAway: prev.xgHome,
+      shotsHome: prev.shotsAway,
+      shotsAway: prev.shotsHome,
+      onTargetHome: prev.onTargetAway,
+      onTargetAway: prev.onTargetHome,
+      passesHome: prev.passesAway,
+      passesAway: prev.passesHome,
+      tacklesHome: prev.tacklesAway,
+      tacklesAway: prev.tacklesHome,
+      tacklesWonHome: prev.tacklesWonAway,
+      tacklesWonAway: prev.tacklesWonHome,
+      interceptionsHome: prev.interceptionsAway,
+      interceptionsAway: prev.interceptionsHome,
+      savesHome: prev.savesAway,
+      savesAway: prev.savesHome,
+      foulsHome: prev.foulsAway,
+      foulsAway: prev.foulsHome,
+      offsidesHome: prev.offsidesAway,
+      offsidesAway: prev.offsidesHome,
+      cornersHome: prev.cornersAway,
+      cornersAway: prev.cornersHome,
+      freeKicksHome: prev.freeKicksAway,
+      freeKicksAway: prev.freeKicksHome,
+      penaltiesHome: prev.penaltiesAway,
+      penaltiesAway: prev.penaltiesHome,
+      yellowCardsHome: prev.yellowCardsAway,
+      yellowCardsAway: prev.yellowCardsHome,
+      redCardsHome: prev.redCardsAway,
+      redCardsAway: prev.redCardsHome,
+    }))
+    setHomePlayers(awayPlayers.map((p) => ({ ...p, clubId: homeClubId })))
+    setAwayPlayers(homePlayers.map((p) => ({ ...p, clubId: awayClubId })))
+    report('info', 'Swapped Home and Away scores, team summary stats, and player lists.')
+  }
+
+  const handleScreenshotsUpload = async (fileList: FileList | File[]) => {
+    const files = Array.from(fileList).filter((f) => f.type.startsWith('image/'))
+    if (files.length === 0) {
+      report('error', 'Please select at least one screenshot image (PNG/JPG).')
+      return
+    }
+    setOcrBusy(true)
+    setOcrStatus('Initializing EA FC Screenshot Reader…')
+    setOcrSummaryNote(null)
+    try {
+      const parsed = await parseMatchScreenshots(files, homeLabel, awayLabel, (msg) => {
+        setOcrStatus(msg)
+      })
+
+      const swapped = parsed.swappedSides
+      let nextHomeScore = homeScore
+      let nextAwayScore = awayScore
+
+      if (parsed.summary) {
+        const s = parsed.summary
+        const hVal = <T,>(leftVal: T | undefined, rightVal: T | undefined): T | undefined =>
+          swapped ? rightVal : leftVal
+        const aVal = <T,>(leftVal: T | undefined, rightVal: T | undefined): T | undefined =>
+          swapped ? leftVal : rightVal
+
+        const hs = hVal(s.leftScore, s.rightScore)
+        const as = aVal(s.leftScore, s.rightScore)
+        if (hs != null) {
+          nextHomeScore = String(hs)
+          setHomeScore(String(hs))
+        }
+        if (as != null) {
+          nextAwayScore = String(as)
+          setAwayScore(String(as))
+        }
+
+        const setStr = (val: number | undefined, fallback: string) =>
+          val != null && Number.isFinite(val) ? String(val) : fallback
+
+        setTeam((prev) => ({
+          ...prev,
+          dribbleSuccessHome: setStr(hVal(s.dribbleSuccessLeft, s.dribbleSuccessRight), prev.dribbleSuccessHome),
+          dribbleSuccessAway: setStr(aVal(s.dribbleSuccessLeft, s.dribbleSuccessRight), prev.dribbleSuccessAway),
+          shotAccuracyHome: setStr(hVal(s.shotAccuracyLeft, s.shotAccuracyRight), prev.shotAccuracyHome),
+          shotAccuracyAway: setStr(aVal(s.shotAccuracyLeft, s.shotAccuracyRight), prev.shotAccuracyAway),
+          passAccuracyHome: setStr(hVal(s.passAccuracyLeft, s.passAccuracyRight), prev.passAccuracyHome),
+          passAccuracyAway: setStr(aVal(s.passAccuracyLeft, s.passAccuracyRight), prev.passAccuracyAway),
+          possessionHome: setStr(hVal(s.possessionLeft, s.possessionRight), prev.possessionHome),
+          possessionAway: setStr(aVal(s.possessionLeft, s.possessionRight), prev.possessionAway),
+          ballRecoveryTimeHome: setStr(hVal(s.ballRecoveryTimeLeft, s.ballRecoveryTimeRight), prev.ballRecoveryTimeHome),
+          ballRecoveryTimeAway: setStr(aVal(s.ballRecoveryTimeLeft, s.ballRecoveryTimeRight), prev.ballRecoveryTimeAway),
+          shotsHome: setStr(hVal(s.shotsLeft, s.shotsRight), prev.shotsHome),
+          shotsAway: setStr(aVal(s.shotsLeft, s.shotsRight), prev.shotsAway),
+          xgHome: setStr(hVal(s.xgLeft, s.xgRight), prev.xgHome),
+          xgAway: setStr(aVal(s.xgLeft, s.xgRight), prev.xgAway),
+          passesHome: setStr(hVal(s.passesLeft, s.passesRight), prev.passesHome),
+          passesAway: setStr(aVal(s.passesLeft, s.passesRight), prev.passesAway),
+          tacklesHome: setStr(hVal(s.tacklesLeft, s.tacklesRight), prev.tacklesHome),
+          tacklesAway: setStr(aVal(s.tacklesLeft, s.tacklesRight), prev.tacklesAway),
+          tacklesWonHome: setStr(hVal(s.tacklesWonLeft, s.tacklesWonRight), prev.tacklesWonHome),
+          tacklesWonAway: setStr(aVal(s.tacklesWonLeft, s.tacklesWonRight), prev.tacklesWonAway),
+          interceptionsHome: setStr(hVal(s.interceptionsLeft, s.interceptionsRight), prev.interceptionsHome),
+          interceptionsAway: setStr(aVal(s.interceptionsLeft, s.interceptionsRight), prev.interceptionsAway),
+          savesHome: setStr(hVal(s.savesLeft, s.savesRight), prev.savesHome),
+          savesAway: setStr(aVal(s.savesLeft, s.savesRight), prev.savesAway),
+          foulsHome: setStr(hVal(s.foulsLeft, s.foulsRight), prev.foulsHome),
+          foulsAway: setStr(aVal(s.foulsLeft, s.foulsRight), prev.foulsAway),
+          offsidesHome: setStr(hVal(s.offsidesLeft, s.offsidesRight), prev.offsidesHome),
+          offsidesAway: setStr(aVal(s.offsidesLeft, s.offsidesRight), prev.offsidesAway),
+          cornersHome: setStr(hVal(s.cornersLeft, s.cornersRight), prev.cornersHome),
+          cornersAway: setStr(aVal(s.cornersLeft, s.cornersRight), prev.cornersAway),
+          freeKicksHome: setStr(hVal(s.freeKicksLeft, s.freeKicksRight), prev.freeKicksHome),
+          freeKicksAway: setStr(aVal(s.freeKicksLeft, s.freeKicksRight), prev.freeKicksAway),
+          penaltiesHome: setStr(hVal(s.penaltiesLeft, s.penaltiesRight), prev.penaltiesHome),
+          penaltiesAway: setStr(aVal(s.penaltiesLeft, s.penaltiesRight), prev.penaltiesAway),
+          yellowCardsHome: setStr(hVal(s.yellowCardsLeft, s.yellowCardsRight), prev.yellowCardsHome),
+          yellowCardsAway: setStr(aVal(s.yellowCardsLeft, s.yellowCardsRight), prev.yellowCardsAway),
+          redCardsHome: setStr(hVal(s.redCardsLeft, s.redCardsRight), prev.redCardsHome),
+          redCardsAway: setStr(aVal(s.redCardsLeft, s.redCardsRight), prev.redCardsAway),
+        }))
+      }
+
+      // Process Player Performance rosters
+      if (parsed.rosters.length > 0) {
+        const lobbyLeft = parsed.playersScreen?.leftPlayers
+        const lobbyRight = parsed.playersScreen?.rightPlayers
+
+        for (let rIdx = 0; rIdx < parsed.rosters.length; rIdx++) {
+          const r = parsed.rosters[rIdx]
+          const cName = (r.clubName || '').toLowerCase()
+          const awayFirst = awayLabel.toLowerCase().split(/s+/)[0] || ''
+          const homeFirst = homeLabel.toLowerCase().split(/s+/)[0] || ''
+
+          let isAwayRoster = false
+          if (awayFirst.length >= 3 && cName.includes(awayFirst)) {
+            isAwayRoster = true
+          } else if (homeFirst.length >= 3 && cName.includes(homeFirst)) {
+            isAwayRoster = false
+          } else if (parsed.rosters.length === 2) {
+            isAwayRoster = swapped ? rIdx === 0 : rIdx === 1
+          } else {
+            isAwayRoster = swapped
+          }
+
+          if (isAwayRoster) {
+            const conceded = Number(nextHomeScore) || 0
+            const rows = buildPlayerRowsFromRoster(
+              awayClubId,
+              r.players,
+              awaySquad,
+              conceded,
+              swapped ? lobbyLeft : lobbyRight,
+            )
+            setAwayPlayers(rows)
+          } else {
+            const conceded = Number(nextAwayScore) || 0
+            const rows = buildPlayerRowsFromRoster(
+              homeClubId,
+              r.players,
+              homeSquad,
+              conceded,
+              swapped ? lobbyRight : lobbyLeft,
+            )
+            setHomePlayers(rows)
+          }
+        }
+      } else if (parsed.playersScreen) {
+        // Only PLAYERS lobby screenshot uploaded — populate gamertags if player lists are empty
+        const homeGamertags = swapped ? parsed.playersScreen.rightPlayers : parsed.playersScreen.leftPlayers
+        const awayGamertags = swapped ? parsed.playersScreen.leftPlayers : parsed.playersScreen.rightPlayers
+        if (homePlayers.length === 0 && homeGamertags.length > 0) {
+          setHomePlayers(
+            homeGamertags.map((g) => ({
+              ...playerRow(homeClubId, g.gamertag),
+              platform: g.platform,
+            })),
+          )
+        }
+        if (awayPlayers.length === 0 && awayGamertags.length > 0) {
+          setAwayPlayers(
+            awayGamertags.map((g) => ({
+              ...playerRow(awayClubId, g.gamertag),
+              platform: g.platform,
+            })),
+          )
+        }
+      }
+
+      const detectedMsg =
+        parsed.screensDetected.length > 0
+          ? `Auto-filled from ${parsed.screensDetected.join(' + ')}${swapped ? ' (Auto-matched reversed Home/Away order from screenshot)' : ''}.`
+          : 'Processed screenshot(s).'
+      setOcrSummaryNote(detectedMsg)
+      report('ok', detectedMsg)
+    } catch (err: any) {
+      report('error', err?.message || 'Failed to read match screenshot.')
+    } finally {
+      setOcrBusy(false)
+      setOcrStatus(null)
+    }
+  }
+
   const updatePlayer = (
     side: 'home' | 'away',
     index: number,
@@ -664,7 +881,37 @@ export function ManualMatchStatsModal({
             ))}
           </div>
 
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input
+              ref={screenshotInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              style={{ display: 'none' }}
+              onChange={(e) => {
+                if (e.target.files && e.target.files.length > 0) {
+                  void handleScreenshotsUpload(e.target.files)
+                  e.target.value = ''
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="adm-btn adm-btn-primary adm-btn-xs"
+              disabled={ocrBusy}
+              onClick={() => screenshotInputRef.current?.click()}
+              title="Upload 1 or more EA FC 26/27 screenshots (Match Summary, Player Performance, Players) to auto-fill stats"
+            >
+              {ocrBusy ? '⏳ Reading Screenshots…' : '📸 Auto-Fill from Screenshots'}
+            </button>
+            <button
+              type="button"
+              className="adm-btn adm-btn-secondary adm-btn-xs"
+              onClick={swapHomeAndAwaySides}
+              title="Flip Home and Away scores, team summary stats, and player lists if the screenshot had clubs in reverse order"
+            >
+              ⇄ Swap Home / Away
+            </button>
             <button
               type="button"
               className="adm-btn adm-btn-secondary adm-btn-xs"
@@ -680,7 +927,66 @@ export function ManualMatchStatsModal({
           {loading ? (
             <div className="adm-empty">Loading match stats…</div>
           ) : (
-            <form id="manual-stats-form" onSubmit={onSubmit} className="adm-form-stack">
+            <form
+              id="manual-stats-form"
+              onSubmit={onSubmit}
+              className="adm-form-stack"
+              onPaste={(e) => {
+                const items = e.clipboardData?.files
+                if (items && items.length > 0) {
+                  e.preventDefault()
+                  void handleScreenshotsUpload(items)
+                }
+              }}
+            >
+              {/* Screenshot OCR Dropzone Banner */}
+              <div
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                    void handleScreenshotsUpload(e.dataTransfer.files)
+                  }
+                }}
+                style={{
+                  border: '1px dashed rgba(56, 189, 248, 0.45)',
+                  background: 'rgba(56, 189, 248, 0.05)',
+                  borderRadius: 10,
+                  padding: '10px 16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: 12,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: '1.35rem' }}>📸</span>
+                  <div>
+                    <div style={{ fontSize: '0.86rem', fontWeight: 700, color: '#e0f2fe' }}>
+                      {ocrBusy
+                        ? ocrStatus || 'Scanning EA FC screenshots…'
+                        : 'Instant Screenshot Auto-Fill (Match Summary, Player Performance & Players)'}
+                    </div>
+                    <div style={{ fontSize: '0.76rem', color: '#94a3b8' }}>
+                      {ocrSummaryNote ? (
+                        <span style={{ color: '#4ade80', fontWeight: 600 }}>✓ {ocrSummaryNote}</span>
+                      ) : (
+                        'Drop 1–3 EA FC screenshots here, press Ctrl+V to paste, or click Upload — automatically fills scoreline, all 20 team gauges/bars & player rows.'
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="adm-btn adm-btn-secondary adm-btn-xs"
+                  disabled={ocrBusy}
+                  onClick={() => screenshotInputRef.current?.click()}
+                >
+                  {ocrBusy ? 'Processing…' : '+ Select Screenshot(s)'}
+                </button>
+              </div>
+
               {/* Scoreline Banner */}
               <div
                 style={{
