@@ -2394,6 +2394,7 @@ function PlayerPanel({ transferWindowOpen }: { transferWindowOpen: boolean }) {
   const [club, setClub] = useState<{ id: number; name: string; slug: string } | null>(null)
   const [shirtNumber, setShirtNumber] = useState<string>('')
   const [offers, setOffers] = useState<Offer[]>([])
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false)
 
   const [playerRequests, setPlayerRequests] = useState<JoinRequest[]>([])
 
@@ -2475,9 +2476,11 @@ function PlayerPanel({ transferWindowOpen }: { transferWindowOpen: boolean }) {
     setNotice(null)
     try {
       await leaveClub()
+      setShowLeaveConfirm(false)
       setNotice({ kind: 'ok', text: 'You have left the club and are a free agent again.' })
       await Promise.all([load(), refresh()])
     } catch (err) {
+      setShowLeaveConfirm(false)
       setNotice({ kind: 'error', text: msg(err) })
     } finally {
       setBusy(false)
@@ -2513,12 +2516,62 @@ function PlayerPanel({ transferWindowOpen }: { transferWindowOpen: boolean }) {
               size="sm"
               variant="danger"
               disabled={busy || !transferWindowOpen}
-              onClick={() => void onLeave()}
+              onClick={() => setShowLeaveConfirm(true)}
             >
               {transferWindowOpen ? 'Leave club' : '🔒 Window Closed'}
             </Button>
           </div>
         )}
+
+        {showLeaveConfirm &&
+          club &&
+          createPortal(
+            <div
+              className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm animate-[fadeIn_.15s_ease-out]"
+              onClick={() => !busy && setShowLeaveConfirm(false)}
+            >
+              <div
+                className="surface relative w-full max-w-md rounded-2xl border border-[var(--border-strong)] p-6 shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-start gap-3.5">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-rose-500/30 bg-rose-500/15 text-lg text-rose-400">
+                    ⚠️
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="font-display text-lg font-extrabold text-[var(--text-strong)]">
+                      Leave {club.name}?
+                    </h3>
+                    <p className="mt-1.5 text-xs leading-relaxed text-[var(--text-muted)]">
+                      Are you sure you want to leave <strong className="text-white">{club.name}</strong>? You will immediately become a <strong className="text-white">Free Agent</strong> and this move will be recorded on the league Transfer Market.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-6 flex items-center justify-end gap-2.5 border-t border-[var(--border)] pt-4">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => setShowLeaveConfirm(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="danger"
+                    disabled={busy}
+                    onClick={() => void onLeave()}
+                  >
+                    {busy ? 'Leaving…' : `Yes, Leave ${club.name}`}
+                  </Button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )}
 
         <form onSubmit={onSaveShirtNumber} className="mt-5 flex flex-wrap items-end gap-3 border-t border-[var(--border)] pt-4">
           <div>

@@ -5258,6 +5258,42 @@ admin.delete(
   }),
 )
 
+admin.get(
+  '/transfers',
+  handler(async (req, res) => {
+    const limit = Math.min(500, Math.max(1, Number.parseInt(String(req.query.limit ?? '100'), 10) || 100))
+    const rows = await queryAll(
+      `SELECT t.id,
+              DATE_FORMAT(COALESCE(t.occurred_at, t.created_at), '%Y-%m-%d') AS date_str,
+              p.gamertag AS player_name,
+              fc.name AS from_name,
+              tc.name AS to_name
+         FROM transfers t
+         JOIN players p ON p.id = t.player_id
+         LEFT JOIN clubs fc ON fc.id = t.from_club_id
+         LEFT JOIN clubs tc ON tc.id = t.to_club_id
+        WHERE (t.from_club_id IS NOT NULL OR t.to_club_id IS NOT NULL)
+        ORDER BY t.occurred_at DESC, t.id DESC
+        LIMIT ?`,
+      [limit],
+    )
+    res.json({ transfers: rows })
+  }),
+)
+
+admin.delete(
+  '/transfers/:id',
+  handler(async (req, res) => {
+    const id = Number.parseInt(req.params.id, 10)
+    if (!Number.isSafeInteger(id) || id < 1) {
+      return res.status(400).json({ error: 'Transfer id must be a positive integer.' })
+    }
+    const affected = await execute('DELETE FROM transfers WHERE id = ?', [id])
+    if (affected === 0) return res.status(404).json({ error: 'Transfer record not found.' })
+    res.json({ ok: true, id })
+  }),
+)
+
 
 
 

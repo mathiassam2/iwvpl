@@ -172,6 +172,7 @@ function TypedHeadline({ chars, caret }: { chars: number; caret: boolean }) {
 export function Hero() {
   const [liveStandings, setLiveStandings] = useState<LiveStandings | null>(null)
   const [leadersError, setLeadersError] = useState('')
+  const [selectedHeroDiv, setSelectedHeroDiv] = useState<string>('')
   const seasonName = useSeasonName()
 
   useEffect(() => {
@@ -187,14 +188,24 @@ export function Hero() {
     return () => controller.abort()
   }, [])
 
+  const divisionList = useMemo(
+    () =>
+      liveStandings
+        ? orderedStandingDivisions(liveStandings.divisions)
+        : orderedStandingDivisions(siteData.standingsByDivision),
+    [liveStandings],
+  )
+
   const staticFeatured = orderedStandingDivisions(siteData.standingsByDivision)[0]
-  const featured = liveStandings
+  const defaultFeatured = liveStandings
     ? featuredStandingDivision(liveStandings)
     : staticFeatured
-  const featuredLeague = featured?.[0] ?? staticFeatured?.[0] ?? ''
-  const leaderRows = liveStandings
-    ? featured?.[1].rows ?? []
-    : staticFeatured?.[1].rows ?? siteData.standings
+  const activeDivisionEntry =
+    divisionList.find(([name]) => name === selectedHeroDiv) ??
+    defaultFeatured ??
+    divisionList[0]
+  const featuredLeague = activeDivisionEntry?.[0] ?? staticFeatured?.[0] ?? ''
+  const leaderRows = activeDivisionEntry?.[1].rows ?? siteData.standings
   const top = leaderRows[0]
   const featuredSeason = liveStandings?.season.name ?? seasonName
 
@@ -480,18 +491,41 @@ export function Hero() {
                   </p>
                 </div>
                 <Link
-                  to="/standings"
+                  to={featuredLeague ? `/standings?division=${encodeURIComponent(featuredLeague)}` : '/standings'}
                   className="shrink-0 text-xs font-semibold text-[var(--text-muted)] transition-colors hover:text-[var(--accent-text)]"
                 >
                   Full table →
                 </Link>
               </div>
 
+              {divisionList.length > 1 && (
+                <div className="flex flex-wrap items-center gap-1.5 border-b border-[var(--border)] bg-[var(--surface-2)]/70 px-5 py-2.5">
+                  {divisionList.map(([divName]) => {
+                    const isActive = divName === featuredLeague
+                    return (
+                      <button
+                        key={divName}
+                        type="button"
+                        onClick={() => setSelectedHeroDiv(divName)}
+                        className={cx(
+                          'rounded-lg px-3 py-1 text-[11px] font-extrabold uppercase tracking-wider transition-all',
+                          isActive
+                            ? 'bg-[var(--accent-solid)] text-[var(--on-volt)] shadow-sm'
+                            : 'border border-[var(--border)] bg-[var(--surface)] text-[var(--text-muted)] hover:border-[var(--accent-ring)] hover:text-white',
+                        )}
+                      >
+                        {divName}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+
               {top && (
                 /* Same target as the five rows below, so the leader is clickable
                    like the rest instead of being the one dead spot in the card. */
                 <Link
-                  to="/standings"
+                  to={featuredLeague ? `/standings?division=${encodeURIComponent(featuredLeague)}` : '/standings'}
                   className="row-hover flex items-center gap-4 px-5 py-5"
                 >
                   <SmartImage
@@ -538,7 +572,7 @@ export function Hero() {
                 {leaderRows.slice(1, 6).map((r) => (
                   <Link
                     key={r.team}
-                    to="/standings"
+                    to={featuredLeague ? `/standings?division=${encodeURIComponent(featuredLeague)}` : '/standings'}
                     className="flex items-center gap-3 px-5 py-2.5"
                   >
                     <span className="numeric w-5 shrink-0 text-right text-xs text-[var(--text-faint)]">

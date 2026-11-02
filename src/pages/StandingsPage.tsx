@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { StandingsTable, StatTile, type StandingSortKey } from '@/components/league'
 import { Container, Section, Select, Tabs } from '@/components/ui'
@@ -22,9 +23,15 @@ export default function StandingsPage() {
   const [loading, setLoading] = useState(liveLeagueEnabled)
   const [error, setError] = useState('')
   const [reload, setReload] = useState(0)
+  const [searchParams] = useSearchParams()
+  const requestedDivision = searchParams.get('division') ?? ''
   const initialDivisions = orderedStandingDivisions(siteData.standingsByDivision).map(([name]) => name)
-  const [div, setDiv] = useState(initialDivisions[0] ?? '')
-  const hasChosenDivision = useRef(false)
+  const [div, setDiv] = useState(
+    requestedDivision && initialDivisions.includes(requestedDivision)
+      ? requestedDivision
+      : initialDivisions[0] ?? '',
+  )
+  const hasChosenDivision = useRef(Boolean(requestedDivision))
   const [sort, setSort] = useState<{ key: StandingSortKey; desc: boolean }>({
     key: 'pos',
     desc: false,
@@ -67,9 +74,18 @@ export default function StandingsPage() {
       .then((standings) => {
         setLiveStandings(standings)
         const divisions = orderedStandingDivisions(standings.divisions).map(([name]) => name)
-        setDiv((current) =>
-          hasChosenDivision.current && divisions.includes(current) ? current : divisions[0] ?? '',
-        )
+        setDiv((current) => {
+          if (requestedDivision && divisions.includes(requestedDivision) && !hasChosenDivision.current) {
+            return requestedDivision
+          }
+          if (hasChosenDivision.current && divisions.includes(current)) {
+            return current
+          }
+          if (requestedDivision && divisions.includes(requestedDivision)) {
+            return requestedDivision
+          }
+          return divisions[0] ?? ''
+        })
       })
       .catch((cause: unknown) => {
         if (!controller.signal.aborted) {
