@@ -638,7 +638,7 @@ export default function MatchesPage() {
                     {/* Round Fixtures Body (Sub-grouped by Date when multiple dates exist) */}
                     {!isCollapsed && (
                       <div className="divide-y divide-[var(--border)]">
-                        {rg.dateGroups.map((dg) => (
+                        {(rg.dateGroups ?? []).map((dg) => (
                           <div key={dg.key}>
                             {rg.dateGroups.length > 1 && (
                               <div

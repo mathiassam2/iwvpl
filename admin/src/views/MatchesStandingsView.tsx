@@ -103,6 +103,60 @@ function formatFullDayDate(dateStr: string | null): string | null {
   return `${day}, ${d} ${mon} ${y}`
 }
 
+function buildRoundDateGroups(roundMatches: Match[]): {
+  date: string | null
+  dayName: string | null
+  dateSummary: string | null
+  unscheduledCount: number
+  dateGroups: RoundDateSubgroup[]
+} {
+  const byDate = new Map<string, Match[]>()
+  const unscheduled: Match[] = []
+  for (const m of roundMatches) {
+    const d = extractDatePart(m.kickoff)
+    if (d) {
+      const list = byDate.get(d) ?? []
+      list.push(m)
+      byDate.set(d, list)
+    } else {
+      unscheduled.push(m)
+    }
+  }
+
+  const sortedDates = [...byDate.keys()].sort((a, b) => a.localeCompare(b))
+  const dateGroups: RoundDateSubgroup[] = sortedDates.map((d) => ({
+    key: d,
+    date: d,
+    label: `${formatFullDayDate(d)} (${d})`,
+    matches: byDate.get(d)!,
+  }))
+  if (unscheduled.length > 0) {
+    dateGroups.push({
+      key: 'unscheduled',
+      date: null,
+      label: 'Unscheduled / Kickoff TBD',
+      matches: unscheduled,
+    })
+  }
+
+  const date = sortedDates[0] ?? null
+  const dayName = formatDayName(date)
+  const dateSummary =
+    sortedDates.length === 0
+      ? null
+      : sortedDates.length === 1
+      ? `${formatFullDayDate(sortedDates[0])}`
+      : `${formatShortDayDate(sortedDates[0])} – ${formatShortDayDate(sortedDates[sortedDates.length - 1])} (${sortedDates.length} dates)`
+
+  return {
+    date,
+    dayName,
+    dateSummary,
+    unscheduledCount: unscheduled.length,
+    dateGroups,
+  }
+}
+
 function groupMatchesIntoRounds(matches: Match[]): GroupedRound[] {
   if (matches.length === 0) return []
 
@@ -164,54 +218,13 @@ function groupMatchesIntoRounds(matches: Match[]): GroupedRound[] {
   const rounds: GroupedRound[] = [...roundBuckets.entries()]
     .sort((a, b) => a[0] - b[0])
     .map(([roundNumber, roundMatches]) => {
-      const byDate = new Map<string, Match[]>()
-      const unscheduled: Match[] = []
-      for (const m of roundMatches) {
-        const d = extractDatePart(m.kickoff)
-        if (d) {
-          const list = byDate.get(d) ?? []
-          list.push(m)
-          byDate.set(d, list)
-        } else {
-          unscheduled.push(m)
-        }
-      }
-
-      const sortedDates = [...byDate.keys()].sort((a, b) => a.localeCompare(b))
-      const dateGroups: RoundDateSubgroup[] = sortedDates.map((d) => ({
-        key: d,
-        date: d,
-        label: `${formatFullDayDate(d)} (${d})`,
-        matches: byDate.get(d)!,
-      }))
-      if (unscheduled.length > 0) {
-        dateGroups.push({
-          key: 'unscheduled',
-          date: null,
-          label: 'Unscheduled / Kickoff TBD',
-          matches: unscheduled,
-        })
-      }
-
-      const date = sortedDates[0] ?? null
-      const dayName = formatDayName(date)
-      const dateSummary =
-        sortedDates.length === 0
-          ? null
-          : sortedDates.length === 1
-          ? `${formatFullDayDate(sortedDates[0])}`
-          : `${formatShortDayDate(sortedDates[0])} – ${formatShortDayDate(sortedDates[sortedDates.length - 1])} (${sortedDates.length} dates)`
-
+      const dgInfo = buildRoundDateGroups(roundMatches)
       const completedCount = roundMatches.filter(
         (x) => x.home_score !== null && x.away_score !== null,
       ).length
       return {
         roundNumber,
-        date,
-        dayName,
-        dateSummary,
-        unscheduledCount: unscheduled.length,
-        dateGroups,
+        ...dgInfo,
         matches: roundMatches,
         completedCount,
       }
@@ -455,13 +468,16 @@ export function MatchesStandingsView({
       return [...mergedMap.entries()]
         .sort((a, b) => a[0] - b[0])
         .map(([roundNumber, roundMatches]) => {
-          const firstDated = roundMatches.find((x) => extractDatePart(x.kickoff))
-          const date = firstDated ? extractDatePart(firstDated.kickoff) : null
-          const dayName = formatDayName(date)
+          const dgInfo = buildRoundDateGroups(roundMatches)
           const completedCount = roundMatches.filter(
             (x) => x.home_score !== null && x.away_score !== null,
           ).length
-          return { roundNumber, date, dayName, matches: roundMatches, completedCount }
+          return {
+            roundNumber,
+            ...dgInfo,
+            matches: roundMatches,
+            completedCount,
+          }
         })
     }
     return groupMatchesIntoRounds(divisionScopedMatches)
@@ -483,8 +499,10 @@ export function MatchesStandingsView({
           }
           return true
         })
+        const dgInfo = buildRoundDateGroups(filteredMatches)
         return {
           ...r,
+          ...dgInfo,
           matches: filteredMatches,
         }
       })
@@ -992,7 +1010,7 @@ export function MatchesStandingsView({
 
                     {!isCollapsed && (
                       <div className="adm-preview-matches-list">
-                        {rnd.dateGroups.map((dg) => (
+                        {(rnd.dateGroups ?? []).map((dg) => (
                           <div key={dg.key}>
                             {rnd.dateGroups.length > 1 && (
                               <div
