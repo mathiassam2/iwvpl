@@ -362,25 +362,41 @@ export function MatchRow({
         />
       </div>
 
-      {/* score */}
-      <div className="flex flex-col items-center">
-        {played ? (
-          <span className="numeric animate-score-pop flex items-center gap-1.5 rounded-lg bg-[var(--surface-2)] px-3 py-1.5 text-base font-bold text-[var(--text-strong)] ring-1 ring-[var(--border-strong)] transition-colors group-hover:ring-[var(--accent-ring)] sm:text-lg">
-            {match.hs}
-            <span className="text-[var(--text-faint)]">:</span>
-            {match.as}
-          </span>
-        ) : (
-          <span className="numeric rounded-lg border border-[var(--border)] px-3 py-1.5 text-sm text-[var(--text-muted)]">
-            {match.time || 'TBC'}
-          </span>
-        )}
-        {showDate && (
-          <span className="mt-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-faint)]">
-            {weekday(match.date)} {dayNum(match.date)} {monthShort(match.date)}
-          </span>
-        )}
-      </div>
+      {/* score / kickoff */}
+      {(() => {
+        const w = weekday(match.date)
+        const d = dayNum(match.date)
+        const m = monthShort(match.date)
+        const shortDateLabel = w && d && m ? `${w}, ${Number(d)} ${m}` : ''
+        return (
+          <div className="flex flex-col items-center">
+            {played ? (
+              <>
+                <span className="numeric animate-score-pop flex items-center gap-1.5 rounded-lg bg-[var(--surface-2)] px-3 py-1.5 text-base font-bold text-[var(--text-strong)] ring-1 ring-[var(--border-strong)] transition-colors group-hover:ring-[var(--accent-ring)] sm:text-lg">
+                  {match.hs}
+                  <span className="text-[var(--text-faint)]">:</span>
+                  {match.as}
+                </span>
+                {showDate && shortDateLabel && (
+                  <span className="mt-1 text-[10px] font-semibold tracking-wide text-[var(--text-faint)]">
+                    {shortDateLabel}{match.time ? ` · ${match.time}` : ''}
+                  </span>
+                )}
+              </>
+            ) : showDate && shortDateLabel ? (
+              <span className="numeric inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-3 py-1.5 text-xs font-bold text-[var(--text-strong)]">
+                <span className="text-[var(--accent-text)]">{shortDateLabel}</span>
+                <span className="text-[var(--text-faint)]">·</span>
+                <span>{match.time || 'TBC'}</span>
+              </span>
+            ) : (
+              <span className="numeric rounded-lg border border-[var(--border)] px-3 py-1.5 text-sm text-[var(--text-muted)]">
+                {match.time || 'TBC'}
+              </span>
+            )}
+          </div>
+        )
+      })()}
 
       {/* away */}
       <div className="flex min-w-0 items-center gap-3">

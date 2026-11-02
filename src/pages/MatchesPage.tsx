@@ -17,13 +17,61 @@ import { matchIndexOf } from '@/lib/match'
 import { useSeasonName } from '@/lib/season'
 import type { Match } from '@/types/site'
 
+interface RoundDateSubgroup {
+  key: string
+  dateLabel: string
+  isUnscheduled: boolean
+  matches: Match[]
+}
+
 interface RoundGroup {
   key: string
   roundNum: number
   label: string
   dateLabel: string
+  unscheduledCount: number
+  dateGroups: RoundDateSubgroup[]
   matches: Match[]
   completedCount: number
+}
+
+function extractMatchYmd(m: Match): string | null {
+  if (m.kickoff) {
+    const match = String(m.kickoff).trim().match(/^(\d{4}-\d{2}-\d{2})/)
+    if (match) return match[1]
+  }
+  if (m.date && !/unscheduled|tbd/i.test(m.date)) {
+    const dt = new Date(m.date)
+    if (!Number.isNaN(dt.getTime())) {
+      return dt.toISOString().slice(0, 10)
+    }
+  }
+  return null
+}
+
+function formatYmdShort(ymd: string): string {
+  const [y, m, d] = ymd.split('-').map(Number)
+  if (!y || !m || !d) return ymd
+  const dt = new Date(Date.UTC(y, m - 1, d))
+  return dt.toLocaleDateString('en-GB', {
+    timeZone: 'UTC',
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+  })
+}
+
+function formatYmdFull(ymd: string): string {
+  const [y, m, d] = ymd.split('-').map(Number)
+  if (!y || !m || !d) return ymd
+  const dt = new Date(Date.UTC(y, m - 1, d))
+  return dt.toLocaleDateString('en-GB', {
+    timeZone: 'UTC',
+    weekday: 'long',
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  })
 }
 
 function divisionSortRank(name: string): number {
@@ -84,19 +132,51 @@ function buildRoundGroups(matches: Match[]): RoundGroup[] {
   for (const [key, list] of map.entries()) {
     const explicitRound = list[0]?.roundNumber
     const roundNum = explicitRound && explicitRound > 0 ? explicitRound : idx
-    const dates = Array.from(new Set(list.map((m) => m.date).filter(Boolean)))
+
+    const byYmd = new Map<string, Match[]>()
+    const unscheduled: Match[] = []
+    for (const m of list) {
+      const ymd = extractMatchYmd(m)
+      if (ymd) {
+        const arr = byYmd.get(ymd) ?? []
+        arr.push(m)
+        byYmd.set(ymd, arr)
+      } else {
+        unscheduled.push(m)
+      }
+    }
+
+    const sortedYmds = [...byYmd.keys()].sort((a, b) => a.localeCompare(b))
+    const dateGroups: RoundDateSubgroup[] = sortedYmds.map((ymd) => ({
+      key: ymd,
+      dateLabel: formatYmdFull(ymd),
+      isUnscheduled: false,
+      matches: byYmd.get(ymd)!,
+    }))
+    if (unscheduled.length > 0) {
+      dateGroups.push({
+        key: 'unscheduled',
+        dateLabel: 'Unscheduled / Kick-off TBD',
+        isUnscheduled: true,
+        matches: unscheduled,
+      })
+    }
+
     const dateLabel =
-      dates.length === 0
-        ? 'Kick-off TBD'
-        : dates.length === 1
-          ? dates[0]
-          : `${dates[0]} – ${dates[dates.length - 1]}`
+      sortedYmds.length === 0
+        ? 'Unscheduled / Kick-off TBD'
+        : sortedYmds.length === 1
+          ? formatYmdFull(sortedYmds[0])
+          : `${formatYmdShort(sortedYmds[0])} – ${formatYmdShort(sortedYmds[sortedYmds.length - 1])} (${sortedYmds.length} Matchdays)`
+
     const completedCount = list.filter((m) => m.hs !== '' && m.as !== '').length
     groups.push({
       key,
       roundNum,
       label: key === 'unscheduled' && !explicitRound ? `Round ${roundNum} (TBD)` : `Round ${roundNum}`,
       dateLabel,
+      unscheduledCount: unscheduled.length,
+      dateGroups,
       matches: list,
       completedCount,
     })
@@ -528,6 +608,11 @@ export default function MatchesPage() {
                         <span className="text-xs font-bold text-[var(--text-strong)]">
                           📅 {rg.dateLabel}
                         </span>
+                        {rg.unscheduledCount > 0 && rg.unscheduledCount < rg.matches.length && (
+                          <span className="rounded-md border border-[var(--border)] bg-[var(--surface-1)] px-2 py-0.5 text-[10px] font-bold text-[var(--text-muted)]">
+                            +{rg.unscheduledCount} TBD
+                          </span>
+                        )}
                         {rg.matches[0]?.divisionName && divisionFilter === 'all' && divisions.length > 1 && (
                           <Badge tone="muted">{rg.matches[0].divisionName}</Badge>
                         )}
@@ -550,15 +635,40 @@ export default function MatchesPage() {
                       </div>
                     </button>
 
-                    {/* Round Fixtures Body */}
+                    {/* Round Fixtures Body (Sub-grouped by Date when multiple dates exist) */}
                     {!isCollapsed && (
                       <div className="divide-y divide-[var(--border)]">
-                        {rg.matches.map((m) => (
-                          <MatchRow
-                            key={m.id ? `match-${m.id}` : `${m.url}-${m.home}-${m.away}`}
-                            match={m}
-                            index={m.id ? m.id : matchIndexOf(m)}
-                          />
+                        {rg.dateGroups.map((dg) => (
+                          <div key={dg.key}>
+                            {rg.dateGroups.length > 1 && (
+                              <div
+                                className={cx(
+                                  'flex items-center justify-between px-5 py-2 text-[11px] font-bold tracking-wide border-b border-[var(--border)]',
+                                  dg.isUnscheduled
+                                    ? 'bg-white/[0.02] text-[var(--text-muted)]'
+                                    : 'bg-[var(--accent-tint)]/40 text-[var(--accent-text)]',
+                                )}
+                              >
+                                <span>
+                                  {dg.isUnscheduled ? '⚪ ' : '📅 '}
+                                  {dg.dateLabel}
+                                </span>
+                                <span className="numeric text-[10px] opacity-80">
+                                  {dg.matches.length} {dg.matches.length === 1 ? 'Fixture' : 'Fixtures'}
+                                </span>
+                              </div>
+                            )}
+                            <div className="divide-y divide-[var(--border)]">
+                              {dg.matches.map((m) => (
+                                <MatchRow
+                                  key={m.id ? `match-${m.id}` : `${m.url}-${m.home}-${m.away}`}
+                                  match={m}
+                                  showDate
+                                  index={m.id ? m.id : matchIndexOf(m)}
+                                />
+                              ))}
+                            </div>
+                          </div>
                         ))}
                       </div>
                     )}

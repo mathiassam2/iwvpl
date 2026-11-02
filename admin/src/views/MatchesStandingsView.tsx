@@ -30,10 +30,20 @@ import {
 
 type SubView = 'fixtures' | 'standings'
 
+interface RoundDateSubgroup {
+  key: string
+  date: string | null
+  label: string
+  matches: Match[]
+}
+
 interface GroupedRound {
   roundNumber: number
   date: string | null
   dayName: string | null
+  dateSummary: string | null
+  unscheduledCount: number
+  dateGroups: RoundDateSubgroup[]
   matches: Match[]
   completedCount: number
 }
@@ -61,12 +71,36 @@ function extractTimePart(kickoff: string | null | undefined): string | null {
   return null
 }
 
+const SHORT_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const FULL_DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
 function formatDayName(dateStr: string | null): string | null {
   if (!dateStr) return null
   const [y, m, d] = dateStr.split('-').map(Number)
   if (!y || !m || !d) return null
   const dt = new Date(Date.UTC(y, m - 1, d))
-  return ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][dt.getUTCDay()] ?? null
+  return FULL_DAYS[dt.getUTCDay()] ?? null
+}
+
+function formatShortDayDate(dateStr: string | null): string | null {
+  if (!dateStr) return null
+  const [y, m, d] = dateStr.split('-').map(Number)
+  if (!y || !m || !d) return dateStr
+  const dt = new Date(Date.UTC(y, m - 1, d))
+  const day = SHORT_DAYS[dt.getUTCDay()] ?? ''
+  const mon = SHORT_MONTHS[m - 1] ?? ''
+  return `${day}, ${d} ${mon}`
+}
+
+function formatFullDayDate(dateStr: string | null): string | null {
+  if (!dateStr) return null
+  const [y, m, d] = dateStr.split('-').map(Number)
+  if (!y || !m || !d) return dateStr
+  const dt = new Date(Date.UTC(y, m - 1, d))
+  const day = FULL_DAYS[dt.getUTCDay()] ?? ''
+  const mon = SHORT_MONTHS[m - 1] ?? ''
+  return `${day}, ${d} ${mon} ${y}`
 }
 
 function groupMatchesIntoRounds(matches: Match[]): GroupedRound[] {
@@ -130,9 +164,44 @@ function groupMatchesIntoRounds(matches: Match[]): GroupedRound[] {
   const rounds: GroupedRound[] = [...roundBuckets.entries()]
     .sort((a, b) => a[0] - b[0])
     .map(([roundNumber, roundMatches]) => {
-      const firstDated = roundMatches.find((x) => extractDatePart(x.kickoff))
-      const date = firstDated ? extractDatePart(firstDated.kickoff) : null
+      const byDate = new Map<string, Match[]>()
+      const unscheduled: Match[] = []
+      for (const m of roundMatches) {
+        const d = extractDatePart(m.kickoff)
+        if (d) {
+          const list = byDate.get(d) ?? []
+          list.push(m)
+          byDate.set(d, list)
+        } else {
+          unscheduled.push(m)
+        }
+      }
+
+      const sortedDates = [...byDate.keys()].sort((a, b) => a.localeCompare(b))
+      const dateGroups: RoundDateSubgroup[] = sortedDates.map((d) => ({
+        key: d,
+        date: d,
+        label: `${formatFullDayDate(d)} (${d})`,
+        matches: byDate.get(d)!,
+      }))
+      if (unscheduled.length > 0) {
+        dateGroups.push({
+          key: 'unscheduled',
+          date: null,
+          label: 'Unscheduled / Kickoff TBD',
+          matches: unscheduled,
+        })
+      }
+
+      const date = sortedDates[0] ?? null
       const dayName = formatDayName(date)
+      const dateSummary =
+        sortedDates.length === 0
+          ? null
+          : sortedDates.length === 1
+          ? `${formatFullDayDate(sortedDates[0])}`
+          : `${formatShortDayDate(sortedDates[0])} – ${formatShortDayDate(sortedDates[sortedDates.length - 1])} (${sortedDates.length} dates)`
+
       const completedCount = roundMatches.filter(
         (x) => x.home_score !== null && x.away_score !== null,
       ).length
@@ -140,6 +209,9 @@ function groupMatchesIntoRounds(matches: Match[]): GroupedRound[] {
         roundNumber,
         date,
         dayName,
+        dateSummary,
+        unscheduledCount: unscheduled.length,
+        dateGroups,
         matches: roundMatches,
         completedCount,
       }
@@ -880,9 +952,17 @@ export function MatchesStandingsView({
                           title={`Select all fixtures in Round ${rnd.roundNumber}`}
                         />
                         <span className="adm-round-badge">Round {rnd.roundNumber}</span>
-                        {rnd.date ? (
-                          <span className="adm-round-date">
-                            📅 {rnd.dayName}, {rnd.date}
+                        {rnd.dateSummary ? (
+                          <span className="adm-round-date" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                            <span>📅 {rnd.dateSummary}</span>
+                            {rnd.unscheduledCount > 0 && (
+                              <span
+                                className="adm-code-pill"
+                                style={{ fontSize: '0.7rem', color: 'var(--adm-muted)' }}
+                              >
+                                +{rnd.unscheduledCount} TBD
+                              </span>
+                            )}
                           </span>
                         ) : (
                           <span className="adm-round-date adm-text-muted">
@@ -912,50 +992,80 @@ export function MatchesStandingsView({
 
                     {!isCollapsed && (
                       <div className="adm-preview-matches-list">
-                        {rnd.matches.map((m) => {
-                          const pair = scores[m.id] ?? { hs: '', as: '' }
-                          const hasResult = m.home_score !== null && m.away_score !== null
-                          const isBusy = busyMatchId === m.id
-                          const timeStr = extractTimePart(m.kickoff)
+                        {rnd.dateGroups.map((dg) => (
+                          <div key={dg.key}>
+                            {rnd.dateGroups.length > 1 && (
+                              <div
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  padding: '6px 14px',
+                                  background: dg.date ? 'rgba(56, 189, 248, 0.06)' : 'rgba(255, 255, 255, 0.025)',
+                                  borderTop: '1px solid var(--adm-border)',
+                                  borderBottom: '1px solid var(--adm-border)',
+                                  fontSize: '0.76rem',
+                                  fontWeight: 700,
+                                  color: dg.date ? '#7dd3fc' : 'var(--adm-muted)',
+                                  letterSpacing: '0.02em',
+                                }}
+                              >
+                                <span>{dg.date ? `📅 ${dg.label}` : '⚪ Unscheduled / Kickoff TBD'}</span>
+                                <span style={{ fontSize: '0.72rem', opacity: 0.85 }}>
+                                  {dg.matches.length} {dg.matches.length === 1 ? 'fixture' : 'fixtures'}
+                                </span>
+                              </div>
+                            )}
+                            {dg.matches.map((m) => {
+                              const pair = scores[m.id] ?? { hs: '', as: '' }
+                              const hasResult = m.home_score !== null && m.away_score !== null
+                              const isBusy = busyMatchId === m.id
+                              const datePart = extractDatePart(m.kickoff)
+                              const shortDateStr = formatShortDayDate(datePart)
+                              const timeStr = extractTimePart(m.kickoff)
 
-                          return (
-                            <div
-                              key={m.id}
-                              className="adm-preview-match-row"
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                flexWrap: 'wrap',
-                                gap: 10,
-                                padding: '10px 14px',
-                              }}
-                            >
-                              {/* Left: Checkbox + Kickoff Time Button + Division Badge */}
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 165 }}>
-                                <input
-                                  type="checkbox"
-                                  checked={selectedMatchIds.has(m.id)}
-                                  onChange={() => {
-                                    setSelectedMatchIds((prev) => {
-                                      const next = new Set(prev)
-                                      if (next.has(m.id)) next.delete(m.id)
-                                      else next.add(m.id)
-                                      return next
-                                    })
+                              return (
+                                <div
+                                  key={m.id}
+                                  className="adm-preview-match-row"
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    flexWrap: 'wrap',
+                                    gap: 10,
+                                    padding: '10px 14px',
                                   }}
-                                />
-                                <button
-                                  type="button"
-                                  className={`adm-kickoff-btn ${!m.kickoff ? 'is-unscheduled' : ''}`}
-                                  onClick={() => {
-                                    setScheduleTarget(m)
-                                    setScheduleValue(toDatetimeLocalValue(m.kickoff))
-                                  }}
-                                  title={`Edit Kickoff (${formatKickoffDisplay(m.kickoff)})`}
                                 >
-                                  {timeStr ? `🕐 ${timeStr}` : `📅 ${formatKickoffDisplay(m.kickoff)}`}
-                                </button>
+                                  {/* Left: Checkbox + Kickoff Date & Time Button + Division Badge */}
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 210 }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={selectedMatchIds.has(m.id)}
+                                      onChange={() => {
+                                        setSelectedMatchIds((prev) => {
+                                          const next = new Set(prev)
+                                          if (next.has(m.id)) next.delete(m.id)
+                                          else next.add(m.id)
+                                          return next
+                                        })
+                                      }}
+                                    />
+                                    <button
+                                      type="button"
+                                      className={`adm-kickoff-btn ${!m.kickoff ? 'is-unscheduled' : ''}`}
+                                      onClick={() => {
+                                        setScheduleTarget(m)
+                                        setScheduleValue(toDatetimeLocalValue(m.kickoff))
+                                      }}
+                                      title={`Edit Kickoff (${formatKickoffDisplay(m.kickoff)})`}
+                                    >
+                                      {shortDateStr && timeStr
+                                        ? `📅 ${shortDateStr} · ${timeStr}`
+                                        : timeStr
+                                        ? `🕐 ${timeStr}`
+                                        : `📅 ${formatKickoffDisplay(m.kickoff)}`}
+                                    </button>
                                 {selectedDivisionId === 'all' && m.division_name && (
                                   <span className="adm-code-pill" style={{ fontSize: '0.7rem' }}>
                                     {m.division_name}
@@ -1092,10 +1202,12 @@ export function MatchesStandingsView({
                                 >
                                   Delete
                                 </button>
+                                </div>
                               </div>
-                            </div>
-                          )
-                        })}
+                            )
+                          })}
+                        </div>
+                      ))}
                       </div>
                     )}
                   </div>
