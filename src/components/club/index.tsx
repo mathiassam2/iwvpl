@@ -156,7 +156,6 @@ export function Pitch({
           <g fill="none" stroke="rgba(255,255,255,0.28)" strokeWidth="0.4" vectorEffect="non-scaling-stroke">
             <rect x="1.5" y="1.5" width="97" height="97" />
             <line x1="1.5" y1="50" x2="98.5" y2="50" />
-            <circle cx="50" cy="50" r="9" />
             {/* penalty boxes, mirrored for the two goal ends */}
             <rect x="22" y="1.5" width="56" height="13" />
             <rect x="38" y="1.5" width="24" height="5" />
@@ -164,6 +163,16 @@ export function Pitch({
             <rect x="38" y="93.5" width="24" height="5" />
           </g>
         </svg>
+
+        {/* Center circle and kickoff spot — 1:1 circular via aspect-square to prevent vertical distortion */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[22%] aspect-square rounded-full border border-[rgba(255,255,255,0.28)]"
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-1.5 w-1.5 rounded-full bg-[rgba(255,255,255,0.35)]"
+        />
       </div>
 
       {/* players */}
