@@ -617,6 +617,12 @@ export default function MatchesPage() {
   const roundGroups = useMemo(() => buildRoundGroups(filteredMatches), [filteredMatches])
   const allSeasonRoundGroups = useMemo(() => buildRoundGroups(allMatches), [allMatches])
 
+  // Default active Game Week resolution (first unplayed or last)
+  const defaultActiveKey = useMemo(() => {
+    const firstUnplayed = roundGroups.find((rg) => rg.completedCount < rg.matches.length)
+    return firstUnplayed?.key ?? roundGroups[0]?.key ?? 'all'
+  }, [roundGroups])
+
   // Active Game Week auto-resolution
   const effectiveActiveKey = useMemo(() => {
     if (roundGroups.length === 0) return 'all'
@@ -625,12 +631,8 @@ export default function MatchesPage() {
         return selectedRoundKey
       }
     }
-    // Default to the first Game Week that has unplayed matches
-    const firstUnplayed = roundGroups.find((rg) => rg.completedCount < rg.matches.length)
-    if (firstUnplayed) return firstUnplayed.key
-    // Or the last game week if all completed
-    return roundGroups[roundGroups.length - 1]?.key ?? roundGroups[0]?.key ?? 'all'
-  }, [roundGroups, selectedRoundKey])
+    return defaultActiveKey
+  }, [roundGroups, selectedRoundKey, defaultActiveKey])
 
   // Visible groups to display
   const isClubScheduleMode = team !== 'all'
@@ -650,8 +652,6 @@ export default function MatchesPage() {
     () => roundGroups.findIndex((rg) => rg.key === effectiveActiveKey),
     [roundGroups, effectiveActiveKey],
   )
-  const hasPrevGw = activeGroupIndex > 0
-  const hasNextGw = activeGroupIndex >= 0 && activeGroupIndex < roundGroups.length - 1
 
   // Overall season counts for the top badge
   const seasonCompletedCount = useMemo(
@@ -701,7 +701,6 @@ export default function MatchesPage() {
   const handleClubSelect = (slug: string) => {
     setTeam(slug)
     if (slug !== 'all') {
-      // Automatically switch to All Game Weeks Club Schedule view
       setSelectedRoundKey('all')
     } else {
       setSelectedRoundKey('active')
@@ -714,11 +713,9 @@ export default function MatchesPage() {
       return
     }
     if (isMyClubActive) {
-      // Toggle off
       setTeam('all')
       setSelectedRoundKey('active')
     } else {
-      // Toggle on: filter to club & show full season run-in
       setTeam(resolvedMyClub.slug)
       setSelectedRoundKey('all')
     }
@@ -740,17 +737,63 @@ export default function MatchesPage() {
     setPinnedClub(null)
   }
 
+  // Stepper previous / next actions (seamless wrapping, jump to GW1 or last from "All")
   const handlePrevGw = () => {
-    if (hasPrevGw) {
+    if (roundGroups.length === 0) return
+    if (selectedRoundKey === 'all') {
+      const last = roundGroups[roundGroups.length - 1]
+      if (last) setSelectedRoundKey(last.key)
+      return
+    }
+    if (activeGroupIndex > 0) {
       setSelectedRoundKey(roundGroups[activeGroupIndex - 1].key)
+    } else {
+      const last = roundGroups[roundGroups.length - 1]
+      if (last) setSelectedRoundKey(last.key)
     }
   }
 
   const handleNextGw = () => {
-    if (hasNextGw) {
+    if (roundGroups.length === 0) return
+    if (selectedRoundKey === 'all') {
+      const first = roundGroups[0]
+      if (first) setSelectedRoundKey(first.key)
+      return
+    }
+    if (activeGroupIndex >= 0 && activeGroupIndex < roundGroups.length - 1) {
       setSelectedRoundKey(roundGroups[activeGroupIndex + 1].key)
+    } else {
+      const first = roundGroups[0]
+      if (first) setSelectedRoundKey(first.key)
     }
   }
+
+  // Summary counts for the attached header bar
+  const summaryCompletedCount = useMemo(() => {
+    if (selectedRoundKey === 'all') {
+      return filteredMatches.filter((m) => m.hs !== '' && m.as !== '').length
+    }
+    return activeGroup?.completedCount ?? 0
+  }, [selectedRoundKey, filteredMatches, activeGroup])
+
+  const summaryTotalCount = useMemo(() => {
+    if (selectedRoundKey === 'all') {
+      return filteredMatches.length
+    }
+    return activeGroup?.matches.length ?? 0
+  }, [selectedRoundKey, filteredMatches, activeGroup])
+
+  const summaryTbdCount = useMemo(() => {
+    if (selectedRoundKey === 'all') {
+      return filteredMatches.filter((m) => !extractMatchYmd(m)).length
+    }
+    return activeGroup?.unscheduledCount ?? 0
+  }, [selectedRoundKey, filteredMatches, activeGroup])
+
+  const isAwayFromActive =
+    selectedRoundKey === 'all'
+      ? true
+      : selectedRoundKey !== 'active' && effectiveActiveKey !== defaultActiveKey
 
   return (
     <div className="page-enter">
@@ -823,7 +866,7 @@ export default function MatchesPage() {
 
             {/* Right Group: Status Segmented Control + "My Club" Toggle + Club Combobox */}
             <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
-              {/* Status Segmented Control (without noisy counts) */}
+              {/* Status Segmented Control */}
               <div className="flex items-center rounded-lg bg-[var(--surface-2)] p-1 border border-[var(--border)]">
                 {(['all', 'upcoming', 'results'] as const).map((tab) => (
                   <button
@@ -882,156 +925,7 @@ export default function MatchesPage() {
 
       <Section>
         <Container size="wide">
-          {/* 3. Game Week Stepper Bar OR Club Schedule View Banner */}
-          {isClubScheduleMode ? (
-            /* Club Schedule Banner View */
-            <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[var(--accent-ring)]/40 bg-gradient-to-r from-[var(--accent-tint)]/40 via-[var(--surface-1)] to-[var(--surface-1)] p-4 shadow-sm">
-              <div className="flex items-center gap-3">
-                <div className="grid h-10 w-10 place-items-center rounded-xl bg-[var(--accent-solid)] font-black text-[var(--on-volt)] text-base shadow-sm">
-                  ★
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-base font-extrabold text-white">
-                      {clubOptions.find((c) => c.value === team)?.label || team} Schedule
-                    </h3>
-                    {isMyClubActive && (
-                      <span className="rounded bg-[var(--accent-solid)] px-2 py-0.5 text-[10px] font-black uppercase text-[var(--on-volt)]">
-                        My Club
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-[var(--text-muted)]">
-                    Full chronological run-in across all Game Weeks ({filteredMatches.length} fixtures)
-                  </p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setTeam('all')
-                  setSelectedRoundKey('active')
-                }}
-                className="rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3.5 py-2 text-xs font-bold text-[var(--text-muted)] transition-colors hover:text-white hover:border-[var(--border-strong)]"
-              >
-                ✕ Clear Club Filter
-              </button>
-            </div>
-          ) : (
-            /* Game Week Stepper Navigator Bar */
-            <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] p-3 sm:p-4 shadow-sm">
-              {/* Left: Prev GW button */}
-              <button
-                type="button"
-                disabled={!hasPrevGw || selectedRoundKey === 'all'}
-                onClick={handlePrevGw}
-                className="inline-flex items-center gap-1 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-xs font-extrabold text-[var(--text-strong)] transition-all hover:bg-white/5 hover:border-[var(--border-strong)] disabled:opacity-30 disabled:pointer-events-none active:scale-95"
-              >
-                ‹ Prev GW
-              </button>
-
-              {/* Center: Interactive GW Trigger with Dropdown */}
-              <div className="relative" ref={gwDropdownRef}>
-                <button
-                  type="button"
-                  onClick={() => setGwDropdownOpen((prev) => !prev)}
-                  className="inline-flex items-center gap-2 rounded-xl border border-[var(--border-strong)] bg-[var(--surface-2)] px-4 py-2 text-center transition-all hover:border-[var(--accent-ring)] hover:bg-[var(--surface-hover)]"
-                >
-                  <span className="font-display text-xs sm:text-sm font-black uppercase tracking-wider text-[var(--accent-text)]">
-                    {selectedRoundKey === 'all'
-                      ? 'ALL GAME WEEKS'
-                      : activeGroup?.label ?? 'GAME WEEK'}
-                  </span>
-                  {activeGroup?.dateLabel && selectedRoundKey !== 'all' && (
-                    <>
-                      <span className="text-[var(--text-faint)] hidden sm:inline">•</span>
-                      <span className="text-xs font-bold text-[var(--text-strong)] hidden md:inline">
-                        {activeGroup.dateLabel}
-                      </span>
-                    </>
-                  )}
-                  <span className="text-xs text-[var(--text-muted)]">▾</span>
-                </button>
-
-                {gwDropdownOpen && (
-                  <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-72 sm:w-84 max-h-80 overflow-y-auto rounded-2xl border border-[var(--border-strong)] bg-[#12141a] p-2 shadow-2xl z-50 backdrop-blur-xl">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedRoundKey('all')
-                        setGwDropdownOpen(false)
-                      }}
-                      className={cx(
-                        'flex w-full items-center justify-between rounded-xl px-3.5 py-2.5 text-left text-xs font-bold transition-colors',
-                        selectedRoundKey === 'all'
-                          ? 'bg-[var(--accent-solid)] text-[var(--on-volt)]'
-                          : 'text-[var(--text-strong)] hover:bg-white/5',
-                      )}
-                    >
-                      <span>All Game Weeks (Full Season)</span>
-                      <span className="text-[10px] opacity-75">{roundGroups.length} Game Weeks</span>
-                    </button>
-                    <div className="my-1 border-t border-[var(--border)]" />
-                    {roundGroups.map((rg) => (
-                      <button
-                        key={rg.key}
-                        type="button"
-                        onClick={() => {
-                          setSelectedRoundKey(rg.key)
-                          setGwDropdownOpen(false)
-                        }}
-                        className={cx(
-                          'flex w-full items-center justify-between rounded-xl px-3.5 py-2 text-left text-xs transition-colors',
-                          selectedRoundKey === rg.key ||
-                            (selectedRoundKey === 'active' && rg.key === effectiveActiveKey)
-                            ? 'bg-[var(--accent-solid)] text-[var(--on-volt)] font-black'
-                            : 'text-[var(--text-strong)] hover:bg-white/5 font-medium',
-                        )}
-                      >
-                        <div>
-                          <div className="font-bold">{rg.label}</div>
-                          <div className="text-[10px] opacity-70 truncate max-w-[170px]">
-                            {rg.dateLabel}
-                          </div>
-                        </div>
-                        <span className="text-[10px] font-bold opacity-80 shrink-0">
-                          {rg.completedCount}/{rg.matches.length} played
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Right: Next GW button */}
-              <button
-                type="button"
-                disabled={!hasNextGw || selectedRoundKey === 'all'}
-                onClick={handleNextGw}
-                className="inline-flex items-center gap-1 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-xs font-extrabold text-[var(--text-strong)] transition-all hover:bg-white/5 hover:border-[var(--border-strong)] disabled:opacity-30 disabled:pointer-events-none active:scale-95"
-              >
-                Next GW ›
-              </button>
-
-              {/* Far right progress pill */}
-              {activeGroup && selectedRoundKey !== 'all' && (
-                <div className="hidden xl:inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-[var(--text-muted)]">
-                  <span className="font-bold text-white">
-                    {activeGroup.completedCount}/{activeGroup.matches.length} Played
-                  </span>
-                  {activeGroup.unscheduledCount > 0 && (
-                    <>
-                      <span className="opacity-50">•</span>
-                      <span className="text-amber-400">+{activeGroup.unscheduledCount} TBD</span>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* 4. Fixtures & Results List */}
+          {/* Main Fixtures & Results Container */}
           {loading ? (
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--accent-solid)] border-t-transparent" />
@@ -1060,133 +954,302 @@ export default function MatchesPage() {
               }
             />
           ) : (
-            <div className="space-y-6">
-              {visibleRoundGroups.map((rg) => {
-                const confirmedDateGroups = rg.dateGroups.filter((dg) => !dg.isUnscheduled)
-                const tbdGroup = rg.dateGroups.find((dg) => dg.isUnscheduled)
-                const hasMyClubInTbd = Boolean(
-                  tbdGroup && tbdGroup.matches.some((m) => isMatchMyClub(m)),
-                )
-                const isTbdOpen = tbdOpenState[rg.key] ?? hasMyClubInTbd
-
-                return (
-                  <section
-                    key={rg.key}
-                    className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] transition-all shadow-sm"
-                  >
-                    {/* Game Week Header (in All Game Weeks mode) */}
-                    {isAllGameWeeksMode && (
-                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--surface-2)] px-5 py-3">
-                        <div className="flex items-center gap-3">
-                          <span className="inline-flex items-center rounded-lg bg-[var(--accent-solid)] px-2.5 py-1 font-display text-xs font-extrabold uppercase tracking-wider text-[var(--on-volt)]">
-                            {rg.label}
-                          </span>
-                          <span className="text-xs font-bold text-[var(--text-strong)]">
-                            📅 {rg.dateLabel}
-                          </span>
-                        </div>
-                        <span className="numeric text-xs font-bold text-[var(--text-muted)]">
-                          {rg.completedCount}/{rg.matches.length} Played
+            <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] shadow-sm">
+              {/* ATTACHED FIXTURE CARD HEADER BAR (Eliminates floating box & dead space) */}
+              {isClubScheduleMode ? (
+                /* Club Schedule Mode Header Bar */
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] bg-gradient-to-r from-[var(--accent-tint)]/40 via-[var(--surface-2)] to-[var(--surface-2)] px-4 py-3 sm:px-5">
+                  <div className="flex items-center gap-2.5">
+                    <span className="grid h-8 w-8 place-items-center rounded-lg bg-[var(--accent-solid)] font-black text-[var(--on-volt)] text-xs shadow-sm">
+                      ★
+                    </span>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-extrabold text-white">
+                          {clubOptions.find((c) => c.value === team)?.label || team} Schedule
                         </span>
-                      </div>
-                    )}
-
-                    {/* Confirmed Fixtures (Sub-grouped by Date) */}
-                    <div className="divide-y divide-[var(--border)]">
-                      {confirmedDateGroups.map((dg) => (
-                        <div key={dg.key}>
-                          <div className="flex items-center justify-between border-b border-[var(--border)] bg-[var(--accent-tint)]/25 px-5 py-2 text-[11px] font-bold text-[var(--accent-text)]">
-                            <span>📅 {dg.dateLabel}</span>
-                            <span className="numeric text-[10px] opacity-80">
-                              {dg.matches.length} {dg.matches.length === 1 ? 'Fixture' : 'Fixtures'}
-                            </span>
-                          </div>
-                          <div className="divide-y divide-[var(--border)]">
-                            {dg.matches.map((m) => {
-                              const isMyClubMatch = isMatchMyClub(m)
-                              const myClubSide = isMyClubMatch ? getMyClubSide(m) : null
-                              const divTag =
-                                divisionFilter === 'all'
-                                  ? formatDivisionTag(m.divisionName)
-                                  : undefined
-                              return (
-                                <MatchRow
-                                  key={m.id ? `match-${m.id}` : `${m.url}-${m.home}-${m.away}`}
-                                  match={m}
-                                  showTimeOnly
-                                  isMyClub={isMyClubMatch}
-                                  myClubSide={myClubSide}
-                                  divisionBadge={divTag}
-                                  gameWeekTag={isClubScheduleMode ? m.roundNumber : null}
-                                  index={m.id ? m.id : matchIndexOf(m)}
-                                />
-                              )
-                            })}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Compact TBD Section (Collapsible Footer Drawer) */}
-                    {tbdGroup && tbdGroup.matches.length > 0 && (
-                      <div className="border-t border-[var(--border)] bg-black/20">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setTbdOpenState((prev) => ({
-                              ...prev,
-                              [rg.key]: !isTbdOpen,
-                            }))
-                          }
-                          className="flex w-full items-center justify-between px-5 py-3 text-left transition-colors hover:bg-white/[0.03]"
-                        >
-                          <div className="flex flex-wrap items-center gap-2.5">
-                            <span className="text-xs font-bold text-[var(--text-muted)]">
-                              ⚪ Unscheduled / Kick-off TBD
-                            </span>
-                            <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-extrabold text-[var(--text-muted)]">
-                              {tbdGroup.matches.length} Fixtures
-                            </span>
-                            {hasMyClubInTbd && (
-                              <span className="rounded bg-[var(--accent-solid)] px-1.5 py-0.5 text-[9px] font-black uppercase text-[var(--on-volt)]">
-                                Includes My Club
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-xs font-bold text-[var(--accent-text)]">
-                            {isTbdOpen ? '▾ Hide TBD Fixtures' : '▸ View TBD Fixtures'}
+                        {isMyClubActive && (
+                          <span className="rounded bg-[var(--accent-solid)] px-1.5 py-0.2 text-[9px] font-black uppercase text-[var(--on-volt)]">
+                            My Club
                           </span>
-                        </button>
-
-                        {isTbdOpen && (
-                          <div className="divide-y divide-[var(--border)] border-t border-[var(--border)]">
-                            {tbdGroup.matches.map((m) => {
-                              const isMyClubMatch = isMatchMyClub(m)
-                              const myClubSide = isMyClubMatch ? getMyClubSide(m) : null
-                              const divTag =
-                                divisionFilter === 'all'
-                                  ? formatDivisionTag(m.divisionName)
-                                  : undefined
-                              return (
-                                <MatchRow
-                                  key={m.id ? `match-${m.id}` : `${m.url}-${m.home}-${m.away}`}
-                                  match={m}
-                                  showTimeOnly
-                                  isMyClub={isMyClubMatch}
-                                  myClubSide={myClubSide}
-                                  divisionBadge={divTag}
-                                  gameWeekTag={isClubScheduleMode ? m.roundNumber : null}
-                                  index={m.id ? m.id : matchIndexOf(m)}
-                                />
-                              )
-                            })}
-                          </div>
                         )}
                       </div>
+                      <span className="text-[11px] text-[var(--text-muted)]">
+                        Full chronological run-in across all Game Weeks
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2.5">
+                    <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-xs font-semibold text-[var(--text-muted)]">
+                      {summaryCompletedCount}/{summaryTotalCount} Played
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTeam('all')
+                        setSelectedRoundKey('active')
+                      }}
+                      className="rounded-lg border border-[var(--border)] bg-[var(--surface-1)] px-2.5 py-1 text-xs font-bold text-[var(--text-muted)] transition-colors hover:text-white hover:border-[var(--border-strong)]"
+                    >
+                      ✕ Clear
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* Standard Game Week Stepper Header Bar (Attached directly to Fixture Card) */
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] bg-white/[0.02] px-4 py-3 sm:px-5">
+                  {/* Left: Tightly Grouped Stepper Cluster (Kill the Dead Space: 6px gap) */}
+                  <div className="inline-flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={handlePrevGw}
+                      className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-[var(--border)] bg-[var(--surface-2)] text-base font-extrabold text-[var(--text-strong)] transition-all hover:border-[var(--accent-ring)] hover:bg-white/5 active:scale-95"
+                      title={selectedRoundKey === 'all' ? 'Jump to last Game Week' : 'Previous Game Week'}
+                      aria-label="Previous Game Week"
+                    >
+                      ‹
+                    </button>
+
+                    {/* Center interactive trigger pill */}
+                    <div className="relative" ref={gwDropdownRef}>
+                      <button
+                        type="button"
+                        onClick={() => setGwDropdownOpen((prev) => !prev)}
+                        className="inline-flex h-9 items-center gap-2 rounded-xl border border-[var(--border-strong)] bg-[var(--surface-2)] px-3 sm:px-4 text-center transition-all hover:border-[var(--accent-ring)] hover:bg-[var(--surface-hover)] active:scale-98"
+                      >
+                        <span className="font-display text-xs sm:text-sm font-black uppercase tracking-wider text-[var(--accent-text)]">
+                          {selectedRoundKey === 'all'
+                            ? `ALL GAME WEEKS (${roundGroups.length})`
+                            : activeGroup?.label ?? 'GAME WEEK'}
+                        </span>
+                        {activeGroup?.dateLabel && selectedRoundKey !== 'all' && (
+                          <>
+                            <span className="text-[var(--text-faint)] hidden sm:inline">•</span>
+                            <span className="text-xs font-bold text-[var(--text-strong)] hidden md:inline truncate max-w-[260px]">
+                              {activeGroup.dateLabel}
+                            </span>
+                          </>
+                        )}
+                        <span className="text-xs text-[var(--text-muted)]">▾</span>
+                      </button>
+
+                      {gwDropdownOpen && (
+                        <div className="absolute left-0 sm:left-1/2 sm:-translate-x-1/2 top-full mt-2 w-72 sm:w-84 max-h-80 overflow-y-auto rounded-2xl border border-[var(--border-strong)] bg-[#12141a] p-2 shadow-2xl z-50 backdrop-blur-xl">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedRoundKey('all')
+                              setGwDropdownOpen(false)
+                            }}
+                            className={cx(
+                              'flex w-full items-center justify-between rounded-xl px-3.5 py-2.5 text-left text-xs font-bold transition-colors',
+                              selectedRoundKey === 'all'
+                                ? 'bg-[var(--accent-solid)] text-[var(--on-volt)]'
+                                : 'text-[var(--text-strong)] hover:bg-white/5',
+                            )}
+                          >
+                            <span>All Game Weeks (Full Season)</span>
+                            <span className="text-[10px] opacity-75">{roundGroups.length} Game Weeks</span>
+                          </button>
+                          <div className="my-1 border-t border-[var(--border)]" />
+                          {roundGroups.map((rg) => (
+                            <button
+                              key={rg.key}
+                              type="button"
+                              onClick={() => {
+                                setSelectedRoundKey(rg.key)
+                                setGwDropdownOpen(false)
+                              }}
+                              className={cx(
+                                'flex w-full items-center justify-between rounded-xl px-3.5 py-2 text-left text-xs transition-colors',
+                                selectedRoundKey === rg.key ||
+                                  (selectedRoundKey === 'active' && rg.key === effectiveActiveKey)
+                                  ? 'bg-[var(--accent-solid)] text-[var(--on-volt)] font-black'
+                                  : 'text-[var(--text-strong)] hover:bg-white/5 font-medium',
+                              )}
+                            >
+                              <div>
+                                <div className="font-bold">{rg.label}</div>
+                                <div className="text-[10px] opacity-70 truncate max-w-[170px]">
+                                  {rg.dateLabel}
+                                </div>
+                              </div>
+                              <span className="text-[10px] font-bold opacity-80 shrink-0">
+                                {rg.completedCount}/{rg.matches.length} played
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleNextGw}
+                      className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-[var(--border)] bg-[var(--surface-2)] text-base font-extrabold text-[var(--text-strong)] transition-all hover:border-[var(--accent-ring)] hover:bg-white/5 active:scale-95"
+                      title={selectedRoundKey === 'all' ? 'Jump to Game Week 1' : 'Next Game Week'}
+                      aria-label="Next Game Week"
+                    >
+                      ›
+                    </button>
+                  </div>
+
+                  {/* Right side: Quick Reset to Current GW + Status Summary Pill */}
+                  <div className="flex items-center gap-2 sm:gap-3">
+                    {isAwayFromActive && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedRoundKey('active')}
+                        className="inline-flex items-center gap-1 rounded-lg border border-[var(--accent-ring)]/40 bg-[var(--accent-tint)]/30 px-2.5 py-1 text-[11px] font-bold text-[var(--accent-text)] transition-colors hover:bg-[var(--accent-solid)] hover:text-[var(--on-volt)]"
+                        title="Jump back to current active Game Week"
+                      >
+                        <span>Current GW</span>
+                        <span className="text-[10px]">↺</span>
+                      </button>
                     )}
-                  </section>
-                )
-              })}
+
+                    <div className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-[var(--text-muted)]">
+                      <span className="font-bold text-white">
+                        {summaryCompletedCount}/{summaryTotalCount} Played
+                      </span>
+                      {summaryTbdCount > 0 && (
+                        <>
+                          <span className="opacity-50">•</span>
+                          <span className="text-amber-400">+{summaryTbdCount} TBD</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* CARD BODY: Fixtures (Single Game Week or Sequential All Game Weeks) */}
+              <div className="divide-y divide-[var(--border)]">
+                {visibleRoundGroups.map((rg) => {
+                  const confirmedDateGroups = rg.dateGroups.filter((dg) => !dg.isUnscheduled)
+                  const tbdGroup = rg.dateGroups.find((dg) => dg.isUnscheduled)
+                  const hasMyClubInTbd = Boolean(
+                    tbdGroup && tbdGroup.matches.some((m) => isMatchMyClub(m)),
+                  )
+                  const isTbdOpen = tbdOpenState[rg.key] ?? hasMyClubInTbd
+
+                  return (
+                    <div key={rg.key}>
+                      {/* Game Week Divider Bar (only when in All Game Weeks mode) */}
+                      {isAllGameWeeksMode && (
+                        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--surface-2)] px-5 py-2.5">
+                          <div className="flex items-center gap-2.5">
+                            <span className="inline-flex items-center rounded-lg bg-[var(--accent-solid)] px-2 py-0.5 font-display text-xs font-black uppercase tracking-wider text-[var(--on-volt)]">
+                              {rg.label}
+                            </span>
+                            <span className="text-xs font-bold text-[var(--text-strong)]">
+                              📅 {rg.dateLabel}
+                            </span>
+                          </div>
+                          <span className="numeric text-xs font-bold text-[var(--text-muted)]">
+                            {rg.completedCount}/{rg.matches.length} Played
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Confirmed Fixtures (Sub-grouped by Date) */}
+                      <div className="divide-y divide-[var(--border)]">
+                        {confirmedDateGroups.map((dg) => (
+                          <div key={dg.key}>
+                            <div className="flex items-center justify-between border-b border-[var(--border)] bg-[var(--accent-tint)]/25 px-5 py-2 text-[11px] font-bold text-[var(--accent-text)]">
+                              <span>📅 {dg.dateLabel}</span>
+                              <span className="numeric text-[10px] opacity-80">
+                                {dg.matches.length} {dg.matches.length === 1 ? 'Fixture' : 'Fixtures'}
+                              </span>
+                            </div>
+                            <div className="divide-y divide-[var(--border)]">
+                              {dg.matches.map((m) => {
+                                const isMyClubMatch = isMatchMyClub(m)
+                                const myClubSide = isMyClubMatch ? getMyClubSide(m) : null
+                                const divTag =
+                                  divisionFilter === 'all'
+                                    ? formatDivisionTag(m.divisionName)
+                                    : undefined
+                                return (
+                                  <MatchRow
+                                    key={m.id ? `match-${m.id}` : `${m.url}-${m.home}-${m.away}`}
+                                    match={m}
+                                    showTimeOnly
+                                    isMyClub={isMyClubMatch}
+                                    myClubSide={myClubSide}
+                                    divisionBadge={divTag}
+                                    gameWeekTag={isClubScheduleMode ? m.roundNumber : null}
+                                    index={m.id ? m.id : matchIndexOf(m)}
+                                  />
+                                )
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Compact TBD Section (Collapsible Footer Drawer) */}
+                      {tbdGroup && tbdGroup.matches.length > 0 && (
+                        <div className="border-t border-[var(--border)] bg-black/20">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setTbdOpenState((prev) => ({
+                                ...prev,
+                                [rg.key]: !isTbdOpen,
+                              }))
+                            }
+                            className="flex w-full items-center justify-between px-5 py-3 text-left transition-colors hover:bg-white/[0.03]"
+                          >
+                            <div className="flex flex-wrap items-center gap-2.5">
+                              <span className="text-xs font-bold text-[var(--text-muted)]">
+                                ⚪ Unscheduled / Kick-off TBD
+                              </span>
+                              <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-extrabold text-[var(--text-muted)]">
+                                {tbdGroup.matches.length} Fixtures
+                              </span>
+                              {hasMyClubInTbd && (
+                                <span className="rounded bg-[var(--accent-solid)] px-1.5 py-0.5 text-[9px] font-black uppercase text-[var(--on-volt)]">
+                                  Includes My Club
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-xs font-bold text-[var(--accent-text)]">
+                              {isTbdOpen ? '▾ Hide TBD Fixtures' : '▸ View TBD Fixtures'}
+                            </span>
+                          </button>
+
+                          {isTbdOpen && (
+                            <div className="divide-y divide-[var(--border)] border-t border-[var(--border)]">
+                              {tbdGroup.matches.map((m) => {
+                                const isMyClubMatch = isMatchMyClub(m)
+                                const myClubSide = isMyClubMatch ? getMyClubSide(m) : null
+                                const divTag =
+                                  divisionFilter === 'all'
+                                    ? formatDivisionTag(m.divisionName)
+                                    : undefined
+                                return (
+                                  <MatchRow
+                                    key={m.id ? `match-${m.id}` : `${m.url}-${m.home}-${m.away}`}
+                                    match={m}
+                                    showTimeOnly
+                                    isMyClub={isMyClubMatch}
+                                    myClubSide={myClubSide}
+                                    divisionBadge={divTag}
+                                    gameWeekTag={isClubScheduleMode ? m.roundNumber : null}
+                                    index={m.id ? m.id : matchIndexOf(m)}
+                                  />
+                                )
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           )}
 
