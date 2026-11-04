@@ -48,22 +48,13 @@ import {
   type Squad,
 } from '@/lib/fixtures'
 import { AVATAR_PLACEHOLDER, CLUB_PLACEHOLDER, compressClubLogo, cx, stripFlag } from '@/lib/format'
-import { getLiveMatches, invalidateLiveClubCache } from '@/lib/liveLeague'
-import type { Match } from '@/types/site'
+import { getLiveClubs, getLiveMatches, type Club, type Match } from '@/lib/liveLeague'
 
-/* ---------------------------------------------------------------- Constants & Helpers */
-
-const msg = (err: unknown) => (err instanceof ApiError ? err.message : 'Something went wrong.')
-
-const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-const MONTH_NAMES = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-]
+type HubTab = 'central' | 'tactics' | 'transfers' | 'calendar' | 'settings'
 
 function parseKickoffDate(m: Match): Date | null {
   if (m.kickoff) {
-    const d = new Date(m.kickoff.replace(' ', 'T'))
+    const d = new Date(m.kickoff)
     if (!Number.isNaN(d.getTime())) return d
   }
   if (m.date) {
@@ -80,66 +71,94 @@ function toYmd(d: Date): string {
   return `${y}-${m}-${day}`
 }
 
-type HubTab = 'central' | 'tactics' | 'transfers' | 'calendar' | 'settings'
+function msg(err: unknown): string {
+  if (err instanceof ApiError) return err.message
+  if (err instanceof Error) return err.message
+  return 'An unexpected error occurred.'
+}
 
-/* ================================================================= Hub Component */
+// Color coding helper for EA FC style position pills
+function getPositionBadgeStyle(pos: string) {
+  const p = (pos || '').toUpperCase().trim()
+  if (p === 'GK') {
+    return 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+  }
+  if (['LB', 'CB', 'RB', 'LWB', 'RWB', 'SW'].includes(p)) {
+    return 'bg-sky-500/20 text-sky-300 border-sky-500/40'
+  }
+  if (['CDM', 'CM', 'CAM', 'LM', 'RM'].includes(p)) {
+    return 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+  }
+  if (['LW', 'RW', 'ST', 'CF'].includes(p)) {
+    return 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+  }
+  return 'bg-white/10 text-slate-300 border-white/10'
+}
 
 export default function HubV2Page() {
-  const { user, loading, refresh } = useAuth()
+  const { user, status: authStatus, logout } = useAuth()
   const navigate = useNavigate()
-  const sentRef = useRef(false)
 
-  // Navigation tab state
+  // Guard: if unauthenticated, redirect to login
+  useEffect(() => {
+    if (authStatus === 'unauthenticated') {
+      navigate('/login?next=/hub-v2')
+    }
+  }, [authStatus, navigate])
+
+  const isManager =
+    user?.role === 'club_manager' || user?.role === 'admin' || user?.role === 'owner'
+
+  // Navigation & View state
   const [activeTab, setActiveTab] = useState<HubTab>('central')
-
-  // Common Hub state
-  const [notice, setNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
+  const [showSettingsModal, setShowSettingsModal] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [notice, setNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
+
+  // Shared League Data
   const [transferWindowOpen, setTransferWindowOpen] = useState(true)
   const [maxSquadSize, setMaxSquadSize] = useState(23)
-  const [showSettingsModal, setShowSettingsModal] = useState(false)
-  const [showSignModal, setShowSignModal] = useState(false)
+  const [allClubs, setAllClubs] = useState<Club[]>([])
 
-  // Club & Squad state
+  // Shared Club & Squad state
   const [myClub, setMyClub] = useState<ManagerClub | null>(null)
+  const [clubManagers, setClubManagers] = useState<Array<{ name: string; email?: string }>>([])
   const [squadList, setSquadList] = useState<
     Array<{
       id: number
       gamertag: string
-      slug: string
+      slug?: string
       shirt_number?: number | null
-      avatar_local: string | null
+      avatar_local?: string | null
       is_free_agent: number
-      pending: number
+      position?: string | null
       user_id?: number | null
     }>
   >([])
-  const [clubManagers, setClubManagers] = useState<
-    Array<{ id: number; name: string; email?: string; gamertag?: string | null }>
-  >([])
 
-  // Player-specific state
+  // Player Overview state (for normal players)
   const [playerInfo, setPlayerInfo] = useState<{
     id: number
     gamertag: string
-    club_id: number | null
     shirt_number?: number | null
+    avatar_local?: string | null
+    platform?: string | null
+    primary_position?: string | null
+    club_id?: number | null
   } | null>(null)
-  const [myShirtNumber, setMyShirtNumber] = useState('')
-  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false)
+  const [myShirtNumber, setMyShirtNumber] = useState<string>('')
 
-  // Starting XI & Tactics state
+  // Tactics state
   const [formation, setFormation] = useState<string>('4-3-3')
-  const [starters, setStarters] = useState<Array<ClubLineupSlot | null>>(Array(11).fill(null))
-  const [bench, setBench] = useState<ClubLineupBench[]>([])
   const [captainGamertag, setCaptainGamertag] = useState<string | null>(null)
+  const [starters, setStarters] = useState<Array<ClubLineupSlot | null>>([])
+  const [bench, setBench] = useState<ClubLineupBench[]>([])
+  const [tacticsDrawerTab, setTacticsDrawerTab] = useState<'starters' | 'bench' | 'roster'>('starters')
   const [activeSlotIdx, setActiveSlotIdx] = useState<number | null>(null)
   const [slotSearch, setSlotSearch] = useState('')
-  const [tacticsDrawerTab, setTacticsDrawerTab] = useState<'starters' | 'bench' | 'roster'>('starters')
-  const pickerRef = useRef<HTMLDivElement>(null)
-  const isInitializedRef = useRef(false)
-  const lastSavedPayloadRef = useRef<string>('')
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const lastSavedPayloadRef = useRef<string>('')
+  const isInitializedRef = useRef(false)
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -148,6 +167,7 @@ export default function HubV2Page() {
   const [managerJoinRequests, setManagerJoinRequests] = useState<JoinRequest[]>([])
   const [playerOffersList, setPlayerOffersList] = useState<Offer[]>([])
   const [playerJoinRequestsList, setPlayerJoinRequestsList] = useState<JoinRequest[]>([])
+  const [showSignModal, setShowSignModal] = useState(false)
 
   // Matches & Calendar state
   const [matches, setMatches] = useState<Match[]>([])
@@ -163,60 +183,56 @@ export default function HubV2Page() {
   const [clubLogoDraft, setClubLogoDraft] = useState<string | null>(null)
   const logoInputRef = useRef<HTMLInputElement | null>(null)
 
-  // Self player claim state (Manager playing captain)
-  const [showClaimSelf, setShowClaimSelf] = useState(false)
-  const [selfGamertag, setSelfGamertag] = useState(user?.gamertag || user?.name || '')
+  // Manager Self Kit state
+  const [selfGamertag, setSelfGamertag] = useState('')
   const [selfShirtNumber, setSelfShirtNumber] = useState('')
   const [selfBusy, setSelfBusy] = useState(false)
 
-  // Release player confirm modal
-  const [releaseConfirmPlayer, setReleaseConfirmPlayer] = useState<{
-    id: number
-    gamertag: string
-    user_id?: number | null
-  } | null>(null)
-
-  // Check role
-  const isManager = Boolean(
-    user && (user.role === 'club_manager' || user.role === 'admin' || user.role === 'owner')
-  )
-
-  // Redirect guard
+  // Load League transfer window status & all clubs
   useEffect(() => {
-    if (loading || user || sentRef.current) return
-    sentRef.current = true
-    navigate('/login', { replace: true })
-  }, [loading, user, navigate])
-
-  // Transfer window status
-  useEffect(() => {
-    let active = true
-    getTransferWindowStatus()
-      .then((res) => {
-        if (!active) return
-        if (typeof res.open === 'boolean') setTransferWindowOpen(res.open)
-        if (typeof res.maxSquadSize === 'number' && res.maxSquadSize >= 5) {
-          setMaxSquadSize(res.maxSquadSize)
+    const controller = new AbortController()
+    getTransferWindowStatus(controller.signal)
+      .then((status) => {
+        setTransferWindowOpen(status.open)
+        if (typeof status.maxSquadSize === 'number') {
+          setMaxSquadSize(status.maxSquadSize)
         }
       })
       .catch(() => {})
-    return () => {
-      active = false
-    }
+
+    getLiveClubs(controller.signal)
+      .then((clubs) => setAllClubs(clubs))
+      .catch(() => {})
+
+    return () => controller.abort()
   }, [])
+
+  // Map of club logos by normalized club name & slug for robust crest resolution
+  const clubLogoMap = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const c of allClubs) {
+      if (c.logo) {
+        map.set(stripFlag(c.name).toLowerCase().trim(), c.logo)
+        if (c.slug) map.set(c.slug.toLowerCase().trim(), c.logo)
+      }
+    }
+    return map
+  }, [allClubs])
 
   // Initialize Lineup state from club
   const initLineupState = useCallback(
     (clubData: ManagerClub | null, players: typeof squadList) => {
       const saved = clubData?.starting_xi
       const fmtKey = saved?.formation && FORMATIONS[saved.formation] ? saved.formation : '4-3-3'
-      const slots = FORMATIONS[fmtKey].slots
+      const slots = (FORMATIONS[fmtKey] || FORMATIONS['4-3-3']).slots
       const initialCaptain =
         saved?.captainGamertag ??
         saved?.starters?.find((s) => s?.isCaptain)?.gamertag ??
         null
+
       setCaptainGamertag(initialCaptain)
       setFormation(fmtKey)
+
       const mappedStarters = slots.map(([pos], idx) => {
         const s = saved?.starters?.[idx]
         if (s && s.gamertag) {
@@ -292,10 +308,22 @@ export default function HubV2Page() {
       setManagerOffersList(offersRes.offers)
       setManagerJoinRequests(reqsRes.requests)
       initLineupState(squadRes.club, squadRes.squad)
+
+      // Sync manager's kit number from roster
+      const meInSquad = squadRes.squad.find(
+        (p: any) =>
+          (user?.playerId && p.id === user.playerId) ||
+          (user?.id && p.user_id === user.id) ||
+          Boolean(user?.gamertag && p.gamertag.toLowerCase() === user.gamertag.toLowerCase()),
+      )
+      if (meInSquad?.shirt_number != null) {
+        setSelfShirtNumber(String(meInSquad.shirt_number))
+        setMyShirtNumber(String(meInSquad.shirt_number))
+      }
     } catch (err) {
       setNotice({ kind: 'error', text: msg(err) })
     }
-  }, [initLineupState])
+  }, [initLineupState, user])
 
   // Data Loading: Player Mode
   const loadPlayerData = useCallback(async () => {
@@ -313,7 +341,6 @@ export default function HubV2Page() {
       setPlayerJoinRequestsList(pReqsRes.requests)
 
       if (overview.club) {
-        // Fetch full club details
         const clubRes = await fetch(`/api/clubs/${encodeURIComponent(overview.club.slug)}`).then((r) =>
           r.json(),
         )
@@ -338,20 +365,19 @@ export default function HubV2Page() {
             avatar_local: p.avatar_local,
             is_free_agent: p.is_free_agent ? 1 : 0,
             pending: 0,
+            user_id: p.user_id,
+            position: p.position,
           }))
           setSquadList(pList)
           initLineupState(clubObj, pList)
         }
-      } else {
-        setMyClub(null)
-        setSquadList([])
       }
     } catch (err) {
       setNotice({ kind: 'error', text: msg(err) })
     }
   }, [initLineupState])
 
-  // Initial load based on role
+  // Initial load effect based on user role
   useEffect(() => {
     if (!user) return
     if (isManager) {
@@ -411,9 +437,9 @@ export default function HubV2Page() {
     return () => controller.abort()
   }, [myClub?.slug, myClub?.name])
 
-  // Manager: Auto-save Starting XI & Bench
+  // Auto-save Manager Tactics with debounce
   useEffect(() => {
-    if (!isManager || !myClub || !isInitializedRef.current) return
+    if (!isManager || !isInitializedRef.current || !myClub) return
 
     const currentPayload: ClubLineup = {
       formation,
@@ -423,7 +449,8 @@ export default function HubV2Page() {
           ? {
               ...s,
               isCaptain: Boolean(
-                captainGamertag && s.gamertag.toLowerCase() === captainGamertag.toLowerCase(),
+                captainGamertag &&
+                  s.gamertag.toLowerCase() === captainGamertag.toLowerCase(),
               ),
             }
           : null,
@@ -453,90 +480,7 @@ export default function HubV2Page() {
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
     }
-  }, [isManager, formation, starters, bench, captainGamertag, myClub])
-
-  // Outside click for tactical pitch player swap popover
-  useEffect(() => {
-    if (activeSlotIdx === null) return
-    const handleOutsideClick = (e: MouseEvent | TouchEvent) => {
-      const target = e.target as HTMLElement | null
-      if (pickerRef.current && pickerRef.current.contains(e.target as Node)) return
-      if (target && target.closest('[data-pitch-slot]')) return
-      setActiveSlotIdx(null)
-      setSlotSearch('')
-    }
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setActiveSlotIdx(null)
-        setSlotSearch('')
-      }
-    }
-    document.addEventListener('pointerdown', handleOutsideClick)
-    document.addEventListener('keydown', handleKeyDown)
-    return () => {
-      document.removeEventListener('pointerdown', handleOutsideClick)
-      document.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [activeSlotIdx])
-
-  // Smart assign / swap slot
-  const assignOrSwapSlot = (
-    targetIdx: number,
-    player: { id: number; gamertag: string; shirt_number?: number | null },
-  ) => {
-    const slots = (FORMATIONS[formation] || FORMATIONS['4-3-3']).slots
-    const targetCoord = slots[targetIdx]
-    if (!targetCoord) return
-    const targetPos = targetCoord[0]
-
-    setStarters((prev) => {
-      const next = [...prev]
-      const currentInTarget = next[targetIdx]
-      const existingIdx = next.findIndex(
-        (s, i) => i !== targetIdx && s && s.gamertag.toLowerCase() === player.gamertag.toLowerCase(),
-      )
-
-      if (existingIdx !== -1) {
-        const existingSlot = next[existingIdx]!
-        const existingPos = slots[existingIdx]?.[0] ?? existingSlot.position
-        const num = existingSlot.shirtNumber ?? existingSlot.number ?? player.shirt_number ?? targetIdx + 1
-        next[targetIdx] = {
-          position: targetPos,
-          role: targetPos,
-          playerId: player.id,
-          gamertag: player.gamertag,
-          shirtNumber: num,
-          number: num,
-        }
-        next[existingIdx] = currentInTarget
-          ? {
-              ...currentInTarget,
-              position: existingPos,
-              role: existingPos,
-            }
-          : null
-      } else {
-        const num =
-          currentInTarget?.shirtNumber ??
-          currentInTarget?.number ??
-          player.shirt_number ??
-          targetIdx + 1
-        next[targetIdx] = {
-          position: targetPos,
-          role: targetPos,
-          playerId: player.id,
-          gamertag: player.gamertag,
-          shirtNumber: num,
-          number: num,
-        }
-      }
-      return next
-    })
-
-    setBench((prev) => prev.filter((b) => b.gamertag.toLowerCase() !== player.gamertag.toLowerCase()))
-    setActiveSlotIdx(null)
-    setSlotSearch('')
-  }
+  }, [formation, starters, bench, captainGamertag, myClub, isManager])
 
   // Tactical Squad Builder representation for <Pitch />
   const tacticalSquad = useMemo<Squad>(() => {
@@ -583,66 +527,84 @@ export default function HubV2Page() {
     const userTag = (user?.gamertag || playerInfo?.gamertag || '').toLowerCase().trim()
     const userPid = user?.playerId ?? playerInfo?.id ?? null
 
-    if (!userTag && !userPid) {
-      return { type: 'unknown', label: 'ROSTER MEMBER', slotIdx: null, pos: '' }
-    }
+    const inSquad = squadList.find(
+      (p) =>
+        (userPid && p.id === userPid) ||
+        (user?.id && (p as any).user_id === user.id) ||
+        Boolean(userTag && p.gamertag.toLowerCase() === userTag),
+    )
 
     const starterIdx = starters.findIndex((s) => {
       if (!s) return false
-      if (userPid && s.playerId === userPid) return true
-      if (userTag && s.gamertag && s.gamertag.toLowerCase().trim() === userTag) return true
+      if (userPid && s.playerId && s.playerId === userPid) return true
+      if (inSquad && s.playerId && s.playerId === inSquad.id) return true
+      if (userTag && s.gamertag && s.gamertag.toLowerCase() === userTag) return true
+      if (inSquad && s.gamertag && s.gamertag.toLowerCase() === inSquad.gamertag.toLowerCase()) return true
       return false
     })
 
-    if (starterIdx !== -1) {
-      const pos =
-        starters[starterIdx]?.position ||
-        starters[starterIdx]?.role ||
-        FORMATIONS[formation]?.slots[starterIdx]?.[0] ||
-        'STARTER'
+    if (starterIdx >= 0) {
+      const pos = starters[starterIdx]?.position || (FORMATIONS[formation] || FORMATIONS['4-3-3']).slots[starterIdx]?.[0] || 'XI'
       return {
-        type: 'starting',
-        label: `STARTING XI (${pos})`,
+        type: 'starting' as const,
+        label: `STARTING XI • ${pos}`,
         slotIdx: starterIdx,
         pos,
       }
     }
 
-    const onBench = bench.some((b) => {
-      if (userPid && b.playerId === userPid) return true
-      if (userTag && b.gamertag && b.gamertag.toLowerCase().trim() === userTag) return true
+    const benchIdx = bench.findIndex((b) => {
+      if (userPid && b.playerId && b.playerId === userPid) return true
+      if (inSquad && b.playerId && b.playerId === inSquad.id) return true
+      if (userTag && b.gamertag && b.gamertag.toLowerCase() === userTag) return true
+      if (inSquad && b.gamertag && b.gamertag.toLowerCase() === inSquad.gamertag.toLowerCase()) return true
       return false
     })
 
-    if (onBench) {
-      return { type: 'bench', label: 'BENCH SUB', slotIdx: null, pos: 'SUB' }
-    }
-
-    const onSquad = squadList.some((p) => {
-      if (userPid && p.id === userPid) return true
-      if (userTag && p.gamertag && p.gamertag.toLowerCase().trim() === userTag) return true
-      return false
-    })
-
-    if (onSquad) {
-      return { type: 'reserve', label: 'RESERVES', slotIdx: null, pos: 'RES' }
-    }
-
-    if (isManager) {
+    if (benchIdx >= 0) {
+      const pos = bench[benchIdx]?.position || 'SUB'
       return {
-        type: 'manager',
-        label: `TACTICAL PREVIEW: ${formation} • 11 STARTERS`,
+        type: 'bench' as const,
+        label: `BENCH SUB • ${pos}`,
         slotIdx: null,
-        pos: 'MGR',
+        pos,
       }
     }
 
-    return { type: 'unknown', label: 'FREE AGENT', slotIdx: null, pos: '' }
-  }, [user, playerInfo, starters, bench, squadList, formation, isManager])
+    if (inSquad) {
+      return {
+        type: 'reserves' as const,
+        label: 'RESERVES • ROSTER',
+        slotIdx: null,
+        pos: inSquad.position || '',
+      }
+    }
 
-  // Partitioned matches
+    return {
+      type: isManager ? ('manager' as const) : ('unknown' as const),
+      label: isManager ? 'CLUB MANAGER' : 'ROSTER MEMBER',
+      slotIdx: null,
+      pos: '',
+    }
+  }, [user, playerInfo, starters, bench, formation, squadList, isManager])
+
+  // Calendar Day grouping
+  const matchesByYmd = useMemo(() => {
+    const map = new Map<string, Match[]>()
+    for (const m of matches) {
+      const d = parseKickoffDate(m)
+      if (!d) continue
+      const key = toYmd(d)
+      const list = map.get(key) ?? []
+      list.push(m)
+      map.set(key, list)
+    }
+    return map
+  }, [matches])
+
+  // Sorted upcoming and completed matches
   const sortedMatches = useMemo(() => {
-    return [...matches].sort((a, b) => {
+    return matches.slice().sort((a, b) => {
       const ra = a.roundNumber ?? 9999
       const rb = b.roundNumber ?? 9999
       if (ra !== rb) return ra - rb
@@ -665,12 +627,31 @@ export default function HubV2Page() {
   const nextMatch = upcomingMatches[0] ?? null
   const runInMatches = upcomingMatches.slice(0, 3)
 
-  // Fixture context helper
+  const cleanMyClub = stripFlag(myClub?.name || '').toLowerCase().trim()
+  const clubCrest = myClub?.logo_local || myClub?.logo_url || CLUB_PLACEHOLDER
+  const clubShortCode = myClub?.short_code || myClub?.name?.slice(0, 3)?.toUpperCase() || 'FC'
+
+  // Fixture context helper (Fix Issue 1: Opponent Club Crest Resolution)
   const getFixtureContext = (m: Match) => {
-    const cName = stripFlag(myClub?.name || '').toLowerCase().trim()
-    const isHome = stripFlag(m.home).toLowerCase().trim() === cName
-    const opponent = isHome ? m.away : m.home
-    const oppLogo = isHome ? m.away_logo : m.home_logo
+    const homeClean = stripFlag(m.home).toLowerCase().trim()
+    const awayClean = stripFlag(m.away).toLowerCase().trim()
+    const isHome = homeClean === cleanMyClub
+    const opponent = isHome ? stripFlag(m.away) : stripFlag(m.home)
+    const oppClean = opponent.toLowerCase().trim()
+
+    // Resolve opponent logo via match props, clubLogoMap, or snake_case fallback
+    const oppLogo =
+      (isHome ? m.awayLogo : m.homeLogo) ||
+      clubLogoMap.get(oppClean) ||
+      (isHome ? (m as any).away_logo : (m as any).home_logo) ||
+      CLUB_PLACEHOLDER
+
+    const myLogo =
+      (isHome ? m.homeLogo : m.awayLogo) ||
+      clubCrest ||
+      clubLogoMap.get(cleanMyClub) ||
+      CLUB_PLACEHOLDER
+
     const played = m.hs !== '' && m.as !== ''
     let outcome: 'W' | 'D' | 'L' | null = null
     if (played) {
@@ -680,7 +661,7 @@ export default function HubV2Page() {
       else if (myScore < oppScore) outcome = 'L'
       else outcome = 'D'
     }
-    return { isHome, opponent, oppLogo, played, outcome }
+    return { isHome, opponent, oppLogo, myLogo, played, outcome }
   }
 
   // Unread badge counts
@@ -703,6 +684,7 @@ export default function HubV2Page() {
           gamertag: p.gamertag,
           shirtNumber: num,
           number: num,
+          isCaptain: idx === 0,
         }
       }),
     )
@@ -719,92 +701,57 @@ export default function HubV2Page() {
   }
 
   const handleClearPitch = () => {
-    setStarters((prev) => Array(prev.length).fill(null))
-    setCaptainGamertag(null)
+    const slots = (FORMATIONS[formation] || FORMATIONS['4-3-3']).slots
+    setStarters(slots.map(() => null))
   }
 
-  const handleDecideJoinReq = async (id: number, decision: 'accept' | 'reject') => {
-    setBusy(true)
-    setNotice(null)
-    try {
-      await decideJoinRequest(id, decision)
-      setNotice({
-        kind: 'ok',
-        text: decision === 'accept' ? 'Player accepted and added to squad!' : 'Join request declined.',
-      })
-      await loadManagerData()
-      await refresh()
-    } catch (err) {
-      setNotice({ kind: 'error', text: msg(err) })
-    } finally {
-      setBusy(false)
-    }
+  const handleAssignStarter = (targetSlotIdx: number, p: (typeof squadList)[0]) => {
+    const slots = (FORMATIONS[formation] || FORMATIONS['4-3-3']).slots
+    const targetRole = slots[targetSlotIdx]?.[0] || 'XI'
+    const num = p.shirt_number ?? targetSlotIdx + 1
+
+    setStarters((prev) => {
+      const next = [...prev]
+      // Clear player from existing slot if already placed
+      const existingIdx = next.findIndex(
+        (s) => s && (s.playerId === p.id || s.gamertag.toLowerCase() === p.gamertag.toLowerCase()),
+      )
+      if (existingIdx >= 0) next[existingIdx] = null
+      next[targetSlotIdx] = {
+        position: targetRole,
+        role: targetRole,
+        playerId: p.id,
+        gamertag: p.gamertag,
+        shirtNumber: num,
+        number: num,
+        isCaptain: Boolean(captainGamertag && p.gamertag.toLowerCase() === captainGamertag.toLowerCase()),
+      }
+      return next
+    })
+
+    // Remove from bench if was there
+    setBench((prev) =>
+      prev.filter(
+        (b) => !(b.playerId === p.id || b.gamertag.toLowerCase() === p.gamertag.toLowerCase()),
+      ),
+    )
+    setActiveSlotIdx(null)
+    setSlotSearch('')
   }
 
-  const handleCancelOffer = async (id: number) => {
-    setBusy(true)
-    setNotice(null)
-    try {
-      await cancelOffer(id)
-      setNotice({ kind: 'ok', text: 'Contract offer cancelled.' })
-      await loadManagerData()
-    } catch (err) {
-      setNotice({ kind: 'error', text: msg(err) })
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const handleSavePlayerShirt = async (playerId: number, shirt: number | null) => {
-    setBusy(true)
-    setNotice(null)
-    try {
-      await updateSquadPlayerShirt(playerId, shirt)
-      invalidateLiveClubCache()
-      setNotice({ kind: 'ok', text: 'Shirt number updated.' })
-      await loadManagerData()
-    } catch (err) {
-      setNotice({ kind: 'error', text: msg(err) })
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const handleReleasePlayer = async () => {
-    if (!releaseConfirmPlayer) return
-    setBusy(true)
-    setNotice(null)
-    try {
-      await releaseSquadPlayer(releaseConfirmPlayer.id)
-      invalidateLiveClubCache()
-      setNotice({
-        kind: 'ok',
-        text: `${releaseConfirmPlayer.gamertag} has been released to free agency.`,
-      })
-      setReleaseConfirmPlayer(null)
-      await loadManagerData()
-      await refresh()
-    } catch (err) {
-      setNotice({ kind: 'error', text: msg(err) })
-    } finally {
-      setBusy(false)
-    }
-  }
-
+  // Club Identity form submit (Manager)
   const handleSaveClubIdentity = async (e: FormEvent) => {
     e.preventDefault()
+    if (!myClub) return
     setBusy(true)
-    setNotice(null)
     try {
-      const code = editShortCode.trim().toUpperCase()
-      await updateManagerClub({
-        shortCode: code || null,
+      const res = await updateManagerClub({
+        short_code: editShortCode.trim().toUpperCase() || undefined,
         logo: clubLogoDraft,
       })
-      invalidateLiveClubCache()
+      setMyClub(res.club)
+      setClubLogoDraft(null)
       setNotice({ kind: 'ok', text: 'Club identity updated successfully.' })
-      await loadManagerData()
-      await refresh()
     } catch (err) {
       setNotice({ kind: 'error', text: msg(err) })
     } finally {
@@ -812,16 +759,84 @@ export default function HubV2Page() {
     }
   }
 
-  // Handlers for Player actions
-  const handleSaveMyShirtNumber = async (e: FormEvent) => {
-    e.preventDefault()
+  // Save Manager Shirt Number handler (Fix Issue 6)
+  const handleSaveManagerShirt = async (e?: FormEvent) => {
+    if (e) e.preventDefault()
+    const raw = selfShirtNumber.trim()
+    const nextNum = raw === '' ? null : Number.parseInt(raw, 10)
+    if (nextNum !== null && (Number.isNaN(nextNum) || nextNum < 1 || nextNum > 99)) {
+      setNotice({ kind: 'error', text: 'Shirt number must be between 1 and 99.' })
+      return
+    }
+
+    const mySquadPlayer = squadList.find(
+      (p) =>
+        (user?.playerId && p.id === user.playerId) ||
+        (user?.id && (p as any).user_id === user.id) ||
+        Boolean(user?.gamertag && p.gamertag.toLowerCase() === user.gamertag.toLowerCase()),
+    )
+
     setBusy(true)
-    setNotice(null)
     try {
-      const parsed = myShirtNumber.trim() === '' ? null : Number(myShirtNumber)
+      if (mySquadPlayer) {
+        await updateSquadPlayerShirt(mySquadPlayer.id, nextNum)
+      }
+      await updateMyPlayerProfile({ shirtNumber: nextNum }).catch(() => {})
+
+      setStarters((prev) =>
+        prev.map((s) => {
+          if (!s) return null
+          const isMe =
+            (mySquadPlayer && s.playerId === mySquadPlayer.id) ||
+            (user?.gamertag && s.gamertag.toLowerCase() === user.gamertag.toLowerCase())
+          if (isMe) {
+            return {
+              ...s,
+              shirtNumber: nextNum ?? s.shirtNumber,
+              number: nextNum ?? s.number,
+            }
+          }
+          return s
+        }),
+      )
+      setBench((prev) =>
+        prev.map((b) => {
+          const isMe =
+            (mySquadPlayer && b.playerId === mySquadPlayer.id) ||
+            (user?.gamertag && b.gamertag.toLowerCase() === user.gamertag.toLowerCase())
+          if (isMe) {
+            return {
+              ...b,
+              shirtNumber: nextNum ?? b.shirtNumber,
+              number: nextNum ?? b.number,
+            }
+          }
+          return b
+        }),
+      )
+
+      setNotice({ kind: 'ok', text: `Saved jersey number #${nextNum ?? '—'}.` })
+      await loadManagerData()
+    } catch (err) {
+      setNotice({ kind: 'error', text: msg(err) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // Save Player Shirt Number handler
+  const handleSavePlayerShirt = async (e?: FormEvent) => {
+    if (e) e.preventDefault()
+    const raw = myShirtNumber.trim()
+    const parsed = raw === '' ? null : Number.parseInt(raw, 10)
+    if (parsed !== null && (Number.isNaN(parsed) || parsed < 1 || parsed > 99)) {
+      setNotice({ kind: 'error', text: 'Shirt number must be between 1 and 99.' })
+      return
+    }
+    setBusy(true)
+    try {
       await updateMyPlayerProfile({ shirtNumber: parsed })
-      invalidateLiveClubCache()
-      setNotice({ kind: 'ok', text: 'Jersey number updated successfully.' })
+      setNotice({ kind: 'ok', text: `Saved jersey number #${parsed ?? '—'}.` })
       await loadPlayerData()
     } catch (err) {
       setNotice({ kind: 'error', text: msg(err) })
@@ -830,16 +845,35 @@ export default function HubV2Page() {
     }
   }
 
-  const handleDecidePlayerOffer = async (id: number, decision: 'accept' | 'reject') => {
-    setBusy(true)
-    setNotice(null)
+  // Claim self into squad (Manager playing captain)
+  const handleClaimSelf = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!selfGamertag.trim()) return
+    setSelfBusy(true)
     try {
-      await decideOffer(id, decision)
-      setNotice({
-        kind: 'ok',
-        text: decision === 'accept' ? 'Signed! Welcome to your new club.' : 'Offer declined.',
+      const parsedShirt = selfShirtNumber.trim() ? Number(selfShirtNumber) : null
+      await createManagerSelfPlayer({
+        gamertag: selfGamertag.trim(),
+        shirtNumber: parsedShirt,
+        position: 'CM',
       })
-      await Promise.all([loadPlayerData(), refresh()])
+      setNotice({ kind: 'ok', text: 'Added you to squad as Playing Captain.' })
+      await loadManagerData()
+    } catch (err) {
+      setNotice({ kind: 'error', text: msg(err) })
+    } finally {
+      setSelfBusy(false)
+    }
+  }
+
+  // Leave club handler (Player)
+  const handleLeaveClub = async () => {
+    if (!confirm('Are you sure you want to leave your club and become a free agent?')) return
+    setBusy(true)
+    try {
+      await leaveClub()
+      setNotice({ kind: 'ok', text: 'You have left the club.' })
+      await loadPlayerData()
     } catch (err) {
       setNotice({ kind: 'error', text: msg(err) })
     } finally {
@@ -847,11 +881,52 @@ export default function HubV2Page() {
     }
   }
 
-  const handleWithdrawApplication = async (id: number) => {
+  // Offer actions (Manager/Player)
+  const handleCancelOffer = async (offerId: number) => {
     setBusy(true)
-    setNotice(null)
     try {
-      await cancelJoinRequest(id)
+      await cancelOffer(offerId)
+      setNotice({ kind: 'ok', text: 'Offer cancelled.' })
+      if (isManager) await loadManagerData()
+      else await loadPlayerData()
+    } catch (err) {
+      setNotice({ kind: 'error', text: msg(err) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleDecideOffer = async (offerId: number, accept: boolean) => {
+    setBusy(true)
+    try {
+      await decideOffer(offerId, accept)
+      setNotice({ kind: 'ok', text: accept ? 'Offer accepted! Welcome to the team.' : 'Offer declined.' })
+      await loadPlayerData()
+    } catch (err) {
+      setNotice({ kind: 'error', text: msg(err) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // Join Request actions
+  const handleDecideJoinRequest = async (requestId: number, action: 'accept' | 'reject') => {
+    setBusy(true)
+    try {
+      await decideJoinRequest(requestId, action)
+      setNotice({ kind: 'ok', text: action === 'accept' ? 'Player signed to squad!' : 'Application declined.' })
+      await loadManagerData()
+    } catch (err) {
+      setNotice({ kind: 'error', text: msg(err) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleCancelJoinRequest = async (requestId: number) => {
+    setBusy(true)
+    try {
+      await cancelJoinRequest(requestId)
       setNotice({ kind: 'ok', text: 'Application withdrawn.' })
       await loadPlayerData()
     } catch (err) {
@@ -861,57 +936,31 @@ export default function HubV2Page() {
     }
   }
 
-  const handleLeaveClub = async () => {
+  // Squad Release handler (Manager)
+  const handleReleasePlayer = async (pId: number, name: string) => {
+    if (!confirm(`Are you sure you want to release ${name} from your squad?`)) return
     setBusy(true)
-    setNotice(null)
     try {
-      await leaveClub()
-      setShowLeaveConfirm(false)
-      setNotice({ kind: 'ok', text: 'You have left the club and returned to Free Agency.' })
-      await Promise.all([loadPlayerData(), refresh()])
+      await releaseSquadPlayer(pId)
+      setNotice({ kind: 'ok', text: `Released ${name} to free agency.` })
+      await loadManagerData()
     } catch (err) {
-      setShowLeaveConfirm(false)
       setNotice({ kind: 'error', text: msg(err) })
     } finally {
       setBusy(false)
     }
   }
 
-  const handleClaimSelf = async (e: FormEvent) => {
-    e.preventDefault()
-    setSelfBusy(true)
-    setNotice(null)
-    try {
-      const parsedShirt = selfShirtNumber.trim() ? Number(selfShirtNumber) : null
-      await createManagerSelfPlayer(selfGamertag.trim(), parsedShirt)
-      invalidateLiveClubCache()
-      setNotice({ kind: 'ok', text: 'You are now registered as Playing Captain in your squad!' })
-      setShowClaimSelf(false)
-      await loadManagerData()
-      await refresh()
-    } catch (err) {
-      setNotice({ kind: 'error', text: msg(err) })
-    } finally {
-      setSelfBusy(false)
-    }
-  }
-
-  if (loading || !user) {
+  if (!user) {
     return (
-      <div className="min-h-screen bg-[#08090c] pt-24 text-white">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6">
-          <div className="h-12 w-64 animate-pulse rounded-xl bg-white/10" />
-          <div className="mt-8 grid grid-cols-12 gap-6">
-            <div className="col-span-8 h-96 animate-pulse rounded-2xl bg-white/5" />
-            <div className="col-span-4 h-96 animate-pulse rounded-2xl bg-white/5" />
-          </div>
-        </div>
+      <div className="flex min-h-screen items-center justify-center bg-[#08090c] text-white">
+        <p className="font-mono text-sm tracking-widest text-[#c4f82a] animate-pulse">
+          INITIALIZING CAREER HUB V2...
+        </p>
       </div>
     )
   }
 
-  const clubCrest = myClub?.logo_local || myClub?.logo_url || CLUB_PLACEHOLDER
-  const clubShortCode = myClub?.short_code || myClub?.name?.slice(0, 3)?.toUpperCase() || 'FC'
   const isManagerInSquad = squadList.some(
     (p) =>
       (user?.playerId && p.id === user.playerId) ||
@@ -919,14 +968,18 @@ export default function HubV2Page() {
       Boolean(user?.gamertag && p.gamertag.toLowerCase() === user.gamertag.toLowerCase()),
   )
 
+  const activeUserShirt = isManager
+    ? (selfShirtNumber || myShirtNumber || '29')
+    : (myShirtNumber || '10')
+
   return (
     <div className="min-h-screen bg-[#08090c] text-slate-100 selection:bg-[#c4f82a] selection:text-black">
-      {/* ---------------- HUD Sticky Top Bar ---------------- */}
-      <header className="sticky top-0 z-40 border-b border-white/[0.08] bg-[#0c0e14]/90 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-3 sm:px-6">
-          {/* Left Club Badge */}
-          <div className="flex items-center gap-3.5">
-            <div className="relative grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-xl border border-white/10 bg-black/40 p-1.5 shadow-inner">
+      {/* ---------------- FIX ISSUE 3: Compact Top HUD Header into 1 Single Row ---------------- */}
+      <header className="sticky top-0 z-40 border-b border-white/[0.08] bg-[#0c0e14]/95 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-2 sm:px-6">
+          {/* Left: Club Crest + Name + Role */}
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="relative grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-xl border border-white/10 bg-black/40 p-1 shadow-inner">
               <img
                 src={clubCrest}
                 alt=""
@@ -937,38 +990,29 @@ export default function HubV2Page() {
               />
             </div>
             <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="truncate font-display text-base font-black uppercase tracking-wider text-white">
+              <div className="flex items-center gap-1.5">
+                <span className="truncate font-display text-sm font-black uppercase tracking-wider text-white">
                   {myClub?.name || 'FREE AGENT'}
                 </span>
                 {myClub && (
-                  <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-slate-300">
+                  <span className="rounded bg-white/10 px-1.5 py-0.2 text-[9px] font-black uppercase tracking-wider text-slate-300">
                     {clubShortCode}
                   </span>
                 )}
               </div>
-              <div className="mt-0.5 flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 {isManager ? (
-                  <span className="inline-flex items-center gap-1 rounded bg-[#c4f82a]/15 px-2 py-0.5 text-[9.5px] font-black uppercase tracking-wider text-[#c4f82a] border border-[#c4f82a]/30">
+                  <span className="inline-flex items-center gap-1 rounded bg-[#c4f82a]/15 px-1.5 py-0.2 text-[9px] font-black uppercase tracking-wider text-[#c4f82a] border border-[#c4f82a]/30">
                     <span className="h-1.5 w-1.5 rounded-full bg-[#c4f82a] animate-pulse" />
                     Manager Hub
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-1 rounded bg-sky-500/15 px-2 py-0.5 text-[9.5px] font-black uppercase tracking-wider text-sky-400 border border-sky-500/30">
+                  <span className="inline-flex items-center gap-1 rounded bg-sky-500/15 px-1.5 py-0.2 text-[9px] font-black uppercase tracking-wider text-sky-400 border border-sky-500/30">
                     Player Hub {myShirtNumber ? `• #${myShirtNumber}` : ''}
                   </span>
                 )}
                 {userMatchdayStatus.type !== 'unknown' && !isManager && (
-                  <span
-                    className={cx(
-                      'text-[9px] font-bold uppercase tracking-wider',
-                      userMatchdayStatus.type === 'starting'
-                        ? 'text-[#c4f82a]'
-                        : userMatchdayStatus.type === 'bench'
-                          ? 'text-amber-400'
-                          : 'text-slate-400',
-                    )}
-                  >
+                  <span className="hidden sm:inline text-[9px] font-bold uppercase tracking-wider text-slate-400">
                     • {userMatchdayStatus.label}
                   </span>
                 )}
@@ -976,8 +1020,8 @@ export default function HubV2Page() {
             </div>
           </div>
 
-          {/* Center Tabs */}
-          <nav className="flex items-center gap-1 overflow-x-auto py-1">
+          {/* Center: Game Mode Nav Tabs */}
+          <nav className="flex items-center gap-1 overflow-x-auto py-1 scrollbar-none">
             {[
               { id: 'central', label: 'CENTRAL' },
               { id: 'tactics', label: 'TACTICS & SQUAD' },
@@ -992,7 +1036,7 @@ export default function HubV2Page() {
                   type="button"
                   onClick={() => setActiveTab(t.id as HubTab)}
                   className={cx(
-                    'relative flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap',
+                    'relative flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap',
                     active
                       ? 'text-[#c4f82a] bg-white/[0.04]'
                       : 'text-slate-400 hover:text-white hover:bg-white/[0.02]',
@@ -1012,10 +1056,10 @@ export default function HubV2Page() {
             })}
           </nav>
 
-          {/* Right Status & Tools */}
-          <div className="flex items-center gap-2.5">
+          {/* Right: Squad Capacity + Public Link + Settings Icon */}
+          <div className="flex items-center gap-2 shrink-0">
             {myClub && (
-              <span className="hidden rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 font-mono text-[11px] font-bold text-slate-300 md:inline-block">
+              <span className="hidden rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 font-mono text-[11px] font-bold text-slate-300 xl:inline-block">
                 {squadList.length} / {maxSquadSize} Players
               </span>
             )}
@@ -1024,7 +1068,7 @@ export default function HubV2Page() {
                 to={`/clubs/${myClub.slug}`}
                 variant="outline"
                 size="sm"
-                className="gap-1 border-white/10 text-xs font-bold hover:border-white/20"
+                className="h-8 gap-1 border-white/10 text-xs font-bold hover:border-white/20 px-2.5"
               >
                 <span>Public Page</span>
                 <span className="text-[10px]">↗</span>
@@ -1033,7 +1077,7 @@ export default function HubV2Page() {
             <button
               type="button"
               onClick={() => setShowSettingsModal(true)}
-              className="grid h-9 w-9 place-items-center rounded-xl border border-white/10 bg-white/[0.04] text-slate-300 transition hover:bg-white/10 hover:text-white"
+              className="grid h-8 w-8 place-items-center rounded-lg border border-white/10 bg-white/[0.04] text-slate-300 transition hover:bg-white/10 hover:text-white"
               title="Account Settings"
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -1045,12 +1089,12 @@ export default function HubV2Page() {
         </div>
       </header>
 
-      {/* Global Notice Toast */}
+      {/* Global Alerts / Notices */}
       {notice && (
-        <div className="mx-auto max-w-7xl px-4 pt-4 sm:px-6">
+        <div className="mx-auto max-w-7xl px-4 pt-3 sm:px-6">
           <div
             className={cx(
-              'flex items-center justify-between gap-3 rounded-xl px-4 py-3 text-xs font-semibold shadow-lg',
+              'flex items-center justify-between gap-3 rounded-xl px-4 py-2.5 text-xs font-semibold shadow-lg',
               notice.kind === 'ok'
                 ? 'border border-[#c4f82a]/30 bg-[#c4f82a]/10 text-[#c4f82a]'
                 : 'border border-red-500/30 bg-red-500/10 text-red-300',
@@ -1069,373 +1113,353 @@ export default function HubV2Page() {
       )}
 
       {/* Main Command Workspace */}
-      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:py-8">
+      <main className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:py-6">
         {/* ================================================================= TAB 1: CENTRAL */}
         {activeTab === 'central' && (
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-            {/* Tile A: Next Matchday Broadcast Card (Col-span 7) */}
-            <div className="col-span-1 lg:col-span-7 flex flex-col justify-between rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-5 shadow-xl sm:p-6 backdrop-blur-md">
-              <div className="flex items-center justify-between border-b border-white/[0.08] pb-3.5">
-                <div className="flex items-center gap-2">
-                  <span className="flex h-2 w-2 rounded-full bg-[#c4f82a] animate-pulse" />
-                  <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
-                    Matchday Broadcast
-                  </span>
+            {/* LEFT COLUMN (Col-span 7): Stacked Matchday Broadcast + Fixture Run-In */}
+            <div className="col-span-1 lg:col-span-7 flex flex-col gap-6">
+              {/* Tile A: Next Matchday Broadcast Card (Sleek Compact Horizontal Banner) */}
+              <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-5 shadow-xl sm:p-6 backdrop-blur-md">
+                <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-2 w-2 rounded-full bg-[#c4f82a] animate-pulse" />
+                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
+                      Matchday Broadcast
+                    </span>
+                  </div>
+                  {nextMatch && (
+                    <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-slate-300">
+                      Game Week {nextMatch.roundNumber ?? 1}
+                    </span>
+                  )}
                 </div>
-                {nextMatch && (
-                  <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-slate-300">
-                    Game Week {nextMatch.roundNumber ?? 1}
-                  </span>
+
+                {nextMatch ? (
+                  (() => {
+                    const ctx = getFixtureContext(nextMatch)
+                    const homeLogo = ctx.isHome ? (clubCrest || ctx.myLogo) : (ctx.oppLogo || CLUB_PLACEHOLDER)
+                    const awayLogo = !ctx.isHome ? (clubCrest || ctx.myLogo) : (ctx.oppLogo || CLUB_PLACEHOLDER)
+
+                    return (
+                      <div className="my-3">
+                        <div className="flex items-center justify-between gap-4">
+                          {/* Home Side */}
+                          <div className="flex flex-1 flex-col items-center text-center">
+                            <img
+                              src={homeLogo}
+                              alt=""
+                              onError={(e) => {
+                                e.currentTarget.src = CLUB_PLACEHOLDER
+                              }}
+                              className="h-20 w-20 object-contain drop-shadow-md"
+                            />
+                            <p className="mt-2 text-sm font-black uppercase tracking-wider text-white sm:text-base">
+                              {stripFlag(nextMatch.home)}
+                            </p>
+                            <span className="text-[10px] font-bold uppercase text-slate-400">HOME</span>
+                          </div>
+
+                          {/* Middle VS & Kickoff */}
+                          <div className="flex flex-col items-center text-center shrink-0">
+                            <span className="rounded-lg bg-black/60 px-3.5 py-1 font-display text-sm font-black text-slate-300 border border-white/10">
+                              VS
+                            </span>
+                            <span className="mt-2 text-xs font-black text-[#c4f82a]">
+                              {nextMatch.time || 'Kick-off TBD'}
+                            </span>
+                            <span className="text-[10px] text-slate-400">
+                              {nextMatch.date || 'Date Unscheduled'}
+                            </span>
+                          </div>
+
+                          {/* Away Side */}
+                          <div className="flex flex-1 flex-col items-center text-center">
+                            <img
+                              src={awayLogo}
+                              alt=""
+                              onError={(e) => {
+                                e.currentTarget.src = CLUB_PLACEHOLDER
+                              }}
+                              className="h-20 w-20 object-contain drop-shadow-md"
+                            />
+                            <p className="mt-2 text-sm font-black uppercase tracking-wider text-white sm:text-base">
+                              {stripFlag(nextMatch.away)}
+                            </p>
+                            <span className="text-[10px] font-bold uppercase text-slate-400">AWAY</span>
+                          </div>
+                        </div>
+
+                        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.08] pt-3.5">
+                          <ButtonLink
+                            to={`/matches/${nextMatch.id}`}
+                            size="md"
+                            className="bg-[#c4f82a] text-black font-black uppercase tracking-wider hover:bg-[#b0df24] shadow-[0_0_15px_rgba(196,248,42,0.3)] text-xs"
+                          >
+                            Match Center →
+                          </ButtonLink>
+                          <button
+                            type="button"
+                            onClick={() => setActiveTab('calendar')}
+                            className="text-xs font-bold text-slate-400 hover:text-white transition"
+                          >
+                            Full Schedule (Calendar) →
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })()
+                ) : (
+                  <div className="my-6 text-center">
+                    <p className="text-base font-bold text-white">No Upcoming Match Scheduled</p>
+                    <p className="mt-1 text-xs text-slate-400">
+                      Once league administration publishes your next Game Week fixture, it will broadcast here.
+                    </p>
+                  </div>
                 )}
               </div>
 
-              {nextMatch ? (
-                (() => {
-                  const ctx = getFixtureContext(nextMatch)
-                  return (
-                    <div className="my-6">
-                      <div className="flex items-center justify-between gap-4">
-                        {/* Home Side */}
-                        <div className="flex flex-1 flex-col items-center text-center">
-                          <img
-                            src={ctx.isHome ? clubCrest : ctx.oppLogo || CLUB_PLACEHOLDER}
-                            alt=""
-                            onError={(e) => {
-                              e.currentTarget.src = CLUB_PLACEHOLDER
-                            }}
-                            className="h-16 w-16 object-contain sm:h-20 sm:w-20 drop-shadow-md"
-                          />
-                          <p className="mt-2 text-sm font-black uppercase tracking-wider text-white sm:text-base">
-                            {stripFlag(nextMatch.home)}
-                          </p>
-                          <span className="text-[10px] font-bold uppercase text-slate-400">HOME</span>
-                        </div>
-
-                        {/* Middle VS */}
-                        <div className="flex flex-col items-center text-center shrink-0">
-                          <span className="rounded-lg bg-black/60 px-3 py-1 font-display text-sm font-black text-slate-400 border border-white/10">
-                            VS
-                          </span>
-                          <span className="mt-2 text-xs font-extrabold text-[#c4f82a]">
-                            {nextMatch.time || 'Kick-off TBD'}
-                          </span>
-                          <span className="text-[10px] text-slate-400">
-                            {nextMatch.date || 'Date Unscheduled'}
-                          </span>
-                        </div>
-
-                        {/* Away Side */}
-                        <div className="flex flex-1 flex-col items-center text-center">
-                          <img
-                            src={!ctx.isHome ? clubCrest : ctx.oppLogo || CLUB_PLACEHOLDER}
-                            alt=""
-                            onError={(e) => {
-                              e.currentTarget.src = CLUB_PLACEHOLDER
-                            }}
-                            className="h-16 w-16 object-contain sm:h-20 sm:w-20 drop-shadow-md"
-                          />
-                          <p className="mt-2 text-sm font-black uppercase tracking-wider text-white sm:text-base">
-                            {stripFlag(nextMatch.away)}
-                          </p>
-                          <span className="text-[10px] font-bold uppercase text-slate-400">AWAY</span>
-                        </div>
-                      </div>
-
-                      <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.08] pt-4">
-                        <ButtonLink
-                          to={`/matches/${nextMatch.id}`}
-                          size="md"
-                          className="bg-[#c4f82a] text-black font-black uppercase tracking-wider hover:bg-[#b0df24] shadow-[0_0_15px_rgba(196,248,42,0.3)]"
-                        >
-                          Match Center →
-                        </ButtonLink>
-                        <button
-                          type="button"
-                          onClick={() => setActiveTab('calendar')}
-                          className="text-xs font-bold text-slate-400 hover:text-white transition"
-                        >
-                          Full Schedule (Calendar) →
-                        </button>
-                      </div>
-                    </div>
-                  )
-                })()
-              ) : (
-                <div className="my-8 text-center">
-                  <p className="text-base font-bold text-white">No Upcoming Match Scheduled</p>
-                  <p className="mt-1 text-xs text-slate-400">
-                    Once the league administrators publish your next Game Week, it will broadcast here.
-                  </p>
-                  <div className="mt-4">
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab('calendar')}
-                      className="text-xs font-bold text-[#c4f82a] hover:underline"
-                    >
-                      Browse Season Calendar →
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Tile B: Tactical Pitch Snapshot (Col-span 5, Spans 2 Rows) */}
-            <div className="col-span-1 lg:col-span-5 flex flex-col justify-between rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-5 shadow-xl sm:p-6 backdrop-blur-md">
-              <div className="flex items-center justify-between border-b border-white/[0.08] pb-3.5">
-                <div>
+              {/* Tile D: Upcoming Run-In Strip (Stacked under Broadcast) */}
+              <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-5 shadow-xl sm:p-6 backdrop-blur-md">
+                <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
-                    Tactical Snapshot
+                    Fixture Run-In
                   </p>
-                  <h3 className="text-sm font-extrabold text-white uppercase tracking-wider">
-                    {formation} Starting XI
-                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('calendar')}
+                    className="text-[11px] font-bold text-slate-400 hover:text-white"
+                  >
+                    View All ({upcomingMatches.length}) →
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('tactics')}
-                  className="rounded-lg bg-white/10 px-2.5 py-1 text-[11px] font-black text-white hover:bg-white/20 transition"
-                >
-                  {isManager ? 'Manage Tactics →' : 'View Full Team Sheet →'}
-                </button>
-              </div>
 
-              {/* Spotlight Badge */}
-              <div className="my-2.5 flex items-center justify-between rounded-xl bg-black/40 px-3 py-1.5 border border-white/5">
-                <span className="text-[11px] font-bold text-slate-300">Your Status:</span>
-                <span
-                  className={cx(
-                    'rounded px-2 py-0.5 text-[10px] font-black uppercase tracking-wider',
-                    userMatchdayStatus.type === 'starting'
-                      ? 'bg-[#c4f82a]/20 text-[#c4f82a] border border-[#c4f82a]/40 shadow-[0_0_8px_rgba(196,248,42,0.4)]'
-                      : userMatchdayStatus.type === 'bench'
-                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                        : 'bg-white/10 text-slate-300',
-                  )}
-                >
-                  {userMatchdayStatus.label}
-                </span>
-              </div>
+                {runInMatches.length > 0 ? (
+                  <div className="my-3 grid gap-3 sm:grid-cols-3">
+                    {runInMatches.map((m) => {
+                      const ctx = getFixtureContext(m)
+                      return (
+                        <Link
+                          key={m.id}
+                          to={m.id ? `/matches/${m.id}` : '/matches'}
+                          className="group flex flex-col justify-between rounded-xl border border-white/5 bg-black/40 p-3.5 transition hover:border-[#c4f82a]/40 hover:bg-black/60"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-black uppercase text-slate-400">
+                              GW {m.roundNumber ?? '—'}
+                            </span>
+                            <span
+                              className={cx(
+                                'rounded px-1.5 py-0.2 text-[9px] font-black uppercase',
+                                ctx.isHome
+                                  ? 'bg-emerald-500/20 text-emerald-300'
+                                  : 'bg-sky-500/20 text-sky-300',
+                              )}
+                            >
+                              {ctx.isHome ? 'HOME' : 'AWAY'}
+                            </span>
+                          </div>
 
-              {/* Compact Pitch */}
-              <div className="relative mx-auto my-1 w-full max-w-[340px]">
-                <Pitch
-                  home
-                  squad={tacticalSquad}
-                  activeSlotIndex={userMatchdayStatus.slotIdx}
-                  onSelectSlot={undefined}
-                />
-              </div>
+                          <div className="my-2 flex items-center gap-2.5">
+                            <img
+                              src={ctx.oppLogo || CLUB_PLACEHOLDER}
+                              alt=""
+                              onError={(e) => {
+                                e.currentTarget.src = CLUB_PLACEHOLDER
+                              }}
+                              className="h-8 w-8 object-contain"
+                            />
+                            <p className="truncate text-xs font-black text-white group-hover:text-[#c4f82a]">
+                              vs {ctx.opponent}
+                            </p>
+                          </div>
 
-              <div className="mt-3 flex items-center justify-between border-t border-white/[0.08] pt-3 text-[11px] text-slate-400">
-                <span>11 Starters • {bench.length} Subs</span>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('tactics')}
-                  className="font-bold text-[#c4f82a] hover:underline"
-                >
-                  Full Board ↗
-                </button>
+                          <span className="text-[10px] text-slate-400">
+                            {m.time ? `${m.date || ''} • ${m.time}` : 'Kick-off TBD'}
+                          </span>
+                        </Link>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <p className="py-6 text-center text-xs text-slate-400">
+                    No upcoming fixtures in the schedule run-in.
+                  </p>
+                )}
+
+                <div className="border-t border-white/[0.08] pt-2.5 flex items-center justify-between text-[11px] text-slate-400">
+                  <span>Completed Matches: {completedMatches.length}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setListMode('results')
+                      setActiveTab('calendar')
+                    }}
+                    className="font-bold text-slate-300 hover:text-white"
+                  >
+                    Past Results →
+                  </button>
+                </div>
               </div>
             </div>
 
-            {/* Tile C: Transfer Desk / My Pro Status (Col-span 4) */}
-            <div className="col-span-1 lg:col-span-4 flex flex-col justify-between rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-5 shadow-xl sm:p-6 backdrop-blur-md">
-              <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
-                  {isManager ? 'Transfer Desk' : 'My Pro Contract'}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('transfers')}
-                  className="text-[11px] font-bold text-slate-400 hover:text-white"
-                >
-                  Center →
-                </button>
+            {/* RIGHT COLUMN (Col-span 5): Stacked Tactical Snapshot + Transfer Desk */}
+            <div className="col-span-1 lg:col-span-5 flex flex-col gap-6">
+              {/* Tile B: Tactical Pitch Snapshot with user spotlight (Issue 4 fix: pb-3 & clean spacing) */}
+              <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-5 shadow-xl sm:p-6 backdrop-blur-md">
+                <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
+                      Tactical Snapshot
+                    </span>
+                    <span className="rounded bg-white/10 px-1.5 py-0.2 text-[9px] font-black uppercase text-slate-300">
+                      {formation}
+                    </span>
+                  </div>
+                  <span
+                    className={cx(
+                      'rounded-full px-2 py-0.5 text-[9.5px] font-black uppercase tracking-wider',
+                      userMatchdayStatus.type === 'starting'
+                        ? 'bg-[#c4f82a]/20 text-[#c4f82a] border border-[#c4f82a]/30'
+                        : userMatchdayStatus.type === 'bench'
+                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                          : 'bg-white/10 text-slate-300',
+                    )}
+                  >
+                    {userMatchdayStatus.label}
+                  </span>
+                </div>
+
+                <div className="relative mx-auto my-2 w-full max-w-[340px] pb-3">
+                  <Pitch
+                    home
+                    squad={tacticalSquad}
+                    activeSlotIndex={userMatchdayStatus.slotIdx}
+                    onSelectSlot={undefined}
+                  />
+                </div>
+
+                <div className="mt-2 flex items-center justify-between border-t border-white/[0.08] pt-2.5 text-[11px] text-slate-400">
+                  <span>11 Starters • {bench.length} Subs</span>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('tactics')}
+                    className="font-bold text-[#c4f82a] hover:underline"
+                  >
+                    Full Board ↗
+                  </button>
+                </div>
               </div>
 
-              {isManager ? (
-                <div className="my-4 space-y-3">
-                  <div className="flex items-center justify-between rounded-xl bg-black/40 p-3 border border-white/5">
-                    <div>
-                      <p className="text-xs font-bold text-white">Join Requests</p>
-                      <p className="text-[11px] text-slate-400">
-                        {managerJoinRequests.filter((r) => r.status === 'pending').length} pending applications
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab('transfers')}
-                      className="rounded-lg bg-white/10 px-2 py-1 text-xs font-bold text-white hover:bg-white/20"
-                    >
-                      Review
-                    </button>
-                  </div>
-
-                  <div className="flex items-center justify-between rounded-xl bg-black/40 p-3 border border-white/5">
-                    <div>
-                      <p className="text-xs font-bold text-white">Outbox Offers</p>
-                      <p className="text-[11px] text-slate-400">
-                        {managerOffersList.filter((o) => o.status === 'pending').length} pending offers
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab('transfers')}
-                      className="rounded-lg bg-white/10 px-2 py-1 text-xs font-bold text-white hover:bg-white/20"
-                    >
-                      View
-                    </button>
-                  </div>
-
-                  <Button
-                    size="sm"
-                    disabled={!transferWindowOpen || squadList.length >= maxSquadSize}
-                    onClick={() => setShowSignModal(true)}
-                    className="w-full bg-[#c4f82a] text-black font-black uppercase tracking-wider hover:bg-[#b0df24]"
+              {/* Tile C: Transfer Desk / My Pro Contract Card */}
+              <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-5 shadow-xl sm:p-6 backdrop-blur-md">
+                <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
+                    {isManager ? 'Transfer Desk' : 'My Pro Contract'}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('transfers')}
+                    className="text-[11px] font-bold text-slate-400 hover:text-white"
                   >
-                    + Sign a Player
-                  </Button>
+                    Center →
+                  </button>
                 </div>
-              ) : (
-                <div className="my-4 space-y-4">
-                  <div className="flex items-center gap-3">
-                    <div className="h-12 w-12 shrink-0">
-                      <JerseyIcon
-                        number={myShirtNumber ? Number(myShirtNumber) : 10}
-                        home
-                        isGk={userMatchdayStatus.pos === 'GK'}
-                      />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-black text-white truncate">
-                        {user?.gamertag || user?.name}
-                      </p>
-                      <p className="text-[11px] text-[#c4f82a] font-bold">
-                        {myClub ? `Signed to ${myClub.name}` : 'Free Agent'}
-                      </p>
-                    </div>
-                  </div>
 
-                  <form onSubmit={handleSaveMyShirtNumber} className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      min={1}
-                      max={99}
-                      value={myShirtNumber}
-                      onChange={(e) => setMyShirtNumber(e.target.value)}
-                      placeholder="#"
-                      className="h-8 w-16 rounded-lg border border-white/20 bg-black/50 px-2 text-center font-mono text-xs font-black text-white focus:border-[#c4f82a] outline-none"
-                    />
+                {isManager ? (
+                  <div className="my-3 space-y-3">
+                    <div className="flex items-center justify-between rounded-xl bg-black/40 p-3 border border-white/5">
+                      <div>
+                        <p className="text-xs font-bold text-white">Join Requests</p>
+                        <p className="text-[11px] text-slate-400">
+                          {managerJoinRequests.filter((r) => r.status === 'pending').length} pending applications
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('transfers')}
+                        className="rounded-lg bg-white/10 px-2 py-1 text-xs font-bold text-white hover:bg-white/20"
+                      >
+                        Review
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between rounded-xl bg-black/40 p-3 border border-white/5">
+                      <div>
+                        <p className="text-xs font-bold text-white">Outbox Offers</p>
+                        <p className="text-[11px] text-slate-400">
+                          {managerOffersList.filter((o) => o.status === 'pending').length} pending offers
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('transfers')}
+                        className="rounded-lg bg-white/10 px-2 py-1 text-xs font-bold text-white hover:bg-white/20"
+                      >
+                        View
+                      </button>
+                    </div>
+
                     <Button
-                      type="submit"
+                      size="sm"
+                      disabled={!transferWindowOpen || squadList.length >= maxSquadSize}
+                      onClick={() => setShowSignModal(true)}
+                      className="w-full bg-[#c4f82a] text-black font-black uppercase tracking-wider hover:bg-[#b0df24] text-xs"
+                    >
+                      + Sign a Player
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="my-3 space-y-3">
+                    <div className="flex items-center gap-3">
+                      <div className="h-12 w-12 shrink-0">
+                        <JerseyIcon
+                          number={myShirtNumber ? Number(myShirtNumber) : 10}
+                          home
+                          isGk={userMatchdayStatus.pos === 'GK'}
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-black text-white truncate">
+                          {user.gamertag || user.name}
+                        </p>
+                        <p className="text-xs text-slate-400">
+                          Club: {myClub?.name || 'Free Agent'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-white/10 bg-black/40 p-3 space-y-1 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Contract Status:</span>
+                        <span className="font-bold text-[#c4f82a]">Active Pro</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Squad Role:</span>
+                        <span className="font-bold text-white">{userMatchdayStatus.label}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Transfer Window:</span>
+                        <span className={transferWindowOpen ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold'}>
+                          {transferWindowOpen ? 'Open' : 'Closed'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <Button
                       size="sm"
                       variant="outline"
-                      disabled={busy}
-                      className="h-8 text-[11px] font-bold"
+                      onClick={() => setActiveTab('settings')}
+                      className="w-full text-xs font-bold"
                     >
-                      Save #
+                      Customize Jersey #
                     </Button>
-                    {myClub && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="danger"
-                        disabled={busy || !transferWindowOpen}
-                        onClick={() => setShowLeaveConfirm(true)}
-                        className="h-8 text-[11px] font-bold ml-auto"
-                      >
-                        Leave Club
-                      </Button>
-                    )}
-                  </form>
+                  </div>
+                )}
+
+                <div className="border-t border-white/[0.08] pt-2.5 text-right">
+                  <span className="text-[10px] text-slate-500">Career Mode Status Active</span>
                 </div>
-              )}
-
-              <div className="border-t border-white/[0.08] pt-2.5 text-right">
-                <span className="text-[10px] text-slate-500">Career Mode Status Active</span>
-              </div>
-            </div>
-
-            {/* Tile D: Upcoming Run-In Strip (Col-span 8) */}
-            <div className="col-span-1 lg:col-span-8 flex flex-col justify-between rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-5 shadow-xl sm:p-6 backdrop-blur-md">
-              <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
-                  Fixture Run-In
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('calendar')}
-                  className="text-[11px] font-bold text-slate-400 hover:text-white"
-                >
-                  View All ({upcomingMatches.length}) →
-                </button>
-              </div>
-
-              {runInMatches.length > 0 ? (
-                <div className="my-3 grid gap-3 sm:grid-cols-3">
-                  {runInMatches.map((m) => {
-                    const ctx = getFixtureContext(m)
-                    return (
-                      <Link
-                        key={m.id}
-                        to={m.id ? `/matches/${m.id}` : '/matches'}
-                        className="group flex flex-col justify-between rounded-xl border border-white/5 bg-black/40 p-3.5 transition hover:border-[#c4f82a]/40 hover:bg-black/60"
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-black uppercase text-slate-400">
-                            GW {m.roundNumber ?? '—'}
-                          </span>
-                          <span
-                            className={cx(
-                              'rounded px-1.5 py-0.2 text-[9px] font-black uppercase',
-                              ctx.isHome
-                                ? 'bg-emerald-500/20 text-emerald-300'
-                                : 'bg-sky-500/20 text-sky-300',
-                            )}
-                          >
-                            {ctx.isHome ? 'HOME' : 'AWAY'}
-                          </span>
-                        </div>
-
-                        <div className="my-2 flex items-center gap-2.5">
-                          <img
-                            src={ctx.oppLogo || CLUB_PLACEHOLDER}
-                            alt=""
-                            onError={(e) => {
-                              e.currentTarget.src = CLUB_PLACEHOLDER
-                            }}
-                            className="h-8 w-8 object-contain"
-                          />
-                          <p className="truncate text-xs font-black text-white group-hover:text-[#c4f82a]">
-                            vs {ctx.opponent}
-                          </p>
-                        </div>
-
-                        <span className="text-[10px] text-slate-400">
-                          {m.time ? `${m.date || ''} • ${m.time}` : 'Kick-off TBD'}
-                        </span>
-                      </Link>
-                    )
-                  })}
-                </div>
-              ) : (
-                <p className="py-6 text-center text-xs text-slate-400">
-                  No upcoming fixtures in the schedule run-in.
-                </p>
-              )}
-
-              <div className="border-t border-white/[0.08] pt-2.5 flex items-center justify-between text-[11px] text-slate-400">
-                <span>Completed Matches: {completedMatches.length}</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setListMode('results')
-                    setActiveTab('calendar')
-                  }}
-                  className="font-bold text-slate-300 hover:text-white"
-                >
-                  Past Results →
-                </button>
               </div>
             </div>
           </div>
@@ -1443,15 +1467,15 @@ export default function HubV2Page() {
 
         {/* ================================================================= TAB 2: TACTICS & SQUAD */}
         {activeTab === 'tactics' && (
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 items-start">
-            {/* Left Column (55% width / Col-span 7): Pitch */}
-            <div className="col-span-1 lg:col-span-7 rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-5 shadow-xl sm:p-6 backdrop-blur-md">
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.08] pb-4">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+            {/* Left Column (Col-span 7): Pitch Board */}
+            <div className="col-span-1 lg:col-span-7 flex flex-col justify-between rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-5 shadow-xl sm:p-6 backdrop-blur-md">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.08] pb-4">
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
-                    Tactical Command
+                    Tactical Strategy
                   </p>
-                  <h2 className="text-lg font-black uppercase tracking-wider text-white">
+                  <h2 className="text-base font-black uppercase tracking-wider text-white">
                     {isManager ? 'Team Sheet & Formations' : 'Team Sheet (Read Only)'}
                   </h2>
                 </div>
@@ -1498,169 +1522,131 @@ export default function HubV2Page() {
                   </div>
                 ) : (
                   <span className="rounded-full bg-white/10 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-slate-300">
-                    Formation: {formation} • View Only
+                    Formation: {formation} • Read-Only
                   </span>
                 )}
               </div>
 
               {/* Tactical Pitch with smart swap popover */}
-              <div className="relative mx-auto w-full max-w-[500px]">
+              <div className="relative mx-auto w-full max-w-[500px] my-3">
                 <Pitch
                   home
                   squad={tacticalSquad}
-                  activeSlotIndex={isManager ? activeSlotIdx : userMatchdayStatus.slotIdx}
-                  onSelectSlot={isManager ? (idx) => setActiveSlotIdx(idx) : undefined}
+                  activeSlotIndex={activeSlotIdx}
+                  onSelectSlot={isManager ? (idx) => setActiveSlotIdx(idx === activeSlotIdx ? null : idx) : undefined}
                 >
-                  {/* Smart Player Selection Popover (Manager Mode Only) */}
+                  {/* Smart Swap Popover for Managers */}
                   {isManager && activeSlotIdx !== null && (
-                    <div
-                      ref={pickerRef}
-                      className="absolute z-50 w-72 rounded-xl border border-white/20 bg-[#0e1118]/95 p-3 shadow-2xl backdrop-blur-xl"
-                      style={{
-                        top: '50%',
-                        left: '50%',
-                        transform: 'translate(-50%, -50%)',
-                      }}
-                    >
+                    <div className="absolute inset-x-2 bottom-3 z-30 rounded-xl border border-white/20 bg-black/95 p-4 shadow-2xl backdrop-blur-xl sm:inset-x-8">
                       <div className="flex items-center justify-between border-b border-white/10 pb-2">
-                        <span className="text-xs font-black uppercase tracking-wider text-[#c4f82a]">
-                          Slot {activeSlotIdx + 1}: {FORMATIONS[formation]?.slots[activeSlotIdx]?.[0] || 'Player'}
+                        <span className="text-xs font-black uppercase text-[#c4f82a]">
+                          Assign Slot {activeSlotIdx + 1} •{' '}
+                          {(FORMATIONS[formation] || FORMATIONS['4-3-3']).slots[activeSlotIdx]?.[0]}
                         </span>
                         <button
                           type="button"
                           onClick={() => setActiveSlotIdx(null)}
-                          className="text-white/60 hover:text-white"
+                          className="text-xs font-bold text-slate-400 hover:text-white"
                         >
-                          ✕
+                          ✕ Close
                         </button>
                       </div>
 
                       <input
-                        type="search"
-                        autoFocus
+                        type="text"
                         value={slotSearch}
                         onChange={(e) => setSlotSearch(e.target.value)}
-                        placeholder="Search squad..."
-                        className="my-2 h-7 w-full rounded border border-white/10 bg-black/50 px-2 text-xs text-white outline-none focus:border-[#c4f82a]"
+                        placeholder="Search squad player…"
+                        className="mt-3 h-8 w-full rounded border border-white/15 bg-white/5 px-2.5 text-xs text-white placeholder-slate-500 outline-none focus:border-[#c4f82a]"
                       />
 
-                      <div className="max-h-48 space-y-1 overflow-y-auto">
+                      <div className="mt-2.5 max-h-48 overflow-y-auto space-y-1 divide-y divide-white/5">
                         {squadList
                           .filter((p) =>
                             p.gamertag.toLowerCase().includes(slotSearch.toLowerCase().trim()),
                           )
                           .map((p) => {
-                            const isCurrent =
-                              starters[activeSlotIdx]?.gamertag.toLowerCase() ===
-                              p.gamertag.toLowerCase()
+                            const isAssigned = starters.some((s) => s?.playerId === p.id)
                             return (
                               <button
                                 key={p.id}
                                 type="button"
-                                onClick={() => assignOrSwapSlot(activeSlotIdx, p)}
-                                className={cx(
-                                  'flex w-full items-center justify-between rounded px-2 py-1.5 text-xs text-left transition',
-                                  isCurrent
-                                    ? 'bg-[#c4f82a]/20 text-[#c4f82a] font-bold'
-                                    : 'hover:bg-white/10 text-white',
-                                )}
+                                onClick={() => handleAssignStarter(activeSlotIdx, p)}
+                                className="flex w-full items-center justify-between px-2 py-1.5 text-left text-xs hover:bg-[#c4f82a]/10 hover:text-[#c4f82a] rounded transition"
                               >
-                                <span>{p.gamertag}</span>
-                                <span className="font-mono text-[10px] text-slate-400">
-                                  #{p.shirt_number ?? '—'}
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono text-slate-400">
+                                    #{p.shirt_number ?? '—'}
+                                  </span>
+                                  <span className="font-bold text-white">{p.gamertag}</span>
+                                </div>
+                                <span className="text-[10px] text-slate-500">
+                                  {isAssigned ? 'Already placed' : 'Available'}
                                 </span>
                               </button>
                             )
                           })}
-                      </div>
-
-                      <div className="mt-2.5 flex items-center justify-between border-t border-white/10 pt-2 text-[10px]">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setStarters((prev) => {
-                              const next = [...prev]
-                              next[activeSlotIdx] = null
-                              return next
-                            })
-                            setActiveSlotIdx(null)
-                          }}
-                          className="font-bold text-red-400 hover:underline"
-                        >
-                          Clear Slot
-                        </button>
-                        {starters[activeSlotIdx] && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setCaptainGamertag(starters[activeSlotIdx]?.gamertag || null)
-                              setActiveSlotIdx(null)
-                            }}
-                            className="font-bold text-amber-300 hover:underline"
-                          >
-                            Set as Captain (C)
-                          </button>
-                        )}
                       </div>
                     </div>
                   )}
                 </Pitch>
               </div>
 
-              <p className="mt-3 text-center text-xs text-slate-400">
-                {isManager
-                  ? 'Click any jersey on the field to assign, swap, or set the team captain. All tactical adjustments auto-save.'
-                  : 'Starting XI tactical layout set by club management for upcoming fixtures.'}
-              </p>
+              <div className="flex items-center justify-between border-t border-white/[0.08] pt-3 text-xs text-slate-400">
+                <span>Click any pitch marker to swap players.</span>
+                <span>Active Captain: {captainGamertag || 'Unassigned'}</span>
+              </div>
             </div>
 
-            {/* Right Column (45% width / Col-span 5): Tabbed Squad Drawer */}
-            <div className="col-span-1 lg:col-span-5 flex flex-col rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-5 shadow-xl sm:p-6 backdrop-blur-md">
-              {/* Drawer Top Navigation Switcher */}
-              <div className="flex items-center gap-1.5 rounded-xl bg-black/40 p-1 border border-white/5">
-                <button
-                  type="button"
-                  onClick={() => setTacticsDrawerTab('starters')}
-                  className={cx(
-                    'flex-1 rounded-lg py-1.5 text-center text-xs font-black uppercase tracking-wider transition',
-                    tacticsDrawerTab === 'starters'
-                      ? 'bg-[#c4f82a] text-black shadow-sm'
-                      : 'text-slate-400 hover:text-white',
-                  )}
-                >
-                  Starting XI ({starters.filter(Boolean).length}/11)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTacticsDrawerTab('bench')}
-                  className={cx(
-                    'flex-1 rounded-lg py-1.5 text-center text-xs font-black uppercase tracking-wider transition',
-                    tacticsDrawerTab === 'bench'
-                      ? 'bg-[#c4f82a] text-black shadow-sm'
-                      : 'text-slate-400 hover:text-white',
-                  )}
-                >
-                  Bench ({bench.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTacticsDrawerTab('roster')}
-                  className={cx(
-                    'flex-1 rounded-lg py-1.5 text-center text-xs font-black uppercase tracking-wider transition',
-                    tacticsDrawerTab === 'roster'
-                      ? 'bg-[#c4f82a] text-black shadow-sm'
-                      : 'text-slate-400 hover:text-white',
-                  )}
-                >
-                  Roster ({squadList.length})
-                </button>
+            {/* Right Column (Col-span 5): 3-Tab Squad Drawer (Issue 5 Fix: Color-coded Position Pills) */}
+            <div className="col-span-1 lg:col-span-5 flex flex-col justify-between rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-5 shadow-xl sm:p-6 backdrop-blur-md">
+              {/* Drawer Top Tabs */}
+              <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setTacticsDrawerTab('starters')}
+                    className={cx(
+                      'rounded-lg px-2.5 py-1 text-xs font-black uppercase transition',
+                      tacticsDrawerTab === 'starters'
+                        ? 'bg-[#c4f82a] text-black shadow-sm'
+                        : 'text-slate-400 hover:text-white hover:bg-white/5',
+                    )}
+                  >
+                    Starting XI ({starters.filter(Boolean).length}/11)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTacticsDrawerTab('bench')}
+                    className={cx(
+                      'rounded-lg px-2.5 py-1 text-xs font-black uppercase transition',
+                      tacticsDrawerTab === 'bench'
+                        ? 'bg-[#c4f82a] text-black shadow-sm'
+                        : 'text-slate-400 hover:text-white hover:bg-white/5',
+                    )}
+                  >
+                    Bench ({bench.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTacticsDrawerTab('roster')}
+                    className={cx(
+                      'rounded-lg px-2.5 py-1 text-xs font-black uppercase transition',
+                      tacticsDrawerTab === 'roster'
+                        ? 'bg-[#c4f82a] text-black shadow-sm'
+                        : 'text-slate-400 hover:text-white hover:bg-white/5',
+                    )}
+                  >
+                    Full Roster ({squadList.length})
+                  </button>
+                </div>
               </div>
 
-              {/* Drawer Content 1: Starting XI list */}
+              {/* Drawer Content 1: Starters list (Fix Issue 5: Position pills by line) */}
               {tacticsDrawerTab === 'starters' && (
                 <div className="mt-4 space-y-2">
                   <ul className="divide-y divide-white/5">
-                    {FORMATIONS[formation]?.slots.map(([pos], idx) => {
+                    {(FORMATIONS[formation] || FORMATIONS['4-3-3']).slots.map(([pos], idx) => {
                       const s = starters[idx]
                       const isMe =
                         s &&
@@ -1684,7 +1670,12 @@ export default function HubV2Page() {
                           )}
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
-                            <span className="w-8 shrink-0 rounded bg-white/10 px-1.5 py-0.5 text-center font-mono text-[10px] font-black text-[#c4f82a]">
+                            <span
+                              className={cx(
+                                'w-9 shrink-0 rounded px-1.5 py-0.5 text-center font-mono text-[10px] font-black border',
+                                getPositionBadgeStyle(pos),
+                              )}
+                            >
                               {pos}
                             </span>
                             <span className="font-mono text-xs font-bold text-slate-400">
@@ -1710,6 +1701,7 @@ export default function HubV2Page() {
                             )}
                           </div>
 
+                          {/* Only managers can remove starters */}
                           {isManager && s && (
                             <button
                               type="button"
@@ -1721,6 +1713,7 @@ export default function HubV2Page() {
                                 })
                               }}
                               className="text-[10px] font-bold text-slate-500 hover:text-red-400"
+                              title="Remove from starting XI"
                             >
                               ✕
                             </button>
@@ -1738,13 +1731,10 @@ export default function HubV2Page() {
                   {isManager && (
                     <div className="flex items-center gap-2 border-b border-white/[0.08] pb-3">
                       <select
-                        value=""
                         onChange={(e) => {
-                          const tag = e.target.value
-                          if (!tag) return
-                          const p = squadList.find((sp) => sp.gamertag === tag)
+                          const pId = Number(e.target.value)
+                          const p = squadList.find((x) => x.id === pId)
                           if (!p) return
-                          if (bench.some((b) => b.gamertag.toLowerCase() === tag.toLowerCase())) return
                           setBench((prev) => [
                             ...prev,
                             {
@@ -1756,21 +1746,23 @@ export default function HubV2Page() {
                               role: 'SUB',
                             },
                           ])
+                          e.target.value = ''
                         }}
-                        className="h-8 flex-1 rounded-lg border border-white/20 bg-black/50 px-2.5 text-xs text-slate-300 outline-none focus:border-[#c4f82a]"
+                        defaultValue=""
+                        className="h-8 flex-1 rounded border border-white/20 bg-black/50 px-2 text-xs text-white outline-none focus:border-[#c4f82a]"
                       >
-                        <option value="">+ Add Substitute from squad...</option>
+                        <option value="" disabled>
+                          + Add player to bench…
+                        </option>
                         {squadList
                           .filter(
-                            (sp) =>
-                              !starters.some(
-                                (st) => st && st.gamertag.toLowerCase() === sp.gamertag.toLowerCase(),
-                              ) &&
-                              !bench.some((b) => b.gamertag.toLowerCase() === sp.gamertag.toLowerCase()),
+                            (p) =>
+                              !starters.some((s) => s?.playerId === p.id) &&
+                              !bench.some((b) => b.playerId === p.id),
                           )
                           .map((p) => (
-                            <option key={p.id} value={p.gamertag}>
-                              {p.gamertag} (#{p.shirt_number ?? '—'})
+                            <option key={p.id} value={p.id}>
+                              #{p.shirt_number ?? '—'} {p.gamertag}
                             </option>
                           ))}
                       </select>
@@ -1778,31 +1770,34 @@ export default function HubV2Page() {
                   )}
 
                   {bench.length === 0 ? (
-                    <p className="py-8 text-center text-xs text-slate-500">
+                    <p className="py-8 text-center text-xs text-slate-400">
                       No substitutes designated on the bench.
                     </p>
                   ) : (
-                    <ul className="divide-y divide-white/5">
+                    <ul className="divide-y divide-white/5 space-y-1">
                       {bench.map((b, idx) => (
-                        <li key={idx} className="flex items-center justify-between gap-3 py-2 px-2">
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <span className="w-8 shrink-0 rounded bg-white/5 px-1.5 py-0.5 text-center font-mono text-[10px] font-bold text-slate-400">
+                        <li
+                          key={idx}
+                          className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg hover:bg-white/[0.02]"
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <span className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[10px] font-bold text-slate-300">
                               SUB
                             </span>
-                            <span className="font-mono text-xs font-bold text-slate-400">
-                              #{b.shirtNumber ?? idx + 12}
+                            <span className="font-mono text-xs text-slate-400">
+                              #{b.shirtNumber ?? 12 + idx}
                             </span>
-                            <span className="truncate text-xs font-extrabold text-white">
-                              {b.gamertag}
-                            </span>
+                            <span className="text-xs font-bold text-white">{b.gamertag}</span>
                           </div>
+
                           {isManager && (
                             <button
                               type="button"
                               onClick={() => setBench((prev) => prev.filter((_, i) => i !== idx))}
                               className="text-[10px] font-bold text-slate-500 hover:text-red-400"
+                              title="Remove from bench"
                             >
-                              ✕ Remove
+                              ✕
                             </button>
                           )}
                         </li>
@@ -1812,171 +1807,137 @@ export default function HubV2Page() {
                 </div>
               )}
 
-              {/* Drawer Content 3: Full Roster list */}
+              {/* Drawer Content 3: Full Roster */}
               {tacticsDrawerTab === 'roster' && (
-                <div className="mt-4 space-y-3">
-                  {isManager && (
-                    <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
-                      <span className="text-xs font-bold text-slate-300">
-                        Roster: {squadList.length} / {maxSquadSize}
-                      </span>
-                      <Button
-                        size="sm"
-                        disabled={!transferWindowOpen || squadList.length >= maxSquadSize}
-                        onClick={() => setShowSignModal(true)}
-                        className="bg-[#c4f82a] text-black font-black uppercase text-[11px]"
-                      >
-                        + Sign Player
-                      </Button>
-                    </div>
-                  )}
+                <div className="mt-4 space-y-2">
+                  <div className="flex items-center justify-between text-[11px] text-slate-400 pb-2 border-b border-white/5">
+                    <span>Active Squad Capacity</span>
+                    <span className="font-mono font-bold text-[#c4f82a]">
+                      {squadList.length} / {maxSquadSize}
+                    </span>
+                  </div>
 
-                  <ul className="divide-y divide-white/5 max-h-[460px] overflow-y-auto">
-                    {squadList.map((p) => {
-                      const isMe =
-                        (user?.playerId && p.id === user.playerId) ||
-                        (user?.gamertag && p.gamertag.toLowerCase() === user.gamertag.toLowerCase())
+                  <ul className="divide-y divide-white/5 max-h-96 overflow-y-auto space-y-1">
+                    {squadList.map((p, idx) => {
+                      const isStarter = starters.some((s) => s?.playerId === p.id)
+                      const isBench = bench.some((b) => b.playerId === p.id)
+
                       return (
-                        <li key={p.id} className="flex items-center justify-between gap-3 py-2.5 px-2">
+                        <li
+                          key={p.id}
+                          className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg hover:bg-white/[0.02]"
+                        >
                           <div className="flex items-center gap-2.5 min-w-0">
-                            <SmartImage
-                              src={p.avatar_local || AVATAR_PLACEHOLDER}
-                              fallback={AVATAR_PLACEHOLDER}
-                              alt=""
-                              wrapperClassName="h-7 w-7 rounded-lg overflow-hidden bg-black/40 border border-white/10 shrink-0"
-                              className="h-full w-full object-cover"
-                            />
-                            <div className="min-w-0">
-                              <p className="truncate text-xs font-extrabold text-white flex items-center gap-1.5">
-                                {p.gamertag}
-                                {isMe && (
-                                  <span className="rounded bg-[#c4f82a] px-1 py-0.2 text-[8.5px] font-black text-black">
-                                    YOU
-                                  </span>
+                            <span className="font-mono text-xs text-slate-400">
+                              #{p.shirt_number ?? idx + 1}
+                            </span>
+                            <span className="truncate text-xs font-bold text-white">
+                              {p.gamertag}
+                            </span>
+                            {p.position && (
+                              <span
+                                className={cx(
+                                  'rounded px-1.5 py-0.2 text-[9px] font-black uppercase border',
+                                  getPositionBadgeStyle(p.position),
                                 )}
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-2 shrink-0">
-                            {/* Editable number: Manager can edit all, Normal Player can edit only self */}
-                            {isManager || isMe ? (
-                              <input
-                                type="number"
-                                min={1}
-                                max={99}
-                                defaultValue={p.shirt_number ?? ''}
-                                onBlur={(e) => {
-                                  const val = e.target.value.trim() ? Number(e.target.value) : null
-                                  if (isManager) {
-                                    void handleSavePlayerShirt(p.id, val)
-                                  } else {
-                                    setMyShirtNumber(e.target.value)
-                                    void updateMyPlayerProfile({ shirtNumber: val })
-                                  }
-                                }}
-                                title="Jersey Number"
-                                className="h-6 w-12 rounded border border-white/20 bg-black/50 px-1 text-center font-mono text-xs font-bold text-white focus:border-[#c4f82a] outline-none"
-                              />
-                            ) : (
-                              <span className="font-mono text-xs font-bold text-slate-400 w-10 text-right">
-                                #{p.shirt_number ?? '—'}
+                              >
+                                {p.position}
                               </span>
                             )}
-
-                            {isManager && (
-                              <button
-                                type="button"
-                                disabled={busy || !transferWindowOpen}
-                                onClick={() => setReleaseConfirmPlayer(p)}
-                                className="rounded p-1 text-slate-500 hover:text-red-400 transition"
-                                title="Release player"
-                              >
-                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                  <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                                </svg>
-                              </button>
-                            )}
+                            <span
+                              className={cx(
+                                'rounded px-1.5 py-0.2 text-[9px] font-black uppercase',
+                                isStarter
+                                  ? 'bg-[#c4f82a]/20 text-[#c4f82a]'
+                                  : isBench
+                                    ? 'bg-amber-500/20 text-amber-300'
+                                    : 'bg-white/5 text-slate-400',
+                              )}
+                            >
+                              {isStarter ? 'XI' : isBench ? 'SUB' : 'RES'}
+                            </span>
                           </div>
+
+                          {isManager && (
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => handleReleasePlayer(p.id, p.gamertag)}
+                              className="text-[10px] font-bold text-slate-500 hover:text-red-400"
+                              title="Release player from club"
+                            >
+                              Release
+                            </button>
+                          )}
                         </li>
                       )
                     })}
                   </ul>
                 </div>
               )}
+
+              <div className="border-t border-white/[0.08] pt-3 text-right">
+                <span className="text-[10px] text-slate-500">Live Tactics Engine</span>
+              </div>
             </div>
           </div>
         )}
 
         {/* ================================================================= TAB 3: TRANSFERS & INBOX */}
         {activeTab === 'transfers' && (
-          <div className="space-y-6">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             {isManager ? (
-              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                {/* Manager Left: Incoming Join Requests */}
+              <>
+                {/* Manager Box 1: Incoming Join Requests */}
                 <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-5 shadow-xl sm:p-6 backdrop-blur-md">
-                  <div className="flex items-center justify-between border-b border-white/[0.08] pb-3.5">
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
-                        Recruitment Desk
-                      </p>
-                      <h3 className="text-base font-black uppercase tracking-wider text-white">
-                        Incoming Join Requests ({managerJoinRequests.length})
-                      </h3>
-                    </div>
+                  <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
+                      Incoming Inbox
+                    </p>
+                    <span className="text-xs font-bold text-slate-400">
+                      Join Requests ({managerJoinRequests.filter((r) => r.status === 'pending').length})
+                    </span>
                   </div>
 
                   {managerJoinRequests.length === 0 ? (
                     <p className="py-12 text-center text-xs text-slate-400">
-                      No pending player applications. Free agents searching for clubs will appear here.
+                      No player transfer applications at this time.
                     </p>
                   ) : (
                     <ul className="mt-4 divide-y divide-white/5 space-y-2">
-                      {managerJoinRequests.map((req) => (
-                        <li key={req.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3">
-                          <div className="flex items-center gap-3">
-                            <SmartImage
-                              src={req.avatar_local || AVATAR_PLACEHOLDER}
-                              fallback={AVATAR_PLACEHOLDER}
-                              alt=""
-                              wrapperClassName="h-10 w-10 rounded-xl overflow-hidden bg-black/40 border border-white/10 shrink-0"
-                              className="h-full w-full object-cover"
-                            />
-                            <div>
-                              <p className="text-sm font-black text-white">{req.gamertag}</p>
-                              {req.message && (
-                                <p className="text-xs italic text-slate-400">"{req.message}"</p>
-                              )}
-                              <span className="text-[10px] text-slate-500">
-                                Applied {new Date(req.created_at).toLocaleDateString()}
-                              </span>
-                            </div>
+                      {managerJoinRequests.map((r) => (
+                        <li key={r.id} className="flex items-center justify-between gap-3 pt-3">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-bold text-white truncate">{r.gamertag}</p>
+                            {r.message && <p className="text-xs italic text-slate-400">"{r.message}"</p>}
+                            <span className="text-[10px] text-slate-500">
+                              Applied {new Date(r.created_at).toLocaleDateString()}
+                            </span>
                           </div>
-
                           <div className="flex items-center gap-2">
-                            {req.status === 'pending' ? (
+                            {r.status === 'pending' ? (
                               <>
                                 <Button
                                   size="sm"
-                                  disabled={busy || !transferWindowOpen}
-                                  onClick={() => handleDecideJoinReq(req.id, 'accept')}
-                                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs"
+                                  disabled={busy || !transferWindowOpen || squadList.length >= maxSquadSize}
+                                  onClick={() => handleDecideJoinRequest(r.id, 'accept')}
+                                  className="bg-[#c4f82a] text-black text-xs font-bold"
                                 >
-                                  ✓ Accept
+                                  Accept
                                 </Button>
                                 <Button
                                   size="sm"
                                   variant="outline"
                                   disabled={busy}
-                                  onClick={() => handleDecideJoinReq(req.id, 'reject')}
-                                  className="text-red-400 hover:text-red-300 text-xs font-bold"
+                                  onClick={() => handleDecideJoinRequest(r.id, 'reject')}
+                                  className="text-xs text-red-400 hover:text-red-300"
                                 >
-                                  ✕ Decline
+                                  Decline
                                 </Button>
                               </>
                             ) : (
-                              <span className="rounded bg-white/10 px-2 py-0.5 text-xs font-bold capitalize text-slate-300">
-                                {req.status}
+                              <span className="rounded bg-white/10 px-2 py-0.5 text-xs font-bold uppercase text-slate-400">
+                                {r.status}
                               </span>
                             )}
                           </div>
@@ -1986,25 +1947,15 @@ export default function HubV2Page() {
                   )}
                 </div>
 
-                {/* Manager Right: Outbox Offers */}
+                {/* Manager Box 2: Outbox Offers (Fix Issue 2: Real usernames, avatars & status) */}
                 <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-5 shadow-xl sm:p-6 backdrop-blur-md">
-                  <div className="flex items-center justify-between border-b border-white/[0.08] pb-3.5">
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
-                        Sent Contracts
-                      </p>
-                      <h3 className="text-base font-black uppercase tracking-wider text-white">
-                        Outbox Offers ({managerOffersList.length})
-                      </h3>
-                    </div>
-                    <Button
-                      size="sm"
-                      disabled={!transferWindowOpen || squadList.length >= maxSquadSize}
-                      onClick={() => setShowSignModal(true)}
-                      className="bg-[#c4f82a] text-black font-black uppercase tracking-wider text-xs"
-                    >
-                      + Sign Player
-                    </Button>
+                  <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
+                      Dispatched Desk
+                    </p>
+                    <span className="text-xs font-bold text-slate-400">
+                      Outbox Offers ({managerOffersList.filter((o) => o.status === 'pending').length})
+                    </span>
                   </div>
 
                   {managerOffersList.length === 0 ? (
@@ -2013,35 +1964,129 @@ export default function HubV2Page() {
                     </p>
                   ) : (
                     <ul className="mt-4 divide-y divide-white/5 space-y-2">
-                      {managerOffersList.map((o) => (
-                        <li key={o.id} className="flex items-center justify-between gap-3 pt-3">
-                          <div>
-                            <p className="text-sm font-bold text-white">Player #{o.id}</p>
-                            {o.message && <p className="text-xs italic text-slate-400">"{o.message}"</p>}
-                            <span className="text-[10px] text-slate-500">
-                              Dispatched {new Date(o.created_at).toLocaleDateString()}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span
-                              className={cx(
-                                'rounded px-2 py-0.5 text-xs font-bold capitalize',
-                                o.status === 'pending'
-                                  ? 'bg-amber-500/20 text-amber-300'
-                                  : 'bg-white/10 text-slate-300',
-                              )}
-                            >
-                              {o.status}
-                            </span>
-                            {o.status === 'pending' && (
-                              <button
-                                type="button"
-                                disabled={busy}
-                                onClick={() => handleCancelOffer(o.id)}
-                                className="text-xs font-bold text-red-400 hover:underline"
+                      {managerOffersList.map((o) => {
+                        const playerName =
+                          o.gamertag ||
+                          squadList.find((p) => p.id === o.player_id)?.gamertag ||
+                          `Player #${o.player_id ?? o.id}`
+
+                        return (
+                          <li key={o.id} className="flex items-center justify-between gap-3 pt-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-white/10 border border-white/10">
+                                <img
+                                  src={o.avatar_local || AVATAR_PLACEHOLDER}
+                                  alt=""
+                                  onError={(e) => {
+                                    e.currentTarget.src = AVATAR_PLACEHOLDER
+                                  }}
+                                  className="h-full w-full object-cover"
+                                />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-bold text-white truncate">{playerName}</p>
+                                {o.message && <p className="text-xs italic text-slate-400">"{o.message}"</p>}
+                                <span className="text-[10px] text-slate-500">
+                                  Dispatched {new Date(o.created_at).toLocaleDateString()}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={cx(
+                                  'rounded px-2 py-0.5 text-xs font-bold capitalize',
+                                  o.status === 'pending'
+                                    ? 'bg-amber-500/20 text-amber-300'
+                                    : 'bg-white/10 text-slate-300',
+                                )}
                               >
-                                Cancel
-                              </button>
+                                {o.status}
+                              </span>
+                              {o.status === 'pending' && (
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => handleCancelOffer(o.id)}
+                                  className="text-xs font-bold text-red-400 hover:underline"
+                                >
+                                  Cancel
+                                </button>
+                              )}
+                            </div>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Player Box 1: Incoming Contract Offers from Clubs */}
+                <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-5 shadow-xl sm:p-6 backdrop-blur-md">
+                  <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
+                      Contract Offers
+                    </p>
+                    <span className="text-xs font-bold text-slate-400">
+                      Incoming ({playerOffersList.filter((o) => o.status === 'pending').length})
+                    </span>
+                  </div>
+
+                  {playerOffersList.length === 0 ? (
+                    <p className="py-12 text-center text-xs text-slate-400">
+                      No club contract offers in your inbox.
+                    </p>
+                  ) : (
+                    <ul className="mt-4 divide-y divide-white/5 space-y-2">
+                      {playerOffersList.map((o) => (
+                        <li key={o.id} className="flex items-center justify-between gap-3 pt-3">
+                          <div className="flex items-center gap-3">
+                            <div className="h-9 w-9 shrink-0 overflow-hidden rounded-lg bg-black/40 border border-white/10 p-1">
+                              <img
+                                src={o.logo_local || CLUB_PLACEHOLDER}
+                                alt=""
+                                onError={(e) => {
+                                  e.currentTarget.src = CLUB_PLACEHOLDER
+                                }}
+                                className="h-full w-full object-contain"
+                              />
+                            </div>
+                            <div>
+                              <p className="text-sm font-bold text-white">{o.club_name || 'Pro Club'}</p>
+                              {o.message && <p className="text-xs italic text-slate-400">"{o.message}"</p>}
+                              <span className="text-[10px] text-slate-500">
+                                {new Date(o.created_at).toLocaleDateString()}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            {o.status === 'pending' ? (
+                              <>
+                                <Button
+                                  size="sm"
+                                  disabled={busy}
+                                  onClick={() => handleDecideOffer(o.id, true)}
+                                  className="bg-[#c4f82a] text-black font-bold text-xs"
+                                >
+                                  Accept & Sign
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={busy}
+                                  onClick={() => handleDecideOffer(o.id, false)}
+                                  className="text-xs text-red-400"
+                                >
+                                  Decline
+                                </Button>
+                              </>
+                            ) : (
+                              <span className="rounded bg-white/10 px-2 py-0.5 text-xs font-bold capitalize text-slate-400">
+                                {o.status}
+                              </span>
                             )}
                           </div>
                         </li>
@@ -2049,342 +2094,283 @@ export default function HubV2Page() {
                     </ul>
                   )}
                 </div>
-              </div>
-            ) : (
-              /* Player Mode Transfers View */
-              <div className="space-y-6">
-                {/* Contract Status Banner */}
-                <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/[0.08] bg-gradient-to-r from-emerald-950/40 via-black/60 to-black/80 p-5">
-                  <div>
-                    <span className="text-[10px] font-black uppercase tracking-wider text-[#c4f82a]">
-                      Contract Registration
-                    </span>
-                    <h3 className="text-base font-black text-white">
-                      {myClub ? `Active Player at ${myClub.name}` : 'Free Agent Looking for Club'}
-                    </h3>
-                  </div>
-                  {myClub && (
-                    <div className="flex items-center gap-2">
-                      <ButtonLink to={`/clubs/${myClub.slug}`} size="sm" variant="outline">
-                        View Club
-                      </ButtonLink>
-                      <Button
-                        size="sm"
-                        variant="danger"
-                        disabled={busy || !transferWindowOpen}
-                        onClick={() => setShowLeaveConfirm(true)}
-                      >
-                        Leave Club
-                      </Button>
-                    </div>
-                  )}
-                </div>
 
-                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                  {/* Player Left: Club Invites / Offers */}
-                  <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-5 shadow-xl sm:p-6 backdrop-blur-md">
+                {/* Player Box 2: Outgoing Join Requests */}
+                <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-5 shadow-xl sm:p-6 backdrop-blur-md">
+                  <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
                     <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
-                      Incoming
+                      My Applications
                     </p>
-                    <h3 className="text-base font-black uppercase tracking-wider text-white">
-                      Club Invites & Offers ({playerOffersList.length})
-                    </h3>
-
-                    {playerOffersList.length === 0 ? (
-                      <p className="py-12 text-center text-xs text-slate-400">
-                        No pending contract offers from club managers.
-                      </p>
-                    ) : (
-                      <ul className="mt-4 divide-y divide-white/5 space-y-2">
-                        {playerOffersList.map((o) => (
-                          <li key={o.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3">
-                            <div>
-                              <p className="text-sm font-black text-white">{o.club_name}</p>
-                              {o.message && <p className="text-xs text-slate-400 italic">"{o.message}"</p>}
-                              <span className="text-[10px] text-slate-500">
-                                Received {new Date(o.created_at).toLocaleDateString()}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Button
-                                size="sm"
-                                disabled={busy || !transferWindowOpen}
-                                onClick={() => handleDecidePlayerOffer(o.id, 'accept')}
-                                className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black"
-                              >
-                                Accept
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                disabled={busy}
-                                onClick={() => handleDecidePlayerOffer(o.id, 'reject')}
-                                className="text-xs text-red-400 font-bold"
-                              >
-                                Decline
-                              </Button>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
+                    <span className="text-xs font-bold text-slate-400">
+                      Dispatched ({playerJoinRequestsList.filter((r) => r.status === 'pending').length})
+                    </span>
                   </div>
 
-                  {/* Player Right: My Applications */}
-                  <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-5 shadow-xl sm:p-6 backdrop-blur-md">
-                    <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
-                      <div>
-                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
-                          Outgoing
-                        </p>
-                        <h3 className="text-base font-black uppercase tracking-wider text-white">
-                          My Applications ({playerJoinRequestsList.length})
-                        </h3>
-                      </div>
-                      <ButtonLink to="/clubs" size="sm" variant="outline" className="text-xs font-bold">
-                        Browse Clubs →
-                      </ButtonLink>
-                    </div>
-
-                    {playerJoinRequestsList.length === 0 ? (
-                      <p className="py-12 text-center text-xs text-slate-400">
-                        You have not applied to any clubs yet. Browse the league clubs list to request to join.
-                      </p>
-                    ) : (
-                      <ul className="mt-4 divide-y divide-white/5 space-y-2">
-                        {playerJoinRequestsList.map((r) => (
-                          <li key={r.id} className="flex items-center justify-between gap-3 pt-3">
-                            <div>
-                              <p className="text-sm font-black text-white">{r.club_name}</p>
-                              {r.message && <p className="text-xs text-slate-400 italic">"{r.message}"</p>}
-                              <span className="text-[10px] text-slate-500">
-                                Applied {new Date(r.created_at).toLocaleDateString()}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span className="rounded bg-white/10 px-2 py-0.5 text-xs font-bold capitalize text-slate-300">
+                  {playerJoinRequestsList.length === 0 ? (
+                    <p className="py-12 text-center text-xs text-slate-400">
+                      You haven't submitted any applications to clubs.
+                    </p>
+                  ) : (
+                    <ul className="mt-4 divide-y divide-white/5 space-y-2">
+                      {playerJoinRequestsList.map((r) => (
+                        <li key={r.id} className="flex items-center justify-between gap-3 pt-3">
+                          <div>
+                            <p className="text-sm font-bold text-white">{r.club_name || 'Club'}</p>
+                            {r.message && <p className="text-xs italic text-slate-400">"{r.message}"</p>}
+                            <span className="text-[10px] text-slate-500">
+                              Applied {new Date(r.created_at).toLocaleDateString()}
+                            </span>
+                          </div>
+                          <div>
+                            {r.status === 'pending' ? (
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() => handleCancelJoinRequest(r.id)}
+                                className="text-xs font-bold text-red-400 hover:underline"
+                              >
+                                Withdraw
+                              </button>
+                            ) : (
+                              <span className="rounded bg-white/10 px-2 py-0.5 text-xs font-bold capitalize text-slate-400">
                                 {r.status}
                               </span>
-                              {r.status === 'pending' && (
-                                <button
-                                  type="button"
-                                  disabled={busy}
-                                  onClick={() => handleWithdrawApplication(r.id)}
-                                  className="text-xs font-bold text-red-400 hover:underline"
-                                >
-                                  Withdraw
-                                </button>
-                              )}
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
+                            )}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
-              </div>
+              </>
             )}
           </div>
         )}
 
         {/* ================================================================= TAB 4: CALENDAR */}
         {activeTab === 'calendar' && (
-          <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-5 shadow-xl sm:p-6 backdrop-blur-md">
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.08] pb-4">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
-                  Schedule Center
-                </p>
-                <h2 className="text-lg font-black uppercase tracking-wider text-white">
-                  {myClub?.name || 'League'} Fixture Calendar
-                </h2>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="rounded-full bg-white/10 px-3 py-1 font-mono text-xs font-bold text-slate-300">
-                  {upcomingMatches.length} Upcoming • {completedMatches.length} Results
+          <div className="space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-4 shadow-xl sm:px-6">
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedYmd(null)
+                    if (viewMonth === 0) {
+                      setViewMonth(11)
+                      setViewYear((y) => y - 1)
+                    } else {
+                      setViewMonth((m) => m - 1)
+                    }
+                  }}
+                  className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-bold text-white hover:bg-white/10"
+                >
+                  ‹ Prev Month
+                </button>
+                <span className="font-display text-sm font-black uppercase tracking-wider text-white">
+                  {new Date(viewYear, viewMonth, 1).toLocaleString('default', {
+                    month: 'long',
+                    year: 'numeric',
+                  })}
                 </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedYmd(null)
+                    if (viewMonth === 11) {
+                      setViewMonth(0)
+                      setViewYear((y) => y + 1)
+                    } else {
+                      setViewMonth((m) => m + 1)
+                    }
+                  }}
+                  className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-bold text-white hover:bg-white/10"
+                >
+                  Next Month ›
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setListMode('upcoming')}
+                  className={cx(
+                    'rounded-lg px-3 py-1 text-xs font-black uppercase transition',
+                    listMode === 'upcoming'
+                      ? 'bg-[#c4f82a] text-black shadow'
+                      : 'text-slate-400 hover:text-white',
+                  )}
+                >
+                  Upcoming ({upcomingMatches.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setListMode('results')}
+                  className={cx(
+                    'rounded-lg px-3 py-1 text-xs font-black uppercase transition',
+                    listMode === 'results'
+                      ? 'bg-[#c4f82a] text-black shadow'
+                      : 'text-slate-400 hover:text-white',
+                  )}
+                >
+                  Results ({completedMatches.length})
+                </button>
               </div>
             </div>
 
-            {/* Calendar Grid + Matches List */}
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 items-start">
-              {/* Left Calendar Month View (5 cols) */}
-              <div className="col-span-1 lg:col-span-5 rounded-xl border border-white/5 bg-black/40 p-4">
-                <div className="mb-3 flex items-center justify-between">
-                  <span className="text-sm font-black uppercase tracking-wider text-white">
-                    {MONTH_NAMES[viewMonth]} {viewYear}
-                  </span>
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (viewMonth === 0) {
-                          setViewMonth(11)
-                          setViewYear((y) => y - 1)
-                        } else {
-                          setViewMonth((m) => m - 1)
-                        }
-                      }}
-                      className="rounded p-1 text-slate-400 hover:bg-white/10 hover:text-white"
-                    >
-                      ‹
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (viewMonth === 11) {
-                          setViewMonth(0)
-                          setViewYear((y) => y + 1)
-                        } else {
-                          setViewMonth((m) => m + 1)
-                        }
-                      }}
-                      className="rounded p-1 text-slate-400 hover:bg-white/10 hover:text-white"
-                    >
-                      ›
-                    </button>
-                  </div>
+            {/* Calendar & Fixture List Grid */}
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+              {/* Left (7 cols): Month Calendar Grid */}
+              <div className="col-span-1 lg:col-span-7 rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-5 shadow-xl sm:p-6 backdrop-blur-md">
+                <div className="grid grid-cols-7 gap-1 text-center font-mono text-[10px] font-black text-slate-500 uppercase pb-2">
+                  <span>Mon</span>
+                  <span>Tue</span>
+                  <span>Wed</span>
+                  <span>Thu</span>
+                  <span>Fri</span>
+                  <span>Sat</span>
+                  <span>Sun</span>
                 </div>
 
-                {/* Weekdays */}
-                <div className="grid grid-cols-7 gap-1 text-center font-mono text-[10px] font-bold text-slate-500">
-                  {WEEKDAYS.map((w) => (
-                    <div key={w}>{w}</div>
-                  ))}
-                </div>
+                <div className="grid grid-cols-7 gap-1.5 mt-2">
+                  {(() => {
+                    const firstDay = new Date(viewYear, viewMonth, 1)
+                    const lastDay = new Date(viewYear, viewMonth + 1, 0)
+                    const startDow = (firstDay.getDay() + 6) % 7
+                    const daysInMonth = lastDay.getDate()
+                    const cells: Array<{ ymd: string; day: number; inMonth: boolean }> = []
 
-                {/* Days */}
-                {(() => {
-                  const firstDay = new Date(viewYear, viewMonth, 1)
-                  const startOffset = (firstDay.getDay() + 6) % 7 // Monday start
-                  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate()
-
-                  const matchDayCounts = new Map<string, number>()
-                  for (const m of matches) {
-                    const d = parseKickoffDate(m)
-                    if (d) {
-                      const ymd = toYmd(d)
-                      matchDayCounts.set(ymd, (matchDayCounts.get(ymd) ?? 0) + 1)
+                    // Previous month
+                    const prevMonthLast = new Date(viewYear, viewMonth, 0).getDate()
+                    for (let i = startDow - 1; i >= 0; i--) {
+                      const d = new Date(viewYear, viewMonth - 1, prevMonthLast - i)
+                      cells.push({ ymd: toYmd(d), day: d.getDate(), inMonth: false })
                     }
-                  }
+                    // Current month
+                    for (let day = 1; day <= daysInMonth; day++) {
+                      const d = new Date(viewYear, viewMonth, day)
+                      cells.push({ ymd: toYmd(d), day, inMonth: true })
+                    }
+                    // Trailing days
+                    const remainder = (7 - (cells.length % 7)) % 7
+                    for (let day = 1; day <= remainder; day++) {
+                      const d = new Date(viewYear, viewMonth + 1, day)
+                      cells.push({ ymd: toYmd(d), day, inMonth: false })
+                    }
 
-                  const cells = []
-                  for (let i = 0; i < startOffset; i++) {
-                    cells.push(<div key={`pad-${i}`} className="h-9" />)
-                  }
-                  for (let d = 1; d <= daysInMonth; d++) {
-                    const thisDate = new Date(viewYear, viewMonth, d)
-                    const ymd = toYmd(thisDate)
-                    const count = matchDayCounts.get(ymd) ?? 0
-                    const isSelected = selectedYmd === ymd
+                    const todayYmd = toYmd(new Date())
 
-                    cells.push(
-                      <button
-                        key={d}
-                        type="button"
-                        onClick={() => setSelectedYmd(isSelected ? null : ymd)}
-                        className={cx(
-                          'relative h-9 rounded-lg font-mono text-xs font-bold transition flex flex-col items-center justify-center',
-                          isSelected
-                            ? 'bg-[#c4f82a] text-black font-black'
-                            : count > 0
-                              ? 'bg-white/10 text-white hover:bg-white/20'
-                              : 'text-slate-400 hover:bg-white/5',
-                        )}
-                      >
-                        <span>{d}</span>
-                        {count > 0 && !isSelected && (
-                          <span className="h-1 w-1 rounded-full bg-[#c4f82a]" />
-                        )}
-                      </button>,
-                    )
-                  }
-                  return <div className="mt-2 grid grid-cols-7 gap-1">{cells}</div>
-                })()}
+                    return cells.map((cell) => {
+                      const dayMatches = matchesByYmd.get(cell.ymd) ?? []
+                      const hasMatch = dayMatches.length > 0
+                      const isSelected = selectedYmd === cell.ymd
+                      const firstFixture = dayMatches[0]
+                      const ctx = firstFixture ? getFixtureContext(firstFixture) : null
 
-                {selectedYmd && (
-                  <div className="mt-3 flex items-center justify-between border-t border-white/5 pt-2 text-xs">
-                    <span className="text-[#c4f82a] font-bold">Filtered: {selectedYmd}</span>
+                      return (
+                        <button
+                          key={cell.ymd}
+                          type="button"
+                          onClick={() => setSelectedYmd(isSelected ? null : cell.ymd)}
+                          className={cx(
+                            'group relative flex min-h-[64px] flex-col justify-between rounded-xl border p-1.5 text-left transition',
+                            !cell.inMonth && 'opacity-30',
+                            isSelected
+                              ? 'border-[#c4f82a] bg-[#c4f82a]/15 ring-1 ring-[#c4f82a]'
+                              : hasMatch
+                                ? 'border-[#c4f82a]/30 bg-black/40 hover:border-[#c4f82a]'
+                                : 'border-white/5 bg-black/20 hover:border-white/15',
+                          )}
+                        >
+                          <div className="flex w-full items-center justify-between">
+                            <span
+                              className={cx(
+                                'font-mono text-[10px] font-bold',
+                                cell.ymd === todayYmd
+                                  ? 'rounded bg-[#c4f82a] px-1 text-black font-black'
+                                  : hasMatch
+                                    ? 'text-white'
+                                    : 'text-slate-500',
+                              )}
+                            >
+                              {cell.day}
+                            </span>
+                            {ctx && (
+                              <span
+                                className={cx(
+                                  'rounded px-1 text-[8.5px] font-black uppercase',
+                                  ctx.isHome
+                                    ? 'bg-emerald-500/20 text-emerald-300'
+                                    : 'bg-sky-500/20 text-sky-300',
+                                )}
+                              >
+                                {ctx.isHome ? 'H' : 'A'}
+                              </span>
+                            )}
+                          </div>
+
+                          {ctx && (
+                            <div className="mt-1 flex items-center gap-1">
+                              <img
+                                src={ctx.oppLogo || CLUB_PLACEHOLDER}
+                                alt=""
+                                onError={(e) => {
+                                  e.currentTarget.src = CLUB_PLACEHOLDER
+                                }}
+                                className="h-3.5 w-3.5 shrink-0 object-contain"
+                              />
+                              <span className="truncate text-[9.5px] font-bold text-white">
+                                {ctx.opponent}
+                              </span>
+                            </div>
+                          )}
+                        </button>
+                      )
+                    })
+                  })()}
+                </div>
+              </div>
+
+              {/* Right (5 cols): Day / Mode Fixture List */}
+              <div className="col-span-1 lg:col-span-5 rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-5 shadow-xl sm:p-6 backdrop-blur-md">
+                <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
+                  <span className="text-xs font-black uppercase text-[#c4f82a]">
+                    {selectedYmd ? `Matches on ${selectedYmd}` : `${listMode.toUpperCase()} MATCHES`}
+                  </span>
+                  {selectedYmd && (
                     <button
                       type="button"
                       onClick={() => setSelectedYmd(null)}
-                      className="text-slate-400 hover:text-white"
+                      className="text-[11px] font-bold text-slate-400 hover:text-white"
                     >
-                      Clear Filter
+                      Clear Filter ✕
                     </button>
-                  </div>
-                )}
-              </div>
-
-              {/* Right Matches List (7 cols) */}
-              <div className="col-span-1 lg:col-span-7 flex flex-col justify-between">
-                <div className="mb-3 flex items-center gap-2 border-b border-white/[0.08] pb-3">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setListMode('upcoming')
-                      setSelectedYmd(null)
-                    }}
-                    className={cx(
-                      'rounded-lg px-3 py-1 text-xs font-black uppercase tracking-wider transition',
-                      listMode === 'upcoming' && !selectedYmd
-                        ? 'bg-[#c4f82a] text-black'
-                        : 'text-slate-400 hover:text-white',
-                    )}
-                  >
-                    Upcoming ({upcomingMatches.length})
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setListMode('results')
-                      setSelectedYmd(null)
-                    }}
-                    className={cx(
-                      'rounded-lg px-3 py-1 text-xs font-black uppercase tracking-wider transition',
-                      listMode === 'results' && !selectedYmd
-                        ? 'bg-[#c4f82a] text-black'
-                        : 'text-slate-400 hover:text-white',
-                    )}
-                  >
-                    Results ({completedMatches.length})
-                  </button>
+                  )}
                 </div>
 
                 {(() => {
-                  let filtered = listMode === 'upcoming' ? upcomingMatches : completedMatches
-                  if (selectedYmd) {
-                    filtered = sortedMatches.filter((m) => {
-                      const d = parseKickoffDate(m)
-                      return d && toYmd(d) === selectedYmd
-                    })
-                  }
-
-                  const pageSize = 6
-                  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
-                  const paged = filtered.slice((fixturePage - 1) * pageSize, fixturePage * pageSize)
+                  const filtered = selectedYmd
+                    ? matchesByYmd.get(selectedYmd) ?? []
+                    : listMode === 'upcoming'
+                      ? upcomingMatches
+                      : completedMatches
 
                   if (filtered.length === 0) {
                     return (
-                      <p className="py-16 text-center text-xs text-slate-400">
-                        {selectedYmd
-                          ? `No fixtures scheduled on ${selectedYmd}.`
-                          : listMode === 'upcoming'
-                            ? 'No upcoming matches scheduled.'
-                            : 'No completed match results recorded yet.'}
+                      <p className="py-12 text-center text-xs text-slate-400">
+                        No matches found for this view.
                       </p>
                     )
                   }
 
                   return (
-                    <div className="space-y-2.5">
-                      {paged.map((m) => {
+                    <div className="mt-4 space-y-3 max-h-[460px] overflow-y-auto">
+                      {filtered.map((m) => {
                         const ctx = getFixtureContext(m)
                         return (
-                          <Link
+                          <div
                             key={m.id}
-                            to={m.id ? `/matches/${m.id}` : '/matches'}
-                            className="flex items-center justify-between gap-3 rounded-xl border border-white/5 bg-black/40 p-3 transition hover:border-[#c4f82a]/40 hover:bg-black/60"
+                            className="flex items-center justify-between rounded-xl border border-white/5 bg-black/40 p-3 hover:border-white/15 transition"
                           >
                             <div className="flex items-center gap-3 min-w-0">
                               <img
@@ -2393,40 +2379,34 @@ export default function HubV2Page() {
                                 onError={(e) => {
                                   e.currentTarget.src = CLUB_PLACEHOLDER
                                 }}
-                                className="h-9 w-9 object-contain shrink-0"
+                                className="h-8 w-8 shrink-0 object-contain"
                               />
                               <div className="min-w-0">
                                 <div className="flex items-center gap-1.5">
+                                  <span className="rounded bg-white/10 px-1 py-0.2 text-[9px] font-bold text-slate-300">
+                                    GW {m.roundNumber ?? '—'}
+                                  </span>
                                   <span
                                     className={cx(
-                                      'rounded px-1.5 py-0.2 text-[9px] font-black uppercase',
-                                      ctx.isHome
-                                        ? 'bg-emerald-500/20 text-emerald-300'
-                                        : 'bg-sky-500/20 text-sky-300',
+                                      'text-[9px] font-black uppercase',
+                                      ctx.isHome ? 'text-emerald-400' : 'text-sky-400',
                                     )}
                                   >
-                                    {ctx.isHome ? 'HOME' : 'AWAY'}
+                                    {ctx.isHome ? '(H)' : '(A)'}
                                   </span>
-                                  {m.roundNumber && (
-                                    <span className="text-[10px] font-bold text-slate-400">
-                                      GW {m.roundNumber}
-                                    </span>
-                                  )}
                                 </div>
-                                <p className="truncate text-xs font-black text-white">
-                                  vs {ctx.opponent}
-                                </p>
-                                <p className="text-[10px] text-slate-400">
-                                  {m.date || 'Unscheduled'} · {m.time || 'Kick-off TBD'}
-                                </p>
+                                <p className="truncate text-xs font-bold text-white">{ctx.opponent}</p>
+                                <span className="text-[10px] text-slate-400">
+                                  {m.time ? `${m.date || ''} • ${m.time}` : 'Date TBD'}
+                                </span>
                               </div>
                             </div>
 
-                            <div className="shrink-0 text-right">
+                            <div className="flex flex-col items-end gap-1">
                               {ctx.played ? (
                                 <span
                                   className={cx(
-                                    'rounded px-2 py-1 text-xs font-black',
+                                    'font-mono text-xs font-black rounded px-2 py-0.5',
                                     ctx.outcome === 'W'
                                       ? 'bg-emerald-500/20 text-emerald-300'
                                       : ctx.outcome === 'L'
@@ -2434,41 +2414,25 @@ export default function HubV2Page() {
                                         : 'bg-amber-500/20 text-amber-300',
                                   )}
                                 >
-                                  {ctx.outcome} · {m.hs}:{m.as}
+                                  {m.hs} : {m.as} ({ctx.outcome})
                                 </span>
                               ) : (
-                                <span className="rounded bg-[#c4f82a]/15 px-2.5 py-1 text-xs font-black text-[#c4f82a]">
-                                  Match →
+                                <span className="font-mono text-xs font-bold text-[#c4f82a]">
+                                  {m.time || 'TBD'}
                                 </span>
                               )}
+                              <ButtonLink
+                                to={`/matches/${m.id}`}
+                                size="sm"
+                                variant="outline"
+                                className="h-6 text-[10px] px-2 font-bold"
+                              >
+                                View
+                              </ButtonLink>
                             </div>
-                          </Link>
+                          </div>
                         )
                       })}
-
-                      {totalPages > 1 && (
-                        <div className="flex items-center justify-between border-t border-white/5 pt-3">
-                          <button
-                            type="button"
-                            disabled={fixturePage <= 1}
-                            onClick={() => setFixturePage((p) => Math.max(1, p - 1))}
-                            className="rounded bg-white/10 px-2 py-1 text-xs font-bold text-white hover:bg-white/20 disabled:opacity-30"
-                          >
-                            ‹ Prev
-                          </button>
-                          <span className="text-xs text-slate-400">
-                            Page {fixturePage} of {totalPages}
-                          </span>
-                          <button
-                            type="button"
-                            disabled={fixturePage >= totalPages}
-                            onClick={() => setFixturePage((p) => Math.min(totalPages, p + 1))}
-                            className="rounded bg-white/10 px-2 py-1 text-xs font-bold text-white hover:bg-white/20 disabled:opacity-30"
-                          >
-                            Next ›
-                          </button>
-                        </div>
-                      )}
                     </div>
                   )
                 })()}
@@ -2480,9 +2444,97 @@ export default function HubV2Page() {
         {/* ================================================================= TAB 5: CLUB & PRO SETTINGS */}
         {activeTab === 'settings' && (
           <div className="space-y-6">
-            {isManager ? (
+            {/* FIX ISSUE 6: Player / Manager Locker Showcase Banner (96px Kit Graphic) */}
+            <div className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-gradient-to-r from-[#161922]/95 via-[#12151e]/90 to-[#0e1016]/95 p-6 shadow-2xl backdrop-blur-md">
+              <div className="pointer-events-none absolute -top-24 left-1/4 h-48 w-96 rounded-full bg-[#c4f82a]/5 blur-3xl" />
+
+              <div className="relative flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+                {/* Left: 96px Jersey Graphic + Pro Details */}
+                <div className="flex items-center gap-5">
+                  <div className="h-24 w-24 shrink-0 drop-shadow-[0_8px_16px_rgba(0,0,0,0.8)]">
+                    <JerseyIcon
+                      number={activeUserShirt}
+                      home
+                      isGk={userMatchdayStatus.pos === 'GK'}
+                      className="h-24 w-24"
+                    />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-display text-xl font-black uppercase tracking-wider text-white">
+                        {user.gamertag || user.name || 'Pro Athlete'}
+                      </span>
+                      <span className="font-mono text-sm font-extrabold text-[#c4f82a]">
+                        #{activeUserShirt}
+                      </span>
+                    </div>
+                    <p className="mt-0.5 text-xs text-slate-400">
+                      {myClub?.name || 'Free Agent'} • {isManager ? 'Club Manager' : 'Squad Player'}
+                    </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <span
+                        className={cx(
+                          'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider border',
+                          userMatchdayStatus.type === 'starting'
+                            ? 'bg-[#c4f82a]/15 text-[#c4f82a] border-[#c4f82a]/30'
+                            : userMatchdayStatus.type === 'bench'
+                              ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                              : 'bg-white/10 text-slate-300 border-white/10',
+                        )}
+                      >
+                        <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                        {userMatchdayStatus.label}
+                      </span>
+                      {isManager && (
+                        <span className="rounded-full bg-purple-500/15 border border-purple-500/30 px-2 py-0.5 text-[10px] font-black text-purple-300 uppercase">
+                          {isManagerInSquad ? 'Playing Manager' : 'Touchline Coach'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right: Inline Official Shirt Number Input + Save Button (Zero Dead Space) */}
+                <div className="flex flex-col gap-2 rounded-xl border border-white/10 bg-black/40 p-4 sm:min-w-[280px]">
+                  <label className="text-[11px] font-black uppercase tracking-wider text-slate-300">
+                    Official Shirt Number (1–99)
+                  </label>
+                  <form
+                    onSubmit={isManager ? handleSaveManagerShirt : handleSavePlayerShirt}
+                    className="flex items-center gap-2"
+                  >
+                    <input
+                      type="number"
+                      min={1}
+                      max={99}
+                      value={isManager ? selfShirtNumber : myShirtNumber}
+                      onChange={(e) => {
+                        if (isManager) setSelfShirtNumber(e.target.value)
+                        else setMyShirtNumber(e.target.value)
+                      }}
+                      placeholder="#"
+                      className="h-10 w-20 rounded-lg border border-white/20 bg-black/60 px-2 text-center font-mono text-sm font-black text-white outline-none focus:border-[#c4f82a]"
+                    />
+                    <Button
+                      type="submit"
+                      size="md"
+                      disabled={busy}
+                      className="flex-1 bg-[#c4f82a] text-black font-black uppercase tracking-wider text-xs hover:bg-[#b0df24] shadow-[0_0_12px_rgba(196,248,42,0.25)]"
+                    >
+                      Save Number
+                    </Button>
+                  </form>
+                  <span className="text-[10px] text-slate-500">
+                    Applies live to matchday team sheets, lineups, and pitch markers.
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Manager Mode: Club Identity and Playing Captain Claim */}
+            {isManager && (
               <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                {/* Manager Left: Club Identity */}
+                {/* Manager Left: Club Identity & Brand */}
                 <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-5 shadow-xl sm:p-6 backdrop-blur-md">
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
                     Management
@@ -2554,61 +2606,48 @@ export default function HubV2Page() {
                       type="submit"
                       size="sm"
                       disabled={busy}
-                      className="bg-[#c4f82a] text-black font-black uppercase tracking-wider"
+                      className="bg-[#c4f82a] text-black font-black uppercase tracking-wider text-xs"
                     >
                       Save Identity Changes
                     </Button>
                   </form>
                 </div>
 
-                {/* Manager Right: Manager Kit & Number */}
+                {/* Manager Right: Squad Claim (if not playing yet) */}
                 <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-5 shadow-xl sm:p-6 backdrop-blur-md">
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
-                    Coaching Staff
+                    Squad Registration
                   </p>
                   <h3 className="text-base font-black uppercase tracking-wider text-white">
-                    Manager Kit & Squad Privileges
+                    Playing Captain Status
                   </h3>
 
-                  <div className="my-4 flex items-center gap-4">
-                    <div className="h-16 w-16 shrink-0">
-                      <JerseyIcon
-                        number={selfShirtNumber ? Number(selfShirtNumber) : 10}
-                        home
-                      />
-                    </div>
-                    <div>
-                      <p className="text-sm font-black text-white">{user.name}</p>
-                      <p className="text-xs text-slate-400">Role: Club Manager</p>
-                      <span className="mt-1 inline-block rounded bg-[#c4f82a]/20 px-2 py-0.2 text-[9px] font-black uppercase text-[#c4f82a]">
-                        {isManagerInSquad ? 'Playing Captain' : 'Coach Only'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {!isManagerInSquad && (
-                    <div className="rounded-xl border border-white/10 bg-black/40 p-3.5">
-                      <p className="text-xs font-bold text-white">Join Squad as Playing Captain</p>
-                      <p className="mt-1 text-[11px] text-slate-400">
-                        Register your gamertag into your squad roster so you can be slotted onto the tactical pitch.
+                  {isManagerInSquad ? (
+                    <div className="mt-4 rounded-xl border border-white/10 bg-black/40 p-4 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="flex h-2 w-2 rounded-full bg-[#c4f82a]" />
+                        <span className="text-sm font-bold text-white">
+                          Registered on Squad Roster
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400">
+                        You can slot your player card onto the tactical pitch board in the TACTICS & SQUAD tab, or set yourself as matchday captain.
                       </p>
-                      <form onSubmit={handleClaimSelf} className="mt-3 flex flex-wrap items-center gap-2">
+                    </div>
+                  ) : (
+                    <div className="mt-4 rounded-xl border border-white/10 bg-black/40 p-4 space-y-3">
+                      <p className="text-xs font-bold text-white">Join Squad as Playing Captain</p>
+                      <p className="text-[11px] text-slate-400">
+                        Register your EA gamertag into your squad roster so you can be slotted onto the tactical pitch.
+                      </p>
+                      <form onSubmit={handleClaimSelf} className="flex flex-wrap items-center gap-2">
                         <input
                           type="text"
                           required
                           value={selfGamertag}
                           onChange={(e) => setSelfGamertag(e.target.value)}
                           placeholder="Your EA Gamertag"
-                          className="h-8 flex-1 rounded border border-white/20 bg-black/60 px-2 text-xs text-white outline-none focus:border-[#c4f82a]"
-                        />
-                        <input
-                          type="number"
-                          min={1}
-                          max={99}
-                          value={selfShirtNumber}
-                          onChange={(e) => setSelfShirtNumber(e.target.value)}
-                          placeholder="#"
-                          className="h-8 w-14 rounded border border-white/20 bg-black/60 px-1 text-center font-mono text-xs font-bold text-white outline-none"
+                          className="h-9 flex-1 rounded-lg border border-white/20 bg-black/60 px-3 text-xs text-white outline-none focus:border-[#c4f82a]"
                         />
                         <Button
                           type="submit"
@@ -2623,108 +2662,43 @@ export default function HubV2Page() {
                   )}
                 </div>
               </div>
-            ) : (
-              /* Player Mode Settings View */
-              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                {/* Player Left: My Pro Locker */}
-                <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-5 shadow-xl sm:p-6 backdrop-blur-md">
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
-                    Personal Locker
-                  </p>
-                  <h3 className="text-base font-black uppercase tracking-wider text-white">
-                    Kit & Number Customization
-                  </h3>
+            )}
 
-                  <div className="my-6 flex items-center justify-center">
-                    <div className="h-32 w-32">
-                      <JerseyIcon
-                        number={myShirtNumber ? Number(myShirtNumber) : 10}
-                        home
-                        isGk={userMatchdayStatus.pos === 'GK'}
-                      />
+            {/* Player Mode: Contract & Club Membership */}
+            {!isManager && myClub && (
+              <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-5 shadow-xl sm:p-6 backdrop-blur-md">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
+                  Pro Contract
+                </p>
+                <h3 className="text-base font-black uppercase tracking-wider text-white">
+                  Club Membership
+                </h3>
+
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-white/10 bg-black/40 p-4">
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={clubCrest}
+                      alt=""
+                      onError={(e) => {
+                        e.currentTarget.src = CLUB_PLACEHOLDER
+                      }}
+                      className="h-10 w-10 object-contain"
+                    />
+                    <div>
+                      <p className="text-sm font-bold text-white">{myClub.name}</p>
+                      <p className="text-xs text-slate-400">Current Club • Active Registration</p>
                     </div>
                   </div>
 
-                  <form onSubmit={handleSaveMyShirtNumber} className="space-y-4">
-                    <div>
-                      <label className="mb-1 block text-xs font-bold text-slate-300">
-                        Official Shirt Number (1–99)
-                      </label>
-                      <input
-                        type="number"
-                        min={1}
-                        max={99}
-                        value={myShirtNumber}
-                        onChange={(e) => setMyShirtNumber(e.target.value)}
-                        placeholder="e.g. 29"
-                        className="h-10 w-28 rounded-xl border border-white/20 bg-black/60 px-3 text-center font-mono text-base font-black text-[#c4f82a] outline-none focus:border-[#c4f82a]"
-                      />
-                    </div>
-
-                    <Button
-                      type="submit"
-                      size="sm"
-                      disabled={busy}
-                      className="bg-[#c4f82a] text-black font-black uppercase tracking-wider"
-                    >
-                      Save Jersey Number
-                    </Button>
-                  </form>
-                </div>
-
-                {/* Player Right: Club Membership & Contract */}
-                <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-5 shadow-xl sm:p-6 backdrop-blur-md">
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
-                    Contract Status
-                  </p>
-                  <h3 className="text-base font-black uppercase tracking-wider text-white">
-                    Club Membership & Registration
-                  </h3>
-
-                  {myClub ? (
-                    <div className="my-4 space-y-4">
-                      <div className="flex items-center gap-3.5 rounded-xl bg-black/40 p-4 border border-white/5">
-                        <img
-                          src={clubCrest}
-                          alt=""
-                          onError={(e) => {
-                            e.currentTarget.src = CLUB_PLACEHOLDER
-                          }}
-                          className="h-12 w-12 object-contain"
-                        />
-                        <div>
-                          <p className="text-base font-black text-white">{myClub.name}</p>
-                          <p className="text-xs text-slate-400">Short Code: {clubShortCode}</p>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-wrap gap-2.5">
-                        <ButtonLink to={`/clubs/${myClub.slug}`} size="sm" variant="outline">
-                          View Club Profile
-                        </ButtonLink>
-                        <Button
-                          size="sm"
-                          variant="danger"
-                          disabled={busy || !transferWindowOpen}
-                          onClick={() => setShowLeaveConfirm(true)}
-                        >
-                          Leave Club & Become Free Agent
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="my-6 text-center">
-                      <p className="text-sm font-bold text-white">You are currently a Free Agent</p>
-                      <p className="mt-1 text-xs text-slate-400">
-                        You can browse the registered clubs in the league and apply to join.
-                      </p>
-                      <div className="mt-4">
-                        <ButtonLink to="/clubs" size="sm" variant="outline">
-                          Browse League Clubs →
-                        </ButtonLink>
-                      </div>
-                    </div>
-                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={busy || !transferWindowOpen}
+                    onClick={handleLeaveClub}
+                    className="border-red-500/30 text-red-400 hover:bg-red-500/10 text-xs font-bold"
+                  >
+                    Leave Club (Free Agency)
+                  </Button>
                 </div>
               </div>
             )}
@@ -2732,107 +2706,27 @@ export default function HubV2Page() {
         )}
       </main>
 
-      {/* Confirmation Modal: Leave Club */}
-      {showLeaveConfirm &&
-        myClub &&
-        createPortal(
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md"
-            onClick={() => !busy && setShowLeaveConfirm(false)}
-          >
-            <div
-              className="w-full max-w-md rounded-2xl border border-white/10 bg-[#12151d] p-6 shadow-2xl"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <h3 className="text-lg font-black text-white">Leave {myClub.name}?</h3>
-              <p className="mt-2 text-xs text-slate-400">
-                Are you sure you want to leave <strong className="text-white">{myClub.name}</strong>? You
-                will become a <strong className="text-white">Free Agent</strong> immediately.
-              </p>
-              <div className="mt-6 flex justify-end gap-2.5">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={busy}
-                  onClick={() => setShowLeaveConfirm(false)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  size="sm"
-                  variant="danger"
-                  disabled={busy}
-                  onClick={() => void handleLeaveClub()}
-                >
-                  {busy ? 'Leaving…' : `Yes, Leave Club`}
-                </Button>
-              </div>
-            </div>
-          </div>,
-          document.body,
-        )}
-
-      {/* Confirmation Modal: Release Player */}
-      {releaseConfirmPlayer &&
-        createPortal(
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md"
-            onClick={() => !busy && setReleaseConfirmPlayer(null)}
-          >
-            <div
-              className="w-full max-w-md rounded-2xl border border-white/10 bg-[#12151d] p-6 shadow-2xl"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <h3 className="text-lg font-black text-white">
-                Release {releaseConfirmPlayer.gamertag}?
-              </h3>
-              <p className="mt-2 text-xs text-slate-400">
-                Are you sure you want to release{' '}
-                <strong className="text-white">{releaseConfirmPlayer.gamertag}</strong> from your squad
-                roster? They will be removed from your team and become a Free Agent.
-              </p>
-              <div className="mt-6 flex justify-end gap-2.5">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={busy}
-                  onClick={() => setReleaseConfirmPlayer(null)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  size="sm"
-                  variant="danger"
-                  disabled={busy}
-                  onClick={() => void handleReleasePlayer()}
-                >
-                  {busy ? 'Releasing…' : `Release to Free Agency`}
-                </Button>
-              </div>
-            </div>
-          </div>,
-          document.body,
-        )}
-
-      {/* Sign Player Modal */}
-      {showSignModal && (
+      {/* Sign Player Modal (Manager) */}
+      {isManager && myClub && (
         <SignPlayerModal
           open={showSignModal}
           onClose={() => setShowSignModal(false)}
+          clubId={myClub.id}
+          clubName={myClub.name}
           onSuccess={() => {
-            setShowSignModal(false)
-            if (isManager) void loadManagerData()
+            setNotice({ kind: 'ok', text: 'Contract offer sent!' })
+            void loadManagerData()
           }}
-          squadPlayerIds={new Set(squadList.map((p) => p.id))}
-          maxSquadSize={maxSquadSize}
         />
       )}
 
       {/* Account Settings Modal */}
-      <AccountSettingsModal
-        open={showSettingsModal}
-        onClose={() => setShowSettingsModal(false)}
-      />
+      {showSettingsModal && (
+        <AccountSettingsModal
+          open={showSettingsModal}
+          onClose={() => setShowSettingsModal(false)}
+        />
+      )}
     </div>
   )
 }

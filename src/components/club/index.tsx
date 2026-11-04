@@ -16,6 +16,7 @@ export function JerseyIcon({
   empty,
   selected,
   isCaptain,
+  className,
 }: {
   number: number | string
   isGk?: boolean
@@ -23,6 +24,7 @@ export function JerseyIcon({
   empty?: boolean
   selected?: boolean
   isCaptain?: boolean
+  className?: string
 }) {
   const fill = empty
     ? '#182128'
@@ -52,7 +54,7 @@ export function JerseyIcon({
     <svg
       viewBox="0 0 48 44"
       className={cx(
-        'mx-auto h-9 w-10 drop-shadow-[0_4px_8px_rgba(0,0,0,0.65)] transition-transform sm:h-11 sm:w-12',
+        'mx-auto drop-shadow-[0_4px_8px_rgba(0,0,0,0.65)] transition-transform', className || 'h-9 w-10 sm:h-11 sm:w-12',
         selected && 'scale-110',
       )}
       aria-hidden
