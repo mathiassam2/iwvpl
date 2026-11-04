@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { MatchRow } from '@/components/league'
-import { Container, EmptyState, Section, Select } from '@/components/ui'
+import { Container, EmptyState, Section, Select, SmartImage } from '@/components/ui'
 import { SITE, siteData } from '@/data'
 import { useAuth } from '@/lib/auth'
-import { cx, stripFlag } from '@/lib/format'
+import { CLUB_PLACEHOLDER, cx, stripFlag } from '@/lib/format'
 import {
   getLiveMatches,
   getLiveSeasonClubs,
@@ -14,7 +14,7 @@ import {
   type LeagueClub,
   type LeagueSeason,
 } from '@/lib/liveLeague'
-import { matchIndexOf } from '@/lib/match'
+import { matchHref, matchIndexOf } from '@/lib/match'
 import { useSeasonName } from '@/lib/season'
 import type { Match } from '@/types/site'
 
@@ -208,24 +208,68 @@ interface ClubOption {
   id?: number | null
 }
 
+function ClubCrestIcon({
+  logo,
+  name,
+  size = 20,
+}: {
+  logo?: string | null
+  name: string
+  size?: number
+}) {
+  const [hasError, setHasError] = useState(false)
+  const initials = useMemo(() => {
+    const clean = stripFlag(name).trim()
+    const parts = clean.split(/\s+/)
+    if (parts.length >= 2 && parts[0] && parts[1]) {
+      return (parts[0][0] + parts[1][0]).toUpperCase()
+    }
+    return clean.slice(0, 2).toUpperCase() || 'FC'
+  }, [name])
+
+  if (!logo || hasError) {
+    return (
+      <div
+        className={cx(
+          'grid place-items-center bg-white/[0.08] font-black tracking-wider text-[var(--text-muted)] shrink-0 select-none',
+          size >= 32 ? 'rounded-xl text-xs' : 'rounded-full text-[9px]',
+        )}
+        style={{ width: `${size}px`, height: `${size}px` }}
+      >
+        {initials}
+      </div>
+    )
+  }
+
+  return (
+    <img
+      src={logo}
+      alt=""
+      onError={() => setHasError(true)}
+      className="shrink-0 object-contain select-none"
+      style={{ width: `${size}px`, height: `${size}px` }}
+    />
+  )
+}
+
 function ClubCombobox({
   options,
   value,
   onChange,
   pinnedClubSlug,
-  onPinClub,
-  onUnpinClub,
+  isMyClubActive = false,
   hasPrompt,
   onClosePrompt,
+  onPinClub,
 }: {
   options: ClubOption[]
   value: string
   onChange: (slug: string) => void
   pinnedClubSlug: string | null
-  onPinClub: (club: ClubOption) => void
-  onUnpinClub: () => void
+  isMyClubActive?: boolean
   hasPrompt: boolean
   onClosePrompt: () => void
+  onPinClub?: (club: ClubOption) => void
 }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -252,6 +296,12 @@ function ClubCombobox({
   }, [options, query])
 
   const selectedClub = options.find((c) => c.value === value)
+  const triggerLabel = isMyClubActive
+    ? 'Other Clubs'
+    : selectedClub
+    ? selectedClub.label
+    : 'All Clubs'
+  const isHighlighted = !isMyClubActive && value !== 'all'
 
   return (
     <div className="relative" ref={containerRef}>
@@ -260,12 +310,12 @@ function ClubCombobox({
         onClick={() => setOpen((prev) => !prev)}
         className={cx(
           'inline-flex items-center justify-between gap-2 rounded-lg border bg-[var(--surface-2)] px-3 py-1.5 text-xs font-semibold transition-all max-w-[210px]',
-          value !== 'all'
+          isHighlighted
             ? 'border-[var(--accent-ring)] text-white font-bold'
             : 'border-[var(--border)] text-[var(--text-strong)] hover:border-[var(--border-strong)]',
         )}
       >
-        <span className="truncate">{selectedClub ? selectedClub.label : 'All Clubs'}</span>
+        <span className="truncate">{triggerLabel}</span>
         <span className="text-[10px] text-[var(--text-muted)] shrink-0">▾</span>
       </button>
 
@@ -308,12 +358,30 @@ function ClubCombobox({
               className={cx(
                 'flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs transition-colors',
                 value === 'all'
-                  ? 'bg-[var(--accent-solid)] text-[var(--on-volt)] font-bold'
-                  : 'text-[var(--text-strong)] hover:bg-white/5',
+                  ? 'bg-[#c4f82a]/12 text-[#c4f82a] border border-[#c4f82a]/25 font-semibold'
+                  : 'text-[var(--text-strong)] hover:bg-white/5 border border-transparent',
               )}
             >
-              <span>All Clubs</span>
-              {value === 'all' && <span className="text-[11px]">✓</span>}
+              <div className="flex items-center gap-2.5">
+                <svg
+                  className={cx(
+                    'h-4 w-4 shrink-0',
+                    value === 'all' ? 'text-[#c4f82a]' : 'text-[var(--text-muted)]',
+                  )}
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                </svg>
+                <span>All Clubs</span>
+              </div>
+              {value === 'all' && (
+                <span className="text-xs font-bold text-[#c4f82a]">✓</span>
+              )}
             </button>
 
             <div className="my-1 border-t border-[var(--border)]" />
@@ -322,58 +390,193 @@ function ClubCombobox({
               const isSelected = value === club.value
               const isPinned = pinnedClubSlug === club.value
               return (
-                <div
+                <button
                   key={club.value}
+                  type="button"
+                  onClick={() => {
+                    onChange(club.value)
+                    if (hasPrompt && onPinClub) {
+                      onPinClub(club)
+                    }
+                    setOpen(false)
+                    setQuery('')
+                  }}
                   className={cx(
-                    'group flex items-center justify-between rounded-lg px-2.5 py-1.5 transition-colors',
-                    isSelected ? 'bg-[var(--accent-solid)] text-[var(--on-volt)]' : 'hover:bg-white/5',
+                    'group flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 transition-colors text-left text-xs',
+                    isSelected
+                      ? 'bg-[#c4f82a]/12 text-[#c4f82a] border border-[#c4f82a]/25 font-semibold'
+                      : 'text-[var(--text-strong)] hover:bg-white/5 border border-transparent font-medium',
                   )}
                 >
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onChange(club.value)
-                      setOpen(false)
-                      setQuery('')
-                    }}
-                    className="flex flex-1 items-center gap-2 text-left text-xs font-semibold truncate"
-                  >
+                  <div className="flex min-w-0 flex-1 items-center gap-2.5">
+                    <ClubCrestIcon logo={club.logo} name={club.label} size={20} />
                     <span className="truncate">{club.label}</span>
-                  </button>
+                  </div>
 
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      if (isPinned) {
-                        onUnpinClub()
-                      } else {
-                        onPinClub(club)
-                      }
-                    }}
-                    className={cx(
-                      'ml-2 grid h-6 w-6 place-items-center rounded text-sm transition-all',
-                      isPinned
-                        ? 'text-amber-400 hover:text-amber-300'
-                        : isSelected
-                        ? 'text-black/40 hover:text-black'
-                        : 'text-[var(--text-faint)] hover:text-amber-400',
+                  <div className="flex items-center gap-1.5 shrink-0 pl-2">
+                    {/* Only render solid gold star for user's own club (static read-only indicator) */}
+                    {isPinned && (
+                      <span
+                        className="text-amber-400 text-sm leading-none"
+                        title="My Club"
+                      >
+                        ★
+                      </span>
                     )}
-                    title={isPinned ? 'Unpin as My Club' : 'Pin as My Club'}
-                  >
-                    {isPinned ? '★' : '☆'}
-                  </button>
-                </div>
+                    {isSelected && (
+                      <span className="text-xs font-bold text-[#c4f82a] leading-none">
+                        ✓
+                      </span>
+                    )}
+                  </div>
+                </button>
               )
             })}
 
             {filtered.length === 0 && (
-              <p className="py-4 text-center text-xs text-[var(--text-muted)]">No clubs match search.</p>
+              <p className="py-4 text-center text-xs text-[var(--text-muted)]">
+                No clubs match search.
+              </p>
             )}
           </div>
         </div>
       )}
     </div>
+  )
+}
+
+/* ------------------------------------------- Flat Chronological Club Schedule Row */
+function ClubScheduleMatchRow({
+  match,
+  selectedClubSlug,
+  divisionBadge,
+  index,
+}: {
+  match: Match
+  selectedClubSlug: string
+  divisionBadge?: string
+  index?: number
+}) {
+  const played = match.hs !== '' && match.as !== ''
+  const ymd = extractMatchYmd(match)
+  const dateText = ymd ? formatYmdShort(ymd) : 'Kick-off TBD'
+
+  const homeName = stripFlag(match.home).trim()
+  const awayName = stripFlag(match.away).trim()
+  const homeSlug = homeName.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+  const awaySlug = awayName.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+  const cleanSelected = selectedClubSlug.toLowerCase().trim()
+
+  const isHomeSelected =
+    homeSlug === cleanSelected || homeName.toLowerCase() === cleanSelected
+  const isAwaySelected =
+    awaySlug === cleanSelected || awayName.toLowerCase() === cleanSelected
+
+  return (
+    <Link
+      to={index === undefined ? '/matches' : matchHref(index)}
+      className="group block px-3.5 py-3 transition-colors hover:bg-white/[0.03] sm:px-4"
+    >
+      {/* Mobile top meta row (< sm) */}
+      <div className="flex items-center justify-between pb-2 text-[11px] text-[var(--text-muted)] border-b border-white/[0.04] sm:hidden mb-2">
+        <div className="flex items-center gap-2">
+          {match.roundNumber != null && (
+            <span className="rounded bg-[var(--accent-tint)]/40 border border-[var(--accent-ring)]/40 px-1.5 py-0.2 text-[9.5px] font-black uppercase text-[var(--accent-text)]">
+              GW {match.roundNumber}
+            </span>
+          )}
+          <span className="font-medium text-[var(--text-muted)]">{dateText}</span>
+        </div>
+        {divisionBadge && (
+          <span className="rounded bg-white/5 border border-white/10 px-1.5 py-0.2 text-[9px] font-bold text-[var(--text-muted)] uppercase">
+            {divisionBadge}
+          </span>
+        )}
+      </div>
+
+      <div className="sm:flex sm:items-center sm:gap-4">
+        {/* Left Column (min-width: 180px on desktop): GW badge + date */}
+        <div className="hidden sm:flex sm:w-48 md:w-52 shrink-0 items-center gap-2 text-xs">
+          {match.roundNumber != null && (
+            <span className="rounded bg-[var(--accent-tint)]/40 border border-[var(--accent-ring)]/40 px-2 py-0.5 text-[10px] font-black uppercase text-[var(--accent-text)] shrink-0">
+              GW {match.roundNumber}
+            </span>
+          )}
+          <span className="text-[11px] font-medium text-[var(--text-muted)] truncate">
+            {dateText}
+          </span>
+        </div>
+
+        {/* Center Column: Matchup grid */}
+        <div className="flex-1 min-w-0 grid items-center gap-2 sm:gap-4 match-tpl">
+          {/* Home */}
+          <div className="flex min-w-0 items-center justify-end gap-2 sm:gap-2.5 text-right">
+            <span
+              className={cx(
+                'truncate text-sm sm:text-[15px] transition-colors',
+                isHomeSelected
+                  ? 'font-bold text-white'
+                  : 'font-normal text-white/65 group-hover:text-white/80',
+              )}
+            >
+              {homeName}
+            </span>
+            <SmartImage
+              src={match.homeLogo ?? CLUB_PLACEHOLDER}
+              fallback={CLUB_PLACEHOLDER}
+              alt=""
+              wrapperClassName="h-8 w-8 sm:h-10 sm:w-10 shrink-0"
+              className="object-contain"
+            />
+          </div>
+
+          {/* Score / Time */}
+          <div className="flex flex-col items-center">
+            {played ? (
+              <span className="numeric animate-score-pop flex items-center gap-1 sm:gap-1.5 rounded-lg bg-[var(--surface-2)] px-2.5 py-1 text-sm sm:text-base font-bold text-[var(--text-strong)] ring-1 ring-[var(--border-strong)] transition-colors group-hover:ring-[var(--accent-ring)]">
+                {match.hs}
+                <span className="text-[var(--text-faint)]">:</span>
+                {match.as}
+              </span>
+            ) : (
+              <span className="numeric tabular-nums inline-flex items-center rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-2.5 py-1 text-xs font-bold text-[var(--text-strong)] transition-colors group-hover:border-[var(--accent-ring)]">
+                {match.time || 'TBD'}
+              </span>
+            )}
+          </div>
+
+          {/* Away */}
+          <div className="flex min-w-0 items-center justify-start gap-2 sm:gap-2.5 text-left">
+            <SmartImage
+              src={match.awayLogo ?? CLUB_PLACEHOLDER}
+              fallback={CLUB_PLACEHOLDER}
+              alt=""
+              wrapperClassName="h-8 w-8 sm:h-10 sm:w-10 shrink-0"
+              className="object-contain"
+            />
+            <span
+              className={cx(
+                'truncate text-sm sm:text-[15px] transition-colors',
+                isAwaySelected
+                  ? 'font-bold text-white'
+                  : 'font-normal text-white/65 group-hover:text-white/80',
+              )}
+            >
+              {awayName}
+            </span>
+          </div>
+        </div>
+
+        {/* Right Column: Division badge only */}
+        <div className="hidden sm:flex sm:w-16 shrink-0 items-center justify-end">
+          {divisionBadge && (
+            <span className="rounded bg-white/5 border border-white/10 px-1.5 py-0.5 text-[9.5px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
+              {divisionBadge}
+            </span>
+          )}
+        </div>
+      </div>
+    </Link>
   )
 }
 
@@ -550,9 +753,12 @@ export default function MatchesPage() {
 
   // Club options for dropdown
   const clubOptions = useMemo<ClubOption[]>(() => {
-    const clubsMap = new Map<string, { slug: string; id?: number | null }>()
+    const clubsMap = new Map<string, { slug: string; id?: number | null; logo?: string | null }>()
     for (const m of allMatches) {
-      for (const sideName of [m.home, m.away]) {
+      for (const [sideName, sideLogo] of [
+        [m.home, m.homeLogo],
+        [m.away, m.awayLogo],
+      ] as const) {
         if (sideName) {
           const name = stripFlag(sideName).trim()
           if (name && !clubsMap.has(name)) {
@@ -560,15 +766,33 @@ export default function MatchesPage() {
               (c) => stripFlag(c.name).toLowerCase() === name.toLowerCase(),
             )
             const slug = matchedSeasonClub?.slug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
-            clubsMap.set(name, { slug, id: matchedSeasonClub?.id ?? null })
+            const logo = matchedSeasonClub?.logo || sideLogo || null
+            clubsMap.set(name, { slug, id: matchedSeasonClub?.id ?? null, logo })
           }
         }
       }
     }
     return Array.from(clubsMap.entries())
-      .map(([name, data]) => ({ value: data.slug, label: name, id: data.id }))
+      .map(([name, data]) => ({ value: data.slug, label: name, id: data.id, logo: data.logo }))
       .sort((a, b) => a.label.localeCompare(b.label))
   }, [allMatches, seasonClubs])
+
+  const selectedClubObj = useMemo(() => {
+    return clubOptions.find((c) => c.value === team)
+  }, [clubOptions, team])
+
+  const clubScheduleMatches = useMemo(() => {
+    if (team === 'all') return []
+    return [...filteredMatches].sort((a, b) => {
+      const ra = a.roundNumber ?? 9999
+      const rb = b.roundNumber ?? 9999
+      if (ra !== rb) return ra - rb
+      const ka = a.kickoff || '9999-12-31'
+      const kb = b.kickoff || '9999-12-31'
+      if (ka !== kb) return ka.localeCompare(kb)
+      return (a.id ?? 0) - (b.id ?? 0)
+    })
+  }, [team, filteredMatches])
 
   // Matches scoped to selected division & club (before status filter)
   const scopedMatches = useMemo(() => {
@@ -830,9 +1054,9 @@ export default function MatchesPage() {
       />
 
       {/* 2. Unified Sticky Toolbar: Architectural Division Tabs + Status + My Club + Club */}
-      <div className="sticky top-16 lg:top-[72px] z-30 border-b border-[var(--border)] bg-[#0a0b0e]/90 backdrop-blur-md transition-all">
+      <div className="sticky top-16 lg:top-[72px] z-30 border-b border-[rgba(255,255,255,0.08)] bg-[#0a0b0e]/95 backdrop-blur-md transition-all pt-2.5 pb-3">
         <Container size="wide">
-          <div className="flex flex-col gap-3 py-2 sm:py-2.5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             {/* Left: Architectural Division Tabs */}
             <div className="flex items-center gap-1 overflow-x-auto no-scrollbar border-b border-[var(--border)] lg:border-b-0 pb-1 lg:pb-0">
               <button
@@ -913,6 +1137,7 @@ export default function MatchesPage() {
                 value={team}
                 onChange={handleClubSelect}
                 pinnedClubSlug={resolvedMyClub?.slug ?? null}
+                isMyClubActive={isMyClubActive}
                 onPinClub={handlePinClub}
                 onUnpinClub={handleUnpinClub}
                 hasPrompt={showPinPrompt}
@@ -923,7 +1148,7 @@ export default function MatchesPage() {
         </Container>
       </div>
 
-      <Section>
+      <Section className="!pt-5 !pb-16 sm:!pt-5 sm:!pb-20 lg:!pt-5 lg:!pb-24">
         <Container size="wide">
           {/* Main Fixtures & Results Container */}
           {loading ? (
@@ -944,7 +1169,7 @@ export default function MatchesPage() {
                 Retry
               </button>
             </div>
-          ) : visibleRoundGroups.length === 0 ? (
+          ) : (isClubScheduleMode ? clubScheduleMatches.length === 0 : visibleRoundGroups.length === 0) ? (
             <EmptyState
               title="No matches found"
               hint={
@@ -959,17 +1184,19 @@ export default function MatchesPage() {
               {isClubScheduleMode ? (
                 /* Club Schedule Mode Header Bar */
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] bg-gradient-to-r from-[var(--accent-tint)]/40 via-[var(--surface-2)] to-[var(--surface-2)] px-4 py-3 sm:px-5">
-                  <div className="flex items-center gap-2.5">
-                    <span className="grid h-8 w-8 place-items-center rounded-lg bg-[var(--accent-solid)] font-black text-[var(--on-volt)] text-xs shadow-sm">
-                      ★
-                    </span>
+                  <div className="flex items-center gap-3">
+                    <ClubCrestIcon
+                      logo={selectedClubObj?.logo}
+                      name={selectedClubObj?.label || team}
+                      size={40}
+                    />
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-extrabold text-white">
-                          {clubOptions.find((c) => c.value === team)?.label || team} Schedule
+                        <span className="text-sm sm:text-base font-extrabold text-white">
+                          {selectedClubObj?.label || team} Schedule
                         </span>
                         {isMyClubActive && (
-                          <span className="rounded bg-[var(--accent-solid)] px-1.5 py-0.2 text-[9px] font-black uppercase text-[var(--on-volt)]">
+                          <span className="rounded bg-[var(--accent-solid)] px-1.5 py-0.5 text-[9px] font-black uppercase text-[var(--on-volt)]">
                             My Club
                           </span>
                         )}
@@ -1124,132 +1351,152 @@ export default function MatchesPage() {
                 </div>
               )}
 
-              {/* CARD BODY: Fixtures (Single Game Week or Sequential All Game Weeks) */}
-              <div className="divide-y divide-[var(--border)]">
-                {visibleRoundGroups.map((rg) => {
-                  const confirmedDateGroups = rg.dateGroups.filter((dg) => !dg.isUnscheduled)
-                  const tbdGroup = rg.dateGroups.find((dg) => dg.isUnscheduled)
-                  const hasMyClubInTbd = Boolean(
-                    tbdGroup && tbdGroup.matches.some((m) => isMatchMyClub(m)),
-                  )
-                  const isTbdOpen = tbdOpenState[rg.key] ?? hasMyClubInTbd
+              {/* CARD BODY: Flat List for Club Schedule OR Game Week Accordion for All Clubs */}
+              {isClubScheduleMode ? (
+                <div className="divide-y divide-[var(--border)]">
+                  {clubScheduleMatches.map((m) => {
+                    const divTag =
+                      divisionFilter === 'all'
+                        ? formatDivisionTag(m.divisionName)
+                        : undefined
+                    return (
+                      <ClubScheduleMatchRow
+                        key={m.id ? `club-match-${m.id}` : `${m.url}-${m.home}-${m.away}`}
+                        match={m}
+                        selectedClubSlug={team}
+                        divisionBadge={divTag}
+                        index={m.id ? m.id : matchIndexOf(m)}
+                      />
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="divide-y divide-[var(--border)]">
+                  {visibleRoundGroups.map((rg) => {
+                    const confirmedDateGroups = rg.dateGroups.filter((dg) => !dg.isUnscheduled)
+                    const tbdGroup = rg.dateGroups.find((dg) => dg.isUnscheduled)
+                    const hasMyClubInTbd = Boolean(
+                      tbdGroup && tbdGroup.matches.some((m) => isMatchMyClub(m)),
+                    )
+                    const isTbdOpen = tbdOpenState[rg.key] ?? hasMyClubInTbd
 
-                  return (
-                    <div key={rg.key}>
-                      {/* Game Week Divider Bar (only when in All Game Weeks mode) */}
-                      {isAllGameWeeksMode && (
-                        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--surface-2)] px-5 py-2.5">
-                          <div className="flex items-center gap-2.5">
-                            <span className="inline-flex items-center rounded-lg bg-[var(--accent-solid)] px-2 py-0.5 font-display text-xs font-black uppercase tracking-wider text-[var(--on-volt)]">
-                              {rg.label}
-                            </span>
-                            <span className="text-xs font-bold text-[var(--text-strong)]">
-                              📅 {rg.dateLabel}
-                            </span>
-                          </div>
-                          <span className="numeric text-xs font-bold text-[var(--text-muted)]">
-                            {rg.completedCount}/{rg.matches.length} Played
-                          </span>
-                        </div>
-                      )}
-
-                      {/* Confirmed Fixtures (Sub-grouped by Date) */}
-                      <div className="divide-y divide-[var(--border)]">
-                        {confirmedDateGroups.map((dg) => (
-                          <div key={dg.key}>
-                            <div className="flex items-center justify-between border-b border-[var(--border)] bg-[var(--accent-tint)]/25 px-5 py-2 text-[11px] font-bold text-[var(--accent-text)]">
-                              <span>📅 {dg.dateLabel}</span>
-                              <span className="numeric text-[10px] opacity-80">
-                                {dg.matches.length} {dg.matches.length === 1 ? 'Fixture' : 'Fixtures'}
+                    return (
+                      <div key={rg.key}>
+                        {/* Game Week Divider Bar (only when in All Game Weeks mode) */}
+                        {isAllGameWeeksMode && (
+                          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--surface-2)] px-5 py-2.5">
+                            <div className="flex items-center gap-2.5">
+                              <span className="inline-flex items-center rounded-lg bg-[var(--accent-solid)] px-2 py-0.5 font-display text-xs font-black uppercase tracking-wider text-[var(--on-volt)]">
+                                {rg.label}
+                              </span>
+                              <span className="text-xs font-bold text-[var(--text-strong)]">
+                                📅 {rg.dateLabel}
                               </span>
                             </div>
-                            <div className="divide-y divide-[var(--border)]">
-                              {dg.matches.map((m) => {
-                                const isMyClubMatch = isMatchMyClub(m)
-                                const myClubSide = isMyClubMatch ? getMyClubSide(m) : null
-                                const divTag =
-                                  divisionFilter === 'all'
-                                    ? formatDivisionTag(m.divisionName)
-                                    : undefined
-                                return (
-                                  <MatchRow
-                                    key={m.id ? `match-${m.id}` : `${m.url}-${m.home}-${m.away}`}
-                                    match={m}
-                                    showTimeOnly
-                                    isMyClub={isMyClubMatch}
-                                    myClubSide={myClubSide}
-                                    divisionBadge={divTag}
-                                    gameWeekTag={isClubScheduleMode ? m.roundNumber : null}
-                                    index={m.id ? m.id : matchIndexOf(m)}
-                                  />
-                                )
-                              })}
-                            </div>
+                            <span className="numeric text-xs font-bold text-[var(--text-muted)]">
+                              {rg.completedCount}/{rg.matches.length} Played
+                            </span>
                           </div>
-                        ))}
-                      </div>
+                        )}
 
-                      {/* Compact TBD Section (Collapsible Footer Drawer) */}
-                      {tbdGroup && tbdGroup.matches.length > 0 && (
-                        <div className="border-t border-[var(--border)] bg-black/20">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setTbdOpenState((prev) => ({
-                                ...prev,
-                                [rg.key]: !isTbdOpen,
-                              }))
-                            }
-                            className="flex w-full items-center justify-between px-5 py-3 text-left transition-colors hover:bg-white/[0.03]"
-                          >
-                            <div className="flex flex-wrap items-center gap-2.5">
-                              <span className="text-xs font-bold text-[var(--text-muted)]">
-                                ⚪ Unscheduled / Kick-off TBD
-                              </span>
-                              <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-extrabold text-[var(--text-muted)]">
-                                {tbdGroup.matches.length} Fixtures
-                              </span>
-                              {hasMyClubInTbd && (
-                                <span className="rounded bg-[var(--accent-solid)] px-1.5 py-0.5 text-[9px] font-black uppercase text-[var(--on-volt)]">
-                                  Includes My Club
+                        {/* Confirmed Fixtures (Sub-grouped by Date) */}
+                        <div className="divide-y divide-[var(--border)]">
+                          {confirmedDateGroups.map((dg) => (
+                            <div key={dg.key}>
+                              <div className="flex items-center justify-between border-b border-[var(--border)] bg-[var(--accent-tint)]/25 px-5 py-2 text-[11px] font-bold text-[var(--accent-text)]">
+                                <span>📅 {dg.dateLabel}</span>
+                                <span className="numeric text-[10px] opacity-80">
+                                  {dg.matches.length} {dg.matches.length === 1 ? 'Fixture' : 'Fixtures'}
                                 </span>
-                              )}
+                              </div>
+                              <div className="divide-y divide-[var(--border)]">
+                                {dg.matches.map((m) => {
+                                  const isMyClubMatch = isMatchMyClub(m)
+                                  const myClubSide = isMyClubMatch ? getMyClubSide(m) : null
+                                  const divTag =
+                                    divisionFilter === 'all'
+                                      ? formatDivisionTag(m.divisionName)
+                                      : undefined
+                                  return (
+                                    <MatchRow
+                                      key={m.id ? `match-${m.id}` : `${m.url}-${m.home}-${m.away}`}
+                                      match={m}
+                                      showTimeOnly
+                                      isMyClub={isMyClubMatch}
+                                      myClubSide={myClubSide}
+                                      divisionBadge={divTag}
+                                      gameWeekTag={null}
+                                      index={m.id ? m.id : matchIndexOf(m)}
+                                    />
+                                  )
+                                })}
+                              </div>
                             </div>
-                            <span className="text-xs font-bold text-[var(--accent-text)]">
-                              {isTbdOpen ? '▾ Hide TBD Fixtures' : '▸ View TBD Fixtures'}
-                            </span>
-                          </button>
-
-                          {isTbdOpen && (
-                            <div className="divide-y divide-[var(--border)] border-t border-[var(--border)]">
-                              {tbdGroup.matches.map((m) => {
-                                const isMyClubMatch = isMatchMyClub(m)
-                                const myClubSide = isMyClubMatch ? getMyClubSide(m) : null
-                                const divTag =
-                                  divisionFilter === 'all'
-                                    ? formatDivisionTag(m.divisionName)
-                                    : undefined
-                                return (
-                                  <MatchRow
-                                    key={m.id ? `match-${m.id}` : `${m.url}-${m.home}-${m.away}`}
-                                    match={m}
-                                    showTimeOnly
-                                    isMyClub={isMyClubMatch}
-                                    myClubSide={myClubSide}
-                                    divisionBadge={divTag}
-                                    gameWeekTag={isClubScheduleMode ? m.roundNumber : null}
-                                    index={m.id ? m.id : matchIndexOf(m)}
-                                  />
-                                )
-                              })}
-                            </div>
-                          )}
+                          ))}
                         </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
+
+                        {/* Compact TBD Section (Collapsible Footer Drawer) */}
+                        {tbdGroup && tbdGroup.matches.length > 0 && (
+                          <div className="border-t border-[var(--border)] bg-black/20">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setTbdOpenState((prev) => ({
+                                  ...prev,
+                                  [rg.key]: !isTbdOpen,
+                                }))
+                              }
+                              className="flex w-full items-center justify-between px-5 py-3 text-left transition-colors hover:bg-white/[0.03]"
+                            >
+                              <div className="flex flex-wrap items-center gap-2.5">
+                                <span className="text-xs font-bold text-[var(--text-muted)]">
+                                  ⚪ Unscheduled / Kick-off TBD
+                                </span>
+                                <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-extrabold text-[var(--text-muted)]">
+                                  {tbdGroup.matches.length} Fixtures
+                                </span>
+                                {hasMyClubInTbd && (
+                                  <span className="rounded bg-[var(--accent-solid)] px-1.5 py-0.5 text-[9px] font-black uppercase text-[var(--on-volt)]">
+                                    Includes My Club
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-xs font-bold text-[var(--accent-text)]">
+                                {isTbdOpen ? '▾ Hide TBD Fixtures' : '▸ View TBD Fixtures'}
+                              </span>
+                            </button>
+
+                            {isTbdOpen && (
+                              <div className="divide-y divide-[var(--border)] border-t border-[var(--border)]">
+                                {tbdGroup.matches.map((m) => {
+                                  const isMyClubMatch = isMatchMyClub(m)
+                                  const myClubSide = isMyClubMatch ? getMyClubSide(m) : null
+                                  const divTag =
+                                    divisionFilter === 'all'
+                                      ? formatDivisionTag(m.divisionName)
+                                      : undefined
+                                  return (
+                                    <MatchRow
+                                      key={m.id ? `match-${m.id}` : `${m.url}-${m.home}-${m.away}`}
+                                      match={m}
+                                      showTimeOnly
+                                      isMyClub={isMyClubMatch}
+                                      myClubSide={myClubSide}
+                                      divisionBadge={divTag}
+                                      gameWeekTag={null}
+                                      index={m.id ? m.id : matchIndexOf(m)}
+                                    />
+                                  )
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           )}
 
