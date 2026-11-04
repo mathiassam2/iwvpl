@@ -708,7 +708,7 @@ export function MatchesStandingsView({
             className={`adm-pill-tab ${subView === 'fixtures' ? 'is-active' : ''}`}
             onClick={() => setSubView('fixtures')}
           >
-            ⚽ Match Centre & Round Schedule ({allTotal})
+            ⚽ Match Centre & Game Week Schedule ({allTotal})
           </button>
           <button
             type="button"
@@ -760,7 +760,7 @@ export function MatchesStandingsView({
           <div className="adm-wizard-stats" style={{ marginBottom: 16 }}>
             <div className="adm-stat-box">
               <span className="adm-stat-label">Total Matchdays</span>
-              <strong className="adm-stat-val">{allRounds.length} Rounds</strong>
+              <strong className="adm-stat-val">{allRounds.length} Game Weeks</strong>
             </div>
             <div className="adm-stat-box">
               <span className="adm-stat-label">Total Fixtures</span>
@@ -818,16 +818,16 @@ export function MatchesStandingsView({
           <div className="adm-preview-filter-bar" style={{ flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <div className="adm-field-inline">
-                <span>Jump to Round:</span>
+                <span>Jump to Game Week:</span>
                 <select
                   value={roundFilter}
                   onChange={(e) => setRoundFilter(e.target.value)}
                   className="adm-select adm-select-sm"
                 >
-                  <option value="all">All Rounds ({allRounds.length})</option>
+                  <option value="all">All Game Weeks ({allRounds.length})</option>
                   {allRounds.map((r) => (
                     <option key={r.roundNumber} value={String(r.roundNumber)}>
-                      Round {r.roundNumber} {r.date ? `(${r.date})` : ''} · {r.matches.length} matches
+                      Game Week {r.roundNumber} {r.date ? `(${r.date})` : ''} · {r.matches.length} matches
                     </option>
                   ))}
                 </select>
@@ -967,9 +967,9 @@ export function MatchesStandingsView({
                               return next
                             })
                           }}
-                          title={`Select all fixtures in Round ${rnd.roundNumber}`}
+                          title={`Select all fixtures in Game Week ${rnd.roundNumber}`}
                         />
-                        <span className="adm-round-badge">Round {rnd.roundNumber}</span>
+                        <span className="adm-round-badge">Game Week {rnd.roundNumber}</span>
                         {rnd.dateSummary ? (
                           <span className="adm-round-date" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                             <span>📅 {rnd.dateSummary}</span>

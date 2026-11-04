@@ -2171,7 +2171,7 @@ export default function MatchPage() {
 
           <p className="text-center text-[11px] font-bold uppercase tracking-[0.2em] text-[var(--accent-text)]">
             {SITE.name} · {matchData.divisionName ?? 'Season 1'}
-            {matchData.roundNumber ? ` · Round ${matchData.roundNumber}` : ''}
+            {matchData.roundNumber ? ` · Game Week ${matchData.roundNumber}` : ''}
           </p>
 
           <div className="mt-6 flex items-center justify-between gap-3 sm:gap-6">

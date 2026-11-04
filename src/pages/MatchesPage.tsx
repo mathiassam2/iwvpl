@@ -173,7 +173,7 @@ function buildRoundGroups(matches: Match[]): RoundGroup[] {
     groups.push({
       key,
       roundNum,
-      label: key === 'unscheduled' && !explicitRound ? `Round ${roundNum} (TBD)` : `Round ${roundNum}`,
+      label: key === 'unscheduled' && !explicitRound ? `Game Week ${roundNum} (TBD)` : `Game Week ${roundNum}`,
       dateLabel,
       unscheduledCount: unscheduled.length,
       dateGroups,
@@ -413,7 +413,7 @@ export default function MatchesPage() {
       <PageHeader
         eyebrow="Fixtures & Results"
         title="Matches"
-        lede={`Round-by-round schedule, kick-off times and official results for ${seasonName}. Published in SGT (UTC+8).`}
+        lede={`Game-week-by-game-week schedule, kick-off times and official results for ${seasonName}. Published in SGT (UTC+8).`}
       />
 
       <Section>
@@ -421,7 +421,7 @@ export default function MatchesPage() {
           {/* Top summary stats (matching Round-Robin Step 4 summary boxes) */}
           <div className="mb-8 grid gap-4 sm:grid-cols-4">
             <StatTile label="Total Fixtures" value={scopedMatches.length} hint="In current view" />
-            <StatTile label="Total Rounds" value={totalRoundsCount} hint="Match rounds" />
+            <StatTile label="Total Game Weeks" value={totalRoundsCount} hint="Match game weeks" />
             <StatTile label="Upcoming Matches" value={totalUpcoming} hint="Awaiting kick-off" />
             <StatTile label="Completed Results" value={totalCompleted} hint="Scores recorded" />
           </div>
@@ -518,7 +518,7 @@ export default function MatchesPage() {
                     value={selectedRoundKey}
                     onChange={(val) => setSelectedRoundKey(val || 'all')}
                     options={[
-                      { value: 'all', label: `All Rounds (${roundGroups.length})` },
+                      { value: 'all', label: `All Game Weeks (${roundGroups.length})` },
                       ...roundGroups.map((rg) => ({
                         value: rg.key,
                         label: `${rg.label} · ${rg.matches.length}m`,

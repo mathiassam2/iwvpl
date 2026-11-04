@@ -518,7 +518,7 @@ export function GenerateRoundRobinWizardModal({
                       </div>
                       <p>
                         Each club meets every other club exactly once. Best for short seasons,
-                        group stages, or preliminary rounds.
+                        group stages, or preliminary game weeks.
                       </p>
                     </div>
                   </label>
@@ -649,9 +649,9 @@ export function GenerateRoundRobinWizardModal({
                       <div>
                         <strong>How Matchdays are Scheduled:</strong>
                         <p>
-                          Round 1 plays on the first matching day on/after the start date, Round 2 on
+                          Game Week 1 plays on the first matching day on/after the start date, Game Week 2 on
                           the next chosen day, etc. For example, selecting <strong>Friday & Saturday</strong>{' '}
-                          schedules Round 1 on Friday, Round 2 on Saturday, Round 3 next Friday.
+                          schedules Game Week 1 on Friday, Game Week 2 on Saturday, Game Week 3 next Friday.
                         </p>
                       </div>
                     </div>
@@ -679,7 +679,7 @@ export function GenerateRoundRobinWizardModal({
               <div className="adm-wizard-step-desc">
                 <h4>Step 3: Kick-off Times & Match Concurrency</h4>
                 <p>
-                  Customize how match kickoff times are assigned for each matchday round.
+                  Customize how match kickoff times are assigned for each matchday game week.
                 </p>
               </div>
 
@@ -714,7 +714,7 @@ export function GenerateRoundRobinWizardModal({
                             <strong>Fixed Time</strong>
                             <span className="adm-pill">Simultaneous</span>
                           </div>
-                          <p>All matches in the round kick off at the exact same time.</p>
+                          <p>All matches in the game week kick off at the exact same time.</p>
 
                           {timeMode === 'fixed' && (
                             <div className="adm-time-picker-block" onClick={(e) => e.stopPropagation()}>
@@ -902,7 +902,7 @@ export function GenerateRoundRobinWizardModal({
                             onChange={() => setConcurrencyMode('unlimited')}
                           />
                           <div className="adm-radio-card-content">
-                            <strong>Unlimited / Staggered Round Sequences</strong>
+                            <strong>Unlimited / Staggered Game Week Sequences</strong>
                             <p className="adm-text-faint">
                               Matches progress through each available slot sequentially.
                             </p>
@@ -983,7 +983,7 @@ export function GenerateRoundRobinWizardModal({
                   <div className="adm-wizard-stats">
                     <div className="adm-stat-box">
                       <span className="adm-stat-label">Total Matchdays</span>
-                      <strong className="adm-stat-val">{previewData.totalRounds} Rounds</strong>
+                      <strong className="adm-stat-val">{previewData.totalRounds} Game Weeks</strong>
                     </div>
                     <div className="adm-stat-box">
                       <span className="adm-stat-label">Total Fixtures</span>
@@ -1023,16 +1023,16 @@ export function GenerateRoundRobinWizardModal({
                   {/* Filter / Jump Bar */}
                   <div className="adm-preview-filter-bar">
                     <div className="adm-field-inline">
-                      <span>Jump to Round:</span>
+                      <span>Jump to Game Week:</span>
                       <select
                         value={roundFilter}
                         onChange={(e) => setRoundFilter(e.target.value)}
                         className="adm-select adm-select-sm"
                       >
-                        <option value="all">All Rounds ({activeDivPreview?.rounds.length ?? 0})</option>
+                        <option value="all">All Game Weeks ({activeDivPreview?.rounds.length ?? 0})</option>
                         {activeDivPreview?.rounds.map((r) => (
                           <option key={r.roundNumber} value={String(r.roundNumber)}>
-                            Round {r.roundNumber} {r.date ? `(${r.date})` : ''}
+                            Game Week {r.roundNumber} {r.date ? `(${r.date})` : ''}
                           </option>
                         ))}
                       </select>
@@ -1081,7 +1081,7 @@ export function GenerateRoundRobinWizardModal({
                             title={roundFilter === 'all' ? (isCollapsed ? 'Click to expand' : 'Click to collapse') : undefined}
                           >
                             <div className="adm-round-title">
-                              <span className="adm-round-badge">Round {rnd.roundNumber}</span>
+                              <span className="adm-round-badge">Game Week {rnd.roundNumber}</span>
                               {rnd.date ? (
                                 <span className="adm-round-date">
                                   📅 {rnd.dayName}, {rnd.date}
@@ -1164,7 +1164,7 @@ export function GenerateRoundRobinWizardModal({
 
                     {displayedRounds.length === 0 && (
                       <div className="adm-preview-empty">
-                        <p>No rounds to display.</p>
+                        <p>No game weeks to display.</p>
                       </div>
                     )}
                   </div>

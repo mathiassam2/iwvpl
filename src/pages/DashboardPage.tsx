@@ -686,7 +686,7 @@ function ClubFixtureCalendar({
                                 </span>
                                 {m.roundNumber && (
                                   <span className="text-[10px] font-bold text-[var(--text-faint)]">
-                                    Round {m.roundNumber}
+                                    Game Week {m.roundNumber}
                                   </span>
                                 )}
                               </div>

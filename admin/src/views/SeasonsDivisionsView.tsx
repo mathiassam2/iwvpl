@@ -1429,7 +1429,7 @@ export function SeasonsDivisionsView({
                         Keep scheduled fixtures (Reset results only)
                       </strong>
                       <span style={{ fontSize: '12px', color: 'var(--adm-muted, #94a3b8)' }}>
-                        Keeps all match kickoff dates, times, and rounds, but resets match scores,
+                        Keeps all match kickoff dates, times, and game weeks, but resets match scores,
                         events, and status back to unplayed (0-0 scheduled).
                       </span>
                     </div>
