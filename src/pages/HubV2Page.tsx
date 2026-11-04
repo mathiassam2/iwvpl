@@ -1098,7 +1098,7 @@ export default function HubV2Page() {
   return (
     <div className="min-h-screen bg-[#08090c] text-slate-100 selection:bg-[#c4f82a] selection:text-black">
       {/* ---------------- FIX ISSUE 3: Compact Top HUD Header into 1 Single Row ---------------- */}
-      <header className="sticky top-16 lg:top-[72px] z-30 backdrop-blur-md bg-neutral-900/80 border-b border-neutral-800 transition-all">
+      <header className="sticky top-16 lg:top-[72px] z-30 backdrop-blur-md bg-[#08090c]/90 border-b border-white/[0.08] transition-all">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-2 sm:px-6">
           {/* Left: Club Crest + Name + Role */}
           <div className="flex items-center gap-3 shrink-0">
@@ -1145,7 +1145,7 @@ export default function HubV2Page() {
 
           {/* Center: Game Mode Nav Tabs with sleek segmented pill indicators */}
           <nav className="flex items-center overflow-x-auto py-1 scrollbar-none">
-            <div className="inline-flex items-center gap-1 rounded-full bg-neutral-950/70 p-1 border border-neutral-800/80">
+            <div className="inline-flex items-center gap-1 rounded-full bg-black/60 p-1 border border-white/10">
               {[
                 { id: 'central', label: 'CENTRAL' },
                 { id: 'tactics', label: 'TACTICS & SQUAD' },
@@ -1163,7 +1163,7 @@ export default function HubV2Page() {
                       'flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-semibold transition-all whitespace-nowrap',
                       active
                         ? 'bg-[#CCFF00] text-black font-bold shadow-sm'
-                        : 'text-neutral-400 hover:text-white hover:bg-neutral-800/60',
+                        : 'text-slate-400 hover:text-white hover:bg-white/5',
                     )}
                   >
                     {t.label}
@@ -1247,7 +1247,7 @@ export default function HubV2Page() {
             {/* LEFT COLUMN (Col-span 7): Stacked Matchday Broadcast + Fixture Run-In */}
             <div className="col-span-1 lg:col-span-7 flex flex-col gap-6">
               {/* Tile A: Next Matchday Broadcast Card (Sleek Compact Horizontal Banner) */}
-              <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-5 shadow-xl sm:p-6 backdrop-blur-md">
+              <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#0f1015]/95 to-[#090a0d]/98 p-5 shadow-xl sm:p-6 backdrop-blur-md">
                 <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
                   <div className="flex items-center gap-2">
                     <span className="flex h-2 w-2 rounded-full bg-[#c4f82a] animate-pulse" />
@@ -1347,7 +1347,7 @@ export default function HubV2Page() {
               </div>
 
               {/* Tile D: Upcoming Run-In Strip (Stacked under Broadcast) */}
-              <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-5 shadow-xl sm:p-6 backdrop-blur-md">
+              <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#0f1015]/95 to-[#090a0d]/98 p-5 shadow-xl sm:p-6 backdrop-blur-md">
                 <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
                     Fixture Run-In
@@ -1433,7 +1433,7 @@ export default function HubV2Page() {
             {/* RIGHT COLUMN (Col-span 5): Stacked Tactical Snapshot + Transfer Desk */}
             <div className="col-span-1 lg:col-span-5 flex flex-col gap-6">
               {/* Tile B: Tactical Pitch Snapshot with user spotlight (Issue 4 fix: pb-3 & clean spacing) */}
-              <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-5 shadow-xl sm:p-6 backdrop-blur-md">
+              <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#0f1015]/95 to-[#090a0d]/98 p-5 shadow-xl sm:p-6 backdrop-blur-md">
                 <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
@@ -1480,7 +1480,7 @@ export default function HubV2Page() {
               </div>
 
               {/* Tile C: Transfer Desk / My Pro Contract Card */}
-              <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-5 shadow-xl sm:p-6 backdrop-blur-md">
+              <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#0f1015]/95 to-[#090a0d]/98 p-5 shadow-xl sm:p-6 backdrop-blur-md">
                 <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
                     {isManager ? 'Transfer Desk' : 'My Pro Contract'}
@@ -1597,7 +1597,7 @@ export default function HubV2Page() {
         {activeTab === 'tactics' && (
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
             {/* Left Column (Col-span 7): Pitch Board */}
-            <div className="col-span-1 lg:col-span-7 flex flex-col justify-between rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-5 shadow-xl sm:p-6 backdrop-blur-md">
+            <div className="col-span-1 lg:col-span-7 flex flex-col justify-between rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#0f1015]/95 to-[#090a0d]/98 p-5 shadow-xl sm:p-6 backdrop-blur-md">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.08] pb-4">
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
@@ -1727,7 +1727,7 @@ export default function HubV2Page() {
             </div>
 
             {/* Right Column (Col-span 5): 3-Tab Squad Drawer (Issue 5 Fix: Color-coded Position Pills) */}
-            <div className="col-span-1 lg:col-span-5 flex flex-col justify-between rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-5 shadow-xl sm:p-6 backdrop-blur-md">
+            <div className="col-span-1 lg:col-span-5 flex flex-col rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#0f1015]/95 to-[#090a0d]/98 p-5 shadow-xl sm:p-6 backdrop-blur-md">
               {/* Drawer Top Tabs */}
               <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
                 <div className="flex items-center gap-1.5">
@@ -1770,9 +1770,11 @@ export default function HubV2Page() {
                 </div>
               </div>
 
-              {/* Drawer Content 1: Starters list (Fix Issue 5: Position pills by line) */}
+              {/* Drawer Content Area (Pinned below tabs with flex-1, zero gap) */}
+              <div className="flex-1 mt-4 min-h-0">
+                {/* Drawer Content 1: Starters list (Fix Issue 5: Position pills by line) */}
               {tacticsDrawerTab === 'starters' && (
-                <div className="mt-4 space-y-2">
+                  <div className="space-y-2">
                   <ul className="divide-y divide-white/5">
                     {(FORMATIONS[formation] || FORMATIONS['4-3-3']).slots.map(([pos], idx) => {
                       const s = starters[idx]
@@ -1855,7 +1857,7 @@ export default function HubV2Page() {
 
               {/* Drawer Content 2: Bench list */}
               {tacticsDrawerTab === 'bench' && (
-                <div className="mt-4 space-y-3">
+                  <div className="space-y-3">
                   {isManager && (
                     <div className="flex items-center gap-2 border-b border-white/[0.08] pb-3">
                       <select
@@ -1937,7 +1939,7 @@ export default function HubV2Page() {
 
               {/* Drawer Content 3: Full Roster */}
               {tacticsDrawerTab === 'roster' && (
-                <div className="mt-4 space-y-2">
+                  <div className="space-y-2">
                   <div className="flex items-center justify-between text-[11px] text-slate-400 pb-2 border-b border-white/5">
                     <span>{isManager ? 'Active Squad Capacity' : 'Squad Members'}</span>
                     <span className="font-mono font-bold text-[#c4f82a]">
@@ -2004,7 +2006,9 @@ export default function HubV2Page() {
                 </div>
               )}
 
-              <div className="border-t border-white/[0.08] pt-3 text-right">
+              </div>
+
+              <div className="mt-auto border-t border-white/[0.08] pt-3 text-right">
                 <span className="text-[10px] text-slate-500">Live Tactics Engine</span>
               </div>
             </div>
@@ -2017,7 +2021,7 @@ export default function HubV2Page() {
             {isManager ? (
               <>
                 {/* Manager Box 1: Incoming Join Requests */}
-                <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-5 shadow-xl sm:p-6 backdrop-blur-md">
+                <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#0f1015]/95 to-[#090a0d]/98 p-5 shadow-xl sm:p-6 backdrop-blur-md">
                   <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
                     <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
                       Incoming Inbox
@@ -2076,7 +2080,7 @@ export default function HubV2Page() {
                 </div>
 
                 {/* Manager Box 2: Outbox Offers (Fix Issue 2: Real usernames, avatars & status) */}
-                <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-5 shadow-xl sm:p-6 backdrop-blur-md">
+                <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#0f1015]/95 to-[#090a0d]/98 p-5 shadow-xl sm:p-6 backdrop-blur-md">
                   <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
                     <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
                       Dispatched Desk
@@ -2152,7 +2156,7 @@ export default function HubV2Page() {
             ) : (
               <>
                 {/* Player Box 1: Incoming Contract Offers from Clubs */}
-                <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-5 shadow-xl sm:p-6 backdrop-blur-md">
+                <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#0f1015]/95 to-[#090a0d]/98 p-5 shadow-xl sm:p-6 backdrop-blur-md">
                   <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
                     <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
                       Contract Offers
@@ -2224,7 +2228,7 @@ export default function HubV2Page() {
                 </div>
 
                 {/* Player Box 2: Outgoing Join Requests */}
-                <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-5 shadow-xl sm:p-6 backdrop-blur-md">
+                <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#0f1015]/95 to-[#090a0d]/98 p-5 shadow-xl sm:p-6 backdrop-blur-md">
                   <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
                     <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
                       My Applications
@@ -2279,7 +2283,7 @@ export default function HubV2Page() {
         {activeTab === 'calendar' && (
           <div className="space-y-6">
             {/* Top Toolbar / Header */}
-            <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-4 shadow-xl sm:px-6 backdrop-blur-md">
+            <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#0f1015]/95 to-[#090a0d]/98 p-4 shadow-xl sm:px-6 backdrop-blur-md">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-black uppercase tracking-[0.2em] text-[#c4f82a]">
                   Schedule & Calendar
@@ -2311,7 +2315,7 @@ export default function HubV2Page() {
             ) : (
               <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
                 {/* LEFT (7 cols): Interactive Monthly Calendar Grid */}
-                <div className="col-span-1 lg:col-span-7 rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-4 shadow-xl sm:p-5 backdrop-blur-md">
+                <div className="col-span-1 lg:col-span-7 rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#0f1015]/95 to-[#090a0d]/98 p-4 shadow-xl sm:p-5 backdrop-blur-md">
                   {/* Month Header Controls */}
                   <div className="mb-3.5 flex items-center justify-between gap-2">
                     <div className="flex items-center gap-1.5">
@@ -2462,7 +2466,7 @@ export default function HubV2Page() {
                 </div>
 
                 {/* RIGHT (5 cols): Upcoming / Results with Pagination */}
-                <div className="col-span-1 lg:col-span-5 flex flex-col justify-between rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-4 shadow-xl sm:p-5 backdrop-blur-md">
+                <div className="col-span-1 lg:col-span-5 flex flex-col justify-between rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#0f1015]/95 to-[#090a0d]/98 p-4 shadow-xl sm:p-5 backdrop-blur-md">
                   <div>
                     {/* Top Switcher: Selected Day OR Upcoming / Results tabs */}
                     <div className="mb-3.5 flex items-center justify-between gap-2 border-b border-white/[0.08] pb-3">
@@ -2632,7 +2636,7 @@ export default function HubV2Page() {
         {activeTab === 'settings' && (
           <div className="space-y-6">
             {/* FIX ISSUE 6: Player / Manager Locker Showcase Banner (96px Kit Graphic) */}
-            <div className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-gradient-to-r from-[#161922]/95 via-[#12151e]/90 to-[#0e1016]/95 p-6 shadow-2xl backdrop-blur-md">
+            <div className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-gradient-to-r from-[#0f1015]/95 via-[#0c0d12]/95 to-[#090a0d]/98 p-6 shadow-2xl backdrop-blur-md">
               <div className="pointer-events-none absolute -top-24 left-1/4 h-48 w-96 rounded-full bg-[#c4f82a]/5 blur-3xl" />
 
               <div className="relative flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
@@ -2722,7 +2726,7 @@ export default function HubV2Page() {
             {isManager && (
               <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                 {/* Manager Left: Club Identity & Brand */}
-                <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-5 shadow-xl sm:p-6 backdrop-blur-md">
+                <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#0f1015]/95 to-[#090a0d]/98 p-5 shadow-xl sm:p-6 backdrop-blur-md">
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
                     Management
                   </p>
@@ -2801,7 +2805,7 @@ export default function HubV2Page() {
                 </div>
 
                 {/* Manager Right: Squad Claim (if not playing yet) */}
-                <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-5 shadow-xl sm:p-6 backdrop-blur-md">
+                <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#0f1015]/95 to-[#090a0d]/98 p-5 shadow-xl sm:p-6 backdrop-blur-md">
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
                     Squad Registration
                   </p>
@@ -2853,7 +2857,7 @@ export default function HubV2Page() {
 
             {/* Player Mode: Contract & Club Membership */}
             {!isManager && myClub && (
-              <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-5 shadow-xl sm:p-6 backdrop-blur-md">
+              <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#0f1015]/95 to-[#090a0d]/98 p-5 shadow-xl sm:p-6 backdrop-blur-md">
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
                   Pro Contract
                 </p>
