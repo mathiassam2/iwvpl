@@ -13,6 +13,7 @@ import { Pitch, JerseyIcon } from '@/components/club'
 import { SignPlayerModal } from '@/components/manager/SignPlayerModal'
 import { AccountSettingsModal } from '@/components/layout/AccountSettingsModal'
 import { Button, ButtonLink, EmptyState, SmartImage } from '@/components/ui'
+import { asset } from '@/lib/assets'
 import { useAuth } from '@/lib/auth'
 import {
   ApiError,
@@ -49,6 +50,8 @@ import {
 } from '@/lib/fixtures'
 import { AVATAR_PLACEHOLDER, CLUB_PLACEHOLDER, compressClubLogo, cx, stripFlag } from '@/lib/format'
 import { getLiveClubs, getLiveMatches, type Club, type Match } from '@/lib/liveLeague'
+
+const IWVPL_LOGO = asset('/assets/brand/iwvpl-wordmark.png')
 
 type HubTab = 'central' | 'tactics' | 'transfers' | 'calendar' | 'settings'
 
@@ -953,10 +956,14 @@ export default function HubV2Page() {
 
   if (!user) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#08090c] text-white">
-        <p className="font-mono text-sm tracking-widest text-[#c4f82a] animate-pulse">
-          INITIALIZING CAREER HUB V2...
-        </p>
+      <div className="flex min-h-screen items-center justify-center bg-[#08090c]">
+        <div className="flex items-center justify-center animate-pulse">
+          <img
+            src={IWVPL_LOGO}
+            alt="IWVPL"
+            className="h-12 w-auto select-none object-contain brightness-0 invert drop-shadow-[0_0_24px_rgba(255,255,255,0.18)] sm:h-16"
+          />
+        </div>
       </div>
     )
   }
