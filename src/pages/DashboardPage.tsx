@@ -1,28 +1,22 @@
 /**
- * The signed-in dashboard.
+ * The signed-in dashboard — Game-Style Command Center ("Career Mode Hub").
  *
- * One route, two very different jobs. A manager is running a club; a player is
- * answering offers and deciding whether to stay. They share a page because
- * they share a header, and splitting it would mean two routes that differ only
- * by which panel loads.
- *
- * The route is guarded by redirect rather than by an error boundary: an
- * unsigned visitor has no account to show anything about, so the honest
- * response is to send them to sign in and come back.
+ * Route: /dashboard
+ * Isolated and adapts dynamically between Manager Mode (Full Control)
+ * and Normal Player Mode (Read-Only Tactics + Personal Locker).
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useNavigate } from 'react-router-dom'
-import { Pitch } from '@/components/club'
+import { Pitch, JerseyIcon } from '@/components/club'
 import { SignPlayerModal } from '@/components/manager/SignPlayerModal'
 import { AccountSettingsModal } from '@/components/layout/AccountSettingsModal'
-import { Button, ButtonLink, Container, EmptyState, SmartImage } from '@/components/ui'
+import { Button, ButtonLink, EmptyState, SmartImage } from '@/components/ui'
 import { useAuth } from '@/lib/auth'
-import { ApiError } from '@/lib/api'
 import {
+  ApiError,
   cancelOffer,
-  createClub,
   createManagerSelfPlayer,
   decideOffer,
   incomingOffers,
@@ -35,16 +29,13 @@ import {
   updateMyPlayerProfile,
   updateSquadPlayerShirt,
   releaseSquadPlayer,
-  getMyOrders,
   getManagerJoinRequests,
   decideJoinRequest,
   getPlayerJoinRequests,
   cancelJoinRequest,
   getTransferWindowStatus,
   type JoinRequest,
-  type UserOrder,
   type ManagerClub,
-
   type Offer,
 } from '@/lib/api'
 import {
@@ -53,93 +44,11 @@ import {
   type ClubLineup,
   type ClubLineupBench,
   type ClubLineupSlot,
+  type PitchPlayer,
+  type Squad,
 } from '@/lib/fixtures'
 import { AVATAR_PLACEHOLDER, CLUB_PLACEHOLDER, compressClubLogo, cx, stripFlag } from '@/lib/format'
-import { getLiveMatches, invalidateLiveClubCache } from '@/lib/liveLeague'
-import type { Match } from '@/types/site'
-
-/**
- * Panel.
- *
- * Dense on purpose. This is a workspace, not a marketing page: the admin app
- * sets the scale for anything an operator uses daily, and at the public
- * site's display sizes a squad list becomes one name per screen. Tighter
- * padding and the `default` container keep a whole club on one screen.
- */
-const card = 'rounded-card border border-[var(--border-strong)] bg-[var(--surface)] p-4 sm:p-5'
-
-/* Section headings inside a panel. Smaller than the public site's SectionHead,
-   which is sized for a full-width section between hero bands. */
-function PanelHead({ label, title, action }: { label: string; title: string; action?: React.ReactNode }) {
-  return (
-    <div className="mb-4 flex items-start justify-between gap-3">
-      <div className="min-w-0">
-        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--accent-text)]">
-          {label}
-        </p>
-        <h2 className="mt-1 font-display text-lg font-bold leading-tight text-[var(--text-strong)]">
-          {title}
-        </h2>
-      </div>
-      {action}
-    </div>
-  )
-}
-
-/** Body copy inside a panel. The public site's `text-[15px]`/relaxed sizing is
- *  paragraph scale; this is UI copy. */
-const prose = 'text-[13px] leading-relaxed text-[var(--text-muted)]'
-const field =
-  'h-10 w-full rounded-lg border border-[var(--border-strong)] bg-[var(--bg)] px-3 text-[13px] ' +
-  'text-[var(--text-strong)] outline-none focus:border-[var(--accent-ring)]'
-
-/** Shared error/notice line, so every panel reports failure the same way. */
-function Notice({ kind, text }: { kind: 'ok' | 'error'; text: string | null }) {
-  if (!text) return null
-  return (
-    <p
-      role="status"
-      className={cx(
-        'rounded-lg px-4 py-3 text-sm',
-        kind === 'ok'
-          ? 'border border-[var(--accent-ring)] bg-[var(--accent-tint)] text-[var(--accent-text)]'
-          : 'border border-[var(--danger-text)] bg-[var(--danger-text)]/10 text-[var(--danger-text)]',
-      )}
-    >
-      {text}
-    </p>
-  )
-}
-
-const msg = (err: unknown) => (err instanceof ApiError ? err.message : 'Something went wrong.')
-
-/* ===================================================== Transfer Window Banner */
-
-function TransferWindowClosedBanner({ open }: { open: boolean }) {
-  if (open) return null
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3.5 text-xs text-amber-200">
-      <div className="flex items-center gap-3">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/20 text-base">
-          🔒
-        </span>
-        <div>
-          <p className="font-extrabold uppercase tracking-wider text-amber-300">
-            Transfer Window Closed
-          </p>
-          <p className="mt-0.5 text-[var(--text-muted)]">
-            Player signings, contract offers, join requests, and squad releases are currently locked by league administration.
-          </p>
-        </div>
-      </div>
-      <span className="rounded-full border border-amber-500/40 bg-amber-500/20 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider text-amber-300">
-        Roster Locked
-      </span>
-    </div>
-  )
-}
-
-/* ===================================================== Club Fixture Calendar */
+import { getLiveClubs, getLiveMatches, type Club, type Match } from '@/lib/liveLeague'
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const MONTH_NAMES = [
@@ -157,9 +66,11 @@ const MONTH_NAMES = [
   'December',
 ]
 
+type HubTab = 'central' | 'tactics' | 'transfers' | 'calendar' | 'settings'
+
 function parseKickoffDate(m: Match): Date | null {
   if (m.kickoff) {
-    const d = new Date(m.kickoff.replace(' ', 'T'))
+    const d = new Date(m.kickoff)
     if (!Number.isNaN(d.getTime())) return d
   }
   if (m.date) {
@@ -176,37 +87,360 @@ function toYmd(d: Date): string {
   return `${y}-${m}-${day}`
 }
 
-function ClubFixtureCalendar({
-  clubSlug,
-  clubName,
-}: {
-  clubSlug?: string | null
-  clubName?: string | null
-}) {
+function msg(err: unknown): string {
+  if (err instanceof ApiError) return err.message
+  if (err instanceof Error) return err.message
+  return 'An unexpected error occurred.'
+}
+
+// Color coding helper for EA FC style position pills
+function getPositionBadgeStyle(pos: string) {
+  const p = (pos || '').toUpperCase().trim()
+  if (p === 'GK') {
+    return 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+  }
+  if (['LB', 'CB', 'RB', 'LWB', 'RWB', 'SW'].includes(p)) {
+    return 'bg-sky-500/20 text-sky-300 border-sky-500/40'
+  }
+  if (['CDM', 'CM', 'CAM', 'LM', 'RM'].includes(p)) {
+    return 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+  }
+  if (['LW', 'RW', 'ST', 'CF'].includes(p)) {
+    return 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+  }
+  return 'bg-white/10 text-slate-300 border-white/10'
+}
+
+export default function DashboardPage() {
+  const { user, status: authStatus, logout } = useAuth()
+  const navigate = useNavigate()
+
+  // Guard: if unauthenticated, redirect to login
+  useEffect(() => {
+    if (authStatus === 'unauthenticated') {
+      navigate('/login?next=/dashboard')
+    }
+  }, [authStatus, navigate])
+
+  const isManager =
+    user?.role === 'club_manager' || user?.role === 'admin' || user?.role === 'owner'
+
+  // Navigation & View state
+  const [activeTab, setActiveTab] = useState<HubTab>('central')
+  // Handle URL hash navigation (e.g. #notifications, #settings, #tactics, #calendar)
+  useEffect(() => {
+    const handleHash = () => {
+      const hash = window.location.hash.toLowerCase()
+      if (hash.includes('settings')) {
+        setShowSettingsModal(true)
+      } else if (hash.includes('notifications') || hash.includes('inbox') || hash.includes('transfers')) {
+        setActiveTab('transfers')
+      } else if (hash.includes('tactics') || hash.includes('squad')) {
+        setActiveTab('tactics')
+      } else if (hash.includes('calendar') || hash.includes('schedule') || hash.includes('fixtures')) {
+        setActiveTab('calendar')
+      }
+    }
+    handleHash()
+    window.addEventListener('hashchange', handleHash)
+    return () => window.removeEventListener('hashchange', handleHash)
+  }, [])
+
+  const [showSettingsModal, setShowSettingsModal] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [notice, setNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
+
+  // Shared League Data
+  const [transferWindowOpen, setTransferWindowOpen] = useState(true)
+  const [maxSquadSize, setMaxSquadSize] = useState(23)
+  const [allClubs, setAllClubs] = useState<Club[]>([])
+
+  // Shared Club & Squad state
+  const [myClub, setMyClub] = useState<ManagerClub | null>(null)
+  const [clubManagers, setClubManagers] = useState<Array<{ name: string; email?: string }>>([])
+  const [squadList, setSquadList] = useState<
+    Array<{
+      id: number
+      gamertag: string
+      slug?: string
+      shirt_number?: number | null
+      avatar_local?: string | null
+      is_free_agent: number
+      position?: string | null
+      user_id?: number | null
+    }>
+  >([])
+
+  // Player Overview state (for normal players)
+  const [playerInfo, setPlayerInfo] = useState<{
+    id: number
+    gamertag: string
+    shirt_number?: number | null
+    avatar_local?: string | null
+    platform?: string | null
+    primary_position?: string | null
+    club_id?: number | null
+  } | null>(null)
+  const [myShirtNumber, setMyShirtNumber] = useState<string>('')
+
+  // Tactics state
+  const [formation, setFormation] = useState<string>('4-3-3')
+  const [captainGamertag, setCaptainGamertag] = useState<string | null>(null)
+  const [starters, setStarters] = useState<Array<ClubLineupSlot | null>>([])
+  const [bench, setBench] = useState<ClubLineupBench[]>([])
+  const [tacticsDrawerTab, setTacticsDrawerTab] = useState<'starters' | 'bench' | 'roster'>('starters')
+  const [activeSlotIdx, setActiveSlotIdx] = useState<number | null>(null)
+  const [slotSearch, setSlotSearch] = useState('')
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const lastSavedPayloadRef = useRef<string>('')
+  const isInitializedRef = useRef(false)
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Transfers & Inbox state
+  const [managerOffersList, setManagerOffersList] = useState<Offer[]>([])
+  const [managerJoinRequests, setManagerJoinRequests] = useState<JoinRequest[]>([])
+  const [playerOffersList, setPlayerOffersList] = useState<Offer[]>([])
+  const [playerJoinRequestsList, setPlayerJoinRequestsList] = useState<JoinRequest[]>([])
+  const [showSignModal, setShowSignModal] = useState(false)
+
+  // Matches & Calendar state
   const [matches, setMatches] = useState<Match[]>([])
-  const [loading, setLoading] = useState(false)
+  const [calendarLoading, setCalendarLoading] = useState(false)
   const [viewYear, setViewYear] = useState(() => new Date().getFullYear())
   const [viewMonth, setViewMonth] = useState(() => new Date().getMonth())
   const [selectedYmd, setSelectedYmd] = useState<string | null>(null)
   const [listMode, setListMode] = useState<'upcoming' | 'results'>('upcoming')
   const [fixturePage, setFixturePage] = useState(1)
 
+  // Club identity edit state (Manager)
+  const [editShortCode, setEditShortCode] = useState('')
+  const [clubLogoDraft, setClubLogoDraft] = useState<string | null>(null)
+  const logoInputRef = useRef<HTMLInputElement | null>(null)
+
+  // Manager Self Kit state
+  const [selfGamertag, setSelfGamertag] = useState('')
+  const [selfShirtNumber, setSelfShirtNumber] = useState('')
+  const [selfBusy, setSelfBusy] = useState(false)
+
+  // Load League transfer window status & all clubs
   useEffect(() => {
-    if (!clubSlug && !clubName) {
+    const controller = new AbortController()
+    getTransferWindowStatus(controller.signal)
+      .then((status) => {
+        setTransferWindowOpen(status.open)
+        if (typeof status.maxSquadSize === 'number') {
+          setMaxSquadSize(status.maxSquadSize)
+        }
+      })
+      .catch(() => {})
+
+    getLiveClubs(controller.signal)
+      .then((clubs) => setAllClubs(clubs))
+      .catch(() => {})
+
+    return () => controller.abort()
+  }, [])
+
+  // Map of club logos by normalized club name & slug for robust crest resolution
+  const clubLogoMap = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const c of allClubs) {
+      if (c.logo) {
+        map.set(stripFlag(c.name).toLowerCase().trim(), c.logo)
+        if (c.slug) map.set(c.slug.toLowerCase().trim(), c.logo)
+      }
+    }
+    return map
+  }, [allClubs])
+
+  // Initialize Lineup state from club
+  const initLineupState = useCallback(
+    (clubData: ManagerClub | null, players: typeof squadList) => {
+      const saved = clubData?.starting_xi
+      const fmtKey = saved?.formation && FORMATIONS[saved.formation] ? saved.formation : '4-3-3'
+      const slots = (FORMATIONS[fmtKey] || FORMATIONS['4-3-3']).slots
+      const initialCaptain =
+        saved?.captainGamertag ??
+        saved?.starters?.find((s) => s?.isCaptain)?.gamertag ??
+        null
+
+      setCaptainGamertag(initialCaptain)
+      setFormation(fmtKey)
+
+      const mappedStarters = slots.map(([pos], idx) => {
+        const s = saved?.starters?.[idx]
+        if (s && s.gamertag) {
+          const pMatch = players.find(
+            (p) =>
+              (s.playerId && p.id === s.playerId) ||
+              p.gamertag.toLowerCase() === s.gamertag.toLowerCase(),
+          )
+          const num = pMatch?.shirt_number ?? s.shirtNumber ?? s.number ?? idx + 1
+          const isCap = Boolean(
+            s.isCaptain ||
+              (initialCaptain && s.gamertag.toLowerCase() === initialCaptain.toLowerCase()),
+          )
+          return {
+            position: pos,
+            role: pos,
+            playerId: s.playerId ?? pMatch?.id ?? null,
+            gamertag: s.gamertag,
+            shirtNumber: num,
+            number: num,
+            isCaptain: isCap,
+          }
+        }
+        return null
+      })
+      setStarters(mappedStarters)
+
+      const benchItems = Array.isArray(saved?.bench)
+        ? saved.bench.map((b, idx) => {
+            const pMatch = players.find(
+              (p) =>
+                (b.playerId && p.id === b.playerId) ||
+                p.gamertag.toLowerCase() === b.gamertag.toLowerCase(),
+            )
+            const num = pMatch?.shirt_number ?? b.shirtNumber ?? b.number ?? 12 + idx
+            return {
+              playerId: b.playerId ?? pMatch?.id ?? null,
+              gamertag: b.gamertag,
+              shirtNumber: num,
+              number: num,
+              position: b.position || b.role || 'SUB',
+              role: b.position || b.role || 'SUB',
+            }
+          })
+        : []
+      setBench(benchItems)
+
+      lastSavedPayloadRef.current = JSON.stringify({
+        formation: fmtKey,
+        captainGamertag: initialCaptain,
+        starters: mappedStarters,
+        bench: benchItems,
+      })
+      isInitializedRef.current = true
+    },
+    [],
+  )
+
+  // Data Loading: Manager Mode
+  const loadManagerData = useCallback(async () => {
+    try {
+      const [squadRes, offersRes, reqsRes] = await Promise.all([
+        squad(),
+        managerOffers().catch(() => ({ offers: [] })),
+        getManagerJoinRequests().catch(() => ({ requests: [] })),
+      ])
+      setMyClub(squadRes.club)
+      setEditShortCode(squadRes.club.short_code ?? '')
+      setSquadList(squadRes.squad)
+      if (Array.isArray((squadRes as any).managers)) {
+        setClubManagers((squadRes as any).managers)
+      }
+      setManagerOffersList(offersRes.offers)
+      setManagerJoinRequests(reqsRes.requests)
+      initLineupState(squadRes.club, squadRes.squad)
+
+      // Sync manager's kit number from roster
+      const meInSquad = squadRes.squad.find(
+        (p: any) =>
+          (user?.playerId && p.id === user.playerId) ||
+          (user?.id && p.user_id === user.id) ||
+          Boolean(user?.gamertag && p.gamertag.toLowerCase() === user.gamertag.toLowerCase()),
+      )
+      if (meInSquad?.shirt_number != null) {
+        setSelfShirtNumber(String(meInSquad.shirt_number))
+        setMyShirtNumber(String(meInSquad.shirt_number))
+      }
+    } catch (err) {
+      setNotice({ kind: 'error', text: msg(err) })
+    }
+  }, [initLineupState, user])
+
+  // Data Loading: Player Mode
+  const loadPlayerData = useCallback(async () => {
+    try {
+      const [overview, incomingRes, pReqsRes] = await Promise.all([
+        playerOverview(),
+        incomingOffers().catch(() => ({ offers: [] })),
+        getPlayerJoinRequests().catch(() => ({ requests: [] })),
+      ])
+      setPlayerInfo(overview.player)
+      setMyShirtNumber(
+        overview.player.shirt_number != null ? String(overview.player.shirt_number) : '',
+      )
+      setPlayerOffersList(incomingRes.offers)
+      setPlayerJoinRequestsList(pReqsRes.requests)
+
+      if (overview.club) {
+        const clubRes = await fetch(`/api/clubs/${encodeURIComponent(overview.club.slug)}`).then((r) =>
+          r.json(),
+        )
+        if (clubRes && clubRes.id) {
+          const clubObj: ManagerClub = {
+            id: clubRes.id,
+            name: clubRes.name,
+            slug: clubRes.slug,
+            short_code: clubRes.short_code ?? null,
+            flag: clubRes.flag ?? null,
+            logo_local: clubRes.logo_local ?? null,
+            logo_url: clubRes.logo_url ?? null,
+            status: clubRes.status ?? 'active',
+            starting_xi: clubRes.starting_xi ?? null,
+          }
+          setMyClub(clubObj)
+          const pList = (clubRes.players ?? []).map((p: any) => ({
+            id: p.id,
+            gamertag: p.gamertag,
+            slug: p.slug,
+            shirt_number: p.shirt_number,
+            avatar_local: p.avatar_local,
+            is_free_agent: p.is_free_agent ? 1 : 0,
+            pending: 0,
+            user_id: p.user_id,
+            position: p.position,
+          }))
+          setSquadList(pList)
+          initLineupState(clubObj, pList)
+        }
+      }
+    } catch (err) {
+      setNotice({ kind: 'error', text: msg(err) })
+    }
+  }, [initLineupState])
+
+  // Initial load effect based on user role
+  useEffect(() => {
+    if (!user) return
+    if (isManager) {
+      void loadManagerData()
+    } else {
+      void loadPlayerData()
+    }
+  }, [user, isManager, loadManagerData, loadPlayerData])
+
+  // Matches Calendar loading
+  useEffect(() => {
+    const slug = myClub?.slug
+    const name = myClub?.name
+    if (!slug && !name) {
       setMatches([])
       return
     }
     const controller = new AbortController()
-    setLoading(true)
+    setCalendarLoading(true)
 
     getLiveMatches(controller.signal, {
-      clubSlug: clubSlug || undefined,
+      clubSlug: slug || undefined,
       limit: 200,
     })
       .then(({ matches: fetched }) => {
         let clubMatches = fetched
-        if (clubName && (!clubSlug || clubMatches.length === 0)) {
-          const target = stripFlag(clubName).toLowerCase().trim()
+        if (name && (!slug || clubMatches.length === 0)) {
+          const target = stripFlag(name).toLowerCase().trim()
           clubMatches = fetched.filter(
             (m) =>
               stripFlag(m.home).toLowerCase().trim() === target ||
@@ -215,7 +449,7 @@ function ClubFixtureCalendar({
         }
         setMatches(clubMatches)
 
-        // Auto-focus the calendar month to the next upcoming fixture (or most recent fixture)
+        // Focus to upcoming fixture
         const dated = clubMatches
           .map((m) => ({ m, d: parseKickoffDate(m) }))
           .filter((x): x is { m: Match; d: Date } => x.d !== null)
@@ -232,24 +466,164 @@ function ClubFixtureCalendar({
         if (!controller.signal.aborted) setMatches([])
       })
       .finally(() => {
-        if (!controller.signal.aborted) setLoading(false)
+        if (!controller.signal.aborted) setCalendarLoading(false)
       })
 
     return () => controller.abort()
-  }, [clubSlug, clubName])
+  }, [myClub?.slug, myClub?.name])
 
-  const cleanMyClub = stripFlag(clubName || '').toLowerCase().trim()
+  // Auto-save Manager Tactics with debounce
+  useEffect(() => {
+    if (!isManager || !isInitializedRef.current || !myClub) return
 
-  const sortFixturesAsc = (a: Match, b: Match) => {
-    const ra = a.roundNumber ?? 9999
-    const rb = b.roundNumber ?? 9999
-    if (ra !== rb) return ra - rb
-    const ka = a.kickoff || '9999-12-31'
-    const kb = b.kickoff || '9999-12-31'
-    if (ka !== kb) return ka.localeCompare(kb)
-    return (a.id ?? 0) - (b.id ?? 0)
-  }
+    const currentPayload: ClubLineup = {
+      formation,
+      captainGamertag,
+      starters: starters.map((s) =>
+        s
+          ? {
+              ...s,
+              isCaptain: Boolean(
+                captainGamertag &&
+                  s.gamertag.toLowerCase() === captainGamertag.toLowerCase(),
+              ),
+            }
+          : null,
+      ),
+      bench,
+    }
+    const currentJson = JSON.stringify(currentPayload)
+    if (lastSavedPayloadRef.current === currentJson) return
 
+    setSaveStatus('saving')
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
+
+    saveTimeoutRef.current = setTimeout(async () => {
+      try {
+        await saveManagerLineup(currentPayload)
+        lastSavedPayloadRef.current = currentJson
+        setSaveStatus('saved')
+        if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
+        savedTimerRef.current = setTimeout(() => {
+          setSaveStatus((prev) => (prev === 'saved' ? 'idle' : prev))
+        }, 2200)
+      } catch {
+        setSaveStatus('error')
+      }
+    }, 400)
+
+    return () => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
+    }
+  }, [formation, starters, bench, captainGamertag, myClub, isManager])
+
+  // Tactical Squad Builder representation for <Pitch />
+  const tacticalSquad = useMemo<Squad>(() => {
+    const currentLineup: ClubLineup = {
+      formation,
+      captainGamertag,
+      starters: starters.map((s) =>
+        s
+          ? {
+              ...s,
+              isCaptain: Boolean(
+                captainGamertag && s.gamertag.toLowerCase() === captainGamertag.toLowerCase(),
+              ),
+            }
+          : null,
+      ),
+      bench,
+    }
+    const built = buildSquadFromLineup(
+      currentLineup,
+      clubManagers.length > 0 ? clubManagers.map((m) => m.name).join(', ') : 'Club Manager',
+      squadList.map((p) => ({ id: p.id, name: p.gamertag, shirtNumber: p.shirt_number ?? null })),
+    )
+    if (built) return built
+
+    const formDef = FORMATIONS[formation] ?? FORMATIONS['4-3-3']
+    return {
+      formation: formDef.shape,
+      starters: formDef.slots.map(([role, x, y], idx) => ({
+        number: idx + 1,
+        name: '—',
+        role,
+        x,
+        y,
+        isCaptain: false,
+      })),
+      bench: [],
+      manager: 'Club Manager',
+    }
+  }, [formation, captainGamertag, starters, bench, clubManagers, squadList])
+
+  // Identify logged in user's position and matchday status
+  const userMatchdayStatus = useMemo(() => {
+    const userTag = (user?.gamertag || playerInfo?.gamertag || '').toLowerCase().trim()
+    const userPid = user?.playerId ?? playerInfo?.id ?? null
+
+    const inSquad = squadList.find(
+      (p) =>
+        (userPid && p.id === userPid) ||
+        (user?.id && (p as any).user_id === user.id) ||
+        Boolean(userTag && p.gamertag.toLowerCase() === userTag),
+    )
+
+    const starterIdx = starters.findIndex((s) => {
+      if (!s) return false
+      if (userPid && s.playerId && s.playerId === userPid) return true
+      if (inSquad && s.playerId && s.playerId === inSquad.id) return true
+      if (userTag && s.gamertag && s.gamertag.toLowerCase() === userTag) return true
+      if (inSquad && s.gamertag && s.gamertag.toLowerCase() === inSquad.gamertag.toLowerCase()) return true
+      return false
+    })
+
+    if (starterIdx >= 0) {
+      const pos = starters[starterIdx]?.position || (FORMATIONS[formation] || FORMATIONS['4-3-3']).slots[starterIdx]?.[0] || 'XI'
+      return {
+        type: 'starting' as const,
+        label: `STARTING XI • ${pos}`,
+        slotIdx: starterIdx,
+        pos,
+      }
+    }
+
+    const benchIdx = bench.findIndex((b) => {
+      if (userPid && b.playerId && b.playerId === userPid) return true
+      if (inSquad && b.playerId && b.playerId === inSquad.id) return true
+      if (userTag && b.gamertag && b.gamertag.toLowerCase() === userTag) return true
+      if (inSquad && b.gamertag && b.gamertag.toLowerCase() === inSquad.gamertag.toLowerCase()) return true
+      return false
+    })
+
+    if (benchIdx >= 0) {
+      const pos = bench[benchIdx]?.position || 'SUB'
+      return {
+        type: 'bench' as const,
+        label: `BENCH SUB • ${pos}`,
+        slotIdx: null,
+        pos,
+      }
+    }
+
+    if (inSquad) {
+      return {
+        type: 'reserves' as const,
+        label: 'RESERVES • ROSTER',
+        slotIdx: null,
+        pos: inSquad.position || '',
+      }
+    }
+
+    return {
+      type: isManager ? ('manager' as const) : ('unknown' as const),
+      label: isManager ? 'CLUB MANAGER' : 'ROSTER MEMBER',
+      slotIdx: null,
+      pos: '',
+    }
+  }, [user, playerInfo, starters, bench, formation, squadList, isManager])
+
+  // Calendar Day grouping
   const matchesByYmd = useMemo(() => {
     const map = new Map<string, Match[]>()
     for (const m of matches) {
@@ -260,11 +634,60 @@ function ClubFixtureCalendar({
       list.push(m)
       map.set(key, list)
     }
-    for (const [k, list] of map.entries()) {
-      map.set(k, list.slice().sort(sortFixturesAsc))
-    }
     return map
   }, [matches])
+
+  // Sorted upcoming and completed matches
+  const sortedMatches = useMemo(() => {
+    return matches.slice().sort((a, b) => {
+      const ra = a.roundNumber ?? 9999
+      const rb = b.roundNumber ?? 9999
+      if (ra !== rb) return ra - rb
+      const ka = a.kickoff || '9999-12-31'
+      const kb = b.kickoff || '9999-12-31'
+      if (ka !== kb) return ka.localeCompare(kb)
+      return (a.id ?? 0) - (b.id ?? 0)
+    })
+  }, [matches])
+
+  const upcomingMatches = useMemo(
+    () => sortedMatches.filter((m) => m.hs === '' || m.as === ''),
+    [sortedMatches],
+  )
+  const completedMatches = useMemo(
+    () => sortedMatches.filter((m) => m.hs !== '' && m.as !== ''),
+    [sortedMatches],
+  )
+
+  const nextMatch = upcomingMatches[0] ?? null
+  const runInMatches = upcomingMatches.slice(0, 3)
+
+  const prevMonth = () => {
+    setSelectedYmd(null)
+    if (viewMonth === 0) {
+      setViewMonth(11)
+      setViewYear((y) => y - 1)
+    } else {
+      setViewMonth((m) => m - 1)
+    }
+  }
+
+  const nextMonth = () => {
+    setSelectedYmd(null)
+    if (viewMonth === 11) {
+      setViewMonth(0)
+      setViewYear((y) => y + 1)
+    } else {
+      setViewMonth((m) => m + 1)
+    }
+  }
+
+  const goToday = () => {
+    const now = new Date()
+    setViewYear(now.getFullYear())
+    setViewMonth(now.getMonth())
+    setSelectedYmd(toYmd(now))
+  }
 
   // Calendar cells for (viewYear, viewMonth) starting Monday
   const calendarDays = useMemo(() => {
@@ -310,7 +733,7 @@ function ClubFixtureCalendar({
       })
     }
 
-    // Next month leading days to complete 6 rows or end of week
+    // Next month leading days to complete week
     const remainder = (7 - (cells.length % 7)) % 7
     for (let day = 1; day <= remainder; day++) {
       const d = new Date(viewYear, viewMonth + 1, day)
@@ -327,783 +750,358 @@ function ClubFixtureCalendar({
     return cells
   }, [viewYear, viewMonth, matchesByYmd])
 
-  const upcomingMatches = useMemo(
-    () => matches.filter((m) => m.hs === '' || m.as === '').slice().sort(sortFixturesAsc),
-    [matches],
-  )
-  const completedMatches = useMemo(
-    () => matches.filter((m) => m.hs !== '' && m.as !== '').slice().sort(sortFixturesAsc),
-    [matches],
-  )
-
   useEffect(() => {
     setFixturePage(1)
-  }, [selectedYmd, listMode, clubSlug, clubName])
+  }, [selectedYmd, listMode, myClub?.slug, myClub?.name])
 
-  const prevMonth = () => {
-    setSelectedYmd(null)
-    if (viewMonth === 0) {
-      setViewMonth(11)
-      setViewYear((y) => y - 1)
-    } else {
-      setViewMonth((m) => m - 1)
+  const activeSideList = useMemo(() => {
+    if (selectedYmd) {
+      return matchesByYmd.get(selectedYmd) ?? []
     }
-  }
-
-  const nextMonth = () => {
-    setSelectedYmd(null)
-    if (viewMonth === 11) {
-      setViewMonth(0)
-      setViewYear((y) => y + 1)
-    } else {
-      setViewMonth((m) => m + 1)
-    }
-  }
-
-  const goToday = () => {
-    const now = new Date()
-    setViewYear(now.getFullYear())
-    setViewMonth(now.getMonth())
-    setSelectedYmd(toYmd(now))
-  }
-
-  if (!clubSlug && !clubName) {
-    return (
-      <section className={card}>
-        <PanelHead
-          label="Schedule & Calendar"
-          title="Fixture Calendar"
-          action={
-            <ButtonLink to="/matches" variant="outline" size="sm">
-              All League Matches
-            </ButtonLink>
-          }
-        />
-        <EmptyState
-          title="No Club Assigned Yet"
-          hint="Join or create a club to see your personalised fixture calendar and upcoming kick-offs."
-        />
-      </section>
-    )
-  }
-
-  const activeSideList = selectedYmd
-    ? matchesByYmd.get(selectedYmd) ?? []
-    : listMode === 'upcoming'
-      ? upcomingMatches
-      : completedMatches
+    return listMode === 'upcoming' ? upcomingMatches : completedMatches
+  }, [selectedYmd, matchesByYmd, listMode, upcomingMatches, completedMatches])
 
   const FIXTURES_PER_PAGE = 4
   const totalFixturePages = Math.max(1, Math.ceil(activeSideList.length / FIXTURES_PER_PAGE))
   const safeFixturePage = Math.min(fixturePage, totalFixturePages)
-  const paginatedSideList = activeSideList.slice(
-    (safeFixturePage - 1) * FIXTURES_PER_PAGE,
-    safeFixturePage * FIXTURES_PER_PAGE,
-  )
+  const paginatedSideList = useMemo(() => {
+    return activeSideList.slice(
+      (safeFixturePage - 1) * FIXTURES_PER_PAGE,
+      safeFixturePage * FIXTURES_PER_PAGE,
+    )
+  }, [activeSideList, safeFixturePage])
 
+  const cleanMyClub = stripFlag(myClub?.name || '').toLowerCase().trim()
+  const clubCrest = myClub?.logo_local || myClub?.logo_url || CLUB_PLACEHOLDER
+  const clubShortCode = myClub?.short_code || myClub?.name?.slice(0, 3)?.toUpperCase() || 'FC'
+
+  // Fixture context helper (Fix Issue 1: Opponent Club Crest Resolution)
   const getFixtureContext = (m: Match) => {
-    const isHome = stripFlag(m.home).toLowerCase().trim() === cleanMyClub
+    const homeClean = stripFlag(m.home).toLowerCase().trim()
+    const awayClean = stripFlag(m.away).toLowerCase().trim()
+    const isHome = homeClean === cleanMyClub
     const opponent = isHome ? stripFlag(m.away) : stripFlag(m.home)
-    const oppLogo = isHome ? m.awayLogo : m.homeLogo
+    const oppClean = opponent.toLowerCase().trim()
+
+    // Resolve opponent logo via match props, clubLogoMap, or snake_case fallback
+    const oppLogo =
+      (isHome ? m.awayLogo : m.homeLogo) ||
+      clubLogoMap.get(oppClean) ||
+      (isHome ? (m as any).away_logo : (m as any).home_logo) ||
+      CLUB_PLACEHOLDER
+
+    const myLogo =
+      (isHome ? m.homeLogo : m.awayLogo) ||
+      clubCrest ||
+      clubLogoMap.get(cleanMyClub) ||
+      CLUB_PLACEHOLDER
+
     const played = m.hs !== '' && m.as !== ''
     let outcome: 'W' | 'D' | 'L' | null = null
     if (played) {
-      const myScore = Number(isHome ? m.hs : m.as)
-      const oppScore = Number(isHome ? m.as : m.hs)
+      const myScore = isHome ? Number(m.hs) : Number(m.as)
+      const oppScore = isHome ? Number(m.as) : Number(m.hs)
       if (myScore > oppScore) outcome = 'W'
       else if (myScore < oppScore) outcome = 'L'
       else outcome = 'D'
     }
-    return { isHome, opponent, oppLogo, played, outcome }
+    return { isHome, opponent, oppLogo, myLogo, played, outcome }
   }
 
-  return (
-    <section className={card}>
-      <PanelHead
-        label="Schedule & Calendar"
-        title={`${stripFlag(clubName || 'Club')} Fixture Calendar`}
-        action={
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-lg bg-[var(--surface-2)] px-2.5 py-1 text-[11px] font-bold text-[var(--text-muted)]">
-              {upcomingMatches.length} Upcoming · {completedMatches.length} Played
-            </span>
-            <ButtonLink to="/matches" variant="outline" size="sm">
-              Full Schedule
-            </ButtonLink>
-          </div>
-        }
-      />
+  // Unread badge counts
+  const unreadTransfersCount = isManager
+    ? managerJoinRequests.filter((r) => r.status === 'pending').length
+    : playerOffersList.filter((o) => o.status === 'pending').length
 
-      {loading ? (
-        <div className="py-10 text-center text-xs text-[var(--text-muted)]">
-          Loading scheduled fixtures…
-        </div>
-      ) : (
-        <div className="grid gap-6 lg:grid-cols-12">
-          {/* LEFT (7 cols): Interactive Monthly Calendar Grid */}
-          <div className="lg:col-span-7 rounded-xl border border-[var(--border)] bg-[var(--bg)] p-3.5 sm:p-4">
-            {/* Month Header Controls */}
-            <div className="mb-3.5 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={prevMonth}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface)] text-xs font-bold text-[var(--text-strong)] hover:bg-white/10"
-                  aria-label="Previous month"
-                >
-                  ‹
-                </button>
-                <button
-                  type="button"
-                  onClick={nextMonth}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface)] text-xs font-bold text-[var(--text-strong)] hover:bg-white/10"
-                  aria-label="Next month"
-                >
-                  ›
-                </button>
-                <h3 className="ml-1 font-display text-sm font-extrabold tracking-wide text-[var(--text-strong)] sm:text-base">
-                  {MONTH_NAMES[viewMonth]} {viewYear}
-                </h3>
-              </div>
-
-              <div className="flex items-center gap-1.5">
-                {selectedYmd && (
-                  <button
-                    type="button"
-                    onClick={() => setSelectedYmd(null)}
-                    className="rounded-lg border border-[var(--border)] px-2.5 py-1 text-[11px] font-bold text-[var(--text-muted)] hover:text-white"
-                  >
-                    Show All
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={goToday}
-                  className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1 text-[11px] font-bold text-[var(--accent-text)] hover:bg-white/10"
-                >
-                  Today
-                </button>
-              </div>
-            </div>
-
-            {/* Weekday Header */}
-            <div className="grid grid-cols-7 gap-1 border-b border-[var(--border)] pb-2 text-center text-[10px] font-extrabold uppercase tracking-wider text-[var(--text-faint)]">
-              {WEEKDAYS.map((wd) => (
-                <div key={wd}>{wd}</div>
-              ))}
-            </div>
-
-            {/* Days Grid */}
-            <div className="mt-1.5 grid grid-cols-7 gap-1.5">
-              {calendarDays.map((cell) => {
-                const hasMatch = cell.fixtures.length > 0
-                const isSelected = selectedYmd === cell.ymd
-                const firstFixture = cell.fixtures[0]
-                const ctx = firstFixture ? getFixtureContext(firstFixture) : null
-
-                return (
-                  <button
-                    key={cell.ymd}
-                    type="button"
-                    onClick={() => setSelectedYmd(isSelected ? null : cell.ymd)}
-                    className={cx(
-                      'group relative flex min-h-16 flex-col justify-between rounded-lg border p-1.5 text-left transition-all',
-                      !cell.inMonth && 'opacity-35',
-                      isSelected
-                        ? 'border-[var(--accent-solid)] bg-[var(--accent-tint)] ring-1 ring-[var(--accent-solid)]'
-                        : hasMatch
-                          ? 'border-[var(--accent-ring)] bg-[var(--surface)] hover:border-[var(--accent-solid)]'
-                          : 'border-white/5 bg-[var(--surface)]/40 hover:border-white/15',
-                    )}
-                  >
-                    <div className="flex w-full items-center justify-between">
-                      <span
-                        className={cx(
-                          'numeric text-[11px] font-bold',
-                          cell.isToday
-                            ? 'rounded bg-[var(--accent-solid)] px-1 text-[var(--on-volt)] font-extrabold'
-                            : hasMatch
-                              ? 'text-white'
-                              : 'text-[var(--text-muted)]',
-                        )}
-                      >
-                        {cell.day}
-                      </span>
-                      {ctx && (
-                        <span
-                          className={cx(
-                            'rounded px-1 text-[9px] font-extrabold uppercase',
-                            ctx.isHome
-                              ? 'bg-emerald-500/20 text-emerald-300'
-                              : 'bg-sky-500/20 text-sky-300',
-                          )}
-                        >
-                          {ctx.isHome ? 'H' : 'A'}
-                        </span>
-                      )}
-                    </div>
-
-                    {ctx && firstFixture && (
-                      <div className="mt-1 flex flex-col gap-0.5">
-                        <div className="flex items-center gap-1">
-                          <img
-                            src={ctx.oppLogo || CLUB_PLACEHOLDER}
-                            alt=""
-                            onError={(e) => {
-                              e.currentTarget.src = CLUB_PLACEHOLDER
-                            }}
-                            className="h-3.5 w-3.5 shrink-0 object-contain"
-                          />
-                          <span className="truncate text-[10px] font-bold text-[var(--text-strong)]">
-                            {ctx.opponent}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          {ctx.played ? (
-                            <span
-                              className={cx(
-                                'numeric rounded px-1 text-[9px] font-extrabold',
-                                ctx.outcome === 'W'
-                                  ? 'bg-emerald-500/20 text-emerald-300'
-                                  : ctx.outcome === 'L'
-                                    ? 'bg-rose-500/20 text-rose-300'
-                                    : 'bg-amber-500/20 text-amber-300',
-                              )}
-                            >
-                              {ctx.outcome} {firstFixture.hs}-{firstFixture.as}
-                            </span>
-                          ) : (
-                            <span className="numeric text-[9px] font-bold text-[var(--accent-text)]">
-                              {firstFixture.time || 'TBC'}
-                            </span>
-                          )}
-                          {cell.fixtures.length > 1 && (
-                            <span className="text-[9px] font-extrabold text-[var(--text-faint)]">
-                              +{cell.fixtures.length - 1}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* RIGHT (5 cols): Upcoming / Selected Day Fixture Cards */}
-          <div className="lg:col-span-5 flex flex-col rounded-xl border border-[var(--border)] bg-[var(--bg)] p-3.5 sm:p-4">
-            <div className="mb-3 flex items-center justify-between gap-2 border-b border-[var(--border)] pb-2.5">
-              {selectedYmd ? (
-                <div className="flex items-center justify-between w-full">
-                  <span className="text-xs font-extrabold uppercase tracking-wider text-[var(--accent-text)]">
-                    📅 Fixtures on {selectedYmd}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedYmd(null)}
-                    className="text-[11px] font-bold text-[var(--text-muted)] hover:text-white"
-                  >
-                    ✕ Clear Day
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-1.5 rounded-lg bg-[var(--surface)] p-1 w-full">
-                  <button
-                    type="button"
-                    onClick={() => setListMode('upcoming')}
-                    className={cx(
-                      'flex-1 rounded-md py-1.5 text-xs font-bold transition-colors',
-                      listMode === 'upcoming'
-                        ? 'bg-[var(--accent-solid)] text-[var(--on-volt)]'
-                        : 'text-[var(--text-muted)] hover:text-white',
-                    )}
-                  >
-                    Upcoming ({upcomingMatches.length})
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setListMode('results')}
-                    className={cx(
-                      'flex-1 rounded-md py-1.5 text-xs font-bold transition-colors',
-                      listMode === 'results'
-                        ? 'bg-[var(--accent-solid)] text-[var(--on-volt)]'
-                        : 'text-[var(--text-muted)] hover:text-white',
-                    )}
-                  >
-                    Results ({completedMatches.length})
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {activeSideList.length === 0 ? (
-              <div className="flex flex-1 flex-col items-center justify-center py-10 text-center">
-                <p className="text-xs font-bold text-[var(--text-strong)]">
-                  {selectedYmd
-                    ? 'No fixtures scheduled on this date'
-                    : listMode === 'upcoming'
-                      ? 'No upcoming fixtures scheduled'
-                      : 'No completed results yet'}
-                </p>
-                <p className="mt-1 text-[11px] text-[var(--text-faint)]">
-                  {selectedYmd
-                    ? 'Click a highlighted date on the calendar or clear the day filter.'
-                    : 'Once league admins publish fixtures for your division, they will appear here.'}
-                </p>
-              </div>
-            ) : (
-              <div className="flex flex-1 flex-col justify-between gap-3">
-                <ul className="space-y-2.5">
-                  {paginatedSideList.map((m, idx) => {
-                    const ctx = getFixtureContext(m)
-                    return (
-                      <li key={m.id ?? idx}>
-                        <Link
-                          to={m.id ? `/matches/${m.id}` : '/matches'}
-                          className="flex items-center justify-between gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 transition-colors hover:border-[var(--accent-ring)]"
-                        >
-                          <div className="flex min-w-0 items-center gap-3">
-                            <img
-                              src={ctx.oppLogo || CLUB_PLACEHOLDER}
-                              alt=""
-                              onError={(e) => {
-                                e.currentTarget.src = CLUB_PLACEHOLDER
-                              }}
-                              className="h-9 w-9 shrink-0 object-contain"
-                            />
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-1.5">
-                                <span
-                                  className={cx(
-                                    'rounded px-1.5 py-0.5 text-[9px] font-extrabold uppercase',
-                                    ctx.isHome
-                                      ? 'bg-emerald-500/20 text-emerald-300'
-                                      : 'bg-sky-500/20 text-sky-300',
-                                  )}
-                                >
-                                  {ctx.isHome ? 'HOME' : 'AWAY'}
-                                </span>
-                                {m.roundNumber && (
-                                  <span className="text-[10px] font-bold text-[var(--text-faint)]">
-                                    Game Week {m.roundNumber}
-                                  </span>
-                                )}
-                              </div>
-                              <p className="mt-0.5 truncate text-xs font-extrabold text-[var(--text-strong)]">
-                                vs {ctx.opponent}
-                              </p>
-                              <p className="text-[11px] text-[var(--text-muted)]">
-                                {m.date || 'Date TBD'} · {m.time || 'Kick-off TBD'}
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="shrink-0 text-right">
-                            {ctx.played ? (
-                              <span
-                                className={cx(
-                                  'numeric inline-block rounded-lg px-2.5 py-1 text-xs font-extrabold',
-                                  ctx.outcome === 'W'
-                                    ? 'bg-emerald-500/20 text-emerald-300'
-                                    : ctx.outcome === 'L'
-                                      ? 'bg-rose-500/20 text-rose-300'
-                                      : 'bg-amber-500/20 text-amber-300',
-                                )}
-                              >
-                                {ctx.outcome} · {m.hs}:{m.as}
-                              </span>
-                            ) : (
-                              <span className="inline-block rounded-lg bg-[var(--accent-tint)] px-2.5 py-1 text-[11px] font-extrabold text-[var(--accent-text)]">
-                                Match →
-                              </span>
-                            )}
-                          </div>
-                        </Link>
-                      </li>
-                    )
-                  })}
-                </ul>
-
-                {totalFixturePages > 1 && (
-                  <div className="flex items-center justify-between border-t border-[var(--border)] pt-3">
-                    <button
-                      type="button"
-                      disabled={safeFixturePage <= 1}
-                      onClick={() => setFixturePage((p) => Math.max(1, p - 1))}
-                      className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1 text-[11px] font-bold text-[var(--text-strong)] transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      ‹ Prev
-                    </button>
-                    <span className="numeric text-[11px] font-bold text-[var(--text-muted)]">
-                      Page {safeFixturePage} of {totalFixturePages}
-                    </span>
-                    <button
-                      type="button"
-                      disabled={safeFixturePage >= totalFixturePages}
-                      onClick={() => setFixturePage((p) => Math.min(totalFixturePages, p + 1))}
-                      className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1 text-[11px] font-bold text-[var(--text-strong)] transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      Next ›
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </section>
-  )
-}
-
-/* ================================================================ manager */
-
-function ManagerPanel({ transferWindowOpen, maxSquadSize = 23 }: { transferWindowOpen: boolean; maxSquadSize?: number }) {
-  const { user, refresh } = useAuth()
-  const [notice, setNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
-  const [busy, setBusy] = useState(false)
-
-  const [clubName, setClubName] = useState('')
-  const [clubShortCode, setClubShortCode] = useState('')
-  const [clubLogoDraft, setClubLogoDraft] = useState<string | null>(null)
-  const createLogoRef = useRef<HTMLInputElement | null>(null)
-  const editLogoRef = useRef<HTMLInputElement | null>(null)
-
-  const [myClub, setMyClub] = useState<ManagerClub | null>(null)
-  const [editShortCode, setEditShortCode] = useState('')
-
-  const [squadList, setSquadList] = useState<Awaited<ReturnType<typeof squad>>['squad']>([])
-  const [squadPage, setSquadPage] = useState(1)
-  const squadPageSize = 10
-  const totalSquadPages = Math.max(1, Math.ceil(squadList.length / squadPageSize))
-  const safeSquadPage = Math.min(squadPage, totalSquadPages)
-  const pagedSquad = squadList.slice((safeSquadPage - 1) * squadPageSize, safeSquadPage * squadPageSize)
-  const [offers, setOffers] = useState<Offer[]>([])
-
-  // Starting XI state
-  const [formation, setFormation] = useState<string>('4-3-3')
-  const [starters, setStarters] = useState<Array<ClubLineupSlot | null>>(Array(11).fill(null))
-  const [bench, setBench] = useState<ClubLineupBench[]>([])
-  const [captainGamertag, setCaptainGamertag] = useState<string | null>(null)
-  const [clubManagers, setClubManagers] = useState<
-    Array<{ id: number; name: string; email?: string; gamertag?: string | null }>
-  >([])
-  const [activeSlotIdx, setActiveSlotIdx] = useState<number | null>(null)
-  const [slotSearch, setSlotSearch] = useState('')
-
-  // Auto-save & Outside click state for Starting XI
-  const pickerRef = useRef<HTMLDivElement>(null)
-  const isInitializedRef = useRef(false)
-  const lastSavedPayloadRef = useRef<string>('')
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
-  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  // Close player picker when clicking outside the popover (even outside the field)
-  useEffect(() => {
-    if (activeSlotIdx === null) return
-
-    const handleOutsideClick = (e: MouseEvent | TouchEvent) => {
-      const target = e.target as HTMLElement | null
-      if (pickerRef.current && pickerRef.current.contains(e.target as Node)) {
-        return
-      }
-      if (target && target.closest('[data-pitch-slot]')) {
-        return
-      }
-      setActiveSlotIdx(null)
-      setSlotSearch('')
-    }
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setActiveSlotIdx(null)
-        setSlotSearch('')
-      }
-    }
-
-    document.addEventListener('pointerdown', handleOutsideClick)
-    document.addEventListener('keydown', handleKeyDown)
-    return () => {
-      document.removeEventListener('pointerdown', handleOutsideClick)
-      document.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [activeSlotIdx])
-
-  const assignOrSwapSlot = (
-    targetIdx: number,
-    player: { id: number; gamertag: string; shirt_number?: number | null },
-  ) => {
+  // Handlers for Manager actions
+  const handleAutoFill = () => {
     const slots = (FORMATIONS[formation] || FORMATIONS['4-3-3']).slots
-    const targetCoord = slots[targetIdx]
-    if (!targetCoord) return
-    const targetPos = targetCoord[0]
+    setStarters(
+      slots.map(([pos], idx) => {
+        const p = squadList[idx]
+        if (!p) return null
+        const num = p.shirt_number ?? idx + 1
+        return {
+          position: pos,
+          role: pos,
+          playerId: p.id,
+          gamertag: p.gamertag,
+          shirtNumber: num,
+          number: num,
+          isCaptain: idx === 0,
+        }
+      }),
+    )
+    setBench(
+      squadList.slice(11).map((p, idx) => ({
+        playerId: p.id,
+        gamertag: p.gamertag,
+        shirtNumber: p.shirt_number ?? 12 + idx,
+        number: p.shirt_number ?? 12 + idx,
+        position: 'SUB',
+        role: 'SUB',
+      })),
+    )
+  }
+
+  const handleClearPitch = () => {
+    const slots = (FORMATIONS[formation] || FORMATIONS['4-3-3']).slots
+    setStarters(slots.map(() => null))
+  }
+
+  const handleAssignStarter = (targetSlotIdx: number, p: (typeof squadList)[0]) => {
+    const slots = (FORMATIONS[formation] || FORMATIONS['4-3-3']).slots
+    const targetRole = slots[targetSlotIdx]?.[0] || 'XI'
+    const num = p.shirt_number ?? targetSlotIdx + 1
 
     setStarters((prev) => {
       const next = [...prev]
-      const currentInTarget = next[targetIdx]
+      // Clear player from existing slot if already placed
       const existingIdx = next.findIndex(
-        (s, i) => i !== targetIdx && s && s.gamertag.toLowerCase() === player.gamertag.toLowerCase(),
+        (s) => s && (s.playerId === p.id || s.gamertag.toLowerCase() === p.gamertag.toLowerCase()),
       )
-
-      if (existingIdx !== -1) {
-        const existingSlot = next[existingIdx]!
-        const existingPos = slots[existingIdx]?.[0] ?? existingSlot.position
-        const num = existingSlot.shirtNumber ?? existingSlot.number ?? player.shirt_number ?? targetIdx + 1
-        next[targetIdx] = {
-          position: targetPos,
-          role: targetPos,
-          playerId: player.id,
-          gamertag: player.gamertag,
-          shirtNumber: num,
-          number: num,
-        }
-        next[existingIdx] = currentInTarget
-          ? {
-              ...currentInTarget,
-              position: existingPos,
-              role: existingPos,
-            }
-          : null
-      } else {
-        const num =
-          currentInTarget?.shirtNumber ??
-          currentInTarget?.number ??
-          player.shirt_number ??
-          targetIdx + 1
-        next[targetIdx] = {
-          position: targetPos,
-          role: targetPos,
-          playerId: player.id,
-          gamertag: player.gamertag,
-          shirtNumber: num,
-          number: num,
-        }
+      if (existingIdx >= 0) next[existingIdx] = null
+      next[targetSlotIdx] = {
+        position: targetRole,
+        role: targetRole,
+        playerId: p.id,
+        gamertag: p.gamertag,
+        shirtNumber: num,
+        number: num,
+        isCaptain: Boolean(captainGamertag && p.gamertag.toLowerCase() === captainGamertag.toLowerCase()),
       }
       return next
     })
 
+    // Remove from bench if was there
     setBench((prev) =>
-      prev.filter((b) => b.gamertag.toLowerCase() !== player.gamertag.toLowerCase()),
+      prev.filter(
+        (b) => !(b.playerId === p.id || b.gamertag.toLowerCase() === p.gamertag.toLowerCase()),
+      ),
     )
     setActiveSlotIdx(null)
     setSlotSearch('')
   }
 
-  const [showSignModal, setShowSignModal] = useState(false)
-  const squadPlayerIds = useMemo(() => new Set(squadList.map((p) => p.id)), [squadList])
-
-  const initLineupState = useCallback(
-    (clubData: ManagerClub | null, players: Awaited<ReturnType<typeof squad>>['squad']) => {
-      const saved = clubData?.starting_xi
-      const fmtKey = saved?.formation && FORMATIONS[saved.formation] ? saved.formation : '4-3-3'
-      const slots = FORMATIONS[fmtKey].slots
-      const initialCaptain =
-        saved?.captainGamertag ??
-        saved?.starters?.find((s) => s?.isCaptain)?.gamertag ??
-        null
-      setCaptainGamertag(initialCaptain)
-      setFormation(fmtKey)
-      setStarters(
-        slots.map(([pos], idx) => {
-          const s = saved?.starters?.[idx]
-          if (s && s.gamertag) {
-            const pMatch = players.find(
-              (p) =>
-                (s.playerId && p.id === s.playerId) ||
-                p.gamertag.toLowerCase() === s.gamertag.toLowerCase(),
-            )
-            const num = pMatch?.shirt_number ?? s.shirtNumber ?? s.number ?? idx + 1
-            const isCap = Boolean(
-              s.isCaptain ||
-              (initialCaptain && s.gamertag.toLowerCase() === initialCaptain.toLowerCase()),
-            )
-            return {
-              position: pos,
-              role: pos,
-              playerId: s.playerId ?? pMatch?.id ?? null,
-              gamertag: s.gamertag,
-              shirtNumber: num,
-              number: num,
-              isCaptain: isCap,
-            }
-          }
-          return null
-        }),
-      )
-      const benchItems = Array.isArray(saved?.bench)
-        ? saved.bench.map((b, idx) => {
-            const pMatch = players.find(
-              (p) =>
-                (b.playerId && p.id === b.playerId) ||
-                p.gamertag.toLowerCase() === b.gamertag.toLowerCase(),
-            )
-            const num = pMatch?.shirt_number ?? b.shirtNumber ?? b.number ?? 12 + idx
-            return {
-              playerId: b.playerId ?? pMatch?.id ?? null,
-              gamertag: b.gamertag,
-              shirtNumber: num,
-              number: num,
-              position: b.position || b.role || 'SUB',
-              role: b.position || b.role || 'SUB',
-            }
-          })
-        : []
-      setBench(benchItems)
-
-      // Initialize saved payload reference so initial load does not trigger auto-save
-      lastSavedPayloadRef.current = JSON.stringify({
-        formation: fmtKey,
-        captainGamertag: initialCaptain,
-        starters: slots.map(([pos], idx) => {
-          const s = saved?.starters?.[idx]
-          if (s && s.gamertag) {
-            const pMatch = players.find(
-              (p) =>
-                (s.playerId && p.id === s.playerId) ||
-                p.gamertag.toLowerCase() === s.gamertag.toLowerCase(),
-            )
-            const num = pMatch?.shirt_number ?? s.shirtNumber ?? s.number ?? idx + 1
-            const isCap = Boolean(
-              s.isCaptain ||
-              (initialCaptain && s.gamertag.toLowerCase() === initialCaptain.toLowerCase()),
-            )
-            return {
-              position: pos,
-              role: pos,
-              playerId: s.playerId ?? pMatch?.id ?? null,
-              gamertag: s.gamertag,
-              shirtNumber: num,
-              number: num,
-              isCaptain: isCap,
-            }
-          }
-          return null
-        }),
-        bench: benchItems,
-      })
-      isInitializedRef.current = true
-    },
-    [],
-  )
-
-  const loadClub = useCallback(async () => {
-    try {
-      const data = await squad()
-      setMyClub(data.club)
-      setEditShortCode(data.club.short_code ?? '')
-      setSquadList(data.squad)
-      if (Array.isArray((data as any).managers)) {
-        setClubManagers((data as any).managers)
-      }
-      initLineupState(data.club, data.squad)
-    } catch {
-      setMyClub(null)
-      setSquadList([])
-    }
-  }, [initLineupState])
-
-  // Auto-save every action in starting XI and bench
-  useEffect(() => {
-    if (!myClub || !isInitializedRef.current) return
-
-    const currentPayload: ClubLineup = {
-      formation,
-      captainGamertag,
-      starters: starters.map((s) =>
-        s
-          ? {
-              ...s,
-              isCaptain: Boolean(
-                captainGamertag &&
-                  s.gamertag.toLowerCase() === captainGamertag.toLowerCase(),
-              ),
-            }
-          : null,
-      ),
-      bench,
-    }
-    const currentJson = JSON.stringify(currentPayload)
-
-    // Skip if nothing changed from last saved state
-    if (lastSavedPayloadRef.current === currentJson) {
-      return
-    }
-
-    setSaveStatus('saving')
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current)
-    }
-
-    saveTimeoutRef.current = setTimeout(async () => {
-      try {
-        await saveManagerLineup(currentPayload)
-        lastSavedPayloadRef.current = currentJson
-        setSaveStatus('saved')
-        if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
-        savedTimerRef.current = setTimeout(() => {
-          setSaveStatus((prev) => (prev === 'saved' ? 'idle' : prev))
-        }, 2200)
-      } catch (err) {
-        setSaveStatus('error')
-      }
-    }, 400)
-
-    return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current)
-      }
-    }
-  }, [formation, starters, bench, captainGamertag, myClub])
-
-  const loadOffers = useCallback(async () => {
-    try {
-      setOffers((await managerOffers()).offers)
-    } catch {
-      setOffers([])
-    }
-  }, [])
-
-  const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([])
-
-  const loadJoinRequests = useCallback(async () => {
-    try {
-      const data = await getManagerJoinRequests()
-      setJoinRequests(data.requests)
-    } catch {
-      setJoinRequests([])
-    }
-  }, [])
-
-  useEffect(() => {
-    void loadClub()
-    void loadOffers()
-    void loadJoinRequests()
-  }, [loadClub, loadOffers, loadJoinRequests])
-
-  const handleDecideJoinRequest = async (id: number, decision: 'accept' | 'reject') => {
+  // Club Identity form submit (Manager)
+  const handleSaveClubIdentity = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!myClub) return
     setBusy(true)
-    setNotice(null)
     try {
-      await decideJoinRequest(id, decision)
-      setNotice({
-        kind: 'ok',
-        text: decision === 'accept' ? 'Player accepted and added to your squad!' : 'Join request declined.',
+      const res = await updateManagerClub({
+        short_code: editShortCode.trim().toUpperCase() || undefined,
+        logo: clubLogoDraft,
       })
-      await Promise.all([loadClub(), loadJoinRequests()])
-      await refresh()
-    } catch (err: unknown) {
+      setMyClub(res.club)
+      setClubLogoDraft(null)
+      setNotice({ kind: 'ok', text: 'Club identity updated successfully.' })
+    } catch (err) {
       setNotice({ kind: 'error', text: msg(err) })
     } finally {
       setBusy(false)
     }
   }
 
-  const [showClaimSelf, setShowClaimSelf] = useState(false)
-  const [selfGamertag, setSelfGamertag] = useState(user?.gamertag || user?.name || '')
-  const [selfShirtNumber, setSelfShirtNumber] = useState('')
-  const [selfBusy, setSelfBusy] = useState(false)
+  // Save Manager Shirt Number handler (Fix Issue 6)
+  const handleSaveManagerShirt = async (e?: FormEvent) => {
+    if (e) e.preventDefault()
+    const raw = selfShirtNumber.trim()
+    const nextNum = raw === '' ? null : Number.parseInt(raw, 10)
+    if (nextNum !== null && (Number.isNaN(nextNum) || nextNum < 1 || nextNum > 99)) {
+      setNotice({ kind: 'error', text: 'Shirt number must be between 1 and 99.' })
+      return
+    }
+
+    const mySquadPlayer = squadList.find(
+      (p) =>
+        (user?.playerId && p.id === user.playerId) ||
+        (user?.id && (p as any).user_id === user.id) ||
+        Boolean(user?.gamertag && p.gamertag.toLowerCase() === user.gamertag.toLowerCase()),
+    )
+
+    setBusy(true)
+    try {
+      if (mySquadPlayer) {
+        await updateSquadPlayerShirt(mySquadPlayer.id, nextNum)
+      }
+      await updateMyPlayerProfile({ shirtNumber: nextNum }).catch(() => {})
+
+      setStarters((prev) =>
+        prev.map((s) => {
+          if (!s) return null
+          const isMe =
+            (mySquadPlayer && s.playerId === mySquadPlayer.id) ||
+            (user?.gamertag && s.gamertag.toLowerCase() === user.gamertag.toLowerCase())
+          if (isMe) {
+            return {
+              ...s,
+              shirtNumber: nextNum ?? s.shirtNumber,
+              number: nextNum ?? s.number,
+            }
+          }
+          return s
+        }),
+      )
+      setBench((prev) =>
+        prev.map((b) => {
+          const isMe =
+            (mySquadPlayer && b.playerId === mySquadPlayer.id) ||
+            (user?.gamertag && b.gamertag.toLowerCase() === user.gamertag.toLowerCase())
+          if (isMe) {
+            return {
+              ...b,
+              shirtNumber: nextNum ?? b.shirtNumber,
+              number: nextNum ?? b.number,
+            }
+          }
+          return b
+        }),
+      )
+
+      setNotice({ kind: 'ok', text: `Saved jersey number #${nextNum ?? '—'}.` })
+      await loadManagerData()
+    } catch (err) {
+      setNotice({ kind: 'error', text: msg(err) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // Save Player Shirt Number handler
+  const handleSavePlayerShirt = async (e?: FormEvent) => {
+    if (e) e.preventDefault()
+    const raw = myShirtNumber.trim()
+    const parsed = raw === '' ? null : Number.parseInt(raw, 10)
+    if (parsed !== null && (Number.isNaN(parsed) || parsed < 1 || parsed > 99)) {
+      setNotice({ kind: 'error', text: 'Shirt number must be between 1 and 99.' })
+      return
+    }
+    setBusy(true)
+    try {
+      await updateMyPlayerProfile({ shirtNumber: parsed })
+      setNotice({ kind: 'ok', text: `Saved jersey number #${parsed ?? '—'}.` })
+      await loadPlayerData()
+    } catch (err) {
+      setNotice({ kind: 'error', text: msg(err) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // Claim self into squad (Manager playing captain)
+  const handleClaimSelf = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!selfGamertag.trim()) return
+    setSelfBusy(true)
+    try {
+      const parsedShirt = selfShirtNumber.trim() ? Number(selfShirtNumber) : null
+      await createManagerSelfPlayer({
+        gamertag: selfGamertag.trim(),
+        shirtNumber: parsedShirt,
+        position: 'CM',
+      })
+      setNotice({ kind: 'ok', text: 'Added you to squad as Playing Captain.' })
+      await loadManagerData()
+    } catch (err) {
+      setNotice({ kind: 'error', text: msg(err) })
+    } finally {
+      setSelfBusy(false)
+    }
+  }
+
+  // Leave club handler (Player)
+  const handleLeaveClub = async () => {
+    if (!confirm('Are you sure you want to leave your club and become a free agent?')) return
+    setBusy(true)
+    try {
+      await leaveClub()
+      setNotice({ kind: 'ok', text: 'You have left the club.' })
+      await loadPlayerData()
+    } catch (err) {
+      setNotice({ kind: 'error', text: msg(err) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // Offer actions (Manager/Player)
+  const handleCancelOffer = async (offerId: number) => {
+    setBusy(true)
+    try {
+      await cancelOffer(offerId)
+      setNotice({ kind: 'ok', text: 'Offer cancelled.' })
+      if (isManager) await loadManagerData()
+      else await loadPlayerData()
+    } catch (err) {
+      setNotice({ kind: 'error', text: msg(err) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleDecideOffer = async (offerId: number, accept: boolean) => {
+    setBusy(true)
+    try {
+      await decideOffer(offerId, accept)
+      setNotice({ kind: 'ok', text: accept ? 'Offer accepted! Welcome to the team.' : 'Offer declined.' })
+      await loadPlayerData()
+    } catch (err) {
+      setNotice({ kind: 'error', text: msg(err) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // Join Request actions
+  const handleDecideJoinRequest = async (requestId: number, action: 'accept' | 'reject') => {
+    setBusy(true)
+    try {
+      await decideJoinRequest(requestId, action)
+      setNotice({ kind: 'ok', text: action === 'accept' ? 'Player signed to squad!' : 'Application declined.' })
+      await loadManagerData()
+    } catch (err) {
+      setNotice({ kind: 'error', text: msg(err) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleCancelJoinRequest = async (requestId: number) => {
+    setBusy(true)
+    try {
+      await cancelJoinRequest(requestId)
+      setNotice({ kind: 'ok', text: 'Application withdrawn.' })
+      await loadPlayerData()
+    } catch (err) {
+      setNotice({ kind: 'error', text: msg(err) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // Squad Release handler (Manager)
+  const handleReleasePlayer = async (pId: number, name: string) => {
+    if (!confirm(`Are you sure you want to release ${name} from your squad?`)) return
+    setBusy(true)
+    try {
+      await releaseSquadPlayer(pId)
+      setNotice({ kind: 'ok', text: `Released ${name} to free agency.` })
+      await loadManagerData()
+    } catch (err) {
+      setNotice({ kind: 'error', text: msg(err) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#08090c]">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/10 border-t-[#c4f82a]" />
+      </div>
+    )
+  }
 
   const isManagerInSquad = squadList.some(
     (p) =>
@@ -1112,1872 +1110,1833 @@ function ManagerPanel({ transferWindowOpen, maxSquadSize = 23 }: { transferWindo
       Boolean(user?.gamertag && p.gamertag.toLowerCase() === user.gamertag.toLowerCase()),
   )
 
-  const handleReleasePlayer = async (p: { id: number; gamertag: string; user_id?: number | null }) => {
-    const isSelf =
-      (user?.playerId && p.id === user.playerId) ||
-      (user?.id && p.user_id === user.id) ||
-      Boolean(user?.gamertag && p.gamertag.toLowerCase() === user.gamertag.toLowerCase())
-    const confirmMsg = isSelf
-      ? 'Are you sure you want to step down from the squad as Playing Captain? You will become a free agent.'
-      : `Are you sure you want to release ${p.gamertag} from your squad? They will become a free agent.`
-    if (!window.confirm(confirmMsg)) return
-
-    setBusy(true)
-    setNotice(null)
-    try {
-      await releaseSquadPlayer(p.id)
-      setNotice({
-        kind: 'ok',
-        text: isSelf
-          ? 'You have stepped down from the squad and are now a free agent.'
-          : `${p.gamertag} has been released and is now a free agent.`,
-      })
-      await loadClub()
-      await refresh()
-    } catch (err) {
-      setNotice({ kind: 'error', text: msg(err) })
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const handleClaimSelfPlayer = async (e: FormEvent) => {
-    e.preventDefault()
-    const cleanTag = selfGamertag.trim()
-    if (!cleanTag) return
-    setSelfBusy(true)
-    try {
-      const shirt = selfShirtNumber.trim() ? Number.parseInt(selfShirtNumber.trim(), 10) : undefined
-      await createManagerSelfPlayer({
-        gamertag: cleanTag,
-        shirtNumber: shirt,
-      })
-      setNotice({
-        kind: 'ok',
-        text: `You've joined ${myClub?.name || 'the squad'} as Playing Captain! You can now place yourself in the Starting XI.`,
-      })
-      setShowClaimSelf(false)
-      await loadClub()
-      await refresh()
-    } catch (err) {
-      setNotice({ kind: 'error', text: msg(err) })
-    } finally {
-      setSelfBusy(false)
-    }
-  }
-
-  const onCreateLogoPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    e.target.value = ''
-    if (!file) return
-    try {
-      const dataUrl = await compressClubLogo(file)
-      setClubLogoDraft(dataUrl)
-    } catch (err) {
-      setNotice({ kind: 'error', text: err instanceof Error ? err.message : 'Could not read image.' })
-    }
-  }
-
-  const onUpdateClubLogo = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    e.target.value = ''
-    if (!file) return
-    setBusy(true)
-    setNotice(null)
-    try {
-      const dataUrl = await compressClubLogo(file)
-      const res = await updateManagerClub({ logo: dataUrl })
-      setMyClub(res.club)
-      setNotice({ kind: 'ok', text: 'Club logo updated.' })
-    } catch (err) {
-      setNotice({ kind: 'error', text: msg(err) })
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const onRemoveClubLogo = async () => {
-    setBusy(true)
-    setNotice(null)
-    try {
-      const res = await updateManagerClub({ logo: null })
-      setMyClub(res.club)
-      setNotice({ kind: 'ok', text: 'Club logo removed.' })
-    } catch (err) {
-      setNotice({ kind: 'error', text: msg(err) })
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const onSaveShortCode = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setBusy(true)
-    setNotice(null)
-    try {
-      const res = await updateManagerClub({ shortCode: editShortCode.trim() || null })
-      setMyClub(res.club)
-      setEditShortCode(res.club.short_code ?? '')
-      setNotice({ kind: 'ok', text: 'Club short code saved.' })
-    } catch (err) {
-      setNotice({ kind: 'error', text: msg(err) })
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const onCreateClub = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setBusy(true)
-    setNotice(null)
-    try {
-      await createClub(clubName.trim(), {
-        shortCode: clubShortCode.trim() || undefined,
-        logo: clubLogoDraft,
-      })
-      setClubName('')
-      setClubShortCode('')
-      setClubLogoDraft(null)
-      setNotice({ kind: 'ok', text: 'Club created. An admin assigns it to a division before it can play.' })
-      await Promise.all([loadClub(), refresh()])
-    } catch (err) {
-      setNotice({ kind: 'error', text: msg(err) })
-    } finally {
-      setBusy(false)
-    }
-  }
-
-
-
-  const onCancel = async (id: number) => {
-    setBusy(true)
-    setNotice(null)
-    try {
-      await cancelOffer(id)
-      void loadOffers()
-    } catch (err) {
-      setNotice({ kind: 'error', text: msg(err) })
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const pending = offers.filter((o) => o.status === 'pending')
-  const settled = offers.filter((o) => o.status !== 'pending')
-
-  if (!user?.clubId) {
-    return (
-      <section className={card}>
-        <PanelHead label="Your club" title="Create your club" />
-        <p className="mb-4 ">
-          A club is created active but sits outside every division until a league admin assigns
-          it. It will not appear in the standings until then.
-        </p>
-        <form onSubmit={onCreateClub} className="space-y-4">
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <input
-              value={clubName}
-              onChange={(e) => setClubName(e.target.value)}
-              placeholder="Enter your club name"
-              required
-              maxLength={120}
-              className={field}
-            />
-            <input
-              value={clubShortCode}
-              onChange={(e) => setClubShortCode(e.target.value.toUpperCase())}
-              placeholder="Short code (optional)"
-              maxLength={8}
-              className={cx(field, 'sm:w-48 uppercase')}
-            />
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg)] p-3">
-            <img
-              src={clubLogoDraft || CLUB_PLACEHOLDER}
-              alt="Club crest preview"
-              className="h-12 w-12 rounded-lg border border-[var(--border)] object-contain p-1"
-            />
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-semibold text-[var(--text-strong)]">
-                {clubLogoDraft ? 'Club logo ready' : 'Upload club logo (optional)'}
-              </p>
-              <p className="text-[11px] text-[var(--text-faint)]">
-                PNG, JPG, WebP or SVG crest image
-              </p>
-            </div>
-            <input
-              ref={createLogoRef}
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/svg+xml"
-              onChange={(e) => void onCreateLogoPick(e)}
-              className="hidden"
-            />
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => createLogoRef.current?.click()}
-            >
-              {clubLogoDraft ? 'Change logo' : 'Upload logo'}
-            </Button>
-            {clubLogoDraft && (
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={() => setClubLogoDraft(null)}
-              >
-                Remove
-              </Button>
-            )}
-          </div>
-
-          <Button type="submit" disabled={busy || !clubName.trim()}>
-            {busy ? 'Creating…' : 'Create club'}
-          </Button>
-        </form>
-        <div className="mt-4">
-          <Notice {...(notice ?? { kind: 'ok', text: null })} />
-        </div>
-      </section>
-    )
-  }
+  const activeUserShirt = isManager
+    ? (selfShirtNumber || myShirtNumber || '29')
+    : (myShirtNumber || '10')
 
   return (
-    <div className="space-y-8">
-      <Notice {...(notice ?? { kind: 'ok', text: null })} />
-      <TransferWindowClosedBanner open={transferWindowOpen} />
-
-      {/* ---- approval status ---- */}
-      {user.clubStatus === 'pending' && (
-        <section className={card}>
-          <PanelHead label="Approval" title="Waiting for league admin" />
-          <p className={prose}>
-            <strong className="text-[var(--text)]">{user.clubName}</strong> has been submitted and
-            is waiting to be approved. It is not on the public site yet and cannot play fixtures
-            until it is. You can carry on signing players below in the meantime — a squad can be
-            built before the club is approved.
-          </p>
-        </section>
-      )}
-
-      {user.clubStatus === 'withdrawn' && (
-        <section className={card}>
-          <PanelHead label="Approval" title="Club not approved" />
-          <p className={prose}>
-            <strong className="text-[var(--text)]">{user.clubName}</strong> was not approved. Create
-            another club from this dashboard if you want to apply again.
-          </p>
-        </section>
-      )}
-
-      {/* ---- club identity & logo ---- */}
-      <section className={card}>
-        <PanelHead
-          label="Club identity"
-          title={myClub?.name ?? user.clubName ?? 'Your club'}
-          action={
-            myClub?.slug && user.clubStatus === 'active' ? (
-              <ButtonLink to={`/clubs/${myClub.slug}`} variant="outline" size="sm">
-                Club page
-              </ButtonLink>
-            ) : undefined
-          }
-        />
-        <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-          <div className="flex items-center gap-4">
-            <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[var(--border-strong)] bg-[var(--bg)] p-1.5">
+    <div className="min-h-screen bg-[#08090c] text-slate-100 selection:bg-[#c4f82a] selection:text-black">
+      {/* ---------------- FIX ISSUE 3: Compact Top HUD Header into 1 Single Row ---------------- */}
+      <header className="sticky top-16 lg:top-[72px] z-30 backdrop-blur-md bg-[#08090c]/90 border-b border-white/[0.08] transition-all">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-2 sm:px-6">
+          {/* Left: Club Crest + Name + Role */}
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="relative grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-xl border border-white/10 bg-black/40 p-1 shadow-inner">
               <img
-                src={myClub?.logo_local || myClub?.logo_url || CLUB_PLACEHOLDER}
-                alt={myClub?.name || 'Club logo'}
+                src={clubCrest}
+                alt=""
+                onError={(e) => {
+                  e.currentTarget.src = CLUB_PLACEHOLDER
+                }}
                 className="h-full w-full object-contain"
               />
             </div>
-            <div>
-              <p className="text-xs font-semibold text-[var(--text-strong)]">Club crest / logo</p>
-              <p className="mt-0.5 text-[12px] text-[var(--text-muted)]">
-                Shown on standings tables, fixtures, and your club profile.
-              </p>
-              <div className="mt-2.5 flex flex-wrap gap-2">
-                <input
-                  ref={editLogoRef}
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp,image/svg+xml"
-                  onChange={(e) => void onUpdateClubLogo(e)}
-                  className="hidden"
-                />
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={busy}
-                  onClick={() => editLogoRef.current?.click()}
-                >
-                  {myClub?.logo_local || myClub?.logo_url ? 'Change logo' : 'Upload logo'}
-                </Button>
-                {(myClub?.logo_local || myClub?.logo_url) && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    disabled={busy}
-                    onClick={() => void onRemoveClubLogo()}
-                  >
-                    Remove logo
-                  </Button>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <span className="truncate font-display text-sm font-black uppercase tracking-wider text-white">
+                  {myClub?.name || 'FREE AGENT'}
+                </span>
+                {myClub && (
+                  <span className="rounded bg-white/10 px-1.5 py-0.2 text-[9px] font-black uppercase tracking-wider text-slate-300">
+                    {clubShortCode}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5">
+                {isManager ? (
+                  <span className="inline-flex items-center gap-1 rounded bg-[#c4f82a]/15 px-1.5 py-0.2 text-[9px] font-black uppercase tracking-wider text-[#c4f82a] border border-[#c4f82a]/30">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#c4f82a] animate-pulse" />
+                    Manager Hub
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 rounded bg-sky-500/15 px-1.5 py-0.2 text-[9px] font-black uppercase tracking-wider text-sky-400 border border-sky-500/30">
+                    Player Hub {myShirtNumber ? `• #${myShirtNumber}` : ''}
+                  </span>
+                )}
+                {userMatchdayStatus.type !== 'unknown' && !isManager && (
+                  <span className="hidden sm:inline text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                    • {userMatchdayStatus.label}
+                  </span>
                 )}
               </div>
             </div>
           </div>
 
-          <form onSubmit={onSaveShortCode} className="flex items-end gap-2 sm:ml-auto">
-            <div>
-              <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-[var(--text-faint)]">
-                Short code
-              </label>
-              <input
-                value={editShortCode}
-                onChange={(e) => setEditShortCode(e.target.value.toUpperCase())}
-                placeholder="3-letter code"
-                maxLength={8}
-                className={cx(field, 'w-36 uppercase')}
-              />
+          {/* Center: Game Mode Nav Tabs with sleek segmented pill indicators */}
+          <nav className="flex items-center overflow-x-auto py-1 scrollbar-none">
+            <div className="inline-flex items-center gap-1 rounded-full bg-black/60 p-1 border border-white/10">
+              {[
+                { id: 'central', label: 'CENTRAL' },
+                { id: 'tactics', label: 'TACTICS & SQUAD' },
+                { id: 'transfers', label: 'TRANSFERS & INBOX', count: unreadTransfersCount },
+                { id: 'calendar', label: 'CALENDAR' },
+                { id: 'settings', label: 'CLUB & PRO SETTINGS' },
+              ].map((t) => {
+                const active = activeTab === t.id
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setActiveTab(t.id as HubTab)}
+                    className={cx(
+                      'flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-semibold transition-all whitespace-nowrap',
+                      active
+                        ? 'bg-[#CCFF00] text-black font-bold shadow-sm'
+                        : 'text-slate-400 hover:text-white hover:bg-white/5',
+                    )}
+                  >
+                    {t.label}
+                    {Boolean(t.count) && (
+                      <span
+                        className={cx(
+                          'grid h-4 min-w-[16px] place-items-center rounded-full px-1 text-[9px] font-black',
+                          active ? 'bg-black text-[#CCFF00]' : 'bg-[#CCFF00] text-black',
+                        )}
+                      >
+                        {t.count}
+                      </span>
+                    )}
+                  </button>
+                )
+              })}
             </div>
-            <Button type="submit" size="sm" variant="outline" disabled={busy}>
-              Save
-            </Button>
-          </form>
-        </div>
-      </section>
+          </nav>
 
-      {/* ---- club fixture calendar ---- */}
-      <ClubFixtureCalendar
-        clubSlug={myClub?.slug}
-        clubName={myClub?.name ?? user.clubName}
-      />
-
-      {/* ---- starting xi & lineup ---- */}
-      <section className={card}>
-        <PanelHead
-          label="Lineup & formation"
-          title="Starting XI & Bench"
-          action={
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                value={formation}
-                onChange={(e) => {
-                  const nextFmt = e.target.value
-                  const slots = (FORMATIONS[nextFmt] || FORMATIONS['4-3-3']).slots
-                  setFormation(nextFmt)
-                  setStarters((prev) =>
-                    slots.map(([pos], idx) =>
-                      prev[idx] ? { ...prev[idx]!, position: pos, role: pos } : null,
-                    ),
-                  )
-                }}
-                className="h-9 rounded-lg border border-[var(--border-strong)] bg-[var(--bg)] px-2.5 text-xs font-bold text-[var(--text-strong)]"
-              >
-                {Object.keys(FORMATIONS).map((fmt) => (
-                  <option key={fmt} value={fmt} className="bg-[#12151a] text-white">
-                    Formation: {fmt}
-                  </option>
-                ))}
-              </select>
-              <Button
-                type="button"
-                size="sm"
+          {/* Right: Squad Capacity + Public Link + Settings Icon */}
+          <div className="flex items-center gap-2 shrink-0">
+            {isManager && myClub && (
+              <span className="hidden rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 font-mono text-[11px] font-bold text-slate-300 xl:inline-block">
+                {squadList.length} / {maxSquadSize} Players
+              </span>
+            )}
+            {myClub && (
+              <ButtonLink
+                to={`/clubs/${myClub.slug}`}
                 variant="outline"
-                disabled={busy || squadList.length === 0}
-                onClick={() => {
-                  const slots = (FORMATIONS[formation] || FORMATIONS['4-3-3']).slots
-                  setStarters(
-                    slots.map(([pos], idx) => {
-                      const p = squadList[idx]
-                      if (!p) return null
-                      const num = p.shirt_number ?? idx + 1
-                      return {
-                        position: pos,
-                        role: pos,
-                        playerId: p.id,
-                        gamertag: p.gamertag,
-                        shirtNumber: num,
-                        number: num,
-                      }
-                    }),
-                  )
-                  setBench(
-                    squadList.slice(11).map((p, idx) => ({
-                      playerId: p.id,
-                      gamertag: p.gamertag,
-                      shirtNumber: p.shirt_number ?? 12 + idx,
-                      number: p.shirt_number ?? 12 + idx,
-                      position: 'SUB',
-                      role: 'SUB',
-                    })),
-                  )
-                }}
+                size="sm"
+                className="h-8 gap-1 border-white/10 text-xs font-bold hover:border-white/20 px-2.5"
               >
-                Auto-fill from squad
-              </Button>
-              {saveStatus === 'saving' && (
-                <span className="flex items-center gap-1.5 rounded-full bg-amber-500/15 border border-amber-500/30 px-2.5 py-1 text-xs font-bold text-amber-400">
-                  <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                  Saving…
-                </span>
-              )}
-              {saveStatus === 'saved' && (
-                <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-1 text-xs font-bold text-emerald-400">
-                  <span>✓</span> Auto-saved
-                </span>
-              )}
-              {saveStatus === 'error' && (
-                <span className="flex items-center gap-1 rounded-full bg-rose-500/15 border border-rose-500/30 px-2.5 py-1 text-xs font-bold text-rose-400">
-                  <span>⚠</span> Save failed
-                </span>
-              )}
-            </div>
-          }
-        />
-
-        <div className="space-y-6">
-          <div className="mx-auto w-full max-w-[520px]">
-            <Pitch
-              home
-              squad={
-                buildSquadFromLineup(
-                  {
-                    formation,
-                    captainGamertag,
-                    starters: starters.map((s) =>
-                      s
-                        ? {
-                            ...s,
-                            isCaptain: Boolean(
-                              captainGamertag &&
-                                s.gamertag.toLowerCase() === captainGamertag.toLowerCase(),
-                            ),
-                          }
-                        : null,
-                    ),
-                    bench,
-                  },
-                  user?.name,
-                ) ?? {
-                  formation,
-                  manager: user?.name || 'Club Manager',
-                  starters: (FORMATIONS[formation] || FORMATIONS['4-3-3']).slots.map(
-                    ([role, x, y], idx) => ({
-                      number: idx + 1,
-                      name: 'Unassigned',
-                      role,
-                      x,
-                      y,
-                    }),
-                  ),
-                  bench: [],
-                }
-              }
-              activeSlotIndex={activeSlotIdx}
-              onSelectSlot={(idx) => {
-                if (activeSlotIdx === idx) {
-                  setActiveSlotIdx(null)
-                  setSlotSearch('')
-                } else {
-                  setActiveSlotIdx(idx)
-                  setSlotSearch('')
-                }
-              }}
+                <span>Club Page</span>
+                <span className="text-[10px]">↗</span>
+              </ButtonLink>
+            )}
+            <button
+              type="button"
+              onClick={() => setShowSettingsModal(true)}
+              className="grid h-8 w-8 place-items-center rounded-lg border border-white/10 bg-white/[0.04] text-slate-300 transition hover:bg-white/10 hover:text-white"
+              title="Account Settings"
             >
-              {activeSlotIdx !== null && (
-                <>
-                  <div
-                    className="fixed inset-0 z-[20] bg-black/35 cursor-default transition-opacity"
-                    onClick={() => {
-                      setActiveSlotIdx(null)
-                      setSlotSearch('')
-                    }}
-                  />
-                  {(() => {
-                    const slots = (FORMATIONS[formation] || FORMATIONS['4-3-3']).slots
-                    const activeCoord = slots[activeSlotIdx]
-                    if (!activeCoord) return null
-                    const [pos, x, y] = activeCoord
-                    const currentSlot = starters[activeSlotIdx]
-                    const q = slotSearch.trim().toLowerCase()
-                    const filtered = squadList.filter((p) =>
-                      q ? p.gamertag.toLowerCase().includes(q) : true,
-                    )
-                    const openAbove = y > 54
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* Global Alerts / Notices */}
+      {notice && (
+        <div className="mx-auto max-w-7xl px-4 pt-3 sm:px-6">
+          <div
+            className={cx(
+              'flex items-center justify-between gap-3 rounded-xl px-4 py-2.5 text-xs font-semibold shadow-lg',
+              notice.kind === 'ok'
+                ? 'border border-[#c4f82a]/30 bg-[#c4f82a]/10 text-[#c4f82a]'
+                : 'border border-red-500/30 bg-red-500/10 text-red-300',
+            )}
+          >
+            <span>{notice.text}</span>
+            <button
+              type="button"
+              onClick={() => setNotice(null)}
+              className="text-white/60 hover:text-white"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Main Command Workspace */}
+      <main className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:py-6">
+        {/* ================================================================= TAB 1: CENTRAL */}
+        {activeTab === 'central' && (
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+            {/* LEFT COLUMN (Col-span 7): Stacked Matchday Broadcast + Fixture Run-In */}
+            <div className="col-span-1 lg:col-span-7 flex flex-col gap-6">
+              {/* Tile A: Next Matchday Broadcast Card (Sleek Compact Horizontal Banner) */}
+              <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#0f1015]/95 to-[#090a0d]/98 p-5 shadow-xl sm:p-6 backdrop-blur-md">
+                <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-2 w-2 rounded-full bg-[#c4f82a] animate-pulse" />
+                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
+                      Matchday Broadcast
+                    </span>
+                  </div>
+                  {nextMatch && (
+                    <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-slate-300">
+                      Game Week {nextMatch.roundNumber ?? 1}
+                    </span>
+                  )}
+                </div>
+
+                {nextMatch ? (
+                  (() => {
+                    const ctx = getFixtureContext(nextMatch)
+                    const homeLogo = ctx.isHome ? (clubCrest || ctx.myLogo) : (ctx.oppLogo || CLUB_PLACEHOLDER)
+                    const awayLogo = !ctx.isHome ? (clubCrest || ctx.myLogo) : (ctx.oppLogo || CLUB_PLACEHOLDER)
 
                     return (
-                      <div
-                        ref={pickerRef}
-                        className="absolute z-[30] w-[min(296px,calc(100%-16px))] -translate-x-1/2 overflow-hidden rounded-xl border border-[#c8ff3d]/45 bg-[#0c1014]/95 shadow-[0_20px_44px_rgba(0,0,0,0.8)] backdrop-blur-md"
-                        style={{
-                          left: `clamp(156px, ${x}%, calc(100% - 156px))`,
-                          ...(openAbove
-                            ? { bottom: `${Math.max(6, 100 - y + 7)}%` }
-                            : { top: `${Math.min(62, y + 7)}%` }),
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {/* Header */}
-                        <div className="flex items-center justify-between gap-2 border-b border-white/10 bg-white/[0.03] px-3 py-2">
-                          <div className="flex min-w-0 flex-1 items-center gap-2">
-                            <span className="shrink-0 rounded bg-[#c8ff3d] px-1.5 py-0.5 font-mono text-[10.5px] font-black text-[#0b0f05]">
-                              {pos}
-                            </span>
-                            <strong className="truncate text-xs font-bold text-white">
-                              {currentSlot ? currentSlot.gamertag : 'Empty Position'}
-                            </strong>
-                          </div>
-                          <div className="flex shrink-0 items-center gap-1.5">
-                            {currentSlot && (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setCaptainGamertag((prev) =>
-                                      prev && prev.toLowerCase() === currentSlot.gamertag.toLowerCase()
-                                        ? null
-                                        : currentSlot.gamertag,
-                                    )
-                                  }}
-                                  className={cx(
-                                    'h-6 rounded px-2 text-[10.5px] font-bold transition flex items-center gap-1',
-                                    captainGamertag && captainGamertag.toLowerCase() === currentSlot.gamertag.toLowerCase()
-                                      ? 'bg-amber-400 text-black font-extrabold shadow-sm'
-                                      : 'bg-white/10 text-white/70 hover:bg-white/20 hover:text-white',
-                                  )}
-                                  title={
-                                    captainGamertag && captainGamertag.toLowerCase() === currentSlot.gamertag.toLowerCase()
-                                      ? 'Remove Captain'
-                                      : 'Set as Captain'
-                                  }
-                                >
-                                  <span>©</span>
-                                  <span>Captain</span>
-                                </button>
-                                <label
-                                  className="inline-flex h-6 items-center gap-0.5 rounded border border-white/20 bg-black/50 px-1.5 font-mono text-[11px] font-extrabold text-[#c8ff3d]"
-                                  title="Jersey Number (1–99)"
-                                >
-                                  <span>#</span>
-                                  <input
-                                    type="number"
-                                    min={1}
-                                    max={99}
-                                    value={currentSlot.shirtNumber ?? currentSlot.number ?? ''}
-                                    onChange={(e) => {
-                                      const val = e.target.value ? Number(e.target.value) : null
-                                      if (val != null && val >= 1 && val <= 99) {
-                                        setStarters((prev) => {
-                                          const next = [...prev]
-                                          if (next[activeSlotIdx]) {
-                                            next[activeSlotIdx] = {
-                                              ...next[activeSlotIdx]!,
-                                              shirtNumber: val,
-                                              number: val,
-                                            }
-                                          }
-                                          return next
-                                        })
-                                      }
-                                    }}
-                                    className="w-7 bg-transparent text-center font-mono text-[11px] font-extrabold text-white outline-none"
-                                  />
-                                </label>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (
-                                      captainGamertag &&
-                                      currentSlot.gamertag.toLowerCase() === captainGamertag.toLowerCase()
-                                    ) {
-                                      setCaptainGamertag(null)
-                                    }
-                                    setStarters((prev) => {
-                                      const next = [...prev]
-                                      next[activeSlotIdx] = null
-                                      return next
-                                    })
-                                  }}
-                                  className="h-6 rounded border border-red-400/35 bg-red-500/15 px-2 text-[10px] font-bold text-red-300 hover:bg-red-500/25 hover:text-white"
-                                >
-                                  Clear
-                                </button>
-                              </>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setActiveSlotIdx(null)
-                                setSlotSearch('')
+                      <div className="my-3">
+                        <div className="flex items-center justify-between gap-4">
+                          {/* Home Side */}
+                          <div className="flex flex-1 flex-col items-center text-center">
+                            <img
+                              src={homeLogo}
+                              alt=""
+                              onError={(e) => {
+                                e.currentTarget.src = CLUB_PLACEHOLDER
                               }}
-                              className="grid h-6 w-6 place-items-center rounded bg-white/10 text-sm text-white/75 hover:bg-white/20 hover:text-white"
-                              aria-label="Close picker"
-                            >
-                              ×
-                            </button>
+                              className="h-20 w-20 object-contain drop-shadow-md"
+                            />
+                            <p className="mt-2 text-sm font-black uppercase tracking-wider text-white sm:text-base">
+                              {stripFlag(nextMatch.home)}
+                            </p>
+                            <span className="text-[10px] font-bold uppercase text-slate-400">HOME</span>
+                          </div>
+
+                          {/* Middle VS & Kickoff */}
+                          <div className="flex flex-col items-center text-center shrink-0">
+                            <span className="rounded-lg bg-black/60 px-3.5 py-1 font-display text-sm font-black text-slate-300 border border-white/10">
+                              VS
+                            </span>
+                            <span className="mt-2 text-xs font-black text-[#c4f82a]">
+                              {nextMatch.time || 'Kick-off TBD'}
+                            </span>
+                            <span className="text-[10px] text-slate-400">
+                              {nextMatch.date || 'Date Unscheduled'}
+                            </span>
+                          </div>
+
+                          {/* Away Side */}
+                          <div className="flex flex-1 flex-col items-center text-center">
+                            <img
+                              src={awayLogo}
+                              alt=""
+                              onError={(e) => {
+                                e.currentTarget.src = CLUB_PLACEHOLDER
+                              }}
+                              className="h-20 w-20 object-contain drop-shadow-md"
+                            />
+                            <p className="mt-2 text-sm font-black uppercase tracking-wider text-white sm:text-base">
+                              {stripFlag(nextMatch.away)}
+                            </p>
+                            <span className="text-[10px] font-bold uppercase text-slate-400">AWAY</span>
                           </div>
                         </div>
 
-                        {/* Search input */}
-                        <div className="border-b border-white/10 p-2">
-                          <input
-                            type="search"
-                            autoFocus
-                            value={slotSearch}
-                            onChange={(e) => setSlotSearch(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Escape') {
-                                setActiveSlotIdx(null)
-                                setSlotSearch('')
-                              } else if (e.key === 'Enter' && filtered.length > 0) {
-                                e.preventDefault()
-                                assignOrSwapSlot(activeSlotIdx, filtered[0])
-                              }
-                            }}
-                            placeholder="Search squad player…"
-                            className="h-8 w-full rounded-lg border border-white/20 bg-black/55 px-2.5 text-xs text-white placeholder:text-white/45 focus:border-[#c8ff3d] focus:outline-none"
-                          />
-                        </div>
-
-                        {/* Player list */}
-                        <div className="max-h-44 space-y-1 overflow-y-auto p-1.5">
-                          {filtered.length === 0 ? (
-                            <p className="px-2 py-3 text-center text-[11px] text-white/60">
-                              {squadList.length === 0
-                                ? 'No signed squad players yet. Sign players below first.'
-                                : 'No squad players match your search.'}
-                            </p>
-                          ) : (
-                            filtered.map((p, pIdx) => {
-                              const isCurrent =
-                                currentSlot?.gamertag.toLowerCase() === p.gamertag.toLowerCase()
-                              const otherIdx = starters.findIndex(
-                                (s, idx) =>
-                                  idx !== activeSlotIdx &&
-                                  s &&
-                                  s.gamertag.toLowerCase() === p.gamertag.toLowerCase(),
-                              )
-                              const otherPos = otherIdx !== -1 ? slots[otherIdx]?.[0] : null
-                              const isOnBench = bench.some(
-                                (b) => b.gamertag.toLowerCase() === p.gamertag.toLowerCase(),
-                              )
-                              const displayNum =
-                                (isCurrent
-                                  ? currentSlot?.shirtNumber ?? currentSlot?.number
-                                  : null) ??
-                                (otherIdx !== -1
-                                  ? starters[otherIdx]?.shirtNumber ?? starters[otherIdx]?.number
-                                  : null) ??
-                                p.shirt_number ??
-                                pIdx + 1
-
-                              return (
-                                <button
-                                  key={p.id}
-                                  type="button"
-                                  onClick={() => assignOrSwapSlot(activeSlotIdx, p)}
-                                  className={cx(
-                                    'flex w-full items-center gap-2 rounded-lg border px-2 py-1.5 text-left text-xs transition',
-                                    isCurrent
-                                      ? 'border-[#c8ff3d]/45 bg-[#c8ff3d]/15 text-white'
-                                      : 'border-transparent text-white hover:border-white/15 hover:bg-white/10',
-                                  )}
-                                >
-                                  <span className="min-w-[28px] rounded bg-white/10 px-1.5 py-0.5 text-center font-mono text-[10.5px] font-extrabold text-[#c8ff3d]">
-                                    #{displayNum}
-                                  </span>
-                                  <span className="min-w-0 flex-1 truncate font-semibold">
-                                    {p.gamertag}
-                                  </span>
-                                  {isCurrent ? (
-                                    <span className="rounded bg-[#c8ff3d] px-1.5 py-0.5 text-[10px] font-bold text-[#0b0f05]">
-                                      ✓ Current
-                                    </span>
-                                  ) : otherPos ? (
-                                    <span className="rounded border border-sky-400/35 bg-sky-400/15 px-1.5 py-0.5 text-[10px] font-bold text-sky-300">
-                                      ⇄ Swap {otherPos}
-                                    </span>
-                                  ) : isOnBench ? (
-                                    <span className="rounded border border-amber-400/35 bg-amber-400/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-300">
-                                      ↑ From Bench
-                                    </span>
-                                  ) : (
-                                    <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-bold text-white/75">
-                                      Assign
-                                    </span>
-                                  )}
-                                </button>
-                              )
-                            })
-                          )}
+                        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.08] pt-3.5">
+                          <ButtonLink
+                            to={`/matches/${nextMatch.id}`}
+                            size="md"
+                            className="bg-[#c4f82a] text-black font-black uppercase tracking-wider hover:bg-[#b0df24] shadow-[0_0_15px_rgba(196,248,42,0.3)] text-xs"
+                          >
+                            Match Center →
+                          </ButtonLink>
+                          <button
+                            type="button"
+                            onClick={() => setActiveTab('calendar')}
+                            className="text-xs font-bold text-slate-400 hover:text-white transition"
+                          >
+                            Full Schedule (Calendar) →
+                          </button>
                         </div>
                       </div>
                     )
-                  })()}
-                </>
-              )}
-            </Pitch>
-            <p className="mt-2.5 text-center text-xs leading-relaxed text-[var(--text-faint)]">
-              Click any jersey on the pitch to open the smart player dropdown — search your squad,
-              swap positions, or edit jersey numbers directly on the field. All changes auto-save.
-            </p>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2 items-stretch">
-            {/* Bench / Substitutes */}
-            <div className="flex flex-col h-[360px] rounded-xl border border-[var(--border)] bg-[var(--bg)] p-3.5">
-              <div className="mb-2.5 flex items-center justify-between shrink-0">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-faint)]">
-                  Bench / Substitutes ({bench.length})
-                </p>
-                <select
-                  value=""
-                  onChange={(e) => {
-                    const tag = e.target.value
-                    if (!tag) return
-                    const p = squadList.find((sp) => sp.gamertag === tag)
-                    if (!p) return
-                    if (bench.some((b) => b.gamertag.toLowerCase() === tag.toLowerCase())) return
-                    setBench((prev) => [
-                      ...prev,
-                      {
-                        playerId: p.id,
-                        gamertag: p.gamertag,
-                        shirtNumber: p.shirt_number ?? 12 + prev.length,
-                        position: 'SUB',
-                      },
-                    ])
-                  }}
-                  className="h-7 rounded border border-[var(--border-strong)] bg-[var(--surface)] px-2 text-[11px] font-semibold text-[var(--text-strong)]"
-                >
-                  <option value="" className="bg-[#12151a] text-white">+ Add Substitute…</option>
-                  {squadList.map((p) => (
-                    <option key={p.id} value={p.gamertag} className="bg-[#12151a] text-white">
-                      {p.gamertag}
-                    </option>
-                  ))}
-                </select>
+                  })()
+                ) : (
+                  <div className="my-6 text-center">
+                    <p className="text-base font-bold text-white">No Upcoming Match Scheduled</p>
+                    <p className="mt-1 text-xs text-slate-400">
+                      Once league administration publishes your next Game Week fixture, it will broadcast here.
+                    </p>
+                  </div>
+                )}
               </div>
-              {bench.length === 0 ? (
-                <div className="flex flex-1 items-center justify-center p-4">
-                  <p className="text-xs text-[var(--text-faint)]">No substitutes added yet.</p>
+
+              {/* Tile D: Upcoming Run-In Strip (Stacked under Broadcast) */}
+              <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#0f1015]/95 to-[#090a0d]/98 p-5 shadow-xl sm:p-6 backdrop-blur-md">
+                <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
+                    Fixture Run-In
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('calendar')}
+                    className="text-[11px] font-bold text-slate-400 hover:text-white"
+                  >
+                    View All ({upcomingMatches.length}) →
+                  </button>
                 </div>
-              ) : (
-                <ul className="scroll-slim flex-1 space-y-1.5 overflow-y-auto pr-1">
-                  {bench.map((b, bIdx) => (
-                    <li
-                      key={`${b.gamertag}-${bIdx}`}
-                      className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-xs"
+
+                {runInMatches.length > 0 ? (
+                  <div className="my-3 grid gap-3 sm:grid-cols-3">
+                    {runInMatches.map((m) => {
+                      const ctx = getFixtureContext(m)
+                      return (
+                        <Link
+                          key={m.id}
+                          to={m.id ? `/matches/${m.id}` : '/matches'}
+                          className="group flex flex-col justify-between rounded-xl border border-white/5 bg-black/40 p-3.5 transition hover:border-[#c4f82a]/40 hover:bg-black/60"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-black uppercase text-slate-400">
+                              GW {m.roundNumber ?? '—'}
+                            </span>
+                            <span
+                              className={cx(
+                                'rounded px-1.5 py-0.2 text-[9px] font-black uppercase',
+                                ctx.isHome
+                                  ? 'bg-emerald-500/20 text-emerald-300'
+                                  : 'bg-sky-500/20 text-sky-300',
+                              )}
+                            >
+                              {ctx.isHome ? 'HOME' : 'AWAY'}
+                            </span>
+                          </div>
+
+                          <div className="my-2 flex items-center gap-2.5">
+                            <img
+                              src={ctx.oppLogo || CLUB_PLACEHOLDER}
+                              alt=""
+                              onError={(e) => {
+                                e.currentTarget.src = CLUB_PLACEHOLDER
+                              }}
+                              className="h-8 w-8 object-contain"
+                            />
+                            <p className="truncate text-xs font-black text-white group-hover:text-[#c4f82a]">
+                              vs {ctx.opponent}
+                            </p>
+                          </div>
+
+                          <span className="text-[10px] text-slate-400">
+                            {m.time ? `${m.date || ''} • ${m.time}` : 'Kick-off TBD'}
+                          </span>
+                        </Link>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <p className="py-6 text-center text-xs text-slate-400">
+                    No upcoming fixtures in the schedule run-in.
+                  </p>
+                )}
+
+                <div className="border-t border-white/[0.08] pt-2.5 flex items-center justify-between text-[11px] text-slate-400">
+                  <span>Completed Matches: {completedMatches.length}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setListMode('results')
+                      setActiveTab('calendar')
+                    }}
+                    className="font-bold text-slate-300 hover:text-white"
+                  >
+                    Past Results →
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* RIGHT COLUMN (Col-span 5): Stacked Tactical Snapshot + Transfer Desk */}
+            <div className="col-span-1 lg:col-span-5 flex flex-col gap-6">
+              {/* Tile B: Tactical Pitch Snapshot with user spotlight (Issue 4 fix: pb-3 & clean spacing) */}
+              <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#0f1015]/95 to-[#090a0d]/98 p-5 shadow-xl sm:p-6 backdrop-blur-md">
+                <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
+                      Tactical Snapshot
+                    </span>
+                    <span className="rounded bg-white/10 px-1.5 py-0.2 text-[9px] font-black uppercase text-slate-300">
+                      {formation}
+                    </span>
+                  </div>
+                  <span
+                    className={cx(
+                      'rounded-full px-2 py-0.5 text-[9.5px] font-black uppercase tracking-wider',
+                      userMatchdayStatus.type === 'starting'
+                        ? 'bg-[#c4f82a]/20 text-[#c4f82a] border border-[#c4f82a]/30'
+                        : userMatchdayStatus.type === 'bench'
+                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                          : 'bg-white/10 text-slate-300',
+                    )}
+                  >
+                    {userMatchdayStatus.label}
+                  </span>
+                </div>
+
+                <div className="relative mx-auto my-2 w-full max-w-[340px] pb-3">
+                  <Pitch
+                    home
+                    squad={tacticalSquad}
+                    activeSlotIndex={userMatchdayStatus.slotIdx}
+                    onSelectSlot={undefined}
+                    className="min-h-[440px]"
+                  />
+                </div>
+
+                <div className="mt-2 flex items-center justify-between border-t border-white/[0.08] pt-2.5 text-[11px] text-slate-400">
+                  <span>11 Starters • {bench.length} Subs</span>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('tactics')}
+                    className="font-bold text-[#c4f82a] hover:underline"
+                  >
+                    Full Board ↗
+                  </button>
+                </div>
+              </div>
+
+              {/* Tile C: Transfer Desk / My Pro Contract Card */}
+              <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#0f1015]/95 to-[#090a0d]/98 p-5 shadow-xl sm:p-6 backdrop-blur-md">
+                <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
+                    {isManager ? 'Transfer Desk' : 'My Pro Contract'}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('transfers')}
+                    className="text-[11px] font-bold text-slate-400 hover:text-white"
+                  >
+                    Center →
+                  </button>
+                </div>
+
+                {isManager ? (
+                  <div className="my-3 space-y-3">
+                    <div className="flex items-center justify-between rounded-xl bg-black/40 p-3 border border-white/5">
+                      <div>
+                        <p className="text-xs font-bold text-white">Join Requests</p>
+                        <p className="text-[11px] text-slate-400">
+                          {managerJoinRequests.filter((r) => r.status === 'pending').length} pending applications
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('transfers')}
+                        className="rounded-lg bg-white/10 px-2 py-1 text-xs font-bold text-white hover:bg-white/20"
+                      >
+                        Review
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between rounded-xl bg-black/40 p-3 border border-white/5">
+                      <div>
+                        <p className="text-xs font-bold text-white">Outbox Offers</p>
+                        <p className="text-[11px] text-slate-400">
+                          {managerOffersList.filter((o) => o.status === 'pending').length} pending offers
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('transfers')}
+                        className="rounded-lg bg-white/10 px-2 py-1 text-xs font-bold text-white hover:bg-white/20"
+                      >
+                        View
+                      </button>
+                    </div>
+
+                    <Button
+                      size="sm"
+                      disabled={!transferWindowOpen || squadList.length >= maxSquadSize}
+                      onClick={() => setShowSignModal(true)}
+                      className="w-full bg-[#c4f82a] text-black font-black uppercase tracking-wider hover:bg-[#b0df24] text-xs"
                     >
+                      + Sign a Player
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="my-3 space-y-3">
+                    <div className="flex items-center gap-3">
+                      <div className="h-12 w-12 shrink-0">
+                        <JerseyIcon
+                          number={myShirtNumber ? Number(myShirtNumber) : 10}
+                          home
+                          isGk={userMatchdayStatus.pos === 'GK'}
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-black text-white truncate">
+                          {user.gamertag || user.name}
+                        </p>
+                        <p className="text-xs text-slate-400">
+                          Club: {myClub?.name || 'Free Agent'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-white/10 bg-black/40 p-3 space-y-1 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Contract Status:</span>
+                        <span className="font-bold text-[#c4f82a]">Active Pro</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Squad Role:</span>
+                        <span className="font-bold text-white">{userMatchdayStatus.label}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Transfer Window:</span>
+                        <span className={transferWindowOpen ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold'}>
+                          {transferWindowOpen ? 'Open' : 'Closed'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setActiveTab('settings')}
+                      className="w-full text-xs font-bold"
+                    >
+                      Customize Jersey #
+                    </Button>
+                  </div>
+                )}
+
+                <div className="border-t border-white/[0.08] pt-2.5 text-right">
+                  <span className="text-[10px] text-slate-500">Career Mode Status Active</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ================================================================= TAB 2: TACTICS & SQUAD */}
+        {activeTab === 'tactics' && (
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+            {/* Left Column (Col-span 7): Pitch Board */}
+            <div className="col-span-1 lg:col-span-7 flex flex-col justify-between rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#0f1015]/95 to-[#090a0d]/98 p-5 shadow-xl sm:p-6 backdrop-blur-md">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.08] pb-4">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
+                    Tactical Strategy
+                  </p>
+                  <h2 className="text-base font-black uppercase tracking-wider text-white">
+                    {isManager ? 'Team Sheet & Formations' : 'Team Sheet (Read Only)'}
+                  </h2>
+                </div>
+
+                {isManager ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      value={formation}
+                      onChange={(e) => setFormation(e.target.value)}
+                      className="h-8 rounded-lg border border-white/20 bg-black/60 px-2.5 text-xs font-black text-[#c4f82a] outline-none focus:border-[#c4f82a]"
+                    >
+                      {Object.keys(FORMATIONS).map((fmt) => (
+                        <option key={fmt} value={fmt}>
+                          {fmt}
+                        </option>
+                      ))}
+                    </select>
+
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleAutoFill}
+                      className="h-8 text-[11px] font-bold"
+                    >
+                      Auto-Fill
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleClearPitch}
+                      className="h-8 text-[11px] font-bold text-red-400 hover:text-red-300"
+                    >
+                      Clear
+                    </Button>
+
+                    {saveStatus === 'saving' && (
+                      <span className="text-[10px] font-bold text-amber-400 animate-pulse">
+                        Saving…
+                      </span>
+                    )}
+                    {saveStatus === 'saved' && (
+                      <span className="text-[10px] font-bold text-[#c4f82a]">Saved ✓</span>
+                    )}
+                  </div>
+                ) : (
+                  <span className="rounded-full bg-white/10 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-slate-300">
+                    Formation: {formation} • Read-Only
+                  </span>
+                )}
+              </div>
+
+              {/* Tactical Pitch with smart swap popover */}
+              <div className="relative mx-auto w-full max-w-[540px] my-3">
+                <Pitch
+                  home
+                  squad={tacticalSquad}
+                  activeSlotIndex={activeSlotIdx}
+                  onSelectSlot={isManager ? (idx) => setActiveSlotIdx(idx === activeSlotIdx ? null : idx) : undefined}
+                >
+                  {/* Smart Swap Popover for Managers */}
+                  {isManager && activeSlotIdx !== null && (
+                    <div className="absolute inset-x-2 bottom-3 z-30 rounded-xl border border-white/20 bg-black/95 p-4 shadow-2xl backdrop-blur-xl sm:inset-x-8">
+                      <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                        <span className="text-xs font-black uppercase text-[#c4f82a]">
+                          Assign Slot {activeSlotIdx + 1} •{' '}
+                          {(FORMATIONS[formation] || FORMATIONS['4-3-3']).slots[activeSlotIdx]?.[0]}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setActiveSlotIdx(null)}
+                          className="text-xs font-bold text-slate-400 hover:text-white"
+                        >
+                          ✕ Close
+                        </button>
+                      </div>
+
                       <input
-                        type="number"
-                        min={1}
-                        max={99}
-                        value={b.shirtNumber ?? ''}
-                        onChange={(e) => {
-                          const n = Number(e.target.value)
-                          setBench((prev) =>
-                            prev.map((item, i) =>
-                              i === bIdx && n >= 1 && n <= 99 ? { ...item, shirtNumber: n } : item,
-                            ),
-                          )
-                        }}
-                        className="h-7 w-12 rounded border border-[var(--border-strong)] bg-[var(--bg)] px-1 text-center font-mono text-xs font-bold text-[var(--text-strong)]"
+                        type="text"
+                        value={slotSearch}
+                        onChange={(e) => setSlotSearch(e.target.value)}
+                        placeholder="Search squad player…"
+                        className="mt-3 h-8 w-full rounded border border-white/15 bg-white/5 px-2.5 text-xs text-white placeholder-slate-500 outline-none focus:border-[#c4f82a]"
                       />
-                      <span className="min-w-0 flex-1 truncate font-semibold text-[var(--text-strong)]">
-                        {b.gamertag}
+
+                      <div className="mt-2.5 max-h-48 overflow-y-auto space-y-1 divide-y divide-white/5">
+                        {squadList
+                          .filter((p) =>
+                            p.gamertag.toLowerCase().includes(slotSearch.toLowerCase().trim()),
+                          )
+                          .map((p) => {
+                            const isAssigned = starters.some((s) => s?.playerId === p.id)
+                            return (
+                              <button
+                                key={p.id}
+                                type="button"
+                                onClick={() => handleAssignStarter(activeSlotIdx, p)}
+                                className="flex w-full items-center justify-between px-2 py-1.5 text-left text-xs hover:bg-[#c4f82a]/10 hover:text-[#c4f82a] rounded transition"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono text-slate-400">
+                                    #{p.shirt_number ?? '—'}
+                                  </span>
+                                  <span className="font-bold text-white">{p.gamertag}</span>
+                                </div>
+                                <span className="text-[10px] text-slate-500">
+                                  {isAssigned ? 'Already placed' : 'Available'}
+                                </span>
+                              </button>
+                            )
+                          })}
+                      </div>
+                    </div>
+                  )}
+                </Pitch>
+              </div>
+
+              <div className="flex items-center justify-between border-t border-white/[0.08] pt-3 text-xs text-slate-400">
+                <span>Click any pitch marker to swap players.</span>
+                <span>Active Captain: {captainGamertag || 'Unassigned'}</span>
+              </div>
+            </div>
+
+            {/* Right Column (Col-span 5): 3-Tab Squad Drawer (Issue 5 Fix: Color-coded Position Pills) */}
+            <div className="col-span-1 lg:col-span-5 flex flex-col rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#0f1015]/95 to-[#090a0d]/98 p-5 shadow-xl sm:p-6 backdrop-blur-md">
+              {/* Drawer Top Tabs */}
+              <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setTacticsDrawerTab('starters')}
+                    className={cx(
+                      'rounded-lg px-2.5 py-1 text-xs font-black uppercase transition',
+                      tacticsDrawerTab === 'starters'
+                        ? 'bg-[#c4f82a] text-black shadow-sm'
+                        : 'text-slate-400 hover:text-white hover:bg-white/5',
+                    )}
+                  >
+                    Starting XI ({starters.filter(Boolean).length}/11)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTacticsDrawerTab('bench')}
+                    className={cx(
+                      'rounded-lg px-2.5 py-1 text-xs font-black uppercase transition',
+                      tacticsDrawerTab === 'bench'
+                        ? 'bg-[#c4f82a] text-black shadow-sm'
+                        : 'text-slate-400 hover:text-white hover:bg-white/5',
+                    )}
+                  >
+                    Bench ({bench.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTacticsDrawerTab('roster')}
+                    className={cx(
+                      'rounded-lg px-2.5 py-1 text-xs font-black uppercase transition',
+                      tacticsDrawerTab === 'roster'
+                        ? 'bg-[#c4f82a] text-black shadow-sm'
+                        : 'text-slate-400 hover:text-white hover:bg-white/5',
+                    )}
+                  >
+                    Full Roster ({squadList.length})
+                  </button>
+                </div>
+              </div>
+
+              {/* Drawer Content Area (Pinned below tabs with flex-1, zero gap) */}
+              <div className="flex-1 mt-4 min-h-0">
+                {/* Drawer Content 1: Starters list (Fix Issue 5: Position pills by line) */}
+              {tacticsDrawerTab === 'starters' && (
+                  <div className="space-y-2">
+                  <ul className="divide-y divide-white/5">
+                    {(FORMATIONS[formation] || FORMATIONS['4-3-3']).slots.map(([pos], idx) => {
+                      const s = starters[idx]
+                      const isMe =
+                        s &&
+                        ((user?.playerId && s.playerId === user.playerId) ||
+                          (user?.gamertag &&
+                            s.gamertag.toLowerCase() === user.gamertag.toLowerCase()))
+                      const isCap =
+                        s &&
+                        Boolean(
+                          s.isCaptain ||
+                            (captainGamertag &&
+                              s.gamertag.toLowerCase() === captainGamertag.toLowerCase()),
+                        )
+
+                      return (
+                        <li
+                          key={idx}
+                          className={cx(
+                            'flex items-center justify-between gap-3 px-3 py-2 rounded-lg transition',
+                            isMe ? 'bg-[#c4f82a]/10 border border-[#c4f82a]/30' : 'hover:bg-white/[0.02]',
+                          )}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <span
+                              className={cx(
+                                'w-9 shrink-0 rounded px-1.5 py-0.5 text-center font-mono text-[10px] font-black border',
+                                getPositionBadgeStyle(pos),
+                              )}
+                            >
+                              {pos}
+                            </span>
+                            <span className="font-mono text-xs font-bold text-slate-400">
+                              #{s?.shirtNumber ?? idx + 1}
+                            </span>
+                            <span
+                              className={cx(
+                                'truncate text-xs font-extrabold',
+                                s ? 'text-white' : 'text-slate-500 italic',
+                              )}
+                            >
+                              {s?.gamertag || 'Unassigned'}
+                            </span>
+                            {isCap && (
+                              <span className="rounded bg-amber-500/20 px-1 py-0.2 text-[9px] font-black text-amber-300 border border-amber-500/40">
+                                (C)
+                              </span>
+                            )}
+                            {isMe && (
+                              <span className="rounded bg-[#c4f82a] px-1.5 py-0.2 text-[9px] font-black text-black">
+                                YOU
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Only managers can remove starters */}
+                          {isManager && s && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setStarters((prev) => {
+                                  const next = [...prev]
+                                  next[idx] = null
+                                  return next
+                                })
+                              }}
+                              className="text-[10px] font-bold text-slate-500 hover:text-red-400"
+                              title="Remove from starting XI"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              )}
+
+              {/* Drawer Content 2: Bench list */}
+              {tacticsDrawerTab === 'bench' && (
+                  <div className="space-y-3">
+                  {isManager && (
+                    <div className="flex items-center gap-2 border-b border-white/[0.08] pb-3">
+                      <select
+                        onChange={(e) => {
+                          const pId = Number(e.target.value)
+                          const p = squadList.find((x) => x.id === pId)
+                          if (!p) return
+                          setBench((prev) => [
+                            ...prev,
+                            {
+                              playerId: p.id,
+                              gamertag: p.gamertag,
+                              shirtNumber: p.shirt_number ?? 12 + prev.length,
+                              number: p.shirt_number ?? 12 + prev.length,
+                              position: 'SUB',
+                              role: 'SUB',
+                            },
+                          ])
+                          e.target.value = ''
+                        }}
+                        defaultValue=""
+                        className="h-8 flex-1 rounded border border-white/20 bg-black/50 px-2 text-xs text-white outline-none focus:border-[#c4f82a]"
+                      >
+                        <option value="" disabled>
+                          + Add player to bench…
+                        </option>
+                        {squadList
+                          .filter(
+                            (p) =>
+                              !starters.some((s) => s?.playerId === p.id) &&
+                              !bench.some((b) => b.playerId === p.id),
+                          )
+                          .map((p) => (
+                            <option key={p.id} value={p.id}>
+                              #{p.shirt_number ?? '—'} {p.gamertag}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {bench.length === 0 ? (
+                    <p className="py-8 text-center text-xs text-slate-400">
+                      No substitutes designated on the bench.
+                    </p>
+                  ) : (
+                    <ul className="divide-y divide-white/5 space-y-1">
+                      {bench.map((b, idx) => (
+                        <li
+                          key={idx}
+                          className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg hover:bg-white/[0.02]"
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <span className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[10px] font-bold text-slate-300">
+                              SUB
+                            </span>
+                            <span className="font-mono text-xs text-slate-400">
+                              #{b.shirtNumber ?? 12 + idx}
+                            </span>
+                            <span className="text-xs font-bold text-white">{b.gamertag}</span>
+                          </div>
+
+                          {isManager && (
+                            <button
+                              type="button"
+                              onClick={() => setBench((prev) => prev.filter((_, i) => i !== idx))}
+                              className="text-[10px] font-bold text-slate-500 hover:text-red-400"
+                              title="Remove from bench"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+
+              {/* Drawer Content 3: Full Roster */}
+              {tacticsDrawerTab === 'roster' && (
+                  <div className="space-y-2">
+                  <div className="flex items-center justify-between text-[11px] text-slate-400 pb-2 border-b border-white/5">
+                    <span>{isManager ? 'Active Squad Capacity' : 'Squad Members'}</span>
+                    <span className="font-mono font-bold text-[#c4f82a]">
+                      {isManager ? `${squadList.length} / ${maxSquadSize}` : `${squadList.length} Players`}
+                    </span>
+                  </div>
+
+                  <ul className="divide-y divide-white/5 max-h-96 overflow-y-auto space-y-1">
+                    {squadList.map((p, idx) => {
+                      const isStarter = starters.some((s) => s?.playerId === p.id)
+                      const isBench = bench.some((b) => b.playerId === p.id)
+
+                      return (
+                        <li
+                          key={p.id}
+                          className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg hover:bg-white/[0.02]"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <span className="font-mono text-xs text-slate-400">
+                              #{p.shirt_number ?? idx + 1}
+                            </span>
+                            <span className="truncate text-xs font-bold text-white">
+                              {p.gamertag}
+                            </span>
+                            {p.position && (
+                              <span
+                                className={cx(
+                                  'rounded px-1.5 py-0.2 text-[9px] font-black uppercase border',
+                                  getPositionBadgeStyle(p.position),
+                                )}
+                              >
+                                {p.position}
+                              </span>
+                            )}
+                            <span
+                              className={cx(
+                                'rounded px-1.5 py-0.2 text-[9px] font-black uppercase',
+                                isStarter
+                                  ? 'bg-[#c4f82a]/20 text-[#c4f82a]'
+                                  : isBench
+                                    ? 'bg-amber-500/20 text-amber-300'
+                                    : 'bg-white/5 text-slate-400',
+                              )}
+                            >
+                              {isStarter ? 'XI' : isBench ? 'SUB' : 'RES'}
+                            </span>
+                          </div>
+
+                          {isManager && (
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => handleReleasePlayer(p.id, p.gamertag)}
+                              className="text-[10px] font-bold text-slate-500 hover:text-red-400"
+                              title="Release player from club"
+                            >
+                              Release
+                            </button>
+                          )}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              )}
+
+              </div>
+
+              <div className="mt-auto border-t border-white/[0.08] pt-3 text-right">
+                <span className="text-[10px] text-slate-500">Live Tactics Engine</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ================================================================= TAB 3: TRANSFERS & INBOX */}
+        {activeTab === 'transfers' && (
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            {isManager ? (
+              <>
+                {/* Manager Box 1: Incoming Join Requests */}
+                <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#0f1015]/95 to-[#090a0d]/98 p-5 shadow-xl sm:p-6 backdrop-blur-md">
+                  <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
+                      Incoming Inbox
+                    </p>
+                    <span className="text-xs font-bold text-slate-400">
+                      Join Requests ({managerJoinRequests.filter((r) => r.status === 'pending').length})
+                    </span>
+                  </div>
+
+                  {managerJoinRequests.length === 0 ? (
+                    <p className="py-12 text-center text-xs text-slate-400">
+                      No player transfer applications at this time.
+                    </p>
+                  ) : (
+                    <ul className="mt-4 divide-y divide-white/5 space-y-2">
+                      {managerJoinRequests.map((r) => (
+                        <li key={r.id} className="flex items-center justify-between gap-3 pt-3">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-bold text-white truncate">{r.gamertag}</p>
+                            {r.message && <p className="text-xs italic text-slate-400">"{r.message}"</p>}
+                            <span className="text-[10px] text-slate-500">
+                              Applied {new Date(r.created_at).toLocaleDateString()}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {r.status === 'pending' ? (
+                              <>
+                                <Button
+                                  size="sm"
+                                  disabled={busy || !transferWindowOpen || squadList.length >= maxSquadSize}
+                                  onClick={() => handleDecideJoinRequest(r.id, 'accept')}
+                                  className="bg-[#c4f82a] text-black text-xs font-bold"
+                                >
+                                  Accept
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={busy}
+                                  onClick={() => handleDecideJoinRequest(r.id, 'reject')}
+                                  className="text-xs text-red-400 hover:text-red-300"
+                                >
+                                  Decline
+                                </Button>
+                              </>
+                            ) : (
+                              <span className="rounded bg-white/10 px-2 py-0.5 text-xs font-bold uppercase text-slate-400">
+                                {r.status}
+                              </span>
+                            )}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                {/* Manager Box 2: Outbox Offers (Fix Issue 2: Real usernames, avatars & status) */}
+                <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#0f1015]/95 to-[#090a0d]/98 p-5 shadow-xl sm:p-6 backdrop-blur-md">
+                  <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
+                      Dispatched Desk
+                    </p>
+                    <span className="text-xs font-bold text-slate-400">
+                      Outbox Offers ({managerOffersList.filter((o) => o.status === 'pending').length})
+                    </span>
+                  </div>
+
+                  {managerOffersList.length === 0 ? (
+                    <p className="py-12 text-center text-xs text-slate-400">
+                      No contract offers currently dispatched.
+                    </p>
+                  ) : (
+                    <ul className="mt-4 divide-y divide-white/5 space-y-2">
+                      {managerOffersList.map((o) => {
+                        const playerName =
+                          o.gamertag ||
+                          squadList.find((p) => p.id === o.player_id)?.gamertag ||
+                          `Player #${o.player_id ?? o.id}`
+
+                        return (
+                          <li key={o.id} className="flex items-center justify-between gap-3 pt-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-white/10 border border-white/10">
+                                <img
+                                  src={o.avatar_local || AVATAR_PLACEHOLDER}
+                                  alt=""
+                                  onError={(e) => {
+                                    e.currentTarget.src = AVATAR_PLACEHOLDER
+                                  }}
+                                  className="h-full w-full object-cover"
+                                />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-bold text-white truncate">{playerName}</p>
+                                {o.message && <p className="text-xs italic text-slate-400">"{o.message}"</p>}
+                                <span className="text-[10px] text-slate-500">
+                                  Dispatched {new Date(o.created_at).toLocaleDateString()}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={cx(
+                                  'rounded px-2 py-0.5 text-xs font-bold capitalize',
+                                  o.status === 'pending'
+                                    ? 'bg-amber-500/20 text-amber-300'
+                                    : 'bg-white/10 text-slate-300',
+                                )}
+                              >
+                                {o.status}
+                              </span>
+                              {o.status === 'pending' && (
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => handleCancelOffer(o.id)}
+                                  className="text-xs font-bold text-red-400 hover:underline"
+                                >
+                                  Cancel
+                                </button>
+                              )}
+                            </div>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Player Box 1: Incoming Contract Offers from Clubs */}
+                <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#0f1015]/95 to-[#090a0d]/98 p-5 shadow-xl sm:p-6 backdrop-blur-md">
+                  <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
+                      Contract Offers
+                    </p>
+                    <span className="text-xs font-bold text-slate-400">
+                      Incoming ({playerOffersList.filter((o) => o.status === 'pending').length})
+                    </span>
+                  </div>
+
+                  {playerOffersList.length === 0 ? (
+                    <p className="py-12 text-center text-xs text-slate-400">
+                      No club contract offers in your inbox.
+                    </p>
+                  ) : (
+                    <ul className="mt-4 divide-y divide-white/5 space-y-2">
+                      {playerOffersList.map((o) => (
+                        <li key={o.id} className="flex items-center justify-between gap-3 pt-3">
+                          <div className="flex items-center gap-3">
+                            <div className="h-9 w-9 shrink-0 overflow-hidden rounded-lg bg-black/40 border border-white/10 p-1">
+                              <img
+                                src={o.logo_local || CLUB_PLACEHOLDER}
+                                alt=""
+                                onError={(e) => {
+                                  e.currentTarget.src = CLUB_PLACEHOLDER
+                                }}
+                                className="h-full w-full object-contain"
+                              />
+                            </div>
+                            <div>
+                              <p className="text-sm font-bold text-white">{o.club_name || 'Pro Club'}</p>
+                              {o.message && <p className="text-xs italic text-slate-400">"{o.message}"</p>}
+                              <span className="text-[10px] text-slate-500">
+                                {new Date(o.created_at).toLocaleDateString()}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            {o.status === 'pending' ? (
+                              <>
+                                <Button
+                                  size="sm"
+                                  disabled={busy}
+                                  onClick={() => handleDecideOffer(o.id, true)}
+                                  className="bg-[#c4f82a] text-black font-bold text-xs"
+                                >
+                                  Accept & Sign
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={busy}
+                                  onClick={() => handleDecideOffer(o.id, false)}
+                                  className="text-xs text-red-400"
+                                >
+                                  Decline
+                                </Button>
+                              </>
+                            ) : (
+                              <span className="rounded bg-white/10 px-2 py-0.5 text-xs font-bold capitalize text-slate-400">
+                                {o.status}
+                              </span>
+                            )}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                {/* Player Box 2: Outgoing Join Requests */}
+                <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#0f1015]/95 to-[#090a0d]/98 p-5 shadow-xl sm:p-6 backdrop-blur-md">
+                  <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
+                      My Applications
+                    </p>
+                    <span className="text-xs font-bold text-slate-400">
+                      Dispatched ({playerJoinRequestsList.filter((r) => r.status === 'pending').length})
+                    </span>
+                  </div>
+
+                  {playerJoinRequestsList.length === 0 ? (
+                    <p className="py-12 text-center text-xs text-slate-400">
+                      You haven't submitted any applications to clubs.
+                    </p>
+                  ) : (
+                    <ul className="mt-4 divide-y divide-white/5 space-y-2">
+                      {playerJoinRequestsList.map((r) => (
+                        <li key={r.id} className="flex items-center justify-between gap-3 pt-3">
+                          <div>
+                            <p className="text-sm font-bold text-white">{r.club_name || 'Club'}</p>
+                            {r.message && <p className="text-xs italic text-slate-400">"{r.message}"</p>}
+                            <span className="text-[10px] text-slate-500">
+                              Applied {new Date(r.created_at).toLocaleDateString()}
+                            </span>
+                          </div>
+                          <div>
+                            {r.status === 'pending' ? (
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() => handleCancelJoinRequest(r.id)}
+                                className="text-xs font-bold text-red-400 hover:underline"
+                              >
+                                Withdraw
+                              </button>
+                            ) : (
+                              <span className="rounded bg-white/10 px-2 py-0.5 text-xs font-bold capitalize text-slate-400">
+                                {r.status}
+                              </span>
+                            )}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ================================================================= TAB 4: CALENDAR */}
+        {activeTab === 'calendar' && (
+          <div className="space-y-6">
+            {/* Top Toolbar / Header */}
+            <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#0f1015]/95 to-[#090a0d]/98 p-4 shadow-xl sm:px-6 backdrop-blur-md">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black uppercase tracking-[0.2em] text-[#c4f82a]">
+                  Schedule & Calendar
+                </span>
+                <span className="text-sm font-black uppercase text-white">
+                  • {myClub?.name || 'Club'} Fixture Calendar
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 font-mono text-[11px] font-bold text-slate-300">
+                  {upcomingMatches.length} Upcoming · {completedMatches.length} Played
+                </span>
+                <ButtonLink
+                  to="/matches"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1 border-white/10 text-xs font-bold hover:border-white/20 px-2.5"
+                >
+                  <span>Full Schedule</span>
+                  <span className="text-[10px]">↗</span>
+                </ButtonLink>
+              </div>
+            </div>
+
+            {calendarLoading ? (
+              <div className="flex items-center justify-center py-20">
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/10 border-t-[#c4f82a]" />
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+                {/* LEFT (7 cols): Interactive Monthly Calendar Grid */}
+                <div className="col-span-1 lg:col-span-7 rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#0f1015]/95 to-[#090a0d]/98 p-4 shadow-xl sm:p-5 backdrop-blur-md">
+                  {/* Month Header Controls */}
+                  <div className="mb-3.5 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={prevMonth}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-black/40 text-xs font-bold text-white transition hover:bg-white/10"
+                        aria-label="Previous month"
+                      >
+                        ‹
+                      </button>
+                      <button
+                        type="button"
+                        onClick={nextMonth}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-black/40 text-xs font-bold text-white transition hover:bg-white/10"
+                        aria-label="Next month"
+                      >
+                        ›
+                      </button>
+                      <h3 className="ml-1 font-display text-sm font-extrabold tracking-wide text-white sm:text-base">
+                        {MONTH_NAMES[viewMonth]} {viewYear}
+                      </h3>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      {selectedYmd && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedYmd(null)}
+                          className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-bold text-slate-300 hover:text-white hover:bg-white/10"
+                        >
+                          Show All
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={goToday}
+                        className="rounded-lg border border-[#c4f82a]/30 bg-[#c4f82a]/10 px-2.5 py-1 text-[11px] font-bold text-[#c4f82a] hover:bg-[#c4f82a]/20"
+                      >
+                        Today
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Weekday Header */}
+                  <div className="grid grid-cols-7 gap-1 border-b border-white/[0.08] pb-2 text-center font-mono text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
+                    {WEEKDAYS.map((wd) => (
+                      <div key={wd}>{wd}</div>
+                    ))}
+                  </div>
+
+                  {/* Days Grid */}
+                  <div className="mt-2 grid grid-cols-7 gap-1.5">
+                    {calendarDays.map((cell) => {
+                      const hasMatch = cell.fixtures.length > 0
+                      const isSelected = selectedYmd === cell.ymd
+                      const firstFixture = cell.fixtures[0]
+                      const ctx = firstFixture ? getFixtureContext(firstFixture) : null
+
+                      return (
+                        <button
+                          key={cell.ymd}
+                          type="button"
+                          onClick={() => setSelectedYmd(isSelected ? null : cell.ymd)}
+                          className={cx(
+                            'group relative flex min-h-16 flex-col justify-between rounded-xl border p-1.5 text-left transition-all',
+                            !cell.inMonth && 'opacity-35',
+                            isSelected
+                              ? 'border-[#c4f82a] bg-[#c4f82a]/15 ring-1 ring-[#c4f82a]'
+                              : hasMatch
+                                ? 'border-[#c4f82a]/30 bg-black/40 hover:border-[#c4f82a]'
+                                : 'border-white/5 bg-black/20 hover:border-white/15',
+                          )}
+                        >
+                          <div className="flex w-full items-center justify-between">
+                            <span
+                              className={cx(
+                                'font-mono text-[11px] font-bold',
+                                cell.isToday
+                                  ? 'rounded bg-[#c4f82a] px-1 text-black font-extrabold'
+                                  : hasMatch
+                                    ? 'text-white'
+                                    : 'text-slate-500',
+                              )}
+                            >
+                              {cell.day}
+                            </span>
+                            {ctx && (
+                              <span
+                                className={cx(
+                                  'rounded px-1 text-[9px] font-extrabold uppercase',
+                                  ctx.isHome
+                                    ? 'bg-emerald-500/20 text-emerald-300'
+                                    : 'bg-sky-500/20 text-sky-300',
+                                )}
+                              >
+                                {ctx.isHome ? 'H' : 'A'}
+                              </span>
+                            )}
+                          </div>
+
+                          {ctx && firstFixture && (
+                            <div className="mt-1 flex flex-col gap-0.5">
+                              <div className="flex items-center gap-1">
+                                <img
+                                  src={ctx.oppLogo || CLUB_PLACEHOLDER}
+                                  alt=""
+                                  onError={(e) => {
+                                    e.currentTarget.src = CLUB_PLACEHOLDER
+                                  }}
+                                  className="h-3.5 w-3.5 shrink-0 object-contain"
+                                />
+                                <span className="truncate text-[10px] font-bold text-white">
+                                  {ctx.opponent}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                {ctx.played ? (
+                                  <span
+                                    className={cx(
+                                      'font-mono rounded px-1 text-[9px] font-extrabold',
+                                      ctx.outcome === 'W'
+                                        ? 'bg-emerald-500/20 text-emerald-300'
+                                        : ctx.outcome === 'L'
+                                          ? 'bg-rose-500/20 text-rose-300'
+                                          : 'bg-amber-500/20 text-amber-300',
+                                    )}
+                                  >
+                                    {ctx.outcome} {firstFixture.hs}-{firstFixture.as}
+                                  </span>
+                                ) : (
+                                  <span className="font-mono text-[9px] font-bold text-[#c4f82a]">
+                                    {firstFixture.time || 'TBC'}
+                                  </span>
+                                )}
+                                {cell.fixtures.length > 1 && (
+                                  <span className="text-[9px] font-extrabold text-slate-500">
+                                    +{cell.fixtures.length - 1}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* RIGHT (5 cols): Upcoming / Results with Pagination */}
+                <div className="col-span-1 lg:col-span-5 flex flex-col justify-between rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#0f1015]/95 to-[#090a0d]/98 p-4 shadow-xl sm:p-5 backdrop-blur-md">
+                  <div>
+                    {/* Top Switcher: Selected Day OR Upcoming / Results tabs */}
+                    <div className="mb-3.5 flex items-center justify-between gap-2 border-b border-white/[0.08] pb-3">
+                      {selectedYmd ? (
+                        <div className="flex items-center justify-between w-full">
+                          <span className="text-xs font-black uppercase tracking-wider text-[#c4f82a]">
+                            📅 Fixtures on {selectedYmd}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedYmd(null)}
+                            className="text-[11px] font-bold text-slate-400 hover:text-white"
+                          >
+                            ✕ Clear Day
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5 rounded-xl bg-black/40 p-1 border border-white/5 w-full">
+                          <button
+                            type="button"
+                            onClick={() => setListMode('upcoming')}
+                            className={cx(
+                              'flex-1 rounded-lg py-1.5 text-xs font-black uppercase transition-all',
+                              listMode === 'upcoming'
+                                ? 'bg-[#c4f82a] text-black shadow-sm'
+                                : 'text-slate-400 hover:text-white',
+                            )}
+                          >
+                            Upcoming ({upcomingMatches.length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setListMode('results')}
+                            className={cx(
+                              'flex-1 rounded-lg py-1.5 text-xs font-black uppercase transition-all',
+                              listMode === 'results'
+                                ? 'bg-[#c4f82a] text-black shadow-sm'
+                                : 'text-slate-400 hover:text-white',
+                            )}
+                          >
+                            Results ({completedMatches.length})
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {activeSideList.length === 0 ? (
+                      <div className="flex flex-1 flex-col items-center justify-center py-12 text-center">
+                        <p className="text-xs font-bold text-white">
+                          {selectedYmd
+                            ? 'No fixtures scheduled on this date'
+                            : listMode === 'upcoming'
+                              ? 'No upcoming fixtures scheduled'
+                              : 'No completed results yet'}
+                        </p>
+                        <p className="mt-1 text-[11px] text-slate-500">
+                          {selectedYmd
+                            ? 'Click a highlighted date on the calendar or clear the day filter.'
+                            : 'Once league admins publish fixtures for your division, they will appear here.'}
+                        </p>
+                      </div>
+                    ) : (
+                      <ul className="space-y-2.5">
+                        {paginatedSideList.map((m, idx) => {
+                          const ctx = getFixtureContext(m)
+                          return (
+                            <li key={m.id ?? idx}>
+                              <Link
+                                to={m.id ? `/matches/${m.id}` : '/matches'}
+                                className="group flex items-center justify-between gap-3 rounded-xl border border-white/5 bg-black/40 p-3 transition-colors hover:border-[#c4f82a]/30 hover:bg-black/60"
+                              >
+                                <div className="flex min-w-0 items-center gap-3">
+                                  <img
+                                    src={ctx.oppLogo || CLUB_PLACEHOLDER}
+                                    alt=""
+                                    onError={(e) => {
+                                      e.currentTarget.src = CLUB_PLACEHOLDER
+                                    }}
+                                    className="h-9 w-9 shrink-0 object-contain"
+                                  />
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-1.5">
+                                      <span
+                                        className={cx(
+                                          'rounded px-1.5 py-0.2 text-[9px] font-black uppercase',
+                                          ctx.isHome
+                                            ? 'bg-emerald-500/20 text-emerald-300'
+                                            : 'bg-sky-500/20 text-sky-300',
+                                        )}
+                                      >
+                                        {ctx.isHome ? 'HOME' : 'AWAY'}
+                                      </span>
+                                      {m.roundNumber && (
+                                        <span className="text-[10px] font-bold text-slate-400">
+                                          Game Week {m.roundNumber}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="mt-0.5 truncate text-xs font-extrabold text-white group-hover:text-[#c4f82a] transition">
+                                      vs {ctx.opponent}
+                                    </p>
+                                    <p className="text-[11px] text-slate-400">
+                                      {m.date || 'Date TBD'} · {m.time || 'Kick-off TBD'}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div className="shrink-0 text-right">
+                                  {ctx.played ? (
+                                    <span
+                                      className={cx(
+                                        'font-mono inline-block rounded-lg px-2.5 py-1 text-xs font-black',
+                                        ctx.outcome === 'W'
+                                          ? 'bg-emerald-500/20 text-emerald-300'
+                                          : ctx.outcome === 'L'
+                                            ? 'bg-rose-500/20 text-rose-300'
+                                            : 'bg-amber-500/20 text-amber-300',
+                                      )}
+                                    >
+                                      {ctx.outcome} · {m.hs}:{m.as}
+                                    </span>
+                                  ) : (
+                                    <span className="inline-block rounded-lg bg-[#c4f82a]/15 text-[#c4f82a] border border-[#c4f82a]/30 px-2.5 py-1 text-[11px] font-black">
+                                      Match →
+                                    </span>
+                                  )}
+                                </div>
+                              </Link>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    )}
+                  </div>
+
+                  {/* Pagination Controls */}
+                  {totalFixturePages > 1 && (
+                    <div className="mt-4 flex items-center justify-between border-t border-white/[0.08] pt-3">
+                      <button
+                        type="button"
+                        disabled={safeFixturePage <= 1}
+                        onClick={() => setFixturePage((p) => Math.max(1, p - 1))}
+                        className="rounded-lg border border-white/10 bg-black/40 px-3 py-1 text-xs font-bold text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
+                      >
+                        ‹ Prev
+                      </button>
+                      <span className="font-mono text-xs font-bold text-slate-400">
+                        Page {safeFixturePage} of {totalFixturePages}
                       </span>
                       <button
                         type="button"
-                        onClick={() => setBench((prev) => prev.filter((_, i) => i !== bIdx))}
-                        className="text-xs font-bold text-[var(--danger-text)] hover:underline"
+                        disabled={safeFixturePage >= totalFixturePages}
+                        onClick={() => setFixturePage((p) => Math.min(totalFixturePages, p + 1))}
+                        className="rounded-lg border border-white/10 bg-black/40 px-3 py-1 text-xs font-bold text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
                       >
-                        Remove
+                        Next ›
                       </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-
-            {/* Signed Squad Lineup Status */}
-            <div className="flex flex-col h-[360px] rounded-xl border border-[var(--border)] bg-[var(--bg)] p-3.5">
-              <div className="mb-2.5 flex items-center justify-between shrink-0">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--accent-text)]">
-                  Squad Lineup Status ({starters.filter(Boolean).length} / 11 Starters)
-                </p>
-                {starters.some(Boolean) && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setStarters(Array(11).fill(null))
-                      setBench([])
-                      setCaptainGamertag(null)
-                    }}
-                    className="text-[11px] font-semibold text-[var(--text-faint)] hover:text-[var(--text-strong)]"
-                  >
-                    Clear Pitch
-                  </button>
-                )}
-              </div>
-              {squadList.length === 0 ? (
-                <div className="flex flex-1 items-center justify-center p-4 text-center">
-                  <p className="text-xs text-[var(--text-faint)]">
-                    Sign players to your squad below to place them on the pitch.
-                  </p>
-                </div>
-              ) : (
-                <ul className="scroll-slim flex-1 space-y-1.5 overflow-y-auto pr-1">
-                  {squadList.map((p, idx) => {
-                    const starterIdx = starters.findIndex(
-                      (s) => s && s.gamertag.toLowerCase() === p.gamertag.toLowerCase(),
-                    )
-                    const starterPos =
-                      starterIdx !== -1
-                        ? (FORMATIONS[formation] || FORMATIONS['4-3-3']).slots[starterIdx]?.[0]
-                        : null
-                    const isSub = bench.some(
-                      (b) => b.gamertag.toLowerCase() === p.gamertag.toLowerCase(),
-                    )
-                    const isMgr =
-                      (user?.playerId === p.id || user?.id === p.user_id) ||
-                      Boolean(user?.gamertag && p.gamertag.toLowerCase() === user.gamertag.toLowerCase()) ||
-                      clubManagers.some((m) =>
-                        m.id === p.user_id ||
-                        (m.gamertag && m.gamertag.toLowerCase() === p.gamertag.toLowerCase()) ||
-                        (m.name && m.name.toLowerCase() === p.gamertag.toLowerCase())
-                      )
-                    const isCap = Boolean(captainGamertag && p.gamertag.toLowerCase() === captainGamertag.toLowerCase())
-
-                    return (
-                      <li
-                        key={p.id}
-                        className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-xs"
-                      >
-                        <span className="rounded bg-[var(--bg)] px-1.5 py-0.5 font-mono text-[10.5px] font-bold text-[var(--text-muted)]">
-                          #{p.shirt_number ?? idx + 1}
-                        </span>
-                        <span className="min-w-0 flex-1 truncate font-semibold text-[var(--text-strong)] flex items-center gap-1.5">
-                          {p.gamertag}
-                          {isMgr && (
-                            <span className="rounded bg-amber-500/15 text-amber-500 border border-amber-500/30 px-1 py-0.2 text-[9px] font-bold shrink-0">
-                              MGR
-                            </span>
-                          )}
-                        </span>
-                        {starterPos ? (
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setCaptainGamertag((prev) =>
-                                  prev && prev.toLowerCase() === p.gamertag.toLowerCase()
-                                    ? null
-                                    : p.gamertag,
-                                )
-                              }}
-                              className={cx(
-                                'rounded px-1.5 py-0.5 font-mono text-[10px] font-extrabold transition-colors flex items-center gap-0.5',
-                                isCap
-                                  ? 'bg-amber-400 text-black border border-amber-300 shadow-[0_0_8px_rgba(251,191,36,0.5)]'
-                                  : 'bg-[var(--surface-2)] text-[var(--text-faint)] hover:text-amber-400 hover:bg-amber-500/10 border border-transparent',
-                              )}
-                              title={
-                                isCap
-                                  ? 'Team Captain (Click to remove captaincy)'
-                                  : 'Make Team Captain (C)'
-                              }
-                            >
-                              <span>©</span>
-                              <span>{isCap ? 'CAP' : ''}</span>
-                            </button>
-                            <span className="rounded bg-[var(--accent-tint)] px-2 py-0.5 font-mono text-[10px] font-extrabold text-[var(--accent-text)]">
-                              XI: {starterPos}
-                            </span>
-                          </div>
-                        ) : isSub ? (
-                          <span className="rounded bg-[var(--surface-2)] px-2 py-0.5 text-[10px] font-bold text-[var(--text-muted)]">
-                            SUB
-                          </span>
-                        ) : (
-                          <span className="text-[10px] text-[var(--text-faint)]">Reserve</span>
-                        )}
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
-            </div>
-          </div>
-        </div>
-
-      </section>
-
-      {/* ---- join requests ---- */}
-      {(() => {
-        const pendingCount = joinRequests.filter((r) => r.status === 'pending').length
-        return (
-          <section className={card}>
-            <PanelHead
-              label="Applications"
-              title={pendingCount > 0 ? `Join Requests (${pendingCount} Pending)` : 'Join Requests'}
-            />
-            {joinRequests.length === 0 ? (
-              <EmptyState
-                title="No join requests yet"
-                hint="When players request to join your club, their applications will appear here."
-              />
-            ) : (
-              <ul className="divide-y divide-[var(--border)]">
-                {joinRequests.map((req) => (
-                  <li key={req.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <SmartImage
-                        src={req.avatar_local || AVATAR_PLACEHOLDER}
-                        fallback={AVATAR_PLACEHOLDER}
-                        alt=""
-                        wrapperClassName="h-10 w-10 shrink-0 rounded-full overflow-hidden bg-[var(--surface-hover)] border border-[var(--border)]"
-                        className="h-full w-full object-cover"
-                      />
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <Link
-                            to={`/players/${req.slug}`}
-                            target="_blank"
-                            className="truncate text-sm font-bold text-[var(--text-strong)] hover:text-[var(--accent-text)]"
-                          >
-                            {req.gamertag}
-                          </Link>
-                          <span className="text-[11px] text-[var(--text-muted)]">
-                            {req.current_club_name ? `From ${req.current_club_name}` : 'Free Agent'}
-                          </span>
-                        </div>
-                        {req.message && (
-                          <p className="mt-1 text-xs italic text-[var(--text-muted)] line-clamp-2">
-                            "{req.message}"
-                          </p>
-                        )}
-                        <span className="text-[10px] text-[var(--text-faint)]">
-                          Applied {new Date(req.created_at).toLocaleDateString()}
-                        </span>
-                      </div>
                     </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
-                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-                      {req.status === 'pending' ? (
-                        <>
-                          <Button
-                            size="sm"
-                            disabled={busy || !transferWindowOpen}
-                            onClick={() => handleDecideJoinRequest(req.id, 'accept')}
-                            className="gap-1 font-bold bg-emerald-600 hover:bg-emerald-500 text-white"
-                          >
-                            {transferWindowOpen ? '✓ Accept' : '🔒 Window Closed'}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={busy}
-                            onClick={() => handleDecideJoinRequest(req.id, 'reject')}
-                            className="text-red-400 hover:text-red-300 hover:border-red-500/50"
-                          >
-                            ✕ Decline
-                          </Button>
-                        </>
-                      ) : (
-                        <span
-                          className={cx(
-                            'rounded-lg px-2.5 py-1 text-xs font-semibold capitalize',
-                            req.status === 'accepted'
-                              ? 'bg-emerald-500/15 text-emerald-400 font-bold'
-                              : 'bg-[var(--surface-hover)] text-[var(--text-muted)]',
-                          )}
-                        >
-                          {req.status}
+        {/* ================================================================= TAB 5: CLUB & PRO SETTINGS */}
+        {activeTab === 'settings' && (
+          <div className="space-y-6">
+            {/* FIX ISSUE 6: Player / Manager Locker Showcase Banner (96px Kit Graphic) */}
+            <div className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-gradient-to-r from-[#0f1015]/95 via-[#0c0d12]/95 to-[#090a0d]/98 p-6 shadow-2xl backdrop-blur-md">
+              <div className="pointer-events-none absolute -top-24 left-1/4 h-48 w-96 rounded-full bg-[#c4f82a]/5 blur-3xl" />
+
+              <div className="relative flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+                {/* Left: 96px Jersey Graphic + Pro Details */}
+                <div className="flex items-center gap-5">
+                  <div className="h-24 w-24 shrink-0 drop-shadow-[0_8px_16px_rgba(0,0,0,0.8)]">
+                    <JerseyIcon
+                      number={activeUserShirt}
+                      home
+                      isGk={userMatchdayStatus.pos === 'GK'}
+                      className="h-24 w-24"
+                    />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-display text-xl font-black uppercase tracking-wider text-white">
+                        {user.gamertag || user.name || 'Pro Athlete'}
+                      </span>
+                      <span className="font-mono text-sm font-extrabold text-[#c4f82a]">
+                        #{activeUserShirt}
+                      </span>
+                    </div>
+                    <p className="mt-0.5 text-xs text-slate-400">
+                      {myClub?.name || 'Free Agent'} • {isManager ? 'Club Manager' : 'Squad Player'}
+                    </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <span
+                        className={cx(
+                          'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider border',
+                          userMatchdayStatus.type === 'starting'
+                            ? 'bg-[#c4f82a]/15 text-[#c4f82a] border-[#c4f82a]/30'
+                            : userMatchdayStatus.type === 'bench'
+                              ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                              : 'bg-white/10 text-slate-300 border-white/10',
+                        )}
+                      >
+                        <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                        {userMatchdayStatus.label}
+                      </span>
+                      {isManager && (
+                        <span className="rounded-full bg-purple-500/15 border border-purple-500/30 px-2 py-0.5 text-[10px] font-black text-purple-300 uppercase">
+                          {isManagerInSquad ? 'Playing Manager' : 'Touchline Coach'}
                         </span>
                       )}
                     </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        )
-      })()}
-
-      {/* ---- squad ---- */}
-      <section className={card}>
-        <PanelHead
-          label={`Squad (${squadList.length} / ${maxSquadSize} Players)`}
-          title={myClub?.name ?? 'Your squad'}
-          action={
-            <Button
-              size="sm"
-              disabled={!transferWindowOpen || squadList.length >= maxSquadSize}
-              onClick={() => setShowSignModal(true)}
-              className="gap-1.5 font-bold shadow-sm"
-            >
-              <svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden>
-                <path d="M10 4v12M4 10h12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
-              </svg>
-              {!transferWindowOpen
-                ? '🔒 Window Closed'
-                : squadList.length >= maxSquadSize
-                  ? `Squad Full (${squadList.length}/${maxSquadSize})`
-                  : 'Sign a Player'}
-            </Button>
-          }
-        />
-        {!isManagerInSquad && transferWindowOpen && (
-          <div className="mb-4 rounded-xl border border-[var(--accent-ring)] bg-[var(--accent-tint)]/40 p-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-base">⚽</span>
-                  <span className="text-sm font-bold text-[var(--text-strong)]">
-                    Add Yourself to Squad (Playing Captain)
-                  </span>
+                  </div>
                 </div>
-                <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-                  Club managers have playing privileges! Register your in-game identity to place yourself on your squad roster and be eligible for the Starting XI.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowClaimSelf((prev) => !prev)}
-                className="adm-btn adm-btn-primary px-3 py-1.5 text-xs font-semibold shrink-0"
-              >
-                {showClaimSelf ? 'Close' : '⚽ Add Myself to Squad'}
-              </button>
-            </div>
 
-            {showClaimSelf && (
-              <form
-                onSubmit={handleClaimSelfPlayer}
-                className="mt-3.5 pt-3.5 border-t border-[var(--border)] flex flex-wrap items-end gap-3"
-              >
-                <div className="flex-1 min-w-[160px] space-y-1">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-faint)]">
-                    Your EA ID / Gamertag
+                {/* Right: Inline Official Shirt Number Input + Save Button (Zero Dead Space) */}
+                <div className="flex flex-col gap-2 rounded-xl border border-white/10 bg-black/40 p-4 sm:min-w-[280px]">
+                  <label className="text-[11px] font-black uppercase tracking-wider text-slate-300">
+                    Official Shirt Number (1–99)
                   </label>
-                  <input
-                    type="text"
-                    required
-                    value={selfGamertag}
-                    onChange={(e) => setSelfGamertag(e.target.value)}
-                    placeholder="e.g. Captain_Ace"
-                    className="h-9 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 text-xs font-semibold text-[var(--text-strong)]"
-                  />
-                </div>
-                <div className="w-28 space-y-1">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-faint)]">
-                    Jersey # (1–99)
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={99}
-                    value={selfShirtNumber}
-                    onChange={(e) => setSelfShirtNumber(e.target.value)}
-                    placeholder="10"
-                    className="h-9 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 text-center font-mono text-xs font-bold text-[var(--text-strong)]"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  disabled={selfBusy || !selfGamertag.trim()}
-                  className="adm-btn adm-btn-primary h-9 px-4 text-xs font-semibold whitespace-nowrap"
-                >
-                  {selfBusy ? 'Adding…' : 'Join as Playing Captain'}
-                </button>
-              </form>
-            )}
-          </div>
-        )}
-        {squadList.length === 0 ? (
-          <div className="py-6 text-center">
-            <EmptyState title="No players signed yet" hint="Search for players and send contract offers to build your roster." />
-            <div className="mt-3">
-              <Button
-                size="sm"
-                disabled={!transferWindowOpen}
-                onClick={() => setShowSignModal(true)}
-                className="gap-1.5 font-bold"
-              >
-                <svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden>
-                  <path d="M10 4v12M4 10h12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
-                </svg>
-                {transferWindowOpen ? 'Sign First Player' : '🔒 Window Closed'}
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <>
-          <ul className="divide-y divide-[var(--border)]">
-            {pagedSquad.map((p) => (
-              <li key={p.id} className="flex items-center gap-3 py-3">
-                <SmartImage
-                  src={p.avatar_local || AVATAR_PLACEHOLDER}
-                  fallback={AVATAR_PLACEHOLDER}
-                  alt=""
-                  wrapperClassName="h-9 w-9 shrink-0 rounded-full overflow-hidden bg-[var(--surface-hover)] border border-[var(--border)]"
-                  className="h-full w-full object-cover"
-                />
-                <div className="min-w-0 flex-1 flex items-center gap-2">
-                  <Link
-                    to={`/players/${p.slug}`}
-                    className="truncate text-sm font-semibold text-[var(--text-strong)] hover:text-[var(--accent-text)]"
+                  <form
+                    onSubmit={isManager ? handleSaveManagerShirt : handleSavePlayerShirt}
+                    className="flex items-center gap-2"
                   >
-                    {p.gamertag}
-                  </Link>
-                  {Boolean(captainGamertag && p.gamertag.toLowerCase() === captainGamertag.toLowerCase()) && (
-                    <span
-                      className="shrink-0 rounded bg-amber-500/15 text-amber-500 border border-amber-500/30 px-1.5 py-0.5 text-[10px] font-bold"
-                      title="Starting XI captain"
-                    >
-                      👑 Captain
-                    </span>
-                  )}
-                  {((user?.playerId === p.id || user?.id === p.user_id) || Boolean(user?.gamertag && p.gamertag.toLowerCase() === user.gamertag.toLowerCase())) && (
-                    <span
-                      className="shrink-0 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30 px-1.5 py-0.5 text-[10px] font-bold"
-                      title="Club manager registered as a player"
-                    >
-                      Player-Manager
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-faint)]">
-                    Jersey #
-                  </span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={99}
-                    defaultValue={p.shirt_number ?? ''}
-                    placeholder="—"
-                    onBlur={async (e) => {
-                      const raw = e.target.value.trim()
-                      const nextNum = raw === '' ? null : Number(raw)
-                      if (nextNum === (p.shirt_number ?? null)) return
-                      try {
-                        await updateSquadPlayerShirt(p.id, nextNum)
-                        setNotice({ kind: 'ok', text: `Updated jersey number for ${p.gamertag}.` })
-                        await loadClub()
-                      } catch (err) {
-                        setNotice({ kind: 'error', text: msg(err) })
-                      }
-                    }}
-                    className="h-8 w-14 rounded-lg border border-[var(--border-strong)] bg-[var(--bg)] px-2 text-center font-mono text-xs font-bold text-[var(--text-strong)]"
-                  />
-                  <button
-                    type="button"
-                    disabled={busy || !transferWindowOpen}
-                    onClick={() => handleReleasePlayer(p)}
-                    className="ml-1 shrink-0 rounded-lg border border-red-500/25 bg-red-500/10 px-2.5 py-1 text-xs font-semibold text-red-400 transition-all duration-150 hover:border-red-500/60 hover:bg-red-500 hover:text-white active:scale-95 disabled:opacity-50"
-                    title={!transferWindowOpen ? 'Transfer window is closed' : (user?.playerId && p.id === user.playerId) || (user?.id && p.user_id === user.id) || (user?.gamertag && p.gamertag.toLowerCase() === user.gamertag.toLowerCase()) ? "Leave Squad" : "Release Player"}
-                  >
-                    {(user?.playerId && p.id === user.playerId) || (user?.id && p.user_id === user.id) || (user?.gamertag && p.gamertag.toLowerCase() === user.gamertag.toLowerCase()) ? "Leave" : "Release"}
-                  </button>
-                </div>
-                {p.pending > 0 && (
-                  <span className="rounded-full bg-[var(--accent-tint)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--accent-text)]">
-                    Awaiting reply
-                  </span>
-                )}
-              </li>
-            ))}
-          </ul>
-
-          {squadList.length > squadPageSize && (
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border)] pt-3 text-xs text-[var(--text-muted)]">
-              <span>
-                Showing {(safeSquadPage - 1) * squadPageSize + 1}–
-                {Math.min(safeSquadPage * squadPageSize, squadList.length)} of {squadList.length} players
-              </span>
-              <div className="flex items-center gap-1.5">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={safeSquadPage <= 1}
-                  onClick={() => setSquadPage((p) => Math.max(1, p - 1))}
-                >
-                  ← Previous
-                </Button>
-                <span className="px-2 font-mono font-medium">
-                  {safeSquadPage} / {totalSquadPages}
-                </span>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={safeSquadPage >= totalSquadPages}
-                  onClick={() => setSquadPage((p) => Math.min(totalSquadPages, p + 1))}
-                >
-                  Next →
-                </Button>
-              </div>
-            </div>
-          )}
-        </>
-        )}
-      </section>
-
-      {/* ---- recruitment modal ---- */}
-      <SignPlayerModal
-        open={showSignModal}
-        onClose={() => setShowSignModal(false)}
-        squadPlayerIds={squadPlayerIds}
-        onOfferSent={() => {
-          void loadOffers()
-        }}
-      />
-
-      {/* ---- outbox ---- */}
-      <section className={card}>
-        <PanelHead label="Outbox" title="Your offers" />
-        {offers.length === 0 ? (
-          <EmptyState title="No offers yet" hint="Offers you send to players appear here." />
-        ) : (
-          <ul className="divide-y divide-[var(--border)]">
-            {pending.map((o) => (
-              <li key={o.id} className="flex items-center gap-3 py-3">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-[var(--text-strong)]">
-                    {o.gamertag}
-                  </p>
-                  <p className="text-[12px] text-[var(--text-muted)]">Waiting for a reply</p>
-                </div>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={busy}
-                  onClick={() => void onCancel(o.id)}
-                >
-                  Withdraw
-                </Button>
-              </li>
-            ))}
-            {settled.map((o) => (
-              <li key={o.id} className="flex items-center gap-3 py-3 opacity-60">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-[var(--text-strong)]">
-                    {o.gamertag}
-                  </p>
-                  <p className="text-[12px] text-[var(--text-muted)]">
-                    {o.status === 'accepted'
-                      ? 'Signed'
-                      : o.status === 'rejected'
-                        ? 'Declined'
-                        : 'Withdrawn'}
-                  </p>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-    </div>
-  )
-}
-
-/* ================================================================= player */
-
-function PlayerPanel({ transferWindowOpen }: { transferWindowOpen: boolean }) {
-  const { refresh } = useAuth()
-  const [notice, setNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [club, setClub] = useState<{ id: number; name: string; slug: string } | null>(null)
-  const [shirtNumber, setShirtNumber] = useState<string>('')
-  const [offers, setOffers] = useState<Offer[]>([])
-  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false)
-
-  const [playerRequests, setPlayerRequests] = useState<JoinRequest[]>([])
-
-  const loadJoinRequests = useCallback(async () => {
-    try {
-      const data = await getPlayerJoinRequests()
-      setPlayerRequests(data.requests)
-    } catch {
-      setPlayerRequests([])
-    }
-  }, [])
-
-  const load = useCallback(async () => {
-    try {
-      const overview = await playerOverview()
-      setClub(overview.club)
-      setShirtNumber(overview.player.shirt_number != null ? String(overview.player.shirt_number) : '')
-      setOffers((await incomingOffers()).offers)
-      await loadJoinRequests()
-    } catch (err) {
-      setNotice({ kind: 'error', text: msg(err) })
-    }
-  }, [loadJoinRequests])
-
-  const onCancelPlayerRequest = async (id: number) => {
-    setBusy(true)
-    setNotice(null)
-    try {
-      await cancelJoinRequest(id)
-      setNotice({ kind: 'ok', text: 'Join request withdrawn.' })
-      await loadJoinRequests()
-    } catch (err: unknown) {
-      setNotice({ kind: 'error', text: msg(err) })
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  useEffect(() => {
-    void load()
-  }, [load])
-
-  const onSaveShirtNumber = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setBusy(true)
-    setNotice(null)
-    try {
-      const parsed = shirtNumber.trim() === '' ? null : Number(shirtNumber)
-      await updateMyPlayerProfile({ shirtNumber: parsed })
-      invalidateLiveClubCache()
-      setNotice({ kind: 'ok', text: 'Jersey number updated.' })
-      await load()
-    } catch (err) {
-      setNotice({ kind: 'error', text: msg(err) })
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const onDecide = async (id: number, decision: 'accept' | 'reject') => {
-    setBusy(true)
-    setNotice(null)
-    try {
-      await decideOffer(id, decision)
-      setNotice({
-        kind: 'ok',
-        text: decision === 'accept' ? 'Signed. Welcome to your new club.' : 'Offer declined.',
-      })
-      await Promise.all([load(), refresh()])
-    } catch (err) {
-      setNotice({ kind: 'error', text: msg(err) })
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const onLeave = async () => {
-    setBusy(true)
-    setNotice(null)
-    try {
-      await leaveClub()
-      setShowLeaveConfirm(false)
-      setNotice({ kind: 'ok', text: 'You have left the club and are a free agent again.' })
-      await Promise.all([load(), refresh()])
-    } catch (err) {
-      setShowLeaveConfirm(false)
-      setNotice({ kind: 'error', text: msg(err) })
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <div className="space-y-8">
-      <Notice {...(notice ?? { kind: 'ok', text: null })} />
-      <TransferWindowClosedBanner open={transferWindowOpen} />
-
-      <section className={card}>
-        <PanelHead label="Your status" title={club ? club.name : 'Free agent'} />
-        <p className={prose}>
-          {club ? (
-            <>
-              You are signed for {club.name}. Membership is not binding — you can leave whenever
-              you like, and you will be a free agent again immediately.
-            </>
-          ) : (
-            <>
-              You are not signed to a club. Managers can find you in their recruitment search and
-              send you an offer.
-            </>
-          )}
-        </p>
-        {club && (
-          <div className="mt-4 flex flex-wrap gap-2.5">
-            <ButtonLink to={`/clubs/${club.slug}`} variant="outline" size="sm">
-              View club
-            </ButtonLink>
-            <Button
-              size="sm"
-              variant="danger"
-              disabled={busy || !transferWindowOpen}
-              onClick={() => setShowLeaveConfirm(true)}
-            >
-              {transferWindowOpen ? 'Leave club' : '🔒 Window Closed'}
-            </Button>
-          </div>
-        )}
-
-        {showLeaveConfirm &&
-          club &&
-          createPortal(
-            <div
-              className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm animate-[fadeIn_.15s_ease-out]"
-              onClick={() => !busy && setShowLeaveConfirm(false)}
-            >
-              <div
-                className="surface relative w-full max-w-md rounded-2xl border border-[var(--border-strong)] p-6 shadow-2xl"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="flex items-start gap-3.5">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-rose-500/30 bg-rose-500/15 text-lg text-rose-400">
-                    ⚠️
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="font-display text-lg font-extrabold text-[var(--text-strong)]">
-                      Leave {club.name}?
-                    </h3>
-                    <p className="mt-1.5 text-xs leading-relaxed text-[var(--text-muted)]">
-                      Are you sure you want to leave <strong className="text-white">{club.name}</strong>? You will immediately become a <strong className="text-white">Free Agent</strong> and this move will be recorded on the league Transfer Market.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-6 flex items-center justify-end gap-2.5 border-t border-[var(--border)] pt-4">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={busy}
-                    onClick={() => setShowLeaveConfirm(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="danger"
-                    disabled={busy}
-                    onClick={() => void onLeave()}
-                  >
-                    {busy ? 'Leaving…' : `Yes, Leave ${club.name}`}
-                  </Button>
-                </div>
-              </div>
-            </div>,
-            document.body,
-          )}
-
-        <form onSubmit={onSaveShirtNumber} className="mt-5 flex flex-wrap items-end gap-3 border-t border-[var(--border)] pt-4">
-          <div>
-            <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-[var(--text-faint)]">
-              Jersey / Shirt Number (1–99)
-            </label>
-            <input
-              type="number"
-              min={1}
-              max={99}
-              value={shirtNumber}
-              onChange={(e) => setShirtNumber(e.target.value)}
-              placeholder="e.g. 10"
-              className={cx(field, 'w-32 font-mono font-bold')}
-            />
-          </div>
-          <Button type="submit" size="sm" variant="outline" disabled={busy}>
-            Save Number
-          </Button>
-        </form>
-      </section>
-
-      {/* ---- club fixture calendar ---- */}
-      <ClubFixtureCalendar clubSlug={club?.slug} clubName={club?.name} />
-
-      <section className={card}>
-        <PanelHead label="Inbox" title="Offers" />
-        {offers.length === 0 ? (
-          <EmptyState title="No offers waiting" hint="Offers from clubs land here." />
-        ) : (
-          <ul className="space-y-3">
-            {offers.map((o) => (
-              <li key={o.id} className="rounded-lg border border-[var(--border)] p-3.5">
-                <div className="flex items-center gap-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-bold text-[var(--text-strong)]">
-                      {o.club_name}
-                    </p>
-                    <p className="text-[12px] text-[var(--text-faint)]">
-                      {o.created_at ? new Date(o.created_at.includes('T') ? o.created_at : o.created_at.replace(' ', 'T') + (o.created_at.endsWith('Z') ? '' : 'Z')).toLocaleDateString() : ''}
-                    </p>
-                  </div>
-                </div>
-                {o.message && (
-                  <p className={`mt-2 ${prose}`}>{o.message}</p>
-                )}
-                <div className="mt-4 flex flex-wrap gap-2.5">
-                  <Button
-                    size="sm"
-                    disabled={busy || !transferWindowOpen}
-                    onClick={() => void onDecide(o.id, 'accept')}
-                  >
-                    {transferWindowOpen ? 'Accept' : '🔒 Window Closed'}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={busy}
-                    onClick={() => void onDecide(o.id, 'reject')}
-                  >
-                    Decline
-                  </Button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      {/* ---- club applications ---- */}
-      <section className={card}>
-        <div className="flex items-center justify-between pb-1">
-          <PanelHead label="Applications" title="Your Club Applications" />
-          <ButtonLink to="/clubs" size="sm" variant="outline" className="gap-1.5 font-bold">
-            Browse Clubs
-          </ButtonLink>
-        </div>
-        {playerRequests.length === 0 ? (
-          <EmptyState
-            title="No applications sent"
-            hint="You can browse the club list and request to join any club."
-          />
-        ) : (
-          <ul className="divide-y divide-[var(--border)]">
-            {playerRequests.map((r) => (
-              <li key={r.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  <SmartImage
-                    src={r.logo_local || r.logo_url || CLUB_PLACEHOLDER}
-                    fallback={CLUB_PLACEHOLDER}
-                    alt=""
-                    wrapperClassName="h-10 w-10 shrink-0 rounded-xl overflow-hidden bg-[var(--surface-hover)] border border-[var(--border)]"
-                    className="h-full w-full object-cover"
-                  />
-                  <div className="min-w-0">
-                    <Link
-                      to={`/clubs/${r.club_slug}`}
-                      className="truncate text-sm font-bold text-[var(--text-strong)] hover:text-[var(--accent-text)]"
-                    >
-                      {r.club_name}
-                    </Link>
-                    {r.message && (
-                      <p className="text-xs italic text-[var(--text-muted)] line-clamp-1">
-                        "{r.message}"
-                      </p>
-                    )}
-                    <span className="text-[10px] text-[var(--text-faint)]">
-                      Applied {r.created_at ? new Date(r.created_at.includes('T') ? r.created_at : r.created_at.replace(' ', 'T') + (r.created_at.endsWith('Z') ? '' : 'Z')).toLocaleDateString() : ''}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-                  <span
-                    className={cx(
-                      'rounded-lg px-2.5 py-1 text-xs font-semibold capitalize',
-                      r.status === 'pending'
-                        ? 'bg-[var(--accent-tint)] text-[var(--accent-text)] font-bold'
-                        : r.status === 'accepted'
-                          ? 'bg-emerald-500/15 text-emerald-400 font-bold'
-                          : 'bg-[var(--surface-hover)] text-[var(--text-muted)]',
-                    )}
-                  >
-                    {r.status === 'pending' ? 'Pending Review' : r.status}
-                  </span>
-                  {r.status === 'pending' && (
+                    <input
+                      type="number"
+                      min={1}
+                      max={99}
+                      value={isManager ? selfShirtNumber : myShirtNumber}
+                      onChange={(e) => {
+                        if (isManager) setSelfShirtNumber(e.target.value)
+                        else setMyShirtNumber(e.target.value)
+                      }}
+                      placeholder="#"
+                      className="h-10 w-20 rounded-lg border border-white/20 bg-black/60 px-2 text-center font-mono text-sm font-black text-white outline-none focus:border-[#c4f82a]"
+                    />
                     <Button
-                      size="sm"
-                      variant="ghost"
+                      type="submit"
+                      size="md"
                       disabled={busy}
-                      onClick={() => onCancelPlayerRequest(r.id)}
-                      className="text-xs text-[var(--text-muted)] hover:text-red-400"
+                      className="flex-1 bg-[#c4f82a] text-black font-black uppercase tracking-wider text-xs hover:bg-[#b0df24] shadow-[0_0_12px_rgba(196,248,42,0.25)]"
                     >
-                      Withdraw
+                      Save Number
                     </Button>
+                  </form>
+                  <span className="text-[10px] text-slate-500">
+                    Applies live to matchday team sheets, lineups, and pitch markers.
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Manager Mode: Club Identity and Playing Captain Claim */}
+            {isManager && (
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                {/* Manager Left: Club Identity & Brand */}
+                <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#0f1015]/95 to-[#090a0d]/98 p-5 shadow-xl sm:p-6 backdrop-blur-md">
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
+                    Management
+                  </p>
+                  <h3 className="text-base font-black uppercase tracking-wider text-white">
+                    Club Identity & Brand
+                  </h3>
+
+                  <form onSubmit={handleSaveClubIdentity} className="mt-4 space-y-4">
+                    <div className="flex items-center gap-4">
+                      <div className="relative grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-2xl border border-white/10 bg-black/50 p-2">
+                        <img
+                          src={clubLogoDraft || clubCrest}
+                          alt=""
+                          onError={(e) => {
+                            e.currentTarget.src = CLUB_PLACEHOLDER
+                          }}
+                          className="h-full w-full object-contain"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <input
+                          ref={logoInputRef}
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0]
+                            if (file) {
+                              const compressed = await compressClubLogo(file)
+                              setClubLogoDraft(compressed)
+                            }
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => logoInputRef.current?.click()}
+                          className="rounded-lg bg-white/10 px-3 py-1.5 text-xs font-bold text-white hover:bg-white/20"
+                        >
+                          Change Logo
+                        </button>
+                        {clubLogoDraft && (
+                          <button
+                            type="button"
+                            onClick={() => setClubLogoDraft(null)}
+                            className="block text-xs font-bold text-red-400 hover:underline"
+                          >
+                            Revert
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-xs font-bold text-slate-300">
+                        3-Letter Short Code (2–4 letters)
+                      </label>
+                      <input
+                        type="text"
+                        maxLength={4}
+                        value={editShortCode}
+                        onChange={(e) => setEditShortCode(e.target.value.toUpperCase())}
+                        placeholder="e.g. BV"
+                        className="h-9 w-32 rounded-lg border border-white/20 bg-black/50 px-3 font-mono text-xs font-black text-white focus:border-[#c4f82a] outline-none"
+                      />
+                    </div>
+
+                    <Button
+                      type="submit"
+                      size="sm"
+                      disabled={busy}
+                      className="bg-[#c4f82a] text-black font-black uppercase tracking-wider text-xs"
+                    >
+                      Save Identity Changes
+                    </Button>
+                  </form>
+                </div>
+
+                {/* Manager Right: Squad Claim (if not playing yet) */}
+                <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#0f1015]/95 to-[#090a0d]/98 p-5 shadow-xl sm:p-6 backdrop-blur-md">
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
+                    Squad Registration
+                  </p>
+                  <h3 className="text-base font-black uppercase tracking-wider text-white">
+                    Playing Captain Status
+                  </h3>
+
+                  {isManagerInSquad ? (
+                    <div className="mt-4 rounded-xl border border-white/10 bg-black/40 p-4 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="flex h-2 w-2 rounded-full bg-[#c4f82a]" />
+                        <span className="text-sm font-bold text-white">
+                          Registered on Squad Roster
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400">
+                        You can slot your player card onto the tactical pitch board in the TACTICS & SQUAD tab, or set yourself as matchday captain.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="mt-4 rounded-xl border border-white/10 bg-black/40 p-4 space-y-3">
+                      <p className="text-xs font-bold text-white">Join Squad as Playing Captain</p>
+                      <p className="text-[11px] text-slate-400">
+                        Register your EA gamertag into your squad roster so you can be slotted onto the tactical pitch.
+                      </p>
+                      <form onSubmit={handleClaimSelf} className="flex flex-wrap items-center gap-2">
+                        <input
+                          type="text"
+                          required
+                          value={selfGamertag}
+                          onChange={(e) => setSelfGamertag(e.target.value)}
+                          placeholder="Your EA Gamertag"
+                          className="h-9 flex-1 rounded-lg border border-white/20 bg-black/60 px-3 text-xs text-white outline-none focus:border-[#c4f82a]"
+                        />
+                        <Button
+                          type="submit"
+                          size="sm"
+                          disabled={selfBusy || !selfGamertag.trim()}
+                          className="bg-[#c4f82a] text-black font-black text-xs"
+                        >
+                          Join Roster
+                        </Button>
+                      </form>
+                    </div>
                   )}
                 </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-    </div>
-  )
-}
-
-/* =================================================================== page */
-
-/* ========================================================= orders & receipts */
-
-function OrdersSection() {
-  const [orders, setOrders] = useState<UserOrder[]>([])
-  const [loading, setLoading] = useState(true)
-  const [activeReceipt, setActiveReceipt] = useState<UserOrder | null>(null)
-
-  useEffect(() => {
-    let active = true
-    getMyOrders()
-      .then((res) => {
-        if (active) setOrders(res.orders || [])
-      })
-      .catch(() => {
-        if (active) setOrders([])
-      })
-      .finally(() => {
-        if (active) setLoading(false)
-      })
-    return () => {
-      active = false
-    }
-  }, [])
-
-  if (loading || orders.length === 0) return null
-
-  return (
-    <section className="mt-8 rounded-card border border-[var(--border-strong)] bg-[var(--surface)] p-4 sm:p-5">
-      <PanelHead label="Purchases" title="Payment History & Receipts" />
-      <div className="space-y-3">
-        {orders.map((o) => (
-          <div key={o.id} className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)]/50 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] pb-2.5">
-              <div>
-                <span className="font-mono text-xs font-bold text-[var(--accent-text)]">{o.order_number}</span>
-                <span className="ml-2 text-[11px] text-[var(--text-muted)]">
-                  {new Date(o.paid_at || o.created_at).toLocaleDateString()}
-                </span>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="adm-status-badge status-active text-[10px]">
-                  {o.status.toUpperCase()}
-                </span>
-                <span className="font-mono text-sm font-bold text-[var(--text-strong)]">
-                  {o.currency} {Number(o.total_amount).toFixed(2)}
-                </span>
-              </div>
-            </div>
-
-            {o.items && o.items.length > 0 && (
-              <ul className="mt-2.5 space-y-1 text-xs text-[var(--text-muted)]">
-                {o.items.map((it, idx) => (
-                  <li key={idx} className="flex justify-between">
-                    <span>{it.quantity}× {it.name}</span>
-                    <span className="font-mono">{o.currency} {(it.amount * it.quantity).toFixed(2)}</span>
-                  </li>
-                ))}
-              </ul>
             )}
 
-            <div className="mt-3 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setActiveReceipt(o)}
-                className="adm-btn adm-btn-secondary px-2.5 py-1 text-xs font-semibold"
-              >
-                🖨️ View & Print Receipt
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
+            {/* Player Mode: Contract & Club Membership */}
+            {!isManager && myClub && (
+              <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#0f1015]/95 to-[#090a0d]/98 p-5 shadow-xl sm:p-6 backdrop-blur-md">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
+                  Pro Contract
+                </p>
+                <h3 className="text-base font-black uppercase tracking-wider text-white">
+                  Club Membership
+                </h3>
 
-      {activeReceipt &&
-        createPortal(
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm overflow-y-auto animate-[fadeIn_.15s_ease-out]">
-            <div className="surface relative my-auto w-full max-w-lg rounded-2xl border border-[var(--border)] p-6 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
-              <div>
-                <span className="text-xs uppercase tracking-wider text-[var(--text-muted)]">IWVPL Official Receipt</span>
-                <p className="font-mono text-sm font-bold text-[var(--accent-text)]">{activeReceipt.order_number}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setActiveReceipt(null)}
-                className="text-lg text-[var(--text-muted)] hover:text-[var(--text-strong)]"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="my-4 space-y-3 text-xs">
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-[var(--text-faint)]">Date</span>
-                  <p className="text-[var(--text-strong)] font-medium">
-                    {new Date(activeReceipt.paid_at || activeReceipt.created_at).toLocaleString()}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-[var(--text-faint)]">Payment Method</span>
-                  <p className="text-[var(--text-strong)] font-medium">Stripe Card Payment</p>
-                </div>
-              </div>
-
-              {activeReceipt.items && (
-                <div className="border-t border-[var(--border)] pt-2 space-y-1">
-                  <span className="text-[10px] font-bold uppercase text-[var(--text-faint)]">Items</span>
-                  {activeReceipt.items.map((it, idx) => (
-                    <div key={idx} className="flex justify-between py-1">
-                      <span>{it.quantity}× {it.name}</span>
-                      <span className="font-mono">{activeReceipt.currency} {(it.amount * it.quantity).toFixed(2)}</span>
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-white/10 bg-black/40 p-4">
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={clubCrest}
+                      alt=""
+                      onError={(e) => {
+                        e.currentTarget.src = CLUB_PLACEHOLDER
+                      }}
+                      className="h-10 w-10 object-contain"
+                    />
+                    <div>
+                      <p className="text-sm font-bold text-white">{myClub.name}</p>
+                      <p className="text-xs text-slate-400">Current Club • Active Registration</p>
                     </div>
-                  ))}
+                  </div>
+
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={busy || !transferWindowOpen}
+                    onClick={handleLeaveClub}
+                    className="border-red-500/30 text-red-400 hover:bg-red-500/10 text-xs font-bold"
+                  >
+                    Leave Club (Free Agency)
+                  </Button>
                 </div>
-              )}
-
-              <div className="flex justify-between border-t border-[var(--border)] pt-2 text-sm font-bold">
-                <span>Total Paid</span>
-                <span className="font-mono text-[var(--accent-text)]">
-                  {activeReceipt.currency} {Number(activeReceipt.total_amount).toFixed(2)}
-                </span>
               </div>
-            </div>
-
-            <div className="mt-5 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => window.print()}
-                className="adm-btn adm-btn-primary px-3 py-1.5 text-xs font-semibold"
-              >
-                🖨️ Print / Save PDF
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveReceipt(null)}
-                className="adm-btn adm-btn-outline px-3 py-1.5 text-xs font-semibold"
-              >
-                Close
-              </button>
-            </div>
+            )}
           </div>
-        </div>,
-        document.body,
-      )}
-    </section>
-  )
-}
-
-export default function DashboardPage() {
-  const { user, loading } = useAuth()
-  const navigate = useNavigate()
-  const sent = useRef(false)
-  const [showSettingsModal, setShowSettingsModal] = useState(false)
-  const [transferWindowOpen, setTransferWindowOpen] = useState(true)
-  const [maxSquadSize, setMaxSquadSize] = useState(23)
-
-  useEffect(() => {
-    let active = true
-    getTransferWindowStatus()
-      .then((res) => {
-        if (!active) return
-        if (typeof res.open === 'boolean') {
-          setTransferWindowOpen(res.open)
-        }
-        if (typeof res.maxSquadSize === 'number' && res.maxSquadSize >= 5) {
-          setMaxSquadSize(res.maxSquadSize)
-        }
-      })
-      .catch(() => {})
-    return () => {
-      active = false
-    }
-  }, [])
-
-  useEffect(() => {
-    if (window.location.hash.includes('settings')) {
-      setShowSettingsModal(true)
-    }
-  }, [])
-
-  // Redirect only after the session has actually resolved, or a signed-in user
-  // reloading /dashboard bounces to /login during the one frame where `user` is
-  // still null.
-  useEffect(() => {
-    if (loading || user || sent.current) return
-    sent.current = true
-    navigate('/login', { replace: true })
-  }, [loading, user, navigate])
-
-  if (loading) {
-    return (
-      <div className="mx-auto w-full max-w-4xl px-5 py-24 sm:px-6 lg:px-8">
-        <div className="shimmer h-8 w-56 rounded-lg" />
-      </div>
-    )
-  }
-
-  if (!user) return null
-
-  const isPlayer = user.role === 'player'
-
-  return (
-    <div className="page-enter">
-      {/* Compact header, not PageHeader. That component is sized for a
-          marketing page — a 3.5rem display heading and a lede paragraph — which
-          on a screen you use daily is just furniture. A workspace opens with a
-          line of text and gets out of the way. */}
-      <div className="mx-auto flex w-full max-w-7xl flex-wrap items-end justify-between gap-4 px-5 pb-6 pt-24 sm:px-6 lg:px-8 lg:pt-28">
-        <div className="min-w-0">
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--accent-text)]">
-            {isPlayer ? 'Player hub' : 'Club management'}
-          </p>
-          <h1 className="mt-1.5 font-display text-2xl font-bold leading-tight text-[var(--text-strong)] sm:text-3xl">
-            {user.name}
-          </h1>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setShowSettingsModal(true)}
-            className="gap-1.5 font-bold"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <circle cx="12" cy="12" r="3" />
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-            </svg>
-            Account Settings
-          </Button>
-          <ButtonLink to="/" variant="outline" size="sm">
-            Back to site
-          </ButtonLink>
-        </div>
-      </div>
-
-      <Container size="default" className="pb-20">
-        {isPlayer ? (
-          <PlayerPanel transferWindowOpen={transferWindowOpen} />
-        ) : (
-          <ManagerPanel transferWindowOpen={transferWindowOpen} maxSquadSize={maxSquadSize} />
         )}
-        <OrdersSection />
-      </Container>
+      </main>
 
-      <AccountSettingsModal
-        open={showSettingsModal}
-        onClose={() => {
-          setShowSettingsModal(false)
-          if (window.location.hash.includes('settings')) {
-            window.history.replaceState(null, '', window.location.pathname)
-          }
-        }}
-      />
+      {/* Sign Player Modal (Manager) */}
+      {isManager && myClub && (
+        <SignPlayerModal
+          open={showSignModal}
+          onClose={() => setShowSignModal(false)}
+          clubId={myClub.id}
+          clubName={myClub.name}
+          onSuccess={() => {
+            setNotice({ kind: 'ok', text: 'Contract offer sent!' })
+            void loadManagerData()
+          }}
+        />
+      )}
+
+      {/* Account Settings Modal */}
+      {showSettingsModal && (
+        <AccountSettingsModal
+          open={showSettingsModal}
+          onClose={() => setShowSettingsModal(false)}
+        />
+      )}
     </div>
   )
 }

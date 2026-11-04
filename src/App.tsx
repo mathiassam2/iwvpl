@@ -32,7 +32,7 @@ const ShopPage = lazy(() => import('@/pages/ShopPage'))
 const CheckoutSuccessPage = lazy(() => import('@/pages/CheckoutSuccessPage'))
 const EntriesPage = lazy(() => import('@/pages/EntriesPage'))
 const DashboardPage = lazy(() => import('@/pages/DashboardPage'))
-const HubV2Page = lazy(() => import('@/pages/HubV2Page'))
+
 const NotFoundPage = lazy(() => import('@/pages/NotFoundPage'))
 
 function RouteFallback() {
@@ -123,7 +123,7 @@ export default function App() {
             <Route path="/entries" element={<EntriesPage />} />
             <Route path="/entry-passes" element={<EntriesPage />} />
             <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/hub-v2" element={<HubV2Page />} />
+            <Route path="/hub-v2" element={<Navigate to="/dashboard" replace />} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
           </Suspense>
