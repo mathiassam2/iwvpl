@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/PageHeader'
-import { MatchRow, StatTile } from '@/components/league'
+import { MatchRow } from '@/components/league'
 import { Container, EmptyState, Section, Select } from '@/components/ui'
 import { SITE, siteData } from '@/data'
+import { useAuth } from '@/lib/auth'
 import { cx, stripFlag } from '@/lib/format'
 import {
   getLiveMatches,
@@ -33,6 +34,12 @@ interface RoundGroup {
   dateGroups: RoundDateSubgroup[]
   matches: Match[]
   completedCount: number
+}
+
+interface PinnedClub {
+  id: number | null
+  name: string
+  slug: string
 }
 
 function extractMatchYmd(m: Match): string | null {
@@ -87,6 +94,14 @@ function divisionSortRank(name: string): number {
   return 999
 }
 
+function formatDivisionTag(name?: string | null): string | undefined {
+  if (!name) return undefined
+  const lower = name.toLowerCase().trim()
+  if (lower.includes('two') || lower.includes('2') || lower.includes('ii')) return 'DIV 2'
+  if (lower.includes('one') || lower.includes('1') || lower.includes('i')) return 'DIV 1'
+  return name.slice(0, 5).toUpperCase()
+}
+
 function buildRoundGroups(matches: Match[]): RoundGroup[] {
   if (matches.length === 0) return []
 
@@ -110,7 +125,6 @@ function buildRoundGroups(matches: Match[]): RoundGroup[] {
       map.set(key, list)
     }
   } else {
-    // Group by calendar date (YYYY-MM-DD) in chronological order as Round 1, Round 2, ...
     const sorted = [...matches].sort((a, b) => {
       if (!a.kickoff && !b.kickoff) return (a.id ?? 0) - (b.id ?? 0)
       if (!a.kickoff) return 1
@@ -186,8 +200,187 @@ function buildRoundGroups(matches: Match[]): RoundGroup[] {
   return groups.sort((a, b) => a.roundNum - b.roundNum)
 }
 
+/* --------------------------------------------------- Searchable Club Combobox */
+interface ClubOption {
+  value: string
+  label: string
+  logo?: string | null
+  id?: number | null
+}
+
+function ClubCombobox({
+  options,
+  value,
+  onChange,
+  pinnedClubSlug,
+  onPinClub,
+  onUnpinClub,
+  hasPrompt,
+  onClosePrompt,
+}: {
+  options: ClubOption[]
+  value: string
+  onChange: (slug: string) => void
+  pinnedClubSlug: string | null
+  onPinClub: (club: ClubOption) => void
+  onUnpinClub: () => void
+  hasPrompt: boolean
+  onClosePrompt: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  useEffect(() => {
+    if (hasPrompt) setOpen(true)
+  }, [hasPrompt])
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return options
+    return options.filter((c) => c.label.toLowerCase().includes(q))
+  }, [options, query])
+
+  const selectedClub = options.find((c) => c.value === value)
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <button
+        type="button"
+        onClick={() => setOpen((prev) => !prev)}
+        className={cx(
+          'inline-flex items-center justify-between gap-2 rounded-lg border bg-[var(--surface-2)] px-3 py-1.5 text-xs font-semibold transition-all max-w-[210px]',
+          value !== 'all'
+            ? 'border-[var(--accent-ring)] text-white font-bold'
+            : 'border-[var(--border)] text-[var(--text-strong)] hover:border-[var(--border-strong)]',
+        )}
+      >
+        <span className="truncate">{selectedClub ? selectedClub.label : 'All Clubs'}</span>
+        <span className="text-[10px] text-[var(--text-muted)] shrink-0">▾</span>
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-2 w-72 sm:w-80 overflow-hidden rounded-2xl border border-[var(--border-strong)] bg-[#12141a] shadow-2xl z-50 backdrop-blur-xl">
+          {hasPrompt && (
+            <div className="flex items-center justify-between border-b border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[11px] font-bold text-amber-300">
+              <span className="flex items-center gap-1.5">
+                <span>⭐</span> Select a club to pin as My Club
+              </span>
+              <button
+                type="button"
+                onClick={onClosePrompt}
+                className="text-amber-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
+          <div className="border-b border-[var(--border)] p-2">
+            <input
+              type="text"
+              autoFocus
+              placeholder="Search club name..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-1)] px-3 py-1.5 text-xs text-white placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-ring)]"
+            />
+          </div>
+
+          <div className="max-h-64 overflow-y-auto p-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                onChange('all')
+                setOpen(false)
+                setQuery('')
+              }}
+              className={cx(
+                'flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs transition-colors',
+                value === 'all'
+                  ? 'bg-[var(--accent-solid)] text-[var(--on-volt)] font-bold'
+                  : 'text-[var(--text-strong)] hover:bg-white/5',
+              )}
+            >
+              <span>All Clubs</span>
+              {value === 'all' && <span className="text-[11px]">✓</span>}
+            </button>
+
+            <div className="my-1 border-t border-[var(--border)]" />
+
+            {filtered.map((club) => {
+              const isSelected = value === club.value
+              const isPinned = pinnedClubSlug === club.value
+              return (
+                <div
+                  key={club.value}
+                  className={cx(
+                    'group flex items-center justify-between rounded-lg px-2.5 py-1.5 transition-colors',
+                    isSelected ? 'bg-[var(--accent-solid)] text-[var(--on-volt)]' : 'hover:bg-white/5',
+                  )}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onChange(club.value)
+                      setOpen(false)
+                      setQuery('')
+                    }}
+                    className="flex flex-1 items-center gap-2 text-left text-xs font-semibold truncate"
+                  >
+                    <span className="truncate">{club.label}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      if (isPinned) {
+                        onUnpinClub()
+                      } else {
+                        onPinClub(club)
+                      }
+                    }}
+                    className={cx(
+                      'ml-2 grid h-6 w-6 place-items-center rounded text-sm transition-all',
+                      isPinned
+                        ? 'text-amber-400 hover:text-amber-300'
+                        : isSelected
+                        ? 'text-black/40 hover:text-black'
+                        : 'text-[var(--text-faint)] hover:text-amber-400',
+                    )}
+                    title={isPinned ? 'Unpin as My Club' : 'Pin as My Club'}
+                  >
+                    {isPinned ? '★' : '☆'}
+                  </button>
+                </div>
+              )
+            })}
+
+            {filtered.length === 0 && (
+              <p className="py-4 text-center text-xs text-[var(--text-muted)]">No clubs match search.</p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ----------------------------------------------------------------- Main Page */
 export default function MatchesPage() {
   const seasonName = useSeasonName()
+  const { user } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
 
   const initialTab = searchParams.get('tab') || 'all'
@@ -195,8 +388,7 @@ export default function MatchesPage() {
     initialTab === 'upcoming' ? 'upcoming' : initialTab === 'results' ? 'results' : 'all',
   )
   const [divisionFilter, setDivisionFilter] = useState<string>('all')
-  const [selectedRoundKey, setSelectedRoundKey] = useState<string>('all')
-  const [collapsedRounds, setCollapsedRounds] = useState<Record<string, boolean>>({})
+  const [selectedRoundKey, setSelectedRoundKey] = useState<string>('active')
   const [team, setTeam] = useState('all')
 
   const [allMatches, setAllMatches] = useState<Match[]>([])
@@ -207,6 +399,54 @@ export default function MatchesPage() {
   const [loading, setLoading] = useState(liveLeagueEnabled)
   const [error, setError] = useState('')
   const [reload, setReload] = useState(0)
+
+  // Game Week Dropdown & TBD Accordion state
+  const [gwDropdownOpen, setGwDropdownOpen] = useState(false)
+  const gwDropdownRef = useRef<HTMLDivElement>(null)
+  const [tbdOpenState, setTbdOpenState] = useState<Record<string, boolean>>({})
+
+  // My Club prompt state
+  const [showPinPrompt, setShowPinPrompt] = useState(false)
+  const [pinnedClub, setPinnedClub] = useState<PinnedClub | null>(() => {
+    try {
+      const saved = localStorage.getItem('iwvpl_pinned_club')
+      if (saved) return JSON.parse(saved)
+    } catch {}
+    return null
+  })
+
+  // Close GW quick jump dropdown on click outside
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (gwDropdownRef.current && !gwDropdownRef.current.contains(e.target as Node)) {
+        setGwDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  // Resolve active My Club (auth profile has precedence, falls back to pinned localStorage)
+  const resolvedMyClub = useMemo<PinnedClub | null>(() => {
+    if (user?.clubName) {
+      return {
+        id: user.clubId ?? null,
+        name: stripFlag(user.clubName).trim(),
+        slug: user.clubSlug || stripFlag(user.clubName).toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+      }
+    }
+    if (pinnedClub && pinnedClub.name) {
+      return pinnedClub
+    }
+    return null
+  }, [user, pinnedClub])
+
+  const isMyClubActive = Boolean(
+    resolvedMyClub &&
+      (team === resolvedMyClub.slug ||
+        team.toLowerCase() === resolvedMyClub.name.toLowerCase() ||
+        stripFlag(team).toLowerCase() === resolvedMyClub.name.toLowerCase()),
+  )
 
   // 1. Load seasons list
   useEffect(() => {
@@ -285,7 +525,7 @@ export default function MatchesPage() {
     return () => controller.abort()
   }, [seasonId, reload])
 
-  // Available divisions in this season's matches (sorted in natural tier order: Division One -> Division Two -> ...)
+  // Divisions available in current season matches
   const divisions = useMemo(() => {
     const map = new Map<string, string>()
     for (const m of allMatches) {
@@ -308,9 +548,9 @@ export default function MatchesPage() {
       })
   }, [allMatches])
 
-  // Clubs filter options
-  const clubOptions = useMemo(() => {
-    const clubsMap = new Map<string, string>()
+  // Club options for dropdown
+  const clubOptions = useMemo<ClubOption[]>(() => {
+    const clubsMap = new Map<string, { slug: string; id?: number | null }>()
     for (const m of allMatches) {
       for (const sideName of [m.home, m.away]) {
         if (sideName) {
@@ -320,13 +560,13 @@ export default function MatchesPage() {
               (c) => stripFlag(c.name).toLowerCase() === name.toLowerCase(),
             )
             const slug = matchedSeasonClub?.slug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
-            clubsMap.set(name, slug)
+            clubsMap.set(name, { slug, id: matchedSeasonClub?.id ?? null })
           }
         }
       }
     }
     return Array.from(clubsMap.entries())
-      .map(([name, slug]) => ({ value: slug, label: name }))
+      .map(([name, data]) => ({ value: data.slug, label: name, id: data.id }))
       .sort((a, b) => a.label.localeCompare(b.label))
   }, [allMatches, seasonClubs])
 
@@ -373,22 +613,78 @@ export default function MatchesPage() {
     return scopedMatches
   }, [scopedMatches, statusFilter])
 
-  // Build Round-by-Round groups (like Step 4 of Round-Robin generator)
+  // Round groups
   const roundGroups = useMemo(() => buildRoundGroups(filteredMatches), [filteredMatches])
+  const allSeasonRoundGroups = useMemo(() => buildRoundGroups(allMatches), [allMatches])
 
-  const visibleRoundGroups = useMemo(() => {
-    if (selectedRoundKey === 'all') return roundGroups
-    return roundGroups.filter((rg) => rg.key === selectedRoundKey)
+  // Active Game Week auto-resolution
+  const effectiveActiveKey = useMemo(() => {
+    if (roundGroups.length === 0) return 'all'
+    if (selectedRoundKey !== 'active' && selectedRoundKey !== 'all') {
+      if (roundGroups.some((rg) => rg.key === selectedRoundKey)) {
+        return selectedRoundKey
+      }
+    }
+    // Default to the first Game Week that has unplayed matches
+    const firstUnplayed = roundGroups.find((rg) => rg.completedCount < rg.matches.length)
+    if (firstUnplayed) return firstUnplayed.key
+    // Or the last game week if all completed
+    return roundGroups[roundGroups.length - 1]?.key ?? roundGroups[0]?.key ?? 'all'
   }, [roundGroups, selectedRoundKey])
 
-  // Scoped stats (reflects selected division & club)
-  const totalCompleted = useMemo(
-    () => scopedMatches.filter((m) => m.hs !== '' && m.as !== '').length,
-    [scopedMatches],
-  )
-  const totalUpcoming = scopedMatches.length - totalCompleted
-  const totalRoundsCount = useMemo(() => buildRoundGroups(scopedMatches).length, [scopedMatches])
+  // Visible groups to display
+  const isClubScheduleMode = team !== 'all'
+  const isAllGameWeeksMode = selectedRoundKey === 'all' || isClubScheduleMode
 
+  const visibleRoundGroups = useMemo(() => {
+    if (isAllGameWeeksMode) return roundGroups
+    return roundGroups.filter((rg) => rg.key === effectiveActiveKey)
+  }, [roundGroups, isAllGameWeeksMode, effectiveActiveKey])
+
+  const activeGroup = useMemo(
+    () => roundGroups.find((rg) => rg.key === effectiveActiveKey) ?? roundGroups[0],
+    [roundGroups, effectiveActiveKey],
+  )
+
+  const activeGroupIndex = useMemo(
+    () => roundGroups.findIndex((rg) => rg.key === effectiveActiveKey),
+    [roundGroups, effectiveActiveKey],
+  )
+  const hasPrevGw = activeGroupIndex > 0
+  const hasNextGw = activeGroupIndex >= 0 && activeGroupIndex < roundGroups.length - 1
+
+  // Overall season counts for the top badge
+  const seasonCompletedCount = useMemo(
+    () => allMatches.filter((m) => m.hs !== '' && m.as !== '').length,
+    [allMatches],
+  )
+  const totalSeasonGameWeeks = allSeasonRoundGroups.length
+
+  // Match Helper to test if a match is user's club
+  const isMatchMyClub = (m: Match) => {
+    if (!resolvedMyClub) return false
+    const home = stripFlag(m.home).toLowerCase().trim()
+    const away = stripFlag(m.away).toLowerCase().trim()
+    const target = resolvedMyClub.name.toLowerCase().trim()
+    const targetSlug = resolvedMyClub.slug.toLowerCase().trim()
+    return (
+      home === target ||
+      away === target ||
+      home.replace(/[^a-z0-9]+/g, '-') === targetSlug ||
+      away.replace(/[^a-z0-9]+/g, '-') === targetSlug
+    )
+  }
+
+  const getMyClubSide = (m: Match): 'home' | 'away' | null => {
+    if (!resolvedMyClub) return null
+    const home = stripFlag(m.home).toLowerCase().trim()
+    const target = resolvedMyClub.name.toLowerCase().trim()
+    const targetSlug = resolvedMyClub.slug.toLowerCase().trim()
+    if (home === target || home.replace(/[^a-z0-9]+/g, '-') === targetSlug) return 'home'
+    return 'away'
+  }
+
+  // Handlers
   const handleStatusChange = (next: 'all' | 'upcoming' | 'results') => {
     setStatusFilter(next)
     const nextParams = new URLSearchParams(searchParams)
@@ -397,167 +693,345 @@ export default function MatchesPage() {
     setSearchParams(nextParams, { replace: true })
   }
 
-  const toggleRound = (key: string) => {
-    setCollapsedRounds((prev) => ({ ...prev, [key]: !prev[key] }))
+  const handleDivisionChange = (id: string) => {
+    setDivisionFilter(id)
+    setSelectedRoundKey('active')
   }
 
-  const expandAll = () => setCollapsedRounds({})
-  const collapseAll = () => {
-    const next: Record<string, boolean> = {}
-    for (const rg of roundGroups) next[rg.key] = true
-    setCollapsedRounds(next)
+  const handleClubSelect = (slug: string) => {
+    setTeam(slug)
+    if (slug !== 'all') {
+      // Automatically switch to All Game Weeks Club Schedule view
+      setSelectedRoundKey('all')
+    } else {
+      setSelectedRoundKey('active')
+    }
+  }
+
+  const handleMyClubToggle = () => {
+    if (!resolvedMyClub) {
+      setShowPinPrompt(true)
+      return
+    }
+    if (isMyClubActive) {
+      // Toggle off
+      setTeam('all')
+      setSelectedRoundKey('active')
+    } else {
+      // Toggle on: filter to club & show full season run-in
+      setTeam(resolvedMyClub.slug)
+      setSelectedRoundKey('all')
+    }
+  }
+
+  const handlePinClub = (club: ClubOption) => {
+    const data: PinnedClub = {
+      id: club.id ?? null,
+      name: stripFlag(club.label).trim(),
+      slug: club.value,
+    }
+    localStorage.setItem('iwvpl_pinned_club', JSON.stringify(data))
+    setPinnedClub(data)
+    setShowPinPrompt(false)
+  }
+
+  const handleUnpinClub = () => {
+    localStorage.removeItem('iwvpl_pinned_club')
+    setPinnedClub(null)
+  }
+
+  const handlePrevGw = () => {
+    if (hasPrevGw) {
+      setSelectedRoundKey(roundGroups[activeGroupIndex - 1].key)
+    }
+  }
+
+  const handleNextGw = () => {
+    if (hasNextGw) {
+      setSelectedRoundKey(roundGroups[activeGroupIndex + 1].key)
+    }
   }
 
   return (
     <div className="page-enter">
+      {/* 1. Header with Consolidated Season Selector & High-level Progress Badge */}
       <PageHeader
         eyebrow="Fixtures & Results"
         title="Matches"
         lede={`Game-week-by-game-week schedule, kick-off times and official results for ${seasonName}. Published in SGT (UTC+8).`}
+        action={
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            {seasons.length > 0 && (
+              <div className="w-full sm:w-auto sm:min-w-56">
+                <Select
+                  value={seasonId != null ? String(seasonId) : ''}
+                  onChange={(val) => setSeasonId(Number(val))}
+                  options={seasons.map((s) => ({
+                    value: String(s.id),
+                    label: `${s.name}${s.is_current ? ' (Current)' : ''}`,
+                  }))}
+                />
+              </div>
+            )}
+            <div className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-1)] px-3.5 py-2.5 text-xs font-semibold text-[var(--text-muted)] shadow-sm">
+              <span className="font-extrabold text-[var(--text-strong)]">
+                {totalSeasonGameWeeks} Game Weeks
+              </span>
+              <span className="text-[var(--text-faint)]">•</span>
+              <span>
+                {seasonCompletedCount} / {allMatches.length} Played
+              </span>
+            </div>
+          </div>
+        }
       />
 
-      <Section>
+      {/* 2. Unified Sticky Toolbar: Architectural Division Tabs + Status + My Club + Club */}
+      <div className="sticky top-16 lg:top-[72px] z-30 border-b border-[var(--border)] bg-[#0a0b0e]/90 backdrop-blur-md transition-all">
         <Container size="wide">
-          {/* Top summary stats (matching Round-Robin Step 4 summary boxes) */}
-          <div className="mb-8 grid gap-4 sm:grid-cols-4">
-            <StatTile label="Total Fixtures" value={scopedMatches.length} hint="In current view" />
-            <StatTile label="Total Game Weeks" value={totalRoundsCount} hint="Match game weeks" />
-            <StatTile label="Upcoming Matches" value={totalUpcoming} hint="Awaiting kick-off" />
-            <StatTile label="Completed Results" value={totalCompleted} hint="Scores recorded" />
-          </div>
-
-          {/* Division Tabs if multiple divisions exist */}
-          {divisions.length > 1 && (
-            <div className="mb-5 flex flex-wrap items-center gap-2">
+          <div className="flex flex-col gap-3 py-2 sm:py-2.5 lg:flex-row lg:items-center lg:justify-between">
+            {/* Left: Architectural Division Tabs */}
+            <div className="flex items-center gap-1 overflow-x-auto no-scrollbar border-b border-[var(--border)] lg:border-b-0 pb-1 lg:pb-0">
               <button
                 type="button"
-                onClick={() => {
-                  setDivisionFilter('all')
-                  setSelectedRoundKey('all')
-                }}
+                onClick={() => handleDivisionChange('all')}
                 className={cx(
-                  'rounded-xl px-4 py-2 text-xs font-extrabold uppercase tracking-wider transition-all',
+                  'relative whitespace-nowrap pb-2 pt-1.5 px-3 text-xs sm:text-sm font-extrabold uppercase tracking-wider transition-colors',
                   divisionFilter === 'all'
-                    ? 'bg-[var(--accent-solid)] text-[var(--on-volt)] shadow-sm'
-                    : 'border border-[var(--border)] bg-[var(--surface-1)] text-[var(--text-muted)] hover:text-white',
+                    ? 'text-white border-b-2 border-[#c4f82a]'
+                    : 'text-[var(--text-muted)] hover:text-white border-b-2 border-transparent',
                 )}
               >
-                All Divisions ({allMatches.length})
+                All Divisions
               </button>
-              {divisions.map((d) => {
-                const count = allMatches.filter(
-                  (m) => String(m.divisionId) === d.id || m.divisionName === d.name,
-                ).length
-                return (
-                  <button
-                    key={d.id}
-                    type="button"
-                    onClick={() => {
-                      setDivisionFilter(d.id)
-                      setSelectedRoundKey('all')
-                    }}
-                    className={cx(
-                      'rounded-xl px-4 py-2 text-xs font-extrabold uppercase tracking-wider transition-all',
-                      divisionFilter === d.id
-                        ? 'bg-[var(--accent-solid)] text-[var(--on-volt)] shadow-sm'
-                        : 'border border-[var(--border)] bg-[var(--surface-1)] text-[var(--text-muted)] hover:text-white',
-                    )}
-                  >
-                    {d.name} ({count})
-                  </button>
-                )
-              })}
-            </div>
-          )}
-
-          {/* Primary Controls Bar: Status Pills + Jump to Round + Club + Season + Expand/Collapse */}
-          <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-[var(--border)] bg-[var(--surface-1)] p-4">
-            {/* Status filter pills */}
-            <div className="flex flex-wrap items-center gap-1.5 rounded-lg bg-[var(--surface-2)] p-1">
-              {(
-                [
-                  { id: 'all', label: `All (${scopedMatches.length})` },
-                  { id: 'upcoming', label: `Upcoming (${totalUpcoming})` },
-                  { id: 'results', label: `Results (${totalCompleted})` },
-                ] as const
-              ).map((item) => (
+              {divisions.map((d) => (
                 <button
-                  key={item.id}
+                  key={d.id}
                   type="button"
-                  onClick={() => handleStatusChange(item.id)}
+                  onClick={() => handleDivisionChange(d.id)}
                   className={cx(
-                    'rounded-md px-3 py-1.5 text-xs font-bold transition-colors',
-                    statusFilter === item.id
-                      ? 'bg-[var(--accent-solid)] text-[var(--on-volt)]'
-                      : 'text-[var(--text-muted)] hover:text-white',
+                    'relative whitespace-nowrap pb-2 pt-1.5 px-3 text-xs sm:text-sm font-extrabold uppercase tracking-wider transition-colors',
+                    divisionFilter === d.id
+                      ? 'text-white border-b-2 border-[#c4f82a]'
+                      : 'text-[var(--text-muted)] hover:text-white border-b-2 border-transparent',
                   )}
                 >
-                  {item.label}
+                  {d.name}
                 </button>
               ))}
             </div>
 
-            {/* Filters & Expand/Collapse Controls */}
-            <div className="flex flex-wrap items-center gap-2.5">
-              {seasons.length > 0 && (
-                <div className="w-full sm:w-auto sm:min-w-64">
-                  <Select
-                    value={seasonId != null ? String(seasonId) : ''}
-                    onChange={(val) => setSeasonId(Number(val))}
-                    options={seasons.map((s) => ({
-                      value: String(s.id),
-                      label: `${s.name}${s.is_current ? ' (Current)' : ''}`,
-                    }))}
-                  />
-                </div>
-              )}
-
-              {roundGroups.length > 1 && (
-                <div className="w-full sm:w-auto sm:min-w-48">
-                  <Select
-                    value={selectedRoundKey}
-                    onChange={(val) => setSelectedRoundKey(val || 'all')}
-                    options={[
-                      { value: 'all', label: `All Game Weeks (${roundGroups.length})` },
-                      ...roundGroups.map((rg) => ({
-                        value: rg.key,
-                        label: `${rg.label} · ${rg.matches.length}m`,
-                      })),
-                    ]}
-                  />
-                </div>
-              )}
-
-              <div className="w-full sm:w-auto sm:min-w-52">
-                <Select
-                  value={team}
-                  onChange={(val) => setTeam(val || 'all')}
-                  options={[{ value: 'all', label: 'All Clubs' }, ...clubOptions]}
-                />
+            {/* Right Group: Status Segmented Control + "My Club" Toggle + Club Combobox */}
+            <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
+              {/* Status Segmented Control (without noisy counts) */}
+              <div className="flex items-center rounded-lg bg-[var(--surface-2)] p-1 border border-[var(--border)]">
+                {(['all', 'upcoming', 'results'] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => handleStatusChange(tab)}
+                    className={cx(
+                      'rounded-md px-3 py-1.5 text-xs font-bold capitalize transition-colors',
+                      statusFilter === tab
+                        ? 'bg-[var(--accent-solid)] text-[var(--on-volt)] shadow-sm'
+                        : 'text-[var(--text-muted)] hover:text-white',
+                    )}
+                  >
+                    {tab}
+                  </button>
+                ))}
               </div>
 
-              {visibleRoundGroups.length > 1 && (
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={expandAll}
-                    className="rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-2.5 py-2 text-[11px] font-bold text-[var(--text-muted)] transition-colors hover:text-white"
-                  >
-                    Expand All
-                  </button>
-                  <button
-                    type="button"
-                    onClick={collapseAll}
-                    className="rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-2.5 py-2 text-[11px] font-bold text-[var(--text-muted)] transition-colors hover:text-white"
-                  >
-                    Collapse All
-                  </button>
+              {/* "My Club" Quick Toggle Pill */}
+              <button
+                type="button"
+                onClick={handleMyClubToggle}
+                className={cx(
+                  'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all border',
+                  isMyClubActive
+                    ? 'border-[#c4f82a] bg-[#c4f82a]/15 text-[#c4f82a] shadow-[0_0_12px_rgba(196,248,42,0.25)]'
+                    : resolvedMyClub
+                    ? 'border-[var(--border)] bg-[var(--surface-2)] text-[var(--text-strong)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)]'
+                    : 'border-dashed border-[var(--border-strong)] bg-[var(--surface-2)] text-[var(--text-muted)] hover:text-white hover:border-[var(--accent-ring)]',
+                )}
+                title={
+                  resolvedMyClub
+                    ? `Filter to ${resolvedMyClub.name}'s season schedule`
+                    : 'Pin your favourite club for 1-click access'
+                }
+              >
+                <span className={isMyClubActive ? 'text-[#c4f82a]' : 'text-amber-400'}>★</span>
+                <span>{resolvedMyClub ? resolvedMyClub.name : 'My Club'}</span>
+              </button>
+
+              {/* Club Combobox with Pin Feature */}
+              <ClubCombobox
+                options={clubOptions}
+                value={team}
+                onChange={handleClubSelect}
+                pinnedClubSlug={resolvedMyClub?.slug ?? null}
+                onPinClub={handlePinClub}
+                onUnpinClub={handleUnpinClub}
+                hasPrompt={showPinPrompt}
+                onClosePrompt={() => setShowPinPrompt(false)}
+              />
+            </div>
+          </div>
+        </Container>
+      </div>
+
+      <Section>
+        <Container size="wide">
+          {/* 3. Game Week Stepper Bar OR Club Schedule View Banner */}
+          {isClubScheduleMode ? (
+            /* Club Schedule Banner View */
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[var(--accent-ring)]/40 bg-gradient-to-r from-[var(--accent-tint)]/40 via-[var(--surface-1)] to-[var(--surface-1)] p-4 shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="grid h-10 w-10 place-items-center rounded-xl bg-[var(--accent-solid)] font-black text-[var(--on-volt)] text-base shadow-sm">
+                  ★
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-extrabold text-white">
+                      {clubOptions.find((c) => c.value === team)?.label || team} Schedule
+                    </h3>
+                    {isMyClubActive && (
+                      <span className="rounded bg-[var(--accent-solid)] px-2 py-0.5 text-[10px] font-black uppercase text-[var(--on-volt)]">
+                        My Club
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-[var(--text-muted)]">
+                    Full chronological run-in across all Game Weeks ({filteredMatches.length} fixtures)
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setTeam('all')
+                  setSelectedRoundKey('active')
+                }}
+                className="rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3.5 py-2 text-xs font-bold text-[var(--text-muted)] transition-colors hover:text-white hover:border-[var(--border-strong)]"
+              >
+                ✕ Clear Club Filter
+              </button>
+            </div>
+          ) : (
+            /* Game Week Stepper Navigator Bar */
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] p-3 sm:p-4 shadow-sm">
+              {/* Left: Prev GW button */}
+              <button
+                type="button"
+                disabled={!hasPrevGw || selectedRoundKey === 'all'}
+                onClick={handlePrevGw}
+                className="inline-flex items-center gap-1 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-xs font-extrabold text-[var(--text-strong)] transition-all hover:bg-white/5 hover:border-[var(--border-strong)] disabled:opacity-30 disabled:pointer-events-none active:scale-95"
+              >
+                ‹ Prev GW
+              </button>
+
+              {/* Center: Interactive GW Trigger with Dropdown */}
+              <div className="relative" ref={gwDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setGwDropdownOpen((prev) => !prev)}
+                  className="inline-flex items-center gap-2 rounded-xl border border-[var(--border-strong)] bg-[var(--surface-2)] px-4 py-2 text-center transition-all hover:border-[var(--accent-ring)] hover:bg-[var(--surface-hover)]"
+                >
+                  <span className="font-display text-xs sm:text-sm font-black uppercase tracking-wider text-[var(--accent-text)]">
+                    {selectedRoundKey === 'all'
+                      ? 'ALL GAME WEEKS'
+                      : activeGroup?.label ?? 'GAME WEEK'}
+                  </span>
+                  {activeGroup?.dateLabel && selectedRoundKey !== 'all' && (
+                    <>
+                      <span className="text-[var(--text-faint)] hidden sm:inline">•</span>
+                      <span className="text-xs font-bold text-[var(--text-strong)] hidden md:inline">
+                        {activeGroup.dateLabel}
+                      </span>
+                    </>
+                  )}
+                  <span className="text-xs text-[var(--text-muted)]">▾</span>
+                </button>
+
+                {gwDropdownOpen && (
+                  <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-72 sm:w-84 max-h-80 overflow-y-auto rounded-2xl border border-[var(--border-strong)] bg-[#12141a] p-2 shadow-2xl z-50 backdrop-blur-xl">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedRoundKey('all')
+                        setGwDropdownOpen(false)
+                      }}
+                      className={cx(
+                        'flex w-full items-center justify-between rounded-xl px-3.5 py-2.5 text-left text-xs font-bold transition-colors',
+                        selectedRoundKey === 'all'
+                          ? 'bg-[var(--accent-solid)] text-[var(--on-volt)]'
+                          : 'text-[var(--text-strong)] hover:bg-white/5',
+                      )}
+                    >
+                      <span>All Game Weeks (Full Season)</span>
+                      <span className="text-[10px] opacity-75">{roundGroups.length} Game Weeks</span>
+                    </button>
+                    <div className="my-1 border-t border-[var(--border)]" />
+                    {roundGroups.map((rg) => (
+                      <button
+                        key={rg.key}
+                        type="button"
+                        onClick={() => {
+                          setSelectedRoundKey(rg.key)
+                          setGwDropdownOpen(false)
+                        }}
+                        className={cx(
+                          'flex w-full items-center justify-between rounded-xl px-3.5 py-2 text-left text-xs transition-colors',
+                          selectedRoundKey === rg.key ||
+                            (selectedRoundKey === 'active' && rg.key === effectiveActiveKey)
+                            ? 'bg-[var(--accent-solid)] text-[var(--on-volt)] font-black'
+                            : 'text-[var(--text-strong)] hover:bg-white/5 font-medium',
+                        )}
+                      >
+                        <div>
+                          <div className="font-bold">{rg.label}</div>
+                          <div className="text-[10px] opacity-70 truncate max-w-[170px]">
+                            {rg.dateLabel}
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-bold opacity-80 shrink-0">
+                          {rg.completedCount}/{rg.matches.length} played
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Right: Next GW button */}
+              <button
+                type="button"
+                disabled={!hasNextGw || selectedRoundKey === 'all'}
+                onClick={handleNextGw}
+                className="inline-flex items-center gap-1 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-xs font-extrabold text-[var(--text-strong)] transition-all hover:bg-white/5 hover:border-[var(--border-strong)] disabled:opacity-30 disabled:pointer-events-none active:scale-95"
+              >
+                Next GW ›
+              </button>
+
+              {/* Far right progress pill */}
+              {activeGroup && selectedRoundKey !== 'all' && (
+                <div className="hidden xl:inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-[var(--text-muted)]">
+                  <span className="font-bold text-white">
+                    {activeGroup.completedCount}/{activeGroup.matches.length} Played
+                  </span>
+                  {activeGroup.unscheduledCount > 0 && (
+                    <>
+                      <span className="opacity-50">•</span>
+                      <span className="text-amber-400">+{activeGroup.unscheduledCount} TBD</span>
+                    </>
+                  )}
                 </div>
               )}
             </div>
-          </div>
+          )}
 
-          {/* Round-by-Round Collapsible Cards */}
+          {/* 4. Fixtures & Results List */}
           {loading ? (
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--accent-solid)] border-t-transparent" />
@@ -586,87 +1060,128 @@ export default function MatchesPage() {
               }
             />
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-6">
               {visibleRoundGroups.map((rg) => {
-                const isCollapsed = Boolean(collapsedRounds[rg.key])
-                const allDone = rg.completedCount === rg.matches.length && rg.matches.length > 0
+                const confirmedDateGroups = rg.dateGroups.filter((dg) => !dg.isUnscheduled)
+                const tbdGroup = rg.dateGroups.find((dg) => dg.isUnscheduled)
+                const hasMyClubInTbd = Boolean(
+                  tbdGroup && tbdGroup.matches.some((m) => isMatchMyClub(m)),
+                )
+                const isTbdOpen = tbdOpenState[rg.key] ?? hasMyClubInTbd
+
                 return (
                   <section
                     key={rg.key}
-                    className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-1)] transition-all"
+                    className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] transition-all shadow-sm"
                   >
-                    {/* Collapsible Round Card Header (matching Step 4 of Round-Robin Generator) */}
-                    <button
-                      type="button"
-                      onClick={() => toggleRound(rg.key)}
-                      className="flex w-full items-center justify-between gap-4 border-b border-[var(--border)] bg-[var(--surface-2)] px-5 py-3.5 text-left transition-colors hover:bg-white/5"
-                    >
-                      <div className="flex flex-wrap items-center gap-3">
-                        <span className="inline-flex items-center rounded-lg bg-[var(--accent-solid)] px-2.5 py-1 font-display text-xs font-extrabold uppercase tracking-wider text-[var(--on-volt)]">
-                          {rg.label}
-                        </span>
-                        <span className="text-xs font-bold text-[var(--text-strong)]">
-                          📅 {rg.dateLabel}
-                        </span>
-                        {rg.unscheduledCount > 0 && rg.unscheduledCount < rg.matches.length && (
-                          <span className="rounded-md border border-[var(--border)] bg-[var(--surface-1)] px-2 py-0.5 text-[10px] font-bold text-[var(--text-muted)]">
-                            +{rg.unscheduledCount} TBD
+                    {/* Game Week Header (in All Game Weeks mode) */}
+                    {isAllGameWeeksMode && (
+                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--surface-2)] px-5 py-3">
+                        <div className="flex items-center gap-3">
+                          <span className="inline-flex items-center rounded-lg bg-[var(--accent-solid)] px-2.5 py-1 font-display text-xs font-extrabold uppercase tracking-wider text-[var(--on-volt)]">
+                            {rg.label}
                           </span>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-3">
-                        <span
-                          className={cx(
-                            'numeric rounded-full px-2.5 py-0.5 text-[11px] font-bold',
-                            allDone
-                              ? 'bg-emerald-500/15 text-emerald-400'
-                              : 'bg-white/10 text-[var(--text-muted)]',
-                          )}
-                        >
+                          <span className="text-xs font-bold text-[var(--text-strong)]">
+                            📅 {rg.dateLabel}
+                          </span>
+                        </div>
+                        <span className="numeric text-xs font-bold text-[var(--text-muted)]">
                           {rg.completedCount}/{rg.matches.length} Played
                         </span>
-                        <span className="text-xs font-bold text-[var(--text-muted)]">
-                          {isCollapsed ? '▸ Show' : '▾ Hide'}
-                        </span>
                       </div>
-                    </button>
+                    )}
 
-                    {/* Round Fixtures Body (Sub-grouped by Date when multiple dates exist) */}
-                    {!isCollapsed && (
-                      <div className="divide-y divide-[var(--border)]">
-                        {(rg.dateGroups ?? []).map((dg) => (
-                          <div key={dg.key}>
-                            {rg.dateGroups.length > 1 && (
-                              <div
-                                className={cx(
-                                  'flex items-center justify-between px-5 py-2 text-[11px] font-bold tracking-wide border-b border-[var(--border)]',
-                                  dg.isUnscheduled
-                                    ? 'bg-white/[0.02] text-[var(--text-muted)]'
-                                    : 'bg-[var(--accent-tint)]/40 text-[var(--accent-text)]',
-                                )}
-                              >
-                                <span>
-                                  {dg.isUnscheduled ? '⚪ ' : '📅 '}
-                                  {dg.dateLabel}
-                                </span>
-                                <span className="numeric text-[10px] opacity-80">
-                                  {dg.matches.length} {dg.matches.length === 1 ? 'Fixture' : 'Fixtures'}
-                                </span>
-                              </div>
-                            )}
-                            <div className="divide-y divide-[var(--border)]">
-                              {dg.matches.map((m) => (
+                    {/* Confirmed Fixtures (Sub-grouped by Date) */}
+                    <div className="divide-y divide-[var(--border)]">
+                      {confirmedDateGroups.map((dg) => (
+                        <div key={dg.key}>
+                          <div className="flex items-center justify-between border-b border-[var(--border)] bg-[var(--accent-tint)]/25 px-5 py-2 text-[11px] font-bold text-[var(--accent-text)]">
+                            <span>📅 {dg.dateLabel}</span>
+                            <span className="numeric text-[10px] opacity-80">
+                              {dg.matches.length} {dg.matches.length === 1 ? 'Fixture' : 'Fixtures'}
+                            </span>
+                          </div>
+                          <div className="divide-y divide-[var(--border)]">
+                            {dg.matches.map((m) => {
+                              const isMyClubMatch = isMatchMyClub(m)
+                              const myClubSide = isMyClubMatch ? getMyClubSide(m) : null
+                              const divTag =
+                                divisionFilter === 'all'
+                                  ? formatDivisionTag(m.divisionName)
+                                  : undefined
+                              return (
                                 <MatchRow
                                   key={m.id ? `match-${m.id}` : `${m.url}-${m.home}-${m.away}`}
                                   match={m}
-                                  showDate
+                                  showTimeOnly
+                                  isMyClub={isMyClubMatch}
+                                  myClubSide={myClubSide}
+                                  divisionBadge={divTag}
+                                  gameWeekTag={isClubScheduleMode ? m.roundNumber : null}
                                   index={m.id ? m.id : matchIndexOf(m)}
                                 />
-                              ))}
-                            </div>
+                              )
+                            })}
                           </div>
-                        ))}
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Compact TBD Section (Collapsible Footer Drawer) */}
+                    {tbdGroup && tbdGroup.matches.length > 0 && (
+                      <div className="border-t border-[var(--border)] bg-black/20">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setTbdOpenState((prev) => ({
+                              ...prev,
+                              [rg.key]: !isTbdOpen,
+                            }))
+                          }
+                          className="flex w-full items-center justify-between px-5 py-3 text-left transition-colors hover:bg-white/[0.03]"
+                        >
+                          <div className="flex flex-wrap items-center gap-2.5">
+                            <span className="text-xs font-bold text-[var(--text-muted)]">
+                              ⚪ Unscheduled / Kick-off TBD
+                            </span>
+                            <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-extrabold text-[var(--text-muted)]">
+                              {tbdGroup.matches.length} Fixtures
+                            </span>
+                            {hasMyClubInTbd && (
+                              <span className="rounded bg-[var(--accent-solid)] px-1.5 py-0.5 text-[9px] font-black uppercase text-[var(--on-volt)]">
+                                Includes My Club
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-xs font-bold text-[var(--accent-text)]">
+                            {isTbdOpen ? '▾ Hide TBD Fixtures' : '▸ View TBD Fixtures'}
+                          </span>
+                        </button>
+
+                        {isTbdOpen && (
+                          <div className="divide-y divide-[var(--border)] border-t border-[var(--border)]">
+                            {tbdGroup.matches.map((m) => {
+                              const isMyClubMatch = isMatchMyClub(m)
+                              const myClubSide = isMyClubMatch ? getMyClubSide(m) : null
+                              const divTag =
+                                divisionFilter === 'all'
+                                  ? formatDivisionTag(m.divisionName)
+                                  : undefined
+                              return (
+                                <MatchRow
+                                  key={m.id ? `match-${m.id}` : `${m.url}-${m.home}-${m.away}`}
+                                  match={m}
+                                  showTimeOnly
+                                  isMyClub={isMyClubMatch}
+                                  myClubSide={myClubSide}
+                                  divisionBadge={divTag}
+                                  gameWeekTag={isClubScheduleMode ? m.roundNumber : null}
+                                  index={m.id ? m.id : matchIndexOf(m)}
+                                />
+                              )
+                            })}
+                          </div>
+                        )}
                       </div>
                     )}
                   </section>

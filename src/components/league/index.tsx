@@ -328,29 +328,48 @@ function NumCell({
 export function MatchRow({
   match,
   showDate = false,
+  showTimeOnly = false,
+  isMyClub = false,
+  myClubSide = null,
+  divisionBadge,
+  gameWeekTag,
   index,
 }: {
   match: Match
   showDate?: boolean
-  /**
-   * Position in siteData.results. When given the row opens the in-app match
-   * centre; without it the row falls back to /results, which is what the
-   * standalone "other matches" list wants.
-   */
+  showTimeOnly?: boolean
+  isMyClub?: boolean
+  myClubSide?: 'home' | 'away' | null
+  divisionBadge?: string
+  gameWeekTag?: number | null
   index?: number
 }) {
   const played = match.hs !== '' && match.as !== ''
+  const isHomeMyClub = isMyClub && (myClubSide === 'home' || (!myClubSide && Boolean(match.home)))
+  const isAwayMyClub = isMyClub && (myClubSide === 'away' || (!myClubSide && Boolean(match.away)))
+
   return (
     <Link
       to={index === undefined ? '/matches' : matchHref(index)}
-      /* `.match-tpl` rather than an arbitrary grid-cols: Tailwind v4 emits no
-         rule for `grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]` here, so the
-         class landed in the DOM and did nothing. */
-      className="row-hover match-tpl group grid items-center gap-3 px-3 py-3.5 sm:gap-5 sm:px-4"
+      className={cx(
+        'row-hover match-tpl group grid items-center gap-3 px-3 py-3.5 sm:gap-5 sm:px-4 transition-all',
+        isMyClub &&
+          'border-l-[3px] border-l-[#c4f82a] bg-gradient-to-r from-[#c4f82a]/[0.08] via-[#c4f82a]/[0.02] to-transparent',
+      )}
     >
       {/* home */}
-      <div className="flex min-w-0 items-center justify-end gap-3 text-right">
-        <span className="truncate text-sm font-semibold text-[var(--text-strong)] sm:text-[15px]">
+      <div className="flex min-w-0 items-center justify-end gap-2.5 sm:gap-3 text-right">
+        {isHomeMyClub && (
+          <span className="shrink-0 rounded bg-[var(--accent-solid)] px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-[var(--on-volt)] shadow-sm">
+            MY CLUB
+          </span>
+        )}
+        <span
+          className={cx(
+            'truncate text-sm font-semibold sm:text-[15px]',
+            isHomeMyClub ? 'text-[var(--accent-text)] font-extrabold' : 'text-[var(--text-strong)]',
+          )}
+        >
           {stripFlag(match.home)}
         </span>
         <SmartImage
@@ -364,26 +383,44 @@ export function MatchRow({
 
       {/* score / kickoff */}
       {(() => {
+        if (played) {
+          const w = weekday(match.date)
+          const d = dayNum(match.date)
+          const m = monthShort(match.date)
+          const shortDateLabel = w && d && m ? `${w}, ${Number(d)} ${m}` : ''
+          return (
+            <div className="flex flex-col items-center">
+              <span className="numeric animate-score-pop flex items-center gap-1.5 rounded-lg bg-[var(--surface-2)] px-3 py-1.5 text-base font-bold text-[var(--text-strong)] ring-1 ring-[var(--border-strong)] transition-colors group-hover:ring-[var(--accent-ring)] sm:text-lg">
+                {match.hs}
+                <span className="text-[var(--text-faint)]">:</span>
+                {match.as}
+              </span>
+              {!showTimeOnly && showDate && shortDateLabel && (
+                <span className="mt-1 text-[10px] font-semibold tracking-wide text-[var(--text-faint)]">
+                  {shortDateLabel}{match.time ? ` · ${match.time}` : ''}
+                </span>
+              )}
+            </div>
+          )
+        }
+
+        if (showTimeOnly) {
+          return (
+            <div className="flex flex-col items-center">
+              <span className="numeric tabular-nums inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-2.5 py-1 text-xs font-bold text-[var(--text-strong)] transition-colors group-hover:border-[var(--accent-ring)]">
+                {match.time || 'TBD'}
+              </span>
+            </div>
+          )
+        }
+
         const w = weekday(match.date)
         const d = dayNum(match.date)
         const m = monthShort(match.date)
         const shortDateLabel = w && d && m ? `${w}, ${Number(d)} ${m}` : ''
         return (
           <div className="flex flex-col items-center">
-            {played ? (
-              <>
-                <span className="numeric animate-score-pop flex items-center gap-1.5 rounded-lg bg-[var(--surface-2)] px-3 py-1.5 text-base font-bold text-[var(--text-strong)] ring-1 ring-[var(--border-strong)] transition-colors group-hover:ring-[var(--accent-ring)] sm:text-lg">
-                  {match.hs}
-                  <span className="text-[var(--text-faint)]">:</span>
-                  {match.as}
-                </span>
-                {showDate && shortDateLabel && (
-                  <span className="mt-1 text-[10px] font-semibold tracking-wide text-[var(--text-faint)]">
-                    {shortDateLabel}{match.time ? ` · ${match.time}` : ''}
-                  </span>
-                )}
-              </>
-            ) : showDate && shortDateLabel ? (
+            {showDate && shortDateLabel ? (
               <span className="numeric inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-3 py-1.5 text-xs font-bold text-[var(--text-strong)]">
                 <span className="text-[var(--accent-text)]">{shortDateLabel}</span>
                 <span className="text-[var(--text-faint)]">·</span>
@@ -399,17 +436,44 @@ export function MatchRow({
       })()}
 
       {/* away */}
-      <div className="flex min-w-0 items-center gap-3">
-        <SmartImage
-          src={match.awayLogo ?? CLUB_PLACEHOLDER}
-          fallback={CLUB_PLACEHOLDER}
-          alt=""
-          wrapperClassName="h-9 w-9 shrink-0 sm:h-11 sm:w-11"
-          className="object-contain"
-        />
-        <span className="truncate text-sm font-semibold text-[var(--text-strong)] sm:text-[15px]">
-          {stripFlag(match.away)}
-        </span>
+      <div className="flex min-w-0 items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
+          <SmartImage
+            src={match.awayLogo ?? CLUB_PLACEHOLDER}
+            fallback={CLUB_PLACEHOLDER}
+            alt=""
+            wrapperClassName="h-9 w-9 shrink-0 sm:h-11 sm:w-11"
+            className="object-contain"
+          />
+          <span
+            className={cx(
+              'truncate text-sm font-semibold sm:text-[15px]',
+              isAwayMyClub ? 'text-[var(--accent-text)] font-extrabold' : 'text-[var(--text-strong)]',
+            )}
+          >
+            {stripFlag(match.away)}
+          </span>
+          {isAwayMyClub && (
+            <span className="shrink-0 rounded bg-[var(--accent-solid)] px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-[var(--on-volt)] shadow-sm">
+              MY CLUB
+            </span>
+          )}
+        </div>
+
+        {(divisionBadge || gameWeekTag != null) && (
+          <div className="hidden sm:flex items-center gap-1.5 shrink-0 pl-2">
+            {gameWeekTag != null && (
+              <span className="rounded bg-[var(--accent-tint)] border border-[var(--accent-ring)] px-1.5 py-0.5 text-[9.5px] font-extrabold uppercase text-[var(--accent-text)]">
+                GW {gameWeekTag}
+              </span>
+            )}
+            {divisionBadge && (
+              <span className="rounded bg-white/5 border border-white/10 px-1.5 py-0.5 text-[9.5px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
+                {divisionBadge}
+              </span>
+            )}
+          </div>
+        )}
       </div>
     </Link>
   )
