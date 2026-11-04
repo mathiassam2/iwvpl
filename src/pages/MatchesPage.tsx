@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { MatchRow, StatTile } from '@/components/league'
-import { Badge, Container, EmptyState, Section, Select } from '@/components/ui'
+import { Container, EmptyState, Section, Select } from '@/components/ui'
 import { SITE, siteData } from '@/data'
 import { cx, stripFlag } from '@/lib/format'
 import {
@@ -612,9 +612,6 @@ export default function MatchesPage() {
                           <span className="rounded-md border border-[var(--border)] bg-[var(--surface-1)] px-2 py-0.5 text-[10px] font-bold text-[var(--text-muted)]">
                             +{rg.unscheduledCount} TBD
                           </span>
-                        )}
-                        {rg.matches[0]?.divisionName && divisionFilter === 'all' && divisions.length > 1 && (
-                          <Badge tone="muted">{rg.matches[0].divisionName}</Badge>
                         )}
                       </div>
 
