@@ -1380,7 +1380,7 @@ function ManagerPanel({ transferWindowOpen, maxSquadSize = 23 }: { transferWindo
           action={
             myClub?.slug && user.clubStatus === 'active' ? (
               <ButtonLink to={`/clubs/${myClub.slug}`} variant="outline" size="sm">
-                Public page
+                Club page
               </ButtonLink>
             ) : undefined
           }

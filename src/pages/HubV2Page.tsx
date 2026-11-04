@@ -1062,7 +1062,7 @@ export default function HubV2Page() {
 
           {/* Right: Squad Capacity + Public Link + Settings Icon */}
           <div className="flex items-center gap-2 shrink-0">
-            {myClub && (
+            {isManager && myClub && (
               <span className="hidden rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 font-mono text-[11px] font-bold text-slate-300 xl:inline-block">
                 {squadList.length} / {maxSquadSize} Players
               </span>
@@ -1074,7 +1074,7 @@ export default function HubV2Page() {
                 size="sm"
                 className="h-8 gap-1 border-white/10 text-xs font-bold hover:border-white/20 px-2.5"
               >
-                <span>Public Page</span>
+                <span>Club Page</span>
                 <span className="text-[10px]">↗</span>
               </ButtonLink>
             )}
@@ -1816,9 +1816,9 @@ export default function HubV2Page() {
               {tacticsDrawerTab === 'roster' && (
                 <div className="mt-4 space-y-2">
                   <div className="flex items-center justify-between text-[11px] text-slate-400 pb-2 border-b border-white/5">
-                    <span>Active Squad Capacity</span>
+                    <span>{isManager ? 'Active Squad Capacity' : 'Squad Members'}</span>
                     <span className="font-mono font-bold text-[#c4f82a]">
-                      {squadList.length} / {maxSquadSize}
+                      {isManager ? `${squadList.length} / ${maxSquadSize}` : `${squadList.length} Players`}
                     </span>
                   </div>
 
