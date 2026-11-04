@@ -117,18 +117,25 @@ export function Pitch({
   home,
   activeSlotIndex,
   onSelectSlot,
+  className,
   children,
 }: {
   squad: Squad
   home: boolean
   activeSlotIndex?: number | null
   onSelectSlot?: (idx: number) => void
+  className?: string
   children?: React.ReactNode
 }) {
   return (
     // Every child is absolutely positioned against percentage coordinates, so
     // the box needs an explicit ratio or it collapses to zero height.
-    <div className="relative aspect-[3/4] w-full overflow-visible rounded-card border border-white/10 shadow-inner">
+    <div
+      className={cx(
+        'relative aspect-[3/4] w-full min-h-[520px] sm:min-h-[580px] pb-4 overflow-visible rounded-card border border-white/10 shadow-inner',
+        className,
+      )}
+    >
       {/* mown stripes & markings clipped to rounded-card so floating popovers never clip */}
       <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden rounded-card">
         <div className="absolute inset-0 flex flex-col">
@@ -171,9 +178,9 @@ export function Pitch({
             onClick={onSelectSlot ? () => onSelectSlot(idx) : undefined}
             data-pitch-slot={idx}
             className={cx(
-              'absolute z-[3] -translate-x-1/2 -translate-y-1/2 text-center outline-none transition-transform',
+              'absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center z-10 hover:z-20 text-center outline-none transition-transform',
               onSelectSlot && 'cursor-pointer hover:scale-105 focus-visible:scale-105',
-              isSelected && 'z-[25] scale-110',
+              isSelected && 'z-30 scale-110',
             )}
             style={{ left: `${p.x}%`, top: `${p.y}%` }}
           >
@@ -185,10 +192,10 @@ export function Pitch({
               selected={isSelected}
               isCaptain={p.isCaptain}
             />
-            <div className="mt-0.5 flex flex-col items-center">
+            <div className="mt-1 flex flex-col items-center pointer-events-none">
               <span
                 className={cx(
-                  'max-w-[5.2rem] truncate rounded px-1.5 py-0.5 text-[9px] font-bold leading-tight shadow sm:max-w-[6.5rem] sm:text-[10.5px]',
+                  'max-w-[5.2rem] truncate rounded px-1.5 py-0.5 text-[9px] font-bold leading-tight shadow sm:max-w-[6.5rem] sm:text-[10px]',
                   isSelected
                     ? 'bg-[var(--accent-solid)] text-[var(--on-volt)] ring-2 ring-white'
                     : isEmpty

@@ -975,7 +975,7 @@ export default function HubV2Page() {
   return (
     <div className="min-h-screen bg-[#08090c] text-slate-100 selection:bg-[#c4f82a] selection:text-black">
       {/* ---------------- FIX ISSUE 3: Compact Top HUD Header into 1 Single Row ---------------- */}
-      <header className="sticky top-0 z-40 border-b border-white/[0.08] bg-[#0c0e14]/95 backdrop-blur-xl">
+      <header className="sticky top-16 lg:top-[72px] z-30 backdrop-blur-md bg-neutral-900/80 border-b border-neutral-800 transition-all">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-2 sm:px-6">
           {/* Left: Club Crest + Name + Role */}
           <div className="flex items-center gap-3 shrink-0">
@@ -1020,40 +1020,44 @@ export default function HubV2Page() {
             </div>
           </div>
 
-          {/* Center: Game Mode Nav Tabs */}
-          <nav className="flex items-center gap-1 overflow-x-auto py-1 scrollbar-none">
-            {[
-              { id: 'central', label: 'CENTRAL' },
-              { id: 'tactics', label: 'TACTICS & SQUAD' },
-              { id: 'transfers', label: 'TRANSFERS & INBOX', count: unreadTransfersCount },
-              { id: 'calendar', label: 'CALENDAR' },
-              { id: 'settings', label: 'CLUB & PRO SETTINGS' },
-            ].map((t) => {
-              const active = activeTab === t.id
-              return (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => setActiveTab(t.id as HubTab)}
-                  className={cx(
-                    'relative flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap',
-                    active
-                      ? 'text-[#c4f82a] bg-white/[0.04]'
-                      : 'text-slate-400 hover:text-white hover:bg-white/[0.02]',
-                  )}
-                >
-                  {t.label}
-                  {Boolean(t.count) && (
-                    <span className="grid h-4 min-w-[16px] place-items-center rounded-full bg-[#c4f82a] px-1 text-[9px] font-black text-black">
-                      {t.count}
-                    </span>
-                  )}
-                  {active && (
-                    <span className="absolute bottom-0 left-2 right-2 h-0.5 bg-[#c4f82a] shadow-[0_0_10px_#c4f82a]" />
-                  )}
-                </button>
-              )
-            })}
+          {/* Center: Game Mode Nav Tabs with sleek segmented pill indicators */}
+          <nav className="flex items-center overflow-x-auto py-1 scrollbar-none">
+            <div className="inline-flex items-center gap-1 rounded-full bg-neutral-950/70 p-1 border border-neutral-800/80">
+              {[
+                { id: 'central', label: 'CENTRAL' },
+                { id: 'tactics', label: 'TACTICS & SQUAD' },
+                { id: 'transfers', label: 'TRANSFERS & INBOX', count: unreadTransfersCount },
+                { id: 'calendar', label: 'CALENDAR' },
+                { id: 'settings', label: 'CLUB & PRO SETTINGS' },
+              ].map((t) => {
+                const active = activeTab === t.id
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setActiveTab(t.id as HubTab)}
+                    className={cx(
+                      'flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-semibold transition-all whitespace-nowrap',
+                      active
+                        ? 'bg-[#CCFF00] text-black font-bold shadow-sm'
+                        : 'text-neutral-400 hover:text-white hover:bg-neutral-800/60',
+                    )}
+                  >
+                    {t.label}
+                    {Boolean(t.count) && (
+                      <span
+                        className={cx(
+                          'grid h-4 min-w-[16px] place-items-center rounded-full px-1 text-[9px] font-black',
+                          active ? 'bg-black text-[#CCFF00]' : 'bg-[#CCFF00] text-black',
+                        )}
+                      >
+                        {t.count}
+                      </span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
           </nav>
 
           {/* Right: Squad Capacity + Public Link + Settings Icon */}
@@ -1336,6 +1340,7 @@ export default function HubV2Page() {
                     squad={tacticalSquad}
                     activeSlotIndex={userMatchdayStatus.slotIdx}
                     onSelectSlot={undefined}
+                    className="min-h-[440px]"
                   />
                 </div>
 
@@ -1528,7 +1533,7 @@ export default function HubV2Page() {
               </div>
 
               {/* Tactical Pitch with smart swap popover */}
-              <div className="relative mx-auto w-full max-w-[500px] my-3">
+              <div className="relative mx-auto w-full max-w-[540px] my-3">
                 <Pitch
                   home
                   squad={tacticalSquad}
