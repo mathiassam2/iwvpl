@@ -4563,7 +4563,9 @@ admin.put(
               await conn.execute('DELETE FROM match_player_stats WHERE player_id = ?', [linked.id])
               await conn.execute('UPDATE IGNORE player_season_stats SET player_id = ? WHERE player_id = ?', [byTag.id, linked.id])
               await conn.execute('DELETE FROM player_season_stats WHERE player_id = ?', [linked.id])
-              await conn.execute('UPDATE totw_slots SET player_id = ? WHERE player_id = ?', [byTag.id, linked.id])
+              try {
+                await conn.execute('UPDATE totw_players SET player_id = ? WHERE player_id = ?', [byTag.id, linked.id])
+              } catch {}
               await conn.execute('DELETE FROM players WHERE id = ?', [linked.id])
             }
             await conn.execute(
@@ -4658,10 +4660,12 @@ admin.delete(
           await conn.execute('DELETE FROM transfers WHERE player_id = ?', [linkedPlayer.id])
           await conn.execute('DELETE FROM player_season_stats WHERE player_id = ?', [linkedPlayer.id])
           await conn.execute('DELETE FROM match_player_stats WHERE player_id = ?', [linkedPlayer.id])
-          await conn.execute('UPDATE totw_slots SET player_id = NULL WHERE player_id = ?', [linkedPlayer.id])
+          try {
+            await conn.execute('UPDATE totw_players SET player_id = NULL WHERE player_id = ?', [linkedPlayer.id])
+          } catch {}
           await conn.execute('DELETE FROM players WHERE id = ?', [linkedPlayer.id])
         } else {
-          await conn.execute('UPDATE players SET user_id = NULL, updated_at = NOW() WHERE user_id = ?', [linkedPlayer.id])
+          await conn.execute('UPDATE players SET user_id = NULL, updated_at = NOW() WHERE id = ?', [linkedPlayer.id])
         }
       }
 
@@ -4823,7 +4827,9 @@ admin.put(
         await conn.execute('DELETE FROM match_player_stats WHERE player_id = ?', [dup.id])
         await conn.execute('UPDATE IGNORE player_season_stats SET player_id = ? WHERE player_id = ?', [id, dup.id])
         await conn.execute('DELETE FROM player_season_stats WHERE player_id = ?', [dup.id])
-        await conn.execute('UPDATE totw_slots SET player_id = ? WHERE player_id = ?', [id, dup.id])
+        try {
+          await conn.execute('UPDATE totw_players SET player_id = ? WHERE player_id = ?', [id, dup.id])
+        } catch {}
         await conn.execute('DELETE FROM players WHERE id = ?', [dup.id])
       }
 
@@ -4890,7 +4896,9 @@ admin.delete(
       await conn.execute('DELETE FROM transfers WHERE player_id = ?', [id])
       await conn.execute('DELETE FROM player_season_stats WHERE player_id = ?', [id])
       await conn.execute('DELETE FROM match_player_stats WHERE player_id = ?', [id])
-      await conn.execute('UPDATE totw_slots SET player_id = NULL WHERE player_id = ?', [id])
+      try {
+        await conn.execute('UPDATE totw_players SET player_id = NULL WHERE player_id = ?', [id])
+      } catch {}
       await conn.execute('DELETE FROM players WHERE id = ?', [id])
       return true
     })

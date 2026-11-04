@@ -293,7 +293,9 @@ player.patch(
         await conn.execute('DELETE FROM match_player_stats WHERE player_id = ?', [me.id])
         await conn.execute('UPDATE IGNORE player_season_stats SET player_id = ? WHERE player_id = ?', [targetClashPlayer.id, me.id])
         await conn.execute('DELETE FROM player_season_stats WHERE player_id = ?', [me.id])
-        await conn.execute('UPDATE totw_slots SET player_id = ? WHERE player_id = ?', [targetClashPlayer.id, me.id])
+        try {
+          await conn.execute('UPDATE totw_players SET player_id = ? WHERE player_id = ?', [targetClashPlayer.id, me.id])
+        } catch {}
 
         const finalClubId = me.club_id ?? targetClashPlayer.club_id
         const finalIsFree = finalClubId ? 0 : 1

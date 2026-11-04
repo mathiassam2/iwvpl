@@ -939,7 +939,9 @@ manager.post(
         await execute('DELETE FROM match_player_stats WHERE player_id = ?', [existing.id])
         await execute('UPDATE IGNORE player_season_stats SET player_id = ? WHERE player_id = ?', [clash.id, existing.id])
         await execute('DELETE FROM player_season_stats WHERE player_id = ?', [existing.id])
-        await execute('UPDATE totw_slots SET player_id = ? WHERE player_id = ?', [clash.id, existing.id])
+        try {
+          await execute('UPDATE totw_players SET player_id = ? WHERE player_id = ?', [clash.id, existing.id])
+        } catch {}
         await execute('DELETE FROM players WHERE id = ?', [existing.id])
         playerId = clash.id
       } else {
