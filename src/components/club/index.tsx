@@ -233,38 +233,46 @@ export function LineupList({
     role: string
     keeper?: boolean
     isCaptain?: boolean
-  }) => (
-    <li className="flex items-center gap-3 border-b border-[var(--border)] px-4 py-2 last:border-0">
-      <span
-        className={cx(
-          'numeric grid h-6 w-6 shrink-0 place-items-center rounded-full text-[11px] font-bold',
-          home
-            ? 'bg-[var(--accent-tint)] text-[var(--accent-text)]'
-            : 'bg-[var(--surface-2)] text-[var(--text-muted)]',
-        )}
-      >
-        {number}
-      </span>
-      <span className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--text)] flex items-center gap-1.5">
-        {name}
-        {isCaptain && (
-          <span className="rounded bg-amber-500/20 text-amber-400 border border-amber-500/40 px-1 py-0.2 text-[9px] font-black shrink-0">
-            (C)
+  }) => {
+    const isUnassigned = !name || name === '—' || name === 'Unassigned'
+    return (
+      <li className="flex items-center gap-3 border-b border-[var(--border)] px-4 py-2 last:border-0">
+        <span
+          className={cx(
+            'numeric grid h-6 w-6 shrink-0 place-items-center rounded-full text-[11px] font-bold',
+            home
+              ? 'bg-[var(--accent-tint)] text-[var(--accent-text)]'
+              : 'bg-[var(--surface-2)] text-[var(--text-muted)]',
+          )}
+        >
+          {isUnassigned ? '-' : number}
+        </span>
+        <span
+          className={cx(
+            'min-w-0 flex-1 truncate text-sm font-medium flex items-center gap-1.5',
+            isUnassigned ? 'text-[var(--text-faint)] italic' : 'text-[var(--text)]',
+          )}
+        >
+          {isUnassigned ? 'Unassigned' : name}
+          {isCaptain && (
+            <span className="rounded bg-amber-500/20 text-amber-400 border border-amber-500/40 px-1 py-0.2 text-[9px] font-black shrink-0">
+              (C)
+            </span>
+          )}
+        </span>
+        {keeper && (
+          <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-faint)]">
+            GK
           </span>
         )}
-      </span>
-      {keeper && (
-        <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-faint)]">
-          GK
-        </span>
-      )}
-      {!keeper && (
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-faint)]">
-          {role}
-        </span>
-      )}
-    </li>
-  )
+        {!keeper && (
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-faint)]">
+            {role}
+          </span>
+        )}
+      </li>
+    )
+  }
 
   return (
     <div>

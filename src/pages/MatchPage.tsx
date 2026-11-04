@@ -5,14 +5,16 @@ import { HeaderWash } from '@/components/layout/HeaderWash'
 import { LineupList, Pitch } from '@/components/club'
 import { SITE, siteData } from '@/data'
 import { CLUB_PLACEHOLDER, cx, stripFlag, weekday, dayNum, monthShort } from '@/lib/format'
-import { FORMATIONS, type PitchPlayer, type Squad } from '@/lib/fixtures'
+import { buildSquadFromLineup, FORMATIONS, type ClubLineup, type PitchPlayer, type Squad } from '@/lib/fixtures'
 import { findMatch } from '@/lib/match'
 import {
   getLiveMatchDetail,
+  getLiveStandings,
   type LiveMatchDetail,
   type LiveMatchEvent,
   type LiveMatchPlayerStat,
   type LiveMatchSquadMember,
+  type LiveStandings,
 } from '@/lib/liveLeague'
 
 type LiveMatchStats = LiveMatchDetail['stats']
@@ -1397,6 +1399,11 @@ function EaPlayerPerformanceInspector({
 
 /* --------------------------------------------------------------- EA FC 26 Players Platform Sheet (Screenshot 3) */
 
+type EnrichedPlayerItem = LiveMatchPlayerStat & {
+  isCaptain?: boolean
+  shirtNumber?: number | null
+}
+
 function EaPlayersPlatformSheet({
   homeName,
   awayName,
@@ -1409,6 +1416,8 @@ function EaPlayersPlatformSheet({
   playerStats,
   homeSquad,
   awaySquad,
+  homeSquadMembers,
+  awaySquadMembers,
   onSelectPlayer,
 }: {
   homeName: string
@@ -1420,89 +1429,169 @@ function EaPlayersPlatformSheet({
   homeClubId: number
   awayClubId: number
   playerStats: LiveMatchPlayerStat[]
-  homeSquad: LiveMatchSquadMember[]
-  awaySquad: LiveMatchSquadMember[]
+  homeSquad: Squad
+  awaySquad: Squad
+  homeSquadMembers: LiveMatchSquadMember[]
+  awaySquadMembers: LiveMatchSquadMember[]
   onSelectPlayer?: (playerIdOrGamertag: string | number) => void
 }) {
-  const homePlayers = useMemo<LiveMatchPlayerStat[]>(() => {
-    const stats = playerStats.filter((p) => p.clubId === homeClubId)
+  const buildRosterList = (
+    squad: Squad,
+    members: LiveMatchSquadMember[],
+    clubId: number,
+  ): EnrichedPlayerItem[] => {
+    const stats = playerStats.filter((p) => p.clubId === clubId)
     if (stats.length > 0) return stats
-    return homeSquad.map((m) => ({
-      id: m.id,
-      playerId: m.id,
-      clubId: homeClubId,
-      gamertag: m.gamertag,
-      proName: '',
-      platform: 'ps',
-      pos: '',
-      rating: null,
-      goals: 0,
-      assists: 0,
-      shots: 0,
-      shotAccuracy: 0,
-      passes: 0,
-      passAttempts: 0,
-      passAccuracy: 0,
-      dribbles: 0,
-      dribbleSuccessRate: 0,
-      tackles: 0,
-      tackleAttempts: 0,
-      tackleSuccessRate: 0,
-      offsides: 0,
-      foulsCommitted: 0,
-      possessionWon: 0,
-      possessionLost: 0,
-      minutesPlayed: 90,
-      distanceCovered: 0,
-      distanceSprinted: 0,
-      saves: 0,
-      cleanSheet: false,
-      yellowCards: 0,
-      redCards: 0,
-      isMom: false,
-    }))
-  }, [playerStats, homeClubId, homeSquad])
 
-  const awayPlayers = useMemo<LiveMatchPlayerStat[]>(() => {
-    const stats = playerStats.filter((p) => p.clubId === awayClubId)
-    if (stats.length > 0) return stats
-    return awaySquad.map((m) => ({
-      id: m.id,
-      playerId: m.id,
-      clubId: awayClubId,
-      gamertag: m.gamertag,
-      proName: '',
-      platform: 'ps',
-      pos: '',
-      rating: null,
-      goals: 0,
-      assists: 0,
-      shots: 0,
-      shotAccuracy: 0,
-      passes: 0,
-      passAttempts: 0,
-      passAccuracy: 0,
-      dribbles: 0,
-      dribbleSuccessRate: 0,
-      tackles: 0,
-      tackleAttempts: 0,
-      tackleSuccessRate: 0,
-      offsides: 0,
-      foulsCommitted: 0,
-      possessionWon: 0,
-      possessionLost: 0,
-      minutesPlayed: 90,
-      distanceCovered: 0,
-      distanceSprinted: 0,
-      saves: 0,
-      cleanSheet: false,
-      yellowCards: 0,
-      redCards: 0,
-      isMom: false,
-    }))
-  }, [playerStats, awayClubId, awaySquad])
+    const list: EnrichedPlayerItem[] = []
+    const addedTags = new Set<string>()
 
-  const renderRosterColumn = (list: LiveMatchPlayerStat[]) => {
+    // 1. Starters from configured squad
+    for (const s of squad.starters) {
+      if (!s.name || s.name === '—' || s.name === 'Unassigned') continue
+      const lower = s.name.toLowerCase()
+      if (addedTags.has(lower)) continue
+      addedTags.add(lower)
+      list.push({
+        id: s.playerId ?? s.name,
+        playerId: s.playerId ?? null,
+        clubId,
+        gamertag: s.name,
+        proName: '',
+        platform: 'ps',
+        pos: s.role,
+        shirtNumber: s.number,
+        isCaptain: s.isCaptain,
+        rating: null,
+        goals: 0,
+        assists: 0,
+        shots: 0,
+        shotAccuracy: 0,
+        passes: 0,
+        passAttempts: 0,
+        passAccuracy: 0,
+        dribbles: 0,
+        dribbleSuccessRate: 0,
+        tackles: 0,
+        tackleAttempts: 0,
+        tackleSuccessRate: 0,
+        offsides: 0,
+        foulsCommitted: 0,
+        possessionWon: 0,
+        possessionLost: 0,
+        minutesPlayed: 90,
+        distanceCovered: 0,
+        distanceSprinted: 0,
+        saves: 0,
+        cleanSheet: false,
+        yellowCards: 0,
+        redCards: 0,
+        isMom: false,
+      })
+    }
+
+    // 2. Bench from configured squad
+    for (const b of squad.bench) {
+      if (!b.name || b.name === '—' || b.name === 'Unassigned') continue
+      const lower = b.name.toLowerCase()
+      if (addedTags.has(lower)) continue
+      addedTags.add(lower)
+      list.push({
+        id: b.playerId ?? b.name,
+        playerId: b.playerId ?? null,
+        clubId,
+        gamertag: b.name,
+        proName: '',
+        platform: 'ps',
+        pos: b.role || 'SUB',
+        shirtNumber: b.number,
+        isCaptain: false,
+        rating: null,
+        goals: 0,
+        assists: 0,
+        shots: 0,
+        shotAccuracy: 0,
+        passes: 0,
+        passAttempts: 0,
+        passAccuracy: 0,
+        dribbles: 0,
+        dribbleSuccessRate: 0,
+        tackles: 0,
+        tackleAttempts: 0,
+        tackleSuccessRate: 0,
+        offsides: 0,
+        foulsCommitted: 0,
+        possessionWon: 0,
+        possessionLost: 0,
+        minutesPlayed: 90,
+        distanceCovered: 0,
+        distanceSprinted: 0,
+        saves: 0,
+        cleanSheet: false,
+        yellowCards: 0,
+        redCards: 0,
+        isMom: false,
+      })
+    }
+
+    // 3. Any remaining members from club roster
+    for (const m of members) {
+      if (!m.gamertag) continue
+      const lower = m.gamertag.toLowerCase()
+      if (addedTags.has(lower)) continue
+      addedTags.add(lower)
+      list.push({
+        id: m.id,
+        playerId: m.id,
+        clubId,
+        gamertag: m.gamertag,
+        proName: '',
+        platform: 'ps',
+        pos: m.position || (m.isStarting11 ? 'XI' : 'SUB'),
+        shirtNumber: m.shirtNumber,
+        isCaptain: false,
+        rating: null,
+        goals: 0,
+        assists: 0,
+        shots: 0,
+        shotAccuracy: 0,
+        passes: 0,
+        passAttempts: 0,
+        passAccuracy: 0,
+        dribbles: 0,
+        dribbleSuccessRate: 0,
+        tackles: 0,
+        tackleAttempts: 0,
+        tackleSuccessRate: 0,
+        offsides: 0,
+        foulsCommitted: 0,
+        possessionWon: 0,
+        possessionLost: 0,
+        minutesPlayed: 90,
+        distanceCovered: 0,
+        distanceSprinted: 0,
+        saves: 0,
+        cleanSheet: false,
+        yellowCards: 0,
+        redCards: 0,
+        isMom: false,
+      })
+    }
+
+    return list
+  }
+
+  const homePlayers = useMemo(
+    () => buildRosterList(homeSquad, homeSquadMembers, homeClubId),
+    [playerStats, homeClubId, homeSquad, homeSquadMembers],
+  )
+
+  const awayPlayers = useMemo(
+    () => buildRosterList(awaySquad, awaySquadMembers, awayClubId),
+    [playerStats, awayClubId, awaySquad, awaySquadMembers],
+  )
+
+  const renderRosterColumn = (list: EnrichedPlayerItem[]) => {
     if (list.length === 0) {
       return (
         <p className="py-6 text-center text-xs text-[var(--text-faint)]">
@@ -1523,7 +1612,17 @@ function EaPlayersPlatformSheet({
           >
             <div className="flex min-w-0 items-center gap-2.5">
               <PlatformIcon platform={p.platform} />
+              {p.shirtNumber != null && (
+                <span className="numeric text-[11px] font-bold text-[var(--text-faint)] w-6 text-right shrink-0">
+                  #{p.shirtNumber}
+                </span>
+              )}
               <span className="truncate text-sm font-extrabold text-white">{p.gamertag}</span>
+              {p.isCaptain && (
+                <span className="rounded bg-amber-500/20 px-1 py-0.5 text-[9px] font-black text-amber-300 border border-amber-500/40 shrink-0">
+                  (C)
+                </span>
+              )}
               {p.proName && p.proName !== p.gamertag && (
                 <span className="truncate text-xs text-[var(--text-muted)]">({p.proName})</span>
               )}
@@ -1778,11 +1877,25 @@ function GoalScorersSummary({
   )
 }
 
-function buildSquadFromMembers(
+function buildSquadFromClub(
+  startingXi: ClubLineup | null | undefined,
   members: LiveMatchSquadMember[],
   formation = '4-3-3',
   manager = '—',
 ): Squad {
+  if (
+    startingXi &&
+    Array.isArray(startingXi.starters) &&
+    startingXi.starters.some((s) => Boolean(s?.gamertag?.trim()))
+  ) {
+    const built = buildSquadFromLineup(
+      startingXi,
+      manager,
+      members.map((m) => ({ id: m.id, name: m.gamertag, shirtNumber: m.shirtNumber })),
+    )
+    if (built) return built
+  }
+
   const formDef = FORMATIONS[formation] ?? FORMATIONS['4-3-3']
   const slots = formDef.slots
   const starters: PitchPlayer[] = slots.map(([role, x, y], idx) => {
@@ -1799,9 +1912,10 @@ function buildSquadFromMembers(
     return {
       number: member.shirtNumber ?? (idx === 0 ? 1 : idx + 1),
       name: member.gamertag,
-      role,
+      role: member.position || role,
       x,
       y,
+      playerId: member.id,
       isCaptain: false,
     }
   })
@@ -1809,9 +1923,10 @@ function buildSquadFromMembers(
   const bench: PitchPlayer[] = members.slice(slots.length).map((member, idx) => ({
     number: member.shirtNumber ?? slots.length + idx + 1,
     name: member.gamertag,
-    role: 'SUB',
+    role: member.position || 'SUB',
     x: 50,
     y: 50,
+    playerId: member.id,
   }))
 
   return {
@@ -1860,10 +1975,48 @@ export default function MatchPage() {
   const fallbackFound = useMemo(() => findMatch(id), [id])
   const fallbackMatch = fallbackFound?.match
 
+  // 2. Fetch live standings for table context
+  const [liveStandings, setLiveStandings] = useState<LiveStandings | null>(null)
+
+  useEffect(() => {
+    let active = true
+    const controller = new AbortController()
+    void (async () => {
+      try {
+        const standingsData = await getLiveStandings(
+          controller.signal,
+          liveMatch?.seasonId ?? undefined,
+        )
+        if (active) setLiveStandings(standingsData)
+      } catch {
+        // ignore
+      }
+    })()
+    return () => {
+      active = false
+      controller.abort()
+    }
+  }, [liveMatch?.seasonId])
+
   const matchData = useMemo(() => {
     if (liveMatch) {
+      const homeSquad = buildSquadFromClub(
+        liveMatch.home.startingXi,
+        liveMatch.homeSquad,
+        liveMatch.home.formation || '4-3-3',
+        liveMatch.home.managerName || '—',
+      )
+      const awaySquad = buildSquadFromClub(
+        liveMatch.away.startingXi,
+        liveMatch.awaySquad,
+        liveMatch.away.formation || '4-3-3',
+        liveMatch.away.managerName || '—',
+      )
+
       return {
         id: liveMatch.id,
+        seasonId: liveMatch.seasonId,
+        divisionId: liveMatch.divisionId,
         homeId: liveMatch.home.id,
         awayId: liveMatch.away.id,
         home: liveMatch.home.name,
@@ -1881,8 +2034,8 @@ export default function MatchPage() {
         roundNumber: liveMatch.roundNumber,
         homeSquadMembers: liveMatch.homeSquad,
         awaySquadMembers: liveMatch.awaySquad,
-        homeSquad: buildSquadFromMembers(liveMatch.homeSquad),
-        awaySquad: buildSquadFromMembers(liveMatch.awaySquad),
+        homeSquad,
+        awaySquad,
         hasStats: liveMatch.hasStats,
         stats: liveMatch.stats,
         events: liveMatch.events,
@@ -1891,8 +2044,12 @@ export default function MatchPage() {
     }
 
     if (fallbackMatch) {
+      const homeSquad = buildSquadFromClub(null, [], '4-3-3', '—')
+      const awaySquad = buildSquadFromClub(null, [], '4-3-3', '—')
       return {
         id: fallbackMatch.id,
+        seasonId: null,
+        divisionId: null,
         homeId: 1,
         awayId: 2,
         home: fallbackMatch.home,
@@ -1910,8 +2067,8 @@ export default function MatchPage() {
         roundNumber: fallbackMatch.roundNumber,
         homeSquadMembers: [],
         awaySquadMembers: [],
-        homeSquad: buildSquadFromMembers([]),
-        awaySquad: buildSquadFromMembers([]),
+        homeSquad,
+        awaySquad,
         hasStats: false,
         stats: null,
         events: [],
@@ -1932,16 +2089,40 @@ export default function MatchPage() {
     )
   }, [matchData])
 
+  const divisionRows = useMemo(() => {
+    if (!matchData) return []
+    if (
+      liveStandings &&
+      matchData.divisionName &&
+      liveStandings.divisions[matchData.divisionName]
+    ) {
+      return liveStandings.divisions[matchData.divisionName].rows
+    }
+    if (liveStandings) {
+      for (const div of Object.values(liveStandings.divisions)) {
+        if (
+          div.rows.some(
+            (r) =>
+              stripFlag(r.team) === stripFlag(matchData.home) ||
+              stripFlag(r.team) === stripFlag(matchData.away),
+          )
+        ) {
+          return div.rows
+        }
+      }
+    }
+    return siteData.standings
+  }, [liveStandings, matchData])
+
   const standings = useMemo(() => {
-    if (!matchData) return null
-    const rows = siteData.standings
-    const h = rows.findIndex((s) => stripFlag(s.team) === stripFlag(matchData.home))
-    const a = rows.findIndex((s) => stripFlag(s.team) === stripFlag(matchData.away))
+    if (!matchData || divisionRows.length === 0) return null
+    const h = divisionRows.findIndex((s) => stripFlag(s.team) === stripFlag(matchData.home))
+    const a = divisionRows.findIndex((s) => stripFlag(s.team) === stripFlag(matchData.away))
     if (h < 0 && a < 0) return null
     const lo = Math.max(0, Math.min(h < 0 ? a : h, a < 0 ? h : a) - 2)
-    const hi = Math.min(rows.length, Math.max(h < 0 ? a : h, a < 0 ? h : a) + 3)
-    return rows.slice(lo, hi)
-  }, [matchData])
+    const hi = Math.min(divisionRows.length, Math.max(h < 0 ? a : h, a < 0 ? h : a) + 3)
+    return divisionRows.slice(lo, hi)
+  }, [divisionRows, matchData])
 
   if (loading && !matchData) {
     return (
@@ -1973,10 +2154,10 @@ export default function MatchPage() {
     )
   }
 
-  const homeStanding = siteData.standings.find(
+  const homeStanding = divisionRows.find(
     (s) => stripFlag(s.team) === stripFlag(matchData.home),
   )
-  const awayStanding = siteData.standings.find(
+  const awayStanding = divisionRows.find(
     (s) => stripFlag(s.team) === stripFlag(matchData.away),
   )
 
@@ -2070,8 +2251,10 @@ export default function MatchPage() {
           homeClubId={matchData.homeId}
           awayClubId={matchData.awayId}
           playerStats={matchData.playerStats}
-          homeSquad={matchData.homeSquadMembers}
-          awaySquad={matchData.awaySquadMembers}
+          homeSquad={matchData.homeSquad}
+          awaySquad={matchData.awaySquad}
+          homeSquadMembers={matchData.homeSquadMembers}
+          awaySquadMembers={matchData.awaySquadMembers}
           onSelectPlayer={(playerKey) => {
             setSelectedPerfPlayerId(playerKey)
             setTab('performance')

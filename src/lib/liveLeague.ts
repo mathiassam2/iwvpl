@@ -808,6 +808,7 @@ export interface LiveMatchSquadMember {
   shirtNumber: number | null
   isStarting11: boolean
   sortOrder: number | null
+  position?: string | null
 }
 
 export interface LiveMatchDetail {
@@ -824,6 +825,8 @@ export interface LiveMatchDetail {
   venue: string | null
   streamUrl: string | null
   eaMatchId: string | null
+  divisionId?: number | null
+  seasonId?: number | null
   divisionName?: string
   roundNumber?: number | null
   home: {
@@ -833,6 +836,9 @@ export interface LiveMatchDetail {
     code: string
     logo: string
     flag: string
+    formation?: string | null
+    startingXi?: ClubLineup | null
+    managerName?: string | null
   }
   away: {
     id: number
@@ -841,6 +847,9 @@ export interface LiveMatchDetail {
     code: string
     logo: string
     flag: string
+    formation?: string | null
+    startingXi?: ClubLineup | null
+    managerName?: string | null
   }
   playerStats: LiveMatchPlayerStat[]
   events: LiveMatchEvent[]
@@ -932,6 +941,7 @@ export async function getLiveMatchDetail(
       shirtNumber: p.shirt_number != null ? Number(p.shirt_number) : null,
       isStarting11: Boolean(p.is_starting_11),
       sortOrder: p.sort_order != null ? Number(p.sort_order) : null,
+      position: p.position ?? null,
     }))
 
     const awaySquad: LiveMatchSquadMember[] = (raw.awaySquad ?? []).map((p: any) => ({
@@ -940,6 +950,7 @@ export async function getLiveMatchDetail(
       shirtNumber: p.shirt_number != null ? Number(p.shirt_number) : null,
       isStarting11: Boolean(p.is_starting_11),
       sortOrder: p.sort_order != null ? Number(p.sort_order) : null,
+      position: p.position ?? null,
     }))
 
     const ms = raw.stats
@@ -1041,6 +1052,8 @@ export async function getLiveMatchDetail(
       venue: raw.venue ?? null,
       streamUrl: raw.stream_url ?? null,
       eaMatchId: raw.ea_match_id ?? null,
+      divisionId: raw.division_id ?? null,
+      seasonId: raw.season_id ?? null,
       divisionName: raw.division_name ?? undefined,
       roundNumber: raw.round_number ?? null,
       home: {
@@ -1050,6 +1063,9 @@ export async function getLiveMatchDetail(
         code: raw.home_code ?? '',
         logo: raw.home_logo ? asset(raw.home_logo) : CLUB_PLACEHOLDER,
         flag: raw.home_flag ?? '',
+        formation: raw.homeStartingXi?.formation || raw.home_formation || '4-3-3',
+        startingXi: raw.homeStartingXi ?? null,
+        managerName: raw.home_manager ?? null,
       },
       away: {
         id: raw.away_club_id,
@@ -1058,6 +1074,9 @@ export async function getLiveMatchDetail(
         code: raw.away_code ?? '',
         logo: raw.away_logo ? asset(raw.away_logo) : CLUB_PLACEHOLDER,
         flag: raw.away_flag ?? '',
+        formation: raw.awayStartingXi?.formation || raw.away_formation || '4-3-3',
+        startingXi: raw.awayStartingXi ?? null,
+        managerName: raw.away_manager ?? null,
       },
       playerStats,
       events,

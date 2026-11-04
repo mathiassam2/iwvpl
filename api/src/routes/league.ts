@@ -613,9 +613,11 @@ league.get(
               d.name AS division_name, d.slug AS division_slug,
               home.id AS home_club_id, home.name AS home_name, home.slug AS home_slug, home.short_code AS home_code,
               home.ea_club_id AS home_ea_club_id, home.ea_club_name AS home_ea_club_name,
+              home.formation AS home_formation, home.starting_xi_json AS home_starting_xi_json,
               ${clubLogoSql('home')} AS home_logo, home.flag AS home_flag,
               away.id AS away_club_id, away.name AS away_name, away.slug AS away_slug, away.short_code AS away_code,
               away.ea_club_id AS away_ea_club_id, away.ea_club_name AS away_ea_club_name,
+              away.formation AS away_formation, away.starting_xi_json AS away_starting_xi_json,
               ${clubLogoSql('away')} AS away_logo, away.flag AS away_flag
          FROM matches m
          JOIN clubs home ON home.id = m.home_club_id
@@ -626,7 +628,7 @@ league.get(
     )
     if (!match) return res.status(404).json({ error: 'Match not found' })
 
-    const [playerStats, events, matchStats, homeSquad, awaySquad] = await Promise.all([
+    const [playerStats, events, matchStats, homeSquad, awaySquad, managers] = await Promise.all([
       queryAll(
         `SELECT * FROM match_player_stats WHERE match_id = ? ORDER BY club_id, gamertag`,
         [match.id],
@@ -638,19 +640,105 @@ league.get(
       ),
       queryOne('SELECT * FROM match_stats WHERE match_id = ?', [match.id]),
       queryAll(
-        `SELECT id, gamertag, shirt_number, is_starting_11, sort_order
+        `SELECT id, gamertag, shirt_number, is_starting_11, position, sort_order
            FROM players WHERE club_id = ? ORDER BY is_starting_11 DESC, sort_order ASC, shirt_number ASC`,
         [match.home_club_id],
       ),
       queryAll(
-        `SELECT id, gamertag, shirt_number, is_starting_11, sort_order
+        `SELECT id, gamertag, shirt_number, is_starting_11, position, sort_order
            FROM players WHERE club_id = ? ORDER BY is_starting_11 DESC, sort_order ASC, shirt_number ASC`,
         [match.away_club_id],
       ),
+      queryAll<{
+        club_id: number
+        email: string
+        display_name: string | null
+        gamertag: string | null
+        role: string
+      }>(
+        `SELECT u.club_id, u.email, u.display_name, u.role, p.gamertag
+           FROM users u
+           LEFT JOIN players p ON p.user_id = u.id
+          WHERE u.club_id IN (?, ?)
+            AND u.is_active = TRUE
+            AND u.role IN ('club_manager', 'admin', 'owner')
+          ORDER BY FIELD(u.role, 'owner', 'admin', 'club_manager'), u.id ASC`,
+        [match.home_club_id, match.away_club_id],
+      ),
     ])
 
+    const parseAndHydrateXi = (rawJson: string | null, squad: any[]) => {
+      if (!rawJson) return null
+      try {
+        const xi = JSON.parse(rawJson)
+        if (!xi || typeof xi !== 'object') return null
+        const playerMap = new Map<number, any>((squad ?? []).map((p) => [p.id, p]))
+        const tagMap = new Map<string, any>(
+          (squad ?? []).map((p) => [String(p.gamertag || '').toLowerCase(), p]),
+        )
+
+        if (Array.isArray(xi.starters)) {
+          for (const s of xi.starters) {
+            if (!s) continue
+            const matched =
+              (s.playerId && playerMap.get(Number(s.playerId))) ||
+              (s.gamertag && tagMap.get(String(s.gamertag).toLowerCase()))
+            if (matched && matched.shirt_number != null) {
+              s.shirtNumber = matched.shirt_number
+              s.number = matched.shirt_number
+            }
+            if (
+              xi.captainGamertag &&
+              s.gamertag &&
+              s.gamertag.toLowerCase() === xi.captainGamertag.toLowerCase()
+            ) {
+              s.isCaptain = true
+            }
+          }
+        }
+
+        if (Array.isArray(xi.bench)) {
+          for (const b of xi.bench) {
+            if (!b) continue
+            const matched =
+              (b.playerId && playerMap.get(Number(b.playerId))) ||
+              (b.gamertag && tagMap.get(String(b.gamertag).toLowerCase()))
+            if (matched && matched.shirt_number != null) {
+              b.shirtNumber = matched.shirt_number
+              b.number = matched.shirt_number
+            }
+          }
+        }
+
+        return xi
+      } catch {
+        return null
+      }
+    }
+
+    const homeStartingXi = parseAndHydrateXi(match.home_starting_xi_json, homeSquad ?? [])
+    const awayStartingXi = parseAndHydrateXi(match.away_starting_xi_json, awaySquad ?? [])
+
+    const homeManager = (managers ?? [])
+      .filter((m) => m.club_id === match.home_club_id)
+      .map((m) => (m.display_name || m.gamertag || (m.email ? m.email.split('@')[0] : '')).trim())
+      .filter(Boolean)
+      .join(', ') || null
+
+    const awayManager = (managers ?? [])
+      .filter((m) => m.club_id === match.away_club_id)
+      .map((m) => (m.display_name || m.gamertag || (m.email ? m.email.split('@')[0] : '')).trim())
+      .filter(Boolean)
+      .join(', ') || null
+
+    const { home_starting_xi_json: _h, away_starting_xi_json: _a, ...restMatch } = match
+
     res.json({
-      ...match,
+      ...restMatch,
+      home_manager: homeManager,
+      away_manager: awayManager,
+      homeStartingXi,
+      awayStartingXi,
       playerStats: playerStats ?? [],
       events: events ?? [],
       stats: matchStats ?? null,
