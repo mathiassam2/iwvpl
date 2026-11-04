@@ -50,6 +50,22 @@ import {
 import { AVATAR_PLACEHOLDER, CLUB_PLACEHOLDER, compressClubLogo, cx, stripFlag } from '@/lib/format'
 import { getLiveClubs, getLiveMatches, type Club, type Match } from '@/lib/liveLeague'
 
+const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+const MONTH_NAMES = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+]
+
 type HubTab = 'central' | 'tactics' | 'transfers' | 'calendar' | 'settings'
 
 function parseKickoffDate(m: Match): Date | null {
@@ -626,6 +642,115 @@ export default function HubV2Page() {
 
   const nextMatch = upcomingMatches[0] ?? null
   const runInMatches = upcomingMatches.slice(0, 3)
+
+  const prevMonth = () => {
+    setSelectedYmd(null)
+    if (viewMonth === 0) {
+      setViewMonth(11)
+      setViewYear((y) => y - 1)
+    } else {
+      setViewMonth((m) => m - 1)
+    }
+  }
+
+  const nextMonth = () => {
+    setSelectedYmd(null)
+    if (viewMonth === 11) {
+      setViewMonth(0)
+      setViewYear((y) => y + 1)
+    } else {
+      setViewMonth((m) => m + 1)
+    }
+  }
+
+  const goToday = () => {
+    const now = new Date()
+    setViewYear(now.getFullYear())
+    setViewMonth(now.getMonth())
+    setSelectedYmd(toYmd(now))
+  }
+
+  // Calendar cells for (viewYear, viewMonth) starting Monday
+  const calendarDays = useMemo(() => {
+    const firstDay = new Date(viewYear, viewMonth, 1)
+    const lastDay = new Date(viewYear, viewMonth + 1, 0)
+    const startDow = (firstDay.getDay() + 6) % 7 // 0 = Mon, 6 = Sun
+    const daysInMonth = lastDay.getDate()
+
+    const cells: Array<{
+      ymd: string
+      day: number
+      inMonth: boolean
+      isToday: boolean
+      fixtures: Match[]
+    }> = []
+
+    const todayYmd = toYmd(new Date())
+
+    // Previous month trailing days
+    const prevMonthLast = new Date(viewYear, viewMonth, 0).getDate()
+    for (let i = startDow - 1; i >= 0; i--) {
+      const d = new Date(viewYear, viewMonth - 1, prevMonthLast - i)
+      const ymd = toYmd(d)
+      cells.push({
+        ymd,
+        day: d.getDate(),
+        inMonth: false,
+        isToday: ymd === todayYmd,
+        fixtures: matchesByYmd.get(ymd) ?? [],
+      })
+    }
+
+    // Current month days
+    for (let day = 1; day <= daysInMonth; day++) {
+      const d = new Date(viewYear, viewMonth, day)
+      const ymd = toYmd(d)
+      cells.push({
+        ymd,
+        day,
+        inMonth: true,
+        isToday: ymd === todayYmd,
+        fixtures: matchesByYmd.get(ymd) ?? [],
+      })
+    }
+
+    // Next month leading days to complete week
+    const remainder = (7 - (cells.length % 7)) % 7
+    for (let day = 1; day <= remainder; day++) {
+      const d = new Date(viewYear, viewMonth + 1, day)
+      const ymd = toYmd(d)
+      cells.push({
+        ymd,
+        day,
+        inMonth: false,
+        isToday: ymd === todayYmd,
+        fixtures: matchesByYmd.get(ymd) ?? [],
+      })
+    }
+
+    return cells
+  }, [viewYear, viewMonth, matchesByYmd])
+
+  useEffect(() => {
+    setFixturePage(1)
+  }, [selectedYmd, listMode, myClub?.slug, myClub?.name])
+
+  const activeSideList = useMemo(() => {
+    if (selectedYmd) {
+      return matchesByYmd.get(selectedYmd) ?? []
+    }
+    return listMode === 'upcoming' ? upcomingMatches : completedMatches
+  }, [selectedYmd, matchesByYmd, listMode, upcomingMatches, completedMatches])
+
+  const FIXTURES_PER_PAGE = 4
+  const totalFixturePages = Math.max(1, Math.ceil(activeSideList.length / FIXTURES_PER_PAGE))
+  const safeFixturePage = Math.min(fixturePage, totalFixturePages)
+  const paginatedSideList = useMemo(() => {
+    return activeSideList.slice(
+      (safeFixturePage - 1) * FIXTURES_PER_PAGE,
+      safeFixturePage * FIXTURES_PER_PAGE,
+    )
+  }, [activeSideList, safeFixturePage])
 
   const cleanMyClub = stripFlag(myClub?.name || '').toLowerCase().trim()
   const clubCrest = myClub?.logo_local || myClub?.logo_url || CLUB_PLACEHOLDER
@@ -2153,121 +2278,97 @@ export default function HubV2Page() {
         {/* ================================================================= TAB 4: CALENDAR */}
         {activeTab === 'calendar' && (
           <div className="space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-4 shadow-xl sm:px-6">
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedYmd(null)
-                    if (viewMonth === 0) {
-                      setViewMonth(11)
-                      setViewYear((y) => y - 1)
-                    } else {
-                      setViewMonth((m) => m - 1)
-                    }
-                  }}
-                  className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-bold text-white hover:bg-white/10"
-                >
-                  ‹ Prev Month
-                </button>
-                <span className="font-display text-sm font-black uppercase tracking-wider text-white">
-                  {new Date(viewYear, viewMonth, 1).toLocaleString('default', {
-                    month: 'long',
-                    year: 'numeric',
-                  })}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedYmd(null)
-                    if (viewMonth === 11) {
-                      setViewMonth(0)
-                      setViewYear((y) => y + 1)
-                    } else {
-                      setViewMonth((m) => m + 1)
-                    }
-                  }}
-                  className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-bold text-white hover:bg-white/10"
-                >
-                  Next Month ›
-                </button>
-              </div>
-
+            {/* Top Toolbar / Header */}
+            <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-4 shadow-xl sm:px-6 backdrop-blur-md">
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setListMode('upcoming')}
-                  className={cx(
-                    'rounded-lg px-3 py-1 text-xs font-black uppercase transition',
-                    listMode === 'upcoming'
-                      ? 'bg-[#c4f82a] text-black shadow'
-                      : 'text-slate-400 hover:text-white',
-                  )}
+                <span className="text-xs font-black uppercase tracking-[0.2em] text-[#c4f82a]">
+                  Schedule & Calendar
+                </span>
+                <span className="text-sm font-black uppercase text-white">
+                  • {myClub?.name || 'Club'} Fixture Calendar
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 font-mono text-[11px] font-bold text-slate-300">
+                  {upcomingMatches.length} Upcoming · {completedMatches.length} Played
+                </span>
+                <ButtonLink
+                  to="/matches"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1 border-white/10 text-xs font-bold hover:border-white/20 px-2.5"
                 >
-                  Upcoming ({upcomingMatches.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setListMode('results')}
-                  className={cx(
-                    'rounded-lg px-3 py-1 text-xs font-black uppercase transition',
-                    listMode === 'results'
-                      ? 'bg-[#c4f82a] text-black shadow'
-                      : 'text-slate-400 hover:text-white',
-                  )}
-                >
-                  Results ({completedMatches.length})
-                </button>
+                  <span>Full Schedule</span>
+                  <span className="text-[10px]">↗</span>
+                </ButtonLink>
               </div>
             </div>
 
-            {/* Calendar & Fixture List Grid */}
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-              {/* Left (7 cols): Month Calendar Grid */}
-              <div className="col-span-1 lg:col-span-7 rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-5 shadow-xl sm:p-6 backdrop-blur-md">
-                <div className="grid grid-cols-7 gap-1 text-center font-mono text-[10px] font-black text-slate-500 uppercase pb-2">
-                  <span>Mon</span>
-                  <span>Tue</span>
-                  <span>Wed</span>
-                  <span>Thu</span>
-                  <span>Fri</span>
-                  <span>Sat</span>
-                  <span>Sun</span>
-                </div>
+            {calendarLoading ? (
+              <div className="flex items-center justify-center py-20">
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/10 border-t-[#c4f82a]" />
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+                {/* LEFT (7 cols): Interactive Monthly Calendar Grid */}
+                <div className="col-span-1 lg:col-span-7 rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-4 shadow-xl sm:p-5 backdrop-blur-md">
+                  {/* Month Header Controls */}
+                  <div className="mb-3.5 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={prevMonth}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-black/40 text-xs font-bold text-white transition hover:bg-white/10"
+                        aria-label="Previous month"
+                      >
+                        ‹
+                      </button>
+                      <button
+                        type="button"
+                        onClick={nextMonth}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-black/40 text-xs font-bold text-white transition hover:bg-white/10"
+                        aria-label="Next month"
+                      >
+                        ›
+                      </button>
+                      <h3 className="ml-1 font-display text-sm font-extrabold tracking-wide text-white sm:text-base">
+                        {MONTH_NAMES[viewMonth]} {viewYear}
+                      </h3>
+                    </div>
 
-                <div className="grid grid-cols-7 gap-1.5 mt-2">
-                  {(() => {
-                    const firstDay = new Date(viewYear, viewMonth, 1)
-                    const lastDay = new Date(viewYear, viewMonth + 1, 0)
-                    const startDow = (firstDay.getDay() + 6) % 7
-                    const daysInMonth = lastDay.getDate()
-                    const cells: Array<{ ymd: string; day: number; inMonth: boolean }> = []
+                    <div className="flex items-center gap-1.5">
+                      {selectedYmd && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedYmd(null)}
+                          className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-bold text-slate-300 hover:text-white hover:bg-white/10"
+                        >
+                          Show All
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={goToday}
+                        className="rounded-lg border border-[#c4f82a]/30 bg-[#c4f82a]/10 px-2.5 py-1 text-[11px] font-bold text-[#c4f82a] hover:bg-[#c4f82a]/20"
+                      >
+                        Today
+                      </button>
+                    </div>
+                  </div>
 
-                    // Previous month
-                    const prevMonthLast = new Date(viewYear, viewMonth, 0).getDate()
-                    for (let i = startDow - 1; i >= 0; i--) {
-                      const d = new Date(viewYear, viewMonth - 1, prevMonthLast - i)
-                      cells.push({ ymd: toYmd(d), day: d.getDate(), inMonth: false })
-                    }
-                    // Current month
-                    for (let day = 1; day <= daysInMonth; day++) {
-                      const d = new Date(viewYear, viewMonth, day)
-                      cells.push({ ymd: toYmd(d), day, inMonth: true })
-                    }
-                    // Trailing days
-                    const remainder = (7 - (cells.length % 7)) % 7
-                    for (let day = 1; day <= remainder; day++) {
-                      const d = new Date(viewYear, viewMonth + 1, day)
-                      cells.push({ ymd: toYmd(d), day, inMonth: false })
-                    }
+                  {/* Weekday Header */}
+                  <div className="grid grid-cols-7 gap-1 border-b border-white/[0.08] pb-2 text-center font-mono text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
+                    {WEEKDAYS.map((wd) => (
+                      <div key={wd}>{wd}</div>
+                    ))}
+                  </div>
 
-                    const todayYmd = toYmd(new Date())
-
-                    return cells.map((cell) => {
-                      const dayMatches = matchesByYmd.get(cell.ymd) ?? []
-                      const hasMatch = dayMatches.length > 0
+                  {/* Days Grid */}
+                  <div className="mt-2 grid grid-cols-7 gap-1.5">
+                    {calendarDays.map((cell) => {
+                      const hasMatch = cell.fixtures.length > 0
                       const isSelected = selectedYmd === cell.ymd
-                      const firstFixture = dayMatches[0]
+                      const firstFixture = cell.fixtures[0]
                       const ctx = firstFixture ? getFixtureContext(firstFixture) : null
 
                       return (
@@ -2276,8 +2377,8 @@ export default function HubV2Page() {
                           type="button"
                           onClick={() => setSelectedYmd(isSelected ? null : cell.ymd)}
                           className={cx(
-                            'group relative flex min-h-[64px] flex-col justify-between rounded-xl border p-1.5 text-left transition',
-                            !cell.inMonth && 'opacity-30',
+                            'group relative flex min-h-16 flex-col justify-between rounded-xl border p-1.5 text-left transition-all',
+                            !cell.inMonth && 'opacity-35',
                             isSelected
                               ? 'border-[#c4f82a] bg-[#c4f82a]/15 ring-1 ring-[#c4f82a]'
                               : hasMatch
@@ -2288,9 +2389,9 @@ export default function HubV2Page() {
                           <div className="flex w-full items-center justify-between">
                             <span
                               className={cx(
-                                'font-mono text-[10px] font-bold',
-                                cell.ymd === todayYmd
-                                  ? 'rounded bg-[#c4f82a] px-1 text-black font-black'
+                                'font-mono text-[11px] font-bold',
+                                cell.isToday
+                                  ? 'rounded bg-[#c4f82a] px-1 text-black font-extrabold'
                                   : hasMatch
                                     ? 'text-white'
                                     : 'text-slate-500',
@@ -2301,7 +2402,7 @@ export default function HubV2Page() {
                             {ctx && (
                               <span
                                 className={cx(
-                                  'rounded px-1 text-[8.5px] font-black uppercase',
+                                  'rounded px-1 text-[9px] font-extrabold uppercase',
                                   ctx.isHome
                                     ? 'bg-emerald-500/20 text-emerald-300'
                                     : 'bg-sky-500/20 text-sky-300',
@@ -2312,135 +2413,218 @@ export default function HubV2Page() {
                             )}
                           </div>
 
-                          {ctx && (
-                            <div className="mt-1 flex items-center gap-1">
-                              <img
-                                src={ctx.oppLogo || CLUB_PLACEHOLDER}
-                                alt=""
-                                onError={(e) => {
-                                  e.currentTarget.src = CLUB_PLACEHOLDER
-                                }}
-                                className="h-3.5 w-3.5 shrink-0 object-contain"
-                              />
-                              <span className="truncate text-[9.5px] font-bold text-white">
-                                {ctx.opponent}
-                              </span>
+                          {ctx && firstFixture && (
+                            <div className="mt-1 flex flex-col gap-0.5">
+                              <div className="flex items-center gap-1">
+                                <img
+                                  src={ctx.oppLogo || CLUB_PLACEHOLDER}
+                                  alt=""
+                                  onError={(e) => {
+                                    e.currentTarget.src = CLUB_PLACEHOLDER
+                                  }}
+                                  className="h-3.5 w-3.5 shrink-0 object-contain"
+                                />
+                                <span className="truncate text-[10px] font-bold text-white">
+                                  {ctx.opponent}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                {ctx.played ? (
+                                  <span
+                                    className={cx(
+                                      'font-mono rounded px-1 text-[9px] font-extrabold',
+                                      ctx.outcome === 'W'
+                                        ? 'bg-emerald-500/20 text-emerald-300'
+                                        : ctx.outcome === 'L'
+                                          ? 'bg-rose-500/20 text-rose-300'
+                                          : 'bg-amber-500/20 text-amber-300',
+                                    )}
+                                  >
+                                    {ctx.outcome} {firstFixture.hs}-{firstFixture.as}
+                                  </span>
+                                ) : (
+                                  <span className="font-mono text-[9px] font-bold text-[#c4f82a]">
+                                    {firstFixture.time || 'TBC'}
+                                  </span>
+                                )}
+                                {cell.fixtures.length > 1 && (
+                                  <span className="text-[9px] font-extrabold text-slate-500">
+                                    +{cell.fixtures.length - 1}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           )}
                         </button>
                       )
-                    })
-                  })()}
+                    })}
+                  </div>
                 </div>
-              </div>
 
-              {/* Right (5 cols): Day / Mode Fixture List */}
-              <div className="col-span-1 lg:col-span-5 rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-5 shadow-xl sm:p-6 backdrop-blur-md">
-                <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
-                  <span className="text-xs font-black uppercase text-[#c4f82a]">
-                    {selectedYmd ? `Matches on ${selectedYmd}` : `${listMode.toUpperCase()} MATCHES`}
-                  </span>
-                  {selectedYmd && (
-                    <button
-                      type="button"
-                      onClick={() => setSelectedYmd(null)}
-                      className="text-[11px] font-bold text-slate-400 hover:text-white"
-                    >
-                      Clear Filter ✕
-                    </button>
+                {/* RIGHT (5 cols): Upcoming / Results with Pagination */}
+                <div className="col-span-1 lg:col-span-5 flex flex-col justify-between rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#161922]/90 to-[#0e1016]/95 p-4 shadow-xl sm:p-5 backdrop-blur-md">
+                  <div>
+                    {/* Top Switcher: Selected Day OR Upcoming / Results tabs */}
+                    <div className="mb-3.5 flex items-center justify-between gap-2 border-b border-white/[0.08] pb-3">
+                      {selectedYmd ? (
+                        <div className="flex items-center justify-between w-full">
+                          <span className="text-xs font-black uppercase tracking-wider text-[#c4f82a]">
+                            📅 Fixtures on {selectedYmd}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedYmd(null)}
+                            className="text-[11px] font-bold text-slate-400 hover:text-white"
+                          >
+                            ✕ Clear Day
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5 rounded-xl bg-black/40 p-1 border border-white/5 w-full">
+                          <button
+                            type="button"
+                            onClick={() => setListMode('upcoming')}
+                            className={cx(
+                              'flex-1 rounded-lg py-1.5 text-xs font-black uppercase transition-all',
+                              listMode === 'upcoming'
+                                ? 'bg-[#c4f82a] text-black shadow-sm'
+                                : 'text-slate-400 hover:text-white',
+                            )}
+                          >
+                            Upcoming ({upcomingMatches.length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setListMode('results')}
+                            className={cx(
+                              'flex-1 rounded-lg py-1.5 text-xs font-black uppercase transition-all',
+                              listMode === 'results'
+                                ? 'bg-[#c4f82a] text-black shadow-sm'
+                                : 'text-slate-400 hover:text-white',
+                            )}
+                          >
+                            Results ({completedMatches.length})
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {activeSideList.length === 0 ? (
+                      <div className="flex flex-1 flex-col items-center justify-center py-12 text-center">
+                        <p className="text-xs font-bold text-white">
+                          {selectedYmd
+                            ? 'No fixtures scheduled on this date'
+                            : listMode === 'upcoming'
+                              ? 'No upcoming fixtures scheduled'
+                              : 'No completed results yet'}
+                        </p>
+                        <p className="mt-1 text-[11px] text-slate-500">
+                          {selectedYmd
+                            ? 'Click a highlighted date on the calendar or clear the day filter.'
+                            : 'Once league admins publish fixtures for your division, they will appear here.'}
+                        </p>
+                      </div>
+                    ) : (
+                      <ul className="space-y-2.5">
+                        {paginatedSideList.map((m, idx) => {
+                          const ctx = getFixtureContext(m)
+                          return (
+                            <li key={m.id ?? idx}>
+                              <Link
+                                to={m.id ? `/matches/${m.id}` : '/matches'}
+                                className="group flex items-center justify-between gap-3 rounded-xl border border-white/5 bg-black/40 p-3 transition-colors hover:border-[#c4f82a]/30 hover:bg-black/60"
+                              >
+                                <div className="flex min-w-0 items-center gap-3">
+                                  <img
+                                    src={ctx.oppLogo || CLUB_PLACEHOLDER}
+                                    alt=""
+                                    onError={(e) => {
+                                      e.currentTarget.src = CLUB_PLACEHOLDER
+                                    }}
+                                    className="h-9 w-9 shrink-0 object-contain"
+                                  />
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-1.5">
+                                      <span
+                                        className={cx(
+                                          'rounded px-1.5 py-0.2 text-[9px] font-black uppercase',
+                                          ctx.isHome
+                                            ? 'bg-emerald-500/20 text-emerald-300'
+                                            : 'bg-sky-500/20 text-sky-300',
+                                        )}
+                                      >
+                                        {ctx.isHome ? 'HOME' : 'AWAY'}
+                                      </span>
+                                      {m.roundNumber && (
+                                        <span className="text-[10px] font-bold text-slate-400">
+                                          Game Week {m.roundNumber}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="mt-0.5 truncate text-xs font-extrabold text-white group-hover:text-[#c4f82a] transition">
+                                      vs {ctx.opponent}
+                                    </p>
+                                    <p className="text-[11px] text-slate-400">
+                                      {m.date || 'Date TBD'} · {m.time || 'Kick-off TBD'}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div className="shrink-0 text-right">
+                                  {ctx.played ? (
+                                    <span
+                                      className={cx(
+                                        'font-mono inline-block rounded-lg px-2.5 py-1 text-xs font-black',
+                                        ctx.outcome === 'W'
+                                          ? 'bg-emerald-500/20 text-emerald-300'
+                                          : ctx.outcome === 'L'
+                                            ? 'bg-rose-500/20 text-rose-300'
+                                            : 'bg-amber-500/20 text-amber-300',
+                                      )}
+                                    >
+                                      {ctx.outcome} · {m.hs}:{m.as}
+                                    </span>
+                                  ) : (
+                                    <span className="inline-block rounded-lg bg-[#c4f82a]/15 text-[#c4f82a] border border-[#c4f82a]/30 px-2.5 py-1 text-[11px] font-black">
+                                      Match →
+                                    </span>
+                                  )}
+                                </div>
+                              </Link>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    )}
+                  </div>
+
+                  {/* Pagination Controls */}
+                  {totalFixturePages > 1 && (
+                    <div className="mt-4 flex items-center justify-between border-t border-white/[0.08] pt-3">
+                      <button
+                        type="button"
+                        disabled={safeFixturePage <= 1}
+                        onClick={() => setFixturePage((p) => Math.max(1, p - 1))}
+                        className="rounded-lg border border-white/10 bg-black/40 px-3 py-1 text-xs font-bold text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
+                      >
+                        ‹ Prev
+                      </button>
+                      <span className="font-mono text-xs font-bold text-slate-400">
+                        Page {safeFixturePage} of {totalFixturePages}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={safeFixturePage >= totalFixturePages}
+                        onClick={() => setFixturePage((p) => Math.min(totalFixturePages, p + 1))}
+                        className="rounded-lg border border-white/10 bg-black/40 px-3 py-1 text-xs font-bold text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
+                      >
+                        Next ›
+                      </button>
+                    </div>
                   )}
                 </div>
-
-                {(() => {
-                  const filtered = selectedYmd
-                    ? matchesByYmd.get(selectedYmd) ?? []
-                    : listMode === 'upcoming'
-                      ? upcomingMatches
-                      : completedMatches
-
-                  if (filtered.length === 0) {
-                    return (
-                      <p className="py-12 text-center text-xs text-slate-400">
-                        No matches found for this view.
-                      </p>
-                    )
-                  }
-
-                  return (
-                    <div className="mt-4 space-y-3 max-h-[460px] overflow-y-auto">
-                      {filtered.map((m) => {
-                        const ctx = getFixtureContext(m)
-                        return (
-                          <div
-                            key={m.id}
-                            className="flex items-center justify-between rounded-xl border border-white/5 bg-black/40 p-3 hover:border-white/15 transition"
-                          >
-                            <div className="flex items-center gap-3 min-w-0">
-                              <img
-                                src={ctx.oppLogo || CLUB_PLACEHOLDER}
-                                alt=""
-                                onError={(e) => {
-                                  e.currentTarget.src = CLUB_PLACEHOLDER
-                                }}
-                                className="h-8 w-8 shrink-0 object-contain"
-                              />
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-1.5">
-                                  <span className="rounded bg-white/10 px-1 py-0.2 text-[9px] font-bold text-slate-300">
-                                    GW {m.roundNumber ?? '—'}
-                                  </span>
-                                  <span
-                                    className={cx(
-                                      'text-[9px] font-black uppercase',
-                                      ctx.isHome ? 'text-emerald-400' : 'text-sky-400',
-                                    )}
-                                  >
-                                    {ctx.isHome ? '(H)' : '(A)'}
-                                  </span>
-                                </div>
-                                <p className="truncate text-xs font-bold text-white">{ctx.opponent}</p>
-                                <span className="text-[10px] text-slate-400">
-                                  {m.time ? `${m.date || ''} • ${m.time}` : 'Date TBD'}
-                                </span>
-                              </div>
-                            </div>
-
-                            <div className="flex flex-col items-end gap-1">
-                              {ctx.played ? (
-                                <span
-                                  className={cx(
-                                    'font-mono text-xs font-black rounded px-2 py-0.5',
-                                    ctx.outcome === 'W'
-                                      ? 'bg-emerald-500/20 text-emerald-300'
-                                      : ctx.outcome === 'L'
-                                        ? 'bg-rose-500/20 text-rose-300'
-                                        : 'bg-amber-500/20 text-amber-300',
-                                  )}
-                                >
-                                  {m.hs} : {m.as} ({ctx.outcome})
-                                </span>
-                              ) : (
-                                <span className="font-mono text-xs font-bold text-[#c4f82a]">
-                                  {m.time || 'TBD'}
-                                </span>
-                              )}
-                              <ButtonLink
-                                to={`/matches/${m.id}`}
-                                size="sm"
-                                variant="outline"
-                                className="h-6 text-[10px] px-2 font-bold"
-                              >
-                                View
-                              </ButtonLink>
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )
-                })()}
               </div>
-            </div>
+            )}
           </div>
         )}
 
