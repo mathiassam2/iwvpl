@@ -89,15 +89,14 @@ async function ownPlayer(userId: number, candidateGamertag?: string): Promise<{
     let candidateName = rawCandidate
     const key = gamertagKey(candidateName)
     const match = await queryOne<{ id: number }>(
-      'SELECT id FROM players WHERE gamertag_key = ? AND user_id IS NULL LIMIT 1',
+      'SELECT id FROM players WHERE gamertag_key = ? AND (user_id IS NULL OR user_id NOT IN (SELECT id FROM users)) LIMIT 1',
       [key],
     )
     if (match) {
       const clubId = user?.club_id ?? null
-      const isFree = clubId ? 0 : 1
       await execute(
-        'UPDATE players SET user_id = ?, club_id = ?, is_free_agent = ?, updated_at = NOW() WHERE id = ?',
-        [userId, clubId, isFree, match.id],
+        'UPDATE players SET user_id = ?, club_id = COALESCE(club_id, ?), is_free_agent = IF(COALESCE(club_id, ?) IS NULL, 1, 0), updated_at = NOW() WHERE id = ?',
+        [userId, clubId, clubId, match.id],
       )
       row = await queryOne<{ id: number; gamertag: string; club_id: number | null; shirt_number: number | null; is_free_agent: number }>(
         'SELECT id, gamertag, club_id, shirt_number, is_free_agent FROM players WHERE id = ?',
@@ -194,7 +193,10 @@ player.get(
       myPlayer ? [key, myPlayer.id] : [key],
     )
     if (takenPlayer && takenPlayer.user_id && takenPlayer.user_id !== req.user!.id) {
-      return res.json({ available: false, reason: 'That gamertag is already taken' })
+      const activeUser = await queryOne<{ id: number }>('SELECT id FROM users WHERE id = ?', [takenPlayer.user_id])
+      if (activeUser) {
+        return res.json({ available: false, reason: 'That gamertag is already taken' })
+      }
     }
 
     const takenUser = await queryOne<{ id: number }>(
@@ -247,15 +249,24 @@ player.patch(
     const oldGamertag = me.gamertag
 
     let shouldUpdateGamertag = false
+    let targetClashPlayer: { id: number; club_id: number | null; is_free_agent: number; shirt_number: number | null } | null = null
+
     if (newGamertag && newGamertag !== oldGamertag) {
       if (newGamertag.toLowerCase() !== oldGamertag.toLowerCase()) {
         const key = gamertagKey(newGamertag)
-        const clashPlayer = await queryOne<{ id: number; user_id: number | null }>(
-          'SELECT id, user_id FROM players WHERE gamertag_key = ? AND id != ?',
+        const clashPlayer = await queryOne<{ id: number; user_id: number | null; club_id: number | null; is_free_agent: number; shirt_number: number | null }>(
+          'SELECT id, user_id, club_id, is_free_agent, shirt_number FROM players WHERE gamertag_key = ? AND id != ?',
           [key, me.id],
         )
-        if (clashPlayer && clashPlayer.user_id && clashPlayer.user_id !== req.user!.id) {
-          bad(`The gamertag "${newGamertag}" is already taken. Please choose another.`)
+        if (clashPlayer) {
+          if (clashPlayer.user_id && clashPlayer.user_id !== req.user!.id) {
+            const activeUser = await queryOne<{ id: number }>('SELECT id FROM users WHERE id = ?', [clashPlayer.user_id])
+            if (activeUser) {
+              bad(`The gamertag "${newGamertag}" is already taken. Please choose another.`)
+            }
+          }
+          // Unlinked player row without active web account -> adopt it
+          targetClashPlayer = clashPlayer
         }
 
         const clashUser = await queryOne<{ id: number }>(
@@ -270,33 +281,70 @@ player.patch(
     }
 
     await withTransaction(async (conn) => {
-      // Update shirt number if provided
-      if (shirtNumber !== undefined) {
-        await conn.execute('UPDATE players SET shirt_number = ?, updated_at = NOW() WHERE id = ?', [
-          shirtNumber,
-          me.id,
-        ])
-      }
+      let activePlayerId = me.id
 
-      // Update gamertag if changed
-      if (shouldUpdateGamertag && newGamertag) {
-        const key = gamertagKey(newGamertag)
-        const slug = await uniquePlayerSlug(newGamertag, me.id)
+      if (targetClashPlayer) {
+        // Adopt the clash player row and merge me into it
+        activePlayerId = targetClashPlayer.id
+
+        await conn.execute('UPDATE transfer_requests SET player_id = ? WHERE player_id = ?', [targetClashPlayer.id, me.id])
+        await conn.execute('UPDATE transfers SET player_id = ? WHERE player_id = ?', [targetClashPlayer.id, me.id])
+        await conn.execute('UPDATE IGNORE match_player_stats SET player_id = ? WHERE player_id = ?', [targetClashPlayer.id, me.id])
+        await conn.execute('DELETE FROM match_player_stats WHERE player_id = ?', [me.id])
+        await conn.execute('UPDATE IGNORE player_season_stats SET player_id = ? WHERE player_id = ?', [targetClashPlayer.id, me.id])
+        await conn.execute('DELETE FROM player_season_stats WHERE player_id = ?', [me.id])
+        await conn.execute('UPDATE totw_slots SET player_id = ? WHERE player_id = ?', [targetClashPlayer.id, me.id])
+
+        const finalClubId = me.club_id ?? targetClashPlayer.club_id
+        const finalIsFree = finalClubId ? 0 : 1
+        const finalShirt = shirtNumber !== undefined ? shirtNumber : (targetClashPlayer.shirt_number ?? me.shirt_number)
+        const key = gamertagKey(newGamertag!)
+        const slug = await uniquePlayerSlug(newGamertag!, targetClashPlayer.id)
+
         await conn.execute(
-          'UPDATE players SET gamertag = ?, gamertag_key = ?, slug = ?, updated_at = NOW() WHERE id = ?',
-          [newGamertag, key, slug, me.id],
+          `UPDATE players
+              SET user_id = ?, gamertag = ?, gamertag_key = ?, slug = ?,
+                  club_id = ?, is_free_agent = ?, shirt_number = ?, updated_at = NOW()
+            WHERE id = ?`,
+          [req.user!.id, newGamertag, key, slug, finalClubId, finalIsFree, finalShirt, targetClashPlayer.id],
         )
+
+        // Delete previous orphan row
+        await conn.execute('DELETE FROM players WHERE id = ?', [me.id])
+
         await conn.execute(
           'UPDATE users SET display_name = ?, updated_at = NOW() WHERE id = ?',
           [newGamertag, req.user!.id],
         )
+      } else {
+        // Normal update on me
+        if (shirtNumber !== undefined) {
+          await conn.execute('UPDATE players SET shirt_number = ?, updated_at = NOW() WHERE id = ?', [
+            shirtNumber,
+            me.id,
+          ])
+        }
+
+        if (shouldUpdateGamertag && newGamertag) {
+          const key = gamertagKey(newGamertag)
+          const slug = await uniquePlayerSlug(newGamertag, me.id)
+          await conn.execute(
+            'UPDATE players SET gamertag = ?, gamertag_key = ?, slug = ?, updated_at = NOW() WHERE id = ?',
+            [newGamertag, key, slug, me.id],
+          )
+          await conn.execute(
+            'UPDATE users SET display_name = ?, updated_at = NOW() WHERE id = ?',
+            [newGamertag, req.user!.id],
+          )
+        }
       }
 
       // Synchronize clubs.starting_xi_json if player is attached to a club
-      if (me.club_id && (shirtNumber !== undefined || newGamertag)) {
+      const syncClubId = me.club_id || targetClashPlayer?.club_id
+      if (syncClubId && (shirtNumber !== undefined || newGamertag)) {
         const [clubRows] = await conn.query(
           'SELECT id, starting_xi_json FROM clubs WHERE id = ? FOR UPDATE',
-          [me.club_id],
+          [syncClubId],
         )
         const club = (clubRows as any[])[0]
         if (club?.starting_xi_json) {
@@ -308,9 +356,10 @@ player.patch(
               for (const s of parsed.starters) {
                 if (
                   s &&
-                  ((s.playerId && Number(s.playerId) === Number(me.id)) ||
-                    (s.gamertag && s.gamertag.toLowerCase() === oldGamertag.toLowerCase()))
+                  ((s.playerId && (Number(s.playerId) === Number(me.id) || Number(s.playerId) === Number(activePlayerId))) ||
+                    (s.gamertag && (s.gamertag.toLowerCase() === oldGamertag.toLowerCase() || (newGamertag && s.gamertag.toLowerCase() === newGamertag.toLowerCase()))))
                 ) {
+                  s.playerId = activePlayerId
                   if (shirtNumber !== undefined) {
                     s.shirtNumber = shirtNumber ?? undefined
                     s.number = shirtNumber ?? undefined
@@ -327,9 +376,10 @@ player.patch(
               for (const b of parsed.bench) {
                 if (
                   b &&
-                  ((b.playerId && Number(b.playerId) === Number(me.id)) ||
-                    (b.gamertag && b.gamertag.toLowerCase() === oldGamertag.toLowerCase()))
+                  ((b.playerId && (Number(b.playerId) === Number(me.id) || Number(b.playerId) === Number(activePlayerId))) ||
+                    (b.gamertag && (b.gamertag.toLowerCase() === oldGamertag.toLowerCase() || (newGamertag && b.gamertag.toLowerCase() === newGamertag.toLowerCase()))))
                 ) {
+                  b.playerId = activePlayerId
                   if (shirtNumber !== undefined) {
                     b.shirtNumber = shirtNumber ?? undefined
                     b.number = shirtNumber ?? undefined
@@ -345,7 +395,7 @@ player.patch(
             if (
               newGamertag &&
               parsed.captainGamertag &&
-              parsed.captainGamertag.toLowerCase() === oldGamertag.toLowerCase()
+              (parsed.captainGamertag.toLowerCase() === oldGamertag.toLowerCase() || parsed.captainGamertag.toLowerCase() === newGamertag.toLowerCase())
             ) {
               parsed.captainGamertag = newGamertag
               modified = true

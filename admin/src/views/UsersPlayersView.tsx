@@ -665,6 +665,8 @@ export function UsersPlayersView({
                 role: finalRole,
                 clubId: finalManagedClub,
                 gamertag: pGamertag.trim() || null,
+                squadClubId: pSquadClubId ? Number(pSquadClubId) : null,
+                shirtNumber: pShirtNumber.trim() ? Number(pShirtNumber.trim()) : null,
                 isActive: uActive,
                 ...(uPassword ? { password: uPassword } : {}),
               }),
@@ -685,14 +687,14 @@ export function UsersPlayersView({
                 role: finalRole,
                 clubId: finalManagedClub,
                 gamertag: pGamertag.trim() || editingMember.gamertag || null,
+                squadClubId: pSquadClubId ? Number(pSquadClubId) : null,
+                shirtNumber: pShirtNumber.trim() ? Number(pShirtNumber.trim()) : null,
                 isActive: uActive,
               }),
             'Could not create login account for player',
           )
-        }
-
-        // 2. Update or create player profile
-        if (editingMember.player) {
+        } else if (editingMember.player) {
+          // Player-only record (no web account)
           await guard(
             () =>
               updateAdminPlayer(editingMember.player!.id, {

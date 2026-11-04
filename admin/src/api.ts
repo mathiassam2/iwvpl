@@ -998,6 +998,8 @@ export interface AdminUserInput {
   role: UserRole
   clubId?: number | null
   gamertag?: string | null
+  squadClubId?: number | null
+  shirtNumber?: number | null
   isActive?: boolean
 }
 

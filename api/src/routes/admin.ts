@@ -4341,6 +4341,13 @@ admin.post(
       role = 'player'
     }
     const clubId = role === 'player' ? null : parsedClubId
+    const rawSquadClubId = req.body?.squadClubId
+    const squadClubId =
+      rawSquadClubId === null || rawSquadClubId === undefined || rawSquadClubId === ''
+        ? null
+        : Number(rawSquadClubId)
+    const shirtProvided = Object.prototype.hasOwnProperty.call(req.body ?? {}, 'shirtNumber')
+    const shirtNumber = shirtProvided ? parseOptionalShirtNumber(req.body?.shirtNumber) : undefined
     const gamertag = optionalString(req.body?.gamertag, 120)
 
     const hash = await hashPassword(plainPassword)
@@ -4377,28 +4384,33 @@ admin.post(
           [key],
         )
         const existingPlayer = (existingPlayers as Array<{ id: number; user_id: number | null }>)[0]
+        const pClubId = squadClubId ?? clubId
         if (existingPlayer) {
           if (existingPlayer.user_id && existingPlayer.user_id !== userId) {
-            throw Object.assign(
-              new Error('That gamertag is already linked to another account.'),
-              { status: 409 },
-            )
+            const [owner] = await conn.query('SELECT id FROM users WHERE id = ? LIMIT 1', [existingPlayer.user_id])
+            if ((owner as any[]).length > 0) {
+              throw Object.assign(
+                new Error('That gamertag is already linked to another account.'),
+                { status: 409 },
+              )
+            }
           }
           await conn.execute(
             `UPDATE players
                 SET user_id = ?,
                     club_id = COALESCE(?, club_id),
                     is_free_agent = IF(COALESCE(?, club_id) IS NULL, TRUE, FALSE),
+                    shirt_number = COALESCE(?, shirt_number),
                     updated_at = NOW()
               WHERE id = ?`,
-            [userId, clubId, clubId, existingPlayer.id],
+            [userId, pClubId, pClubId, shirtNumber ?? null, existingPlayer.id],
           )
         } else {
           await conn.execute(
             `INSERT INTO players
-               (gamertag, gamertag_key, slug, user_id, club_id, is_free_agent, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-            [gamertag, key, clubSlug(gamertag) || key, userId, clubId, clubId === null ? 1 : 0],
+               (gamertag, gamertag_key, slug, shirt_number, user_id, club_id, is_free_agent, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+            [gamertag, key, clubSlug(gamertag) || key, shirtNumber ?? null, userId, pClubId, pClubId === null ? 1 : 0],
           )
         }
       }
@@ -4436,6 +4448,14 @@ admin.put(
       role = 'player'
     }
     const clubId = role === 'player' ? null : parsedClubId
+    const rawSquadClubId = req.body?.squadClubId
+    const squadClubProvided = Object.prototype.hasOwnProperty.call(req.body ?? {}, 'squadClubId')
+    const squadClubId =
+      rawSquadClubId === null || rawSquadClubId === undefined || rawSquadClubId === ''
+        ? null
+        : Number(rawSquadClubId)
+    const shirtProvided = Object.prototype.hasOwnProperty.call(req.body ?? {}, 'shirtNumber')
+    const shirtNumber = shirtProvided ? parseOptionalShirtNumber(req.body?.shirtNumber) : undefined
     const gamertagProvided = Object.prototype.hasOwnProperty.call(req.body ?? {}, 'gamertag')
     const gamertag = optionalString(req.body?.gamertag, 120)
 
@@ -4500,35 +4520,100 @@ admin.put(
           const byTag = (byTagRows as Array<{ id: number; user_id: number | null }>)[0]
 
           if (byTag && byTag.user_id && byTag.user_id !== id) {
-            throw Object.assign(
-              new Error('That gamertag is already linked to another account.'),
-              { status: 409 },
-            )
+            const [owner] = await conn.query('SELECT id FROM users WHERE id = ? LIMIT 1', [byTag.user_id])
+            if ((owner as any[]).length > 0) {
+              throw Object.assign(
+                new Error('That gamertag is already linked to another account.'),
+                { status: 409 },
+              )
+            }
           }
+
+          const targetClub = squadClubProvided ? squadClubId : undefined
+          const targetShirt = shirtProvided ? shirtNumber : undefined
 
           if (linked && (!byTag || byTag.id === linked.id)) {
             await conn.execute(
               `UPDATE players
-                  SET gamertag = ?, gamertag_key = ?, slug = ?, updated_at = NOW()
+                  SET gamertag = ?, gamertag_key = ?, slug = ?,
+                      club_id = IF(? IS NULL, club_id, ?),
+                      is_free_agent = IF(? IS NULL, is_free_agent, IF(? IS NULL OR ? = 0, TRUE, FALSE)),
+                      shirt_number = IF(? IS NULL, shirt_number, ?),
+                      updated_at = NOW()
                 WHERE id = ?`,
-              [gamertag, key, clubSlug(gamertag) || key, linked.id],
+              [
+                gamertag,
+                key,
+                clubSlug(gamertag) || key,
+                targetClub === undefined ? null : 1,
+                targetClub ?? null,
+                targetClub === undefined ? null : 1,
+                targetClub ?? null,
+                targetClub ?? null,
+                targetShirt === undefined ? null : 1,
+                targetShirt ?? null,
+                linked.id,
+              ],
             )
           } else if (byTag) {
-            if (linked) {
-              await conn.execute('UPDATE players SET user_id = NULL, updated_at = NOW() WHERE id = ?', [
-                linked.id,
-              ])
+            if (linked && linked.id !== byTag.id) {
+              await conn.execute('UPDATE transfer_requests SET player_id = ? WHERE player_id = ?', [byTag.id, linked.id])
+              await conn.execute('UPDATE transfers SET player_id = ? WHERE player_id = ?', [byTag.id, linked.id])
+              await conn.execute('UPDATE IGNORE match_player_stats SET player_id = ? WHERE player_id = ?', [byTag.id, linked.id])
+              await conn.execute('DELETE FROM match_player_stats WHERE player_id = ?', [linked.id])
+              await conn.execute('UPDATE IGNORE player_season_stats SET player_id = ? WHERE player_id = ?', [byTag.id, linked.id])
+              await conn.execute('DELETE FROM player_season_stats WHERE player_id = ?', [linked.id])
+              await conn.execute('UPDATE totw_slots SET player_id = ? WHERE player_id = ?', [byTag.id, linked.id])
+              await conn.execute('DELETE FROM players WHERE id = ?', [linked.id])
             }
-            await conn.execute('UPDATE players SET user_id = ?, updated_at = NOW() WHERE id = ?', [
-              id,
-              byTag.id,
-            ])
+            await conn.execute(
+              `UPDATE players
+                  SET gamertag = ?, user_id = ?,
+                      club_id = IF(? IS NULL, club_id, ?),
+                      is_free_agent = IF(? IS NULL, is_free_agent, IF(? IS NULL OR ? = 0, TRUE, FALSE)),
+                      shirt_number = IF(? IS NULL, shirt_number, ?),
+                      updated_at = NOW()
+                WHERE id = ?`,
+              [
+                gamertag,
+                id,
+                targetClub === undefined ? null : 1,
+                targetClub ?? null,
+                targetClub === undefined ? null : 1,
+                targetClub ?? null,
+                targetClub ?? null,
+                targetShirt === undefined ? null : 1,
+                targetShirt ?? null,
+                byTag.id,
+              ],
+            )
           } else {
+            const pClubId = squadClubId ?? clubId
             await conn.execute(
               `INSERT INTO players
-                 (gamertag, gamertag_key, slug, user_id, club_id, is_free_agent, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-              [gamertag, key, clubSlug(gamertag) || key, id, clubId, clubId === null ? 1 : 0],
+                 (gamertag, gamertag_key, slug, user_id, shirt_number, club_id, is_free_agent, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+              [gamertag, key, clubSlug(gamertag) || key, id, shirtNumber ?? null, pClubId, pClubId === null ? 1 : 0],
+            )
+          }
+        }
+      } else {
+        const [linkedRows] = await conn.query(
+          'SELECT id FROM players WHERE user_id = ? FOR UPDATE',
+          [id],
+        )
+        const linked = (linkedRows as Array<{ id: number }>)[0]
+        if (linked) {
+          if (squadClubProvided) {
+            await conn.execute(
+              'UPDATE players SET club_id = ?, is_free_agent = ?, updated_at = NOW() WHERE id = ?',
+              [squadClubId, squadClubId === null ? 1 : 0, linked.id],
+            )
+          }
+          if (shirtProvided) {
+            await conn.execute(
+              'UPDATE players SET shirt_number = ?, updated_at = NOW() WHERE id = ?',
+              [shirtNumber ?? null, linked.id],
             )
           }
         }
@@ -4551,15 +4636,35 @@ admin.delete(
       return res.status(400).json({ error: 'User id must be a positive integer.' })
     }
 
+    const purgePlayer = req.query?.purgePlayer === 'true' || req.query?.deletePlayer === 'true'
+
     const deleted = await withTransaction(async (conn) => {
       const [rows] = await conn.query('SELECT id FROM users WHERE id = ? FOR UPDATE', [id])
       if (!((rows as unknown[])[0])) return false
 
+      const [playerRows] = await conn.query('SELECT id FROM players WHERE user_id = ? FOR UPDATE', [id])
+      const linkedPlayer = (playerRows as Array<{ id: number }>)[0]
+
       await conn.execute('DELETE FROM sessions WHERE user_id = ?', [id])
       await conn.execute('DELETE FROM notifications WHERE user_id = ?', [id])
-      await conn.execute('UPDATE players SET user_id = NULL, updated_at = NOW() WHERE user_id = ?', [
-        id,
-      ])
+
+      if (linkedPlayer) {
+        const [statsRows] = await conn.query('SELECT COUNT(*) AS c FROM match_player_stats WHERE player_id = ?', [linkedPlayer.id])
+        const [transfersRows] = await conn.query('SELECT COUNT(*) AS c FROM transfers WHERE player_id = ?', [linkedPlayer.id])
+        const hasHistory = ((statsRows as any[])[0]?.c ?? 0) > 0 || ((transfersRows as any[])[0]?.c ?? 0) > 0
+
+        if (purgePlayer || !hasHistory) {
+          await conn.execute('DELETE FROM transfer_requests WHERE player_id = ?', [linkedPlayer.id])
+          await conn.execute('DELETE FROM transfers WHERE player_id = ?', [linkedPlayer.id])
+          await conn.execute('DELETE FROM player_season_stats WHERE player_id = ?', [linkedPlayer.id])
+          await conn.execute('DELETE FROM match_player_stats WHERE player_id = ?', [linkedPlayer.id])
+          await conn.execute('UPDATE totw_slots SET player_id = NULL WHERE player_id = ?', [linkedPlayer.id])
+          await conn.execute('DELETE FROM players WHERE id = ?', [linkedPlayer.id])
+        } else {
+          await conn.execute('UPDATE players SET user_id = NULL, updated_at = NOW() WHERE user_id = ?', [linkedPlayer.id])
+        }
+      }
+
       await conn.execute('DELETE FROM users WHERE id = ?', [id])
       return true
     })
@@ -4615,12 +4720,33 @@ admin.post(
     const createdId = await withTransaction(async (conn) => {
       const key = gamertagKey(gamertag)
       const [existing] = await conn.query(
-        'SELECT id, gamertag FROM players WHERE gamertag_key = ? LIMIT 1',
+        'SELECT id, gamertag, user_id FROM players WHERE gamertag_key = ? LIMIT 1',
         [key],
       )
-      const dup = (existing as Array<{ id: number; gamertag: string }>)[0]
+      const dup = (existing as Array<{ id: number; gamertag: string; user_id: number | null }>)[0]
       if (dup) {
-        throw Object.assign(new Error(`${dup.gamertag} is already registered.`), { status: 409 })
+        if (dup.user_id) {
+          const [owner] = await conn.query('SELECT id FROM users WHERE id = ? LIMIT 1', [dup.user_id])
+          if ((owner as any[]).length > 0) {
+            throw Object.assign(new Error(`${dup.gamertag} is already registered to another account.`), { status: 409 })
+          }
+        }
+
+        if (clubId !== null) {
+          const [clubRows] = await conn.query('SELECT id FROM clubs WHERE id = ? LIMIT 1', [clubId])
+          if (!((clubRows as unknown[])[0])) {
+            throw Object.assign(new Error('Selected club does not exist.'), { status: 404 })
+          }
+        }
+
+        await conn.execute(
+          `UPDATE players
+              SET gamertag = ?, gamertag_key = ?, shirt_number = COALESCE(?, shirt_number),
+                  club_id = ?, is_free_agent = ?, updated_at = NOW()
+            WHERE id = ?`,
+          [gamertag, key, shirtNumber, clubId, clubId === null ? 1 : 0, dup.id],
+        )
+        return dup.id
       }
 
       if (clubId !== null) {
@@ -4678,12 +4804,27 @@ admin.put(
 
       const key = gamertagKey(gamertag)
       const [dups] = await conn.query(
-        'SELECT id, gamertag FROM players WHERE gamertag_key = ? AND id <> ? LIMIT 1',
+        'SELECT id, gamertag, user_id FROM players WHERE gamertag_key = ? AND id <> ? LIMIT 1',
         [key, id],
       )
-      const dup = (dups as Array<{ id: number; gamertag: string }>)[0]
+      const dup = (dups as Array<{ id: number; gamertag: string; user_id: number | null }>)[0]
       if (dup) {
-        throw Object.assign(new Error(`${dup.gamertag} is already registered.`), { status: 409 })
+        if (dup.user_id) {
+          const [owner] = await conn.query('SELECT id FROM users WHERE id = ? LIMIT 1', [dup.user_id])
+          if ((owner as any[]).length > 0) {
+            throw Object.assign(new Error(`${dup.gamertag} is already registered to another account.`), { status: 409 })
+          }
+        }
+
+        // dup has no active user account: merge dup into id, and delete dup
+        await conn.execute('UPDATE transfer_requests SET player_id = ? WHERE player_id = ?', [id, dup.id])
+        await conn.execute('UPDATE transfers SET player_id = ? WHERE player_id = ?', [id, dup.id])
+        await conn.execute('UPDATE IGNORE match_player_stats SET player_id = ? WHERE player_id = ?', [id, dup.id])
+        await conn.execute('DELETE FROM match_player_stats WHERE player_id = ?', [dup.id])
+        await conn.execute('UPDATE IGNORE player_season_stats SET player_id = ? WHERE player_id = ?', [id, dup.id])
+        await conn.execute('DELETE FROM player_season_stats WHERE player_id = ?', [dup.id])
+        await conn.execute('UPDATE totw_slots SET player_id = ? WHERE player_id = ?', [id, dup.id])
+        await conn.execute('DELETE FROM players WHERE id = ?', [dup.id])
       }
 
       if (clubId !== null) {
@@ -4743,11 +4884,13 @@ admin.delete(
 
     const deleted = await withTransaction(async (conn) => {
       const [rows] = await conn.query('SELECT id FROM players WHERE id = ? FOR UPDATE', [id])
-      if (!((rows as unknown[])[0])) return false
+      if (!((rows as unknown[])[0])) return true
 
       await conn.execute('DELETE FROM transfer_requests WHERE player_id = ?', [id])
       await conn.execute('DELETE FROM transfers WHERE player_id = ?', [id])
       await conn.execute('DELETE FROM player_season_stats WHERE player_id = ?', [id])
+      await conn.execute('DELETE FROM match_player_stats WHERE player_id = ?', [id])
+      await conn.execute('UPDATE totw_slots SET player_id = NULL WHERE player_id = ?', [id])
       await conn.execute('DELETE FROM players WHERE id = ?', [id])
       return true
     })

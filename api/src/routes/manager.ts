@@ -921,15 +921,25 @@ manager.post(
 
     let playerId: number
 
-    // If a clash exists and belongs to someone else, reject
+    // If a clash exists and belongs to someone else, check if that other user actually exists
     if (clash && clash.user_id && clash.user_id !== req.user!.id) {
-      bad('That gamertag is already registered to another user.')
+      const activeUser = await queryOne<{ id: number }>('SELECT id FROM users WHERE id = ?', [clash.user_id])
+      if (activeUser) {
+        bad('That gamertag is already registered to another user.')
+      }
     }
 
     if (existing) {
       if (clash && clash.id !== existing.id) {
         // Clash exists (crawled or unlinked) and existing is our old row.
-        // Adopt the clash row and remove the orphan existing row.
+        // Adopt the clash row and safely merge the orphan existing row.
+        await execute('UPDATE transfer_requests SET player_id = ? WHERE player_id = ?', [clash.id, existing.id])
+        await execute('UPDATE transfers SET player_id = ? WHERE player_id = ?', [clash.id, existing.id])
+        await execute('UPDATE IGNORE match_player_stats SET player_id = ? WHERE player_id = ?', [clash.id, existing.id])
+        await execute('DELETE FROM match_player_stats WHERE player_id = ?', [existing.id])
+        await execute('UPDATE IGNORE player_season_stats SET player_id = ? WHERE player_id = ?', [clash.id, existing.id])
+        await execute('DELETE FROM player_season_stats WHERE player_id = ?', [existing.id])
+        await execute('UPDATE totw_slots SET player_id = ? WHERE player_id = ?', [clash.id, existing.id])
         await execute('DELETE FROM players WHERE id = ?', [existing.id])
         playerId = clash.id
       } else {

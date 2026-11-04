@@ -238,13 +238,16 @@ auth.post(
         [gamertagKey(gamertag)],
       )
       if (clash && clash.user_id) {
-        throw Object.assign(
-          new Error(
-            'That gamertag is already linked to another account. ' +
-              'Contact the league admin or Discord support.',
-          ),
-          { status: 400 },
-        )
+        const activeUser = await queryOne<{ id: number }>('SELECT id FROM users WHERE id = ?', [clash.user_id])
+        if (activeUser) {
+          throw Object.assign(
+            new Error(
+              'That gamertag is already linked to another account. ' +
+                'Contact the league admin or Discord support.',
+            ),
+            { status: 400 },
+          )
+        }
       }
     }
 
@@ -280,13 +283,21 @@ auth.post(
           [gamertagKey(gamertag)],
         )
         const matched = (existingRows as any[])[0]
-        if (matched && !matched.user_id) {
-          playerId = matched.id
-          await conn.execute(
-            'UPDATE players SET shirt_number = COALESCE(?, shirt_number), club_id = ?, is_free_agent = ?, updated_at = NOW() WHERE id = ?',
-            [shirtNumber, clubId ?? null, clubId ? false : true, playerId],
-          )
-        } else if (!matched) {
+        if (matched) {
+          let hasActiveUser = false
+          if (matched.user_id) {
+            const [owner] = await conn.query('SELECT id FROM users WHERE id = ? LIMIT 1', [matched.user_id])
+            if ((owner as any[]).length > 0) hasActiveUser = true
+          }
+          if (!hasActiveUser) {
+            playerId = matched.id
+            await conn.execute(
+              'UPDATE players SET shirt_number = COALESCE(?, shirt_number), club_id = ?, is_free_agent = ?, updated_at = NOW() WHERE id = ?',
+              [shirtNumber, clubId ?? null, clubId ? false : true, playerId],
+            )
+          }
+        }
+        if (!playerId) {
           const [res] = await conn.execute(
             `INSERT INTO players
                (gamertag, gamertag_key, slug, shirt_number, club_id, is_free_agent, created_at, updated_at)
