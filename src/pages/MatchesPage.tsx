@@ -781,19 +781,6 @@ export default function MatchesPage() {
     return clubOptions.find((c) => c.value === team)
   }, [clubOptions, team])
 
-  const clubScheduleMatches = useMemo(() => {
-    if (team === 'all') return []
-    return [...filteredMatches].sort((a, b) => {
-      const ra = a.roundNumber ?? 9999
-      const rb = b.roundNumber ?? 9999
-      if (ra !== rb) return ra - rb
-      const ka = a.kickoff || '9999-12-31'
-      const kb = b.kickoff || '9999-12-31'
-      if (ka !== kb) return ka.localeCompare(kb)
-      return (a.id ?? 0) - (b.id ?? 0)
-    })
-  }, [team, filteredMatches])
-
   // Matches scoped to selected division & club (before status filter)
   const scopedMatches = useMemo(() => {
     let result = allMatches
@@ -836,6 +823,19 @@ export default function MatchesPage() {
     }
     return scopedMatches
   }, [scopedMatches, statusFilter])
+
+  const clubScheduleMatches = useMemo(() => {
+    if (team === 'all') return []
+    return [...filteredMatches].sort((a, b) => {
+      const ra = a.roundNumber ?? 9999
+      const rb = b.roundNumber ?? 9999
+      if (ra !== rb) return ra - rb
+      const ka = a.kickoff || '9999-12-31'
+      const kb = b.kickoff || '9999-12-31'
+      if (ka !== kb) return ka.localeCompare(kb)
+      return (a.id ?? 0) - (b.id ?? 0)
+    })
+  }, [team, filteredMatches])
 
   // Round groups
   const roundGroups = useMemo(() => buildRoundGroups(filteredMatches), [filteredMatches])
