@@ -589,7 +589,9 @@ player.delete(
 player.post(
   '/offers/:id/:decision',
     handler(async (req, res) => {
-    const decision = String(req.params.decision)
+    let decision = String(req.params.decision).toLowerCase()
+    if (decision === 'true') decision = 'accept'
+    if (decision === 'false') decision = 'reject'
     if (decision !== 'accept' && decision !== 'reject') {
       bad('Decision must be accept or reject.')
     }

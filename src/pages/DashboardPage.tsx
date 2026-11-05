@@ -112,7 +112,7 @@ function getPositionBadgeStyle(pos: string) {
 }
 
 export default function DashboardPage() {
-  const { user, status: authStatus, logout } = useAuth()
+  const { user, status: authStatus, logout, refresh } = useAuth()
   const navigate = useNavigate()
 
   // Guard: if unauthenticated, redirect to login
@@ -1012,7 +1012,7 @@ export default function DashboardPage() {
     try {
       await updateMyPlayerProfile({ shirtNumber: parsed })
       setNotice({ kind: 'ok', text: `Saved jersey number #${parsed ?? '—'}.` })
-      await loadPlayerData()
+      await Promise.all([loadPlayerData(), refresh()])
     } catch (err) {
       setNotice({ kind: 'error', text: msg(err) })
     } finally {
@@ -1071,12 +1071,15 @@ export default function DashboardPage() {
     }
   }
 
-  const handleDecideOffer = async (offerId: number, accept: boolean) => {
+  const handleDecideOffer = async (offerId: number, decision: 'accept' | 'reject') => {
     setBusy(true)
     try {
-      await decideOffer(offerId, accept)
-      setNotice({ kind: 'ok', text: accept ? 'Offer accepted! Welcome to the team.' : 'Offer declined.' })
-      await loadPlayerData()
+      await decideOffer(offerId, decision)
+      setNotice({
+        kind: 'ok',
+        text: decision === 'accept' ? 'Offer accepted! Welcome to the team.' : 'Offer declined.',
+      })
+      await Promise.all([loadPlayerData(), refresh()])
     } catch (err) {
       setNotice({ kind: 'error', text: msg(err) })
     } finally {
@@ -2416,7 +2419,7 @@ export default function DashboardPage() {
                                 <Button
                                   size="sm"
                                   disabled={busy}
-                                  onClick={() => handleDecideOffer(o.id, true)}
+                                  onClick={() => handleDecideOffer(o.id, 'accept')}
                                   className="bg-[#c4f82a] text-black font-bold text-xs"
                                 >
                                   Accept & Sign
@@ -2425,7 +2428,7 @@ export default function DashboardPage() {
                                   size="sm"
                                   variant="outline"
                                   disabled={busy}
-                                  onClick={() => handleDecideOffer(o.id, false)}
+                                  onClick={() => handleDecideOffer(o.id, 'reject')}
                                   className="text-xs text-red-400"
                                 >
                                   Decline

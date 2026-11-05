@@ -414,7 +414,9 @@ manager.get(
 manager.post(
   '/join-requests/:id/:decision',
   handler(async (req, res) => {
-    const decision = String(req.params.decision)
+    let decision = String(req.params.decision).toLowerCase()
+    if (decision === 'true') decision = 'accept'
+    if (decision === 'false') decision = 'reject'
     if (decision !== 'accept' && decision !== 'reject') {
       throw Object.assign(new Error('Decision must be accept or reject.'), { status: 400 })
     }
