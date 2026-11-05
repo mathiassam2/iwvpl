@@ -196,6 +196,37 @@ export default function DashboardPage() {
   const isInitializedRef = useRef(false)
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const popoverRef = useRef<HTMLDivElement>(null)
+
+  // Close Pitch Slot Popover on outside click or Escape key
+  useEffect(() => {
+    if (activeSlotIdx === null) return
+
+    const handlePointerDown = (e: MouseEvent | TouchEvent) => {
+      if (popoverRef.current && popoverRef.current.contains(e.target as Node)) {
+        return
+      }
+      // If clicking directly on a pitch slot marker, let the slot button onClick handle the switch
+      const targetEl = e.target as HTMLElement | null
+      if (targetEl?.closest('[data-pitch-slot]')) {
+        return
+      }
+      setActiveSlotIdx(null)
+    }
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setActiveSlotIdx(null)
+      }
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [activeSlotIdx])
 
   // Transfers & Inbox state
   const [managerOffersList, setManagerOffersList] = useState<Offer[]>([])
@@ -1682,60 +1713,200 @@ export default function DashboardPage() {
                   activeSlotIndex={activeSlotIdx}
                   onSelectSlot={isManager ? (idx) => setActiveSlotIdx(idx === activeSlotIdx ? null : idx) : undefined}
                 >
-                  {/* Smart Swap Popover for Managers */}
-                  {isManager && activeSlotIdx !== null && (
-                    <div className="absolute inset-x-2 bottom-3 z-30 rounded-xl border border-white/20 bg-black/95 p-4 shadow-2xl backdrop-blur-xl sm:inset-x-8">
-                      <div className="flex items-center justify-between border-b border-white/10 pb-2">
-                        <span className="text-xs font-black uppercase text-[#c4f82a]">
-                          Assign Slot {activeSlotIdx + 1} •{' '}
-                          {(FORMATIONS[formation] || FORMATIONS['4-3-3']).slots[activeSlotIdx]?.[0]}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setActiveSlotIdx(null)}
-                          className="text-xs font-bold text-slate-400 hover:text-white"
-                        >
-                          ✕ Close
-                        </button>
-                      </div>
+                  {/* Smart Swap Popover for Managers with Dynamic Positioning */}
+                  {isManager && activeSlotIdx !== null && (() => {
+                    const activeSlotTuple = (FORMATIONS[formation] || FORMATIONS['4-3-3']).slots[activeSlotIdx]
+                    const activeRole = activeSlotTuple?.[0] || 'POS'
+                    const activeY = activeSlotTuple?.[2] ?? 50
+                    // If slot is in bottom half (y >= 50: CDMs, Defenders, GK), flip popover to TOP
+                    // If slot is in top half (y < 50: Attackers, CAM), flip popover to BOTTOM
+                    const isBottomHalf = activeY >= 50
+                    const currentSlot = starters[activeSlotIdx]
+                    const isCurrentSlotCaptain = Boolean(
+                      currentSlot &&
+                        captainGamertag &&
+                        currentSlot.gamertag.toLowerCase() === captainGamertag.toLowerCase(),
+                    )
 
-                      <input
-                        type="text"
-                        value={slotSearch}
-                        onChange={(e) => setSlotSearch(e.target.value)}
-                        placeholder="Search squad player…"
-                        className="mt-3 h-8 w-full rounded border border-white/15 bg-white/5 px-2.5 text-xs text-white placeholder-slate-500 outline-none focus:border-[#c4f82a]"
-                      />
+                    return (
+                      <div
+                        ref={popoverRef}
+                        className={cx(
+                          'absolute inset-x-2 z-30 rounded-xl border border-white/20 bg-black/95 p-3.5 shadow-2xl backdrop-blur-xl sm:inset-x-6 sm:p-4 transition-all duration-150',
+                          isBottomHalf ? 'top-3 sm:top-4' : 'bottom-3 sm:bottom-4',
+                        )}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {/* Popover Header */}
+                        <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={cx(
+                                'rounded px-1.5 py-0.5 font-mono text-[10px] font-black border',
+                                getPositionBadgeStyle(activeRole),
+                              )}
+                            >
+                              {activeRole}
+                            </span>
+                            <span className="text-xs font-black uppercase tracking-wider text-[#c4f82a]">
+                              Slot {activeSlotIdx + 1} • {currentSlot ? currentSlot.gamertag : 'Unassigned'}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setActiveSlotIdx(null)}
+                            className="text-xs font-bold text-slate-400 hover:text-white"
+                          >
+                            ✕ Close
+                          </button>
+                        </div>
 
-                      <div className="mt-2.5 max-h-48 overflow-y-auto space-y-1 divide-y divide-white/5">
-                        {squadList
-                          .filter((p) =>
-                            p.gamertag.toLowerCase().includes(slotSearch.toLowerCase().trim()),
-                          )
-                          .map((p) => {
-                            const isAssigned = starters.some((s) => s?.playerId === p.id)
-                            return (
-                              <button
-                                key={p.id}
-                                type="button"
-                                onClick={() => handleAssignStarter(activeSlotIdx, p)}
-                                className="flex w-full items-center justify-between px-2 py-1.5 text-left text-xs hover:bg-[#c4f82a]/10 hover:text-[#c4f82a] rounded transition"
+                        {/* Current Assigned Player Action Bar: Name, Jersey # quick-input, Set Captain, Clear */}
+                        {currentSlot && (
+                          <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/[0.04] p-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="truncate text-xs font-bold text-white">
+                                {currentSlot.gamertag}
+                              </span>
+                              <label
+                                className="inline-flex h-6 items-center gap-0.5 rounded border border-white/20 bg-black/60 px-1.5 font-mono text-[11px] font-extrabold text-[#c4f82a]"
+                                title="Jersey Number (1–99)"
                               >
-                                <div className="flex items-center gap-2">
-                                  <span className="font-mono text-slate-400">
-                                    #{p.shirt_number ?? '—'}
-                                  </span>
-                                  <span className="font-bold text-white">{p.gamertag}</span>
-                                </div>
-                                <span className="text-[10px] text-slate-500">
-                                  {isAssigned ? 'Already placed' : 'Available'}
-                                </span>
+                                <span>#</span>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={99}
+                                  value={currentSlot.shirtNumber ?? currentSlot.number ?? ''}
+                                  onChange={(e) => {
+                                    const val = e.target.value ? Number(e.target.value) : null
+                                    if (val != null && val >= 1 && val <= 99) {
+                                      setStarters((prev) => {
+                                        const next = [...prev]
+                                        if (next[activeSlotIdx]) {
+                                          next[activeSlotIdx] = {
+                                            ...next[activeSlotIdx]!,
+                                            shirtNumber: val,
+                                            number: val,
+                                          }
+                                        }
+                                        return next
+                                      })
+                                    }
+                                  }}
+                                  className="w-7 bg-transparent text-center font-mono text-[11px] font-extrabold text-white outline-none"
+                                />
+                              </label>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCaptainGamertag((prev) =>
+                                    prev && prev.toLowerCase() === currentSlot.gamertag.toLowerCase()
+                                      ? null
+                                      : currentSlot.gamertag,
+                                  )
+                                }}
+                                className={cx(
+                                  'h-6 rounded px-2 text-[10.5px] font-bold transition flex items-center gap-1',
+                                  isCurrentSlotCaptain
+                                    ? 'bg-[#f59e0b] text-black font-black shadow-sm ring-1 ring-amber-300'
+                                    : 'bg-white/10 text-white/80 hover:bg-amber-500/20 hover:text-amber-300',
+                                )}
+                                title={
+                                  isCurrentSlotCaptain
+                                    ? 'Active Captain (Click to remove captaincy)'
+                                    : 'Set as Team Captain'
+                                }
+                              >
+                                <span>{isCurrentSlotCaptain ? '✓' : '★'}</span>
+                                <span>{isCurrentSlotCaptain ? 'Active Captain' : 'Set Captain'}</span>
                               </button>
-                            )
-                          })}
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (isCurrentSlotCaptain) {
+                                    setCaptainGamertag(null)
+                                  }
+                                  setStarters((prev) => {
+                                    const next = [...prev]
+                                    next[activeSlotIdx] = null
+                                    return next
+                                  })
+                                }}
+                                className="h-6 rounded border border-red-500/30 bg-red-500/15 px-2 text-[10.5px] font-bold text-red-300 hover:bg-red-500/25 hover:text-white transition"
+                                title="Remove player from pitch"
+                              >
+                                Remove from Pitch
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Search & Swap Squad Player */}
+                        <div className="mt-2.5">
+                          <input
+                            type="text"
+                            value={slotSearch}
+                            onChange={(e) => setSlotSearch(e.target.value)}
+                            placeholder="Swap or assign squad player…"
+                            className="h-8 w-full rounded border border-white/15 bg-white/5 px-2.5 text-xs text-white placeholder-slate-500 outline-none focus:border-[#c4f82a]"
+                          />
+
+                          <div className="mt-2 max-h-36 sm:max-h-44 overflow-y-auto space-y-1 divide-y divide-white/5">
+                            {squadList
+                              .filter((p) =>
+                                p.gamertag.toLowerCase().includes(slotSearch.toLowerCase().trim()),
+                              )
+                              .map((p) => {
+                                const isAssigned = starters.some((s) => s?.playerId === p.id)
+                                const isThisSlot = currentSlot?.playerId === p.id
+                                return (
+                                  <button
+                                    key={p.id}
+                                    type="button"
+                                    onClick={() => handleAssignStarter(activeSlotIdx, p)}
+                                    className={cx(
+                                      'flex w-full items-center justify-between px-2 py-1.5 text-left text-xs rounded transition',
+                                      isThisSlot
+                                        ? 'bg-[#c4f82a]/15 text-[#c4f82a] font-bold'
+                                        : 'hover:bg-[#c4f82a]/10 hover:text-[#c4f82a]',
+                                    )}
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-mono text-slate-400">
+                                        #{p.shirt_number ?? '—'}
+                                      </span>
+                                      <span className="font-bold text-white">{p.gamertag}</span>
+                                      {p.position && (
+                                        <span
+                                          className={cx(
+                                            'rounded px-1 py-0.2 text-[9px] font-bold border',
+                                            getPositionBadgeStyle(p.position),
+                                          )}
+                                        >
+                                          {p.position}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <span className="text-[10px] text-slate-500">
+                                      {isThisSlot
+                                        ? 'Current'
+                                        : isAssigned
+                                          ? 'Swap player'
+                                          : 'Available'}
+                                    </span>
+                                  </button>
+                                )
+                              })}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )
+                  })()}
                 </Pitch>
               </div>
 
@@ -1850,22 +2021,48 @@ export default function DashboardPage() {
                             )}
                           </div>
 
-                          {/* Only managers can remove starters */}
+                          {/* Manager controls: Captaincy badge toggle and remove button */}
                           {isManager && s && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setStarters((prev) => {
-                                  const next = [...prev]
-                                  next[idx] = null
-                                  return next
-                                })
-                              }}
-                              className="text-[10px] font-bold text-slate-500 hover:text-red-400"
-                              title="Remove from starting XI"
-                            >
-                              ✕
-                            </button>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCaptainGamertag((prev) =>
+                                    prev && prev.toLowerCase() === s.gamertag.toLowerCase()
+                                      ? null
+                                      : s.gamertag,
+                                  )
+                                }}
+                                className={cx(
+                                  'h-5 w-5 rounded flex items-center justify-center font-mono text-[10px] font-black transition-all',
+                                  isCap
+                                    ? 'bg-[#f59e0b] text-black shadow-[0_0_8px_rgba(245,158,11,0.5)] ring-1 ring-amber-300'
+                                    : 'text-slate-500 hover:text-amber-400 hover:bg-amber-500/10 border border-white/5',
+                                )}
+                                title={
+                                  isCap
+                                    ? 'Team Captain (Click to remove captaincy)'
+                                    : 'Set as Team Captain (C)'
+                                }
+                              >
+                                C
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (isCap) setCaptainGamertag(null)
+                                  setStarters((prev) => {
+                                    const next = [...prev]
+                                    next[idx] = null
+                                    return next
+                                  })
+                                }}
+                                className="h-5 w-5 rounded flex items-center justify-center text-[11px] font-bold text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition"
+                                title="Remove from starting XI"
+                              >
+                                ✕
+                              </button>
+                            </div>
                           )}
                         </li>
                       )
