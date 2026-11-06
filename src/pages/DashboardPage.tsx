@@ -1152,9 +1152,9 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-[#08090c] text-slate-100 selection:bg-[#c4f82a] selection:text-black">
       {/* ---------------- FIX ISSUE 3: Compact Top HUD Header into 1 Single Row ---------------- */}
       <header className="sticky top-16 lg:top-[72px] z-30 backdrop-blur-md bg-[#08090c]/90 border-b border-white/[0.08] transition-all">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-2 sm:px-6">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-y-2 gap-x-3 px-4 py-2 sm:px-6 lg:flex-nowrap">
           {/* Left: Club Crest + Name + Role */}
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="order-1 flex items-center gap-3 min-w-0 shrink">
             <div className="relative grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-xl border border-white/10 bg-black/40 p-1 shadow-inner">
               <img
                 src={clubCrest}
@@ -1197,14 +1197,14 @@ export default function DashboardPage() {
           </div>
 
           {/* Center: Game Mode Nav Tabs with sleek segmented pill indicators */}
-          <nav className="flex items-center overflow-x-auto py-1 scrollbar-none">
-            <div className="inline-flex items-center gap-1 rounded-full bg-black/60 p-1 border border-white/10">
+          <nav className="order-3 flex w-full items-center overflow-x-auto no-scrollbar scrollbar-none py-0.5 lg:order-2 lg:w-auto -mx-1 px-1 sm:mx-0 sm:px-0">
+            <div className="inline-flex min-w-max items-center gap-1 rounded-full bg-black/60 p-1 border border-white/10">
               {[
-                { id: 'central', label: 'CENTRAL' },
-                { id: 'tactics', label: 'TACTICS & SQUAD' },
-                { id: 'transfers', label: 'TRANSFERS & INBOX', count: unreadTransfersCount },
-                { id: 'calendar', label: 'CALENDAR' },
-                { id: 'settings', label: 'CLUB & PRO SETTINGS' },
+                { id: 'central', label: 'CENTRAL', shortLabel: 'CENTRAL' },
+                { id: 'tactics', label: 'TACTICS & SQUAD', shortLabel: 'TACTICS' },
+                { id: 'transfers', label: 'TRANSFERS & INBOX', shortLabel: 'TRANSFERS', count: unreadTransfersCount },
+                { id: 'calendar', label: 'CALENDAR', shortLabel: 'CALENDAR' },
+                { id: 'settings', label: 'CLUB & PRO SETTINGS', shortLabel: 'SETTINGS' },
               ].map((t) => {
                 const active = activeTab === t.id
                 return (
@@ -1213,13 +1213,14 @@ export default function DashboardPage() {
                     type="button"
                     onClick={() => setActiveTab(t.id as HubTab)}
                     className={cx(
-                      'flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-semibold transition-all whitespace-nowrap',
+                      'flex items-center gap-1.5 rounded-full px-3.5 sm:px-4 py-1.5 text-xs font-semibold transition-all whitespace-nowrap',
                       active
                         ? 'bg-[#CCFF00] text-black font-bold shadow-sm'
                         : 'text-slate-400 hover:text-white hover:bg-white/5',
                     )}
                   >
-                    {t.label}
+                    <span className="inline lg:hidden">{t.shortLabel}</span>
+                    <span className="hidden lg:inline">{t.label}</span>
                     {Boolean(t.count) && (
                       <span
                         className={cx(
@@ -1237,7 +1238,7 @@ export default function DashboardPage() {
           </nav>
 
           {/* Right: Squad Capacity + Public Link + Settings Icon */}
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="order-2 flex items-center gap-2 shrink-0 lg:order-3">
             {isManager && myClub && (
               <span className="hidden rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 font-mono text-[11px] font-bold text-slate-300 xl:inline-block">
                 {squadList.length} / {maxSquadSize} Players
