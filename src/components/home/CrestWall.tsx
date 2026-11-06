@@ -4,7 +4,14 @@ import { ButtonLink, Container, Section, SectionHead } from '@/components/ui'
 import { siteData } from '@/data'
 import { asset } from '@/lib/assets'
 import { CLUB_PLACEHOLDER, clubSlug, stripFlag } from '@/lib/format'
-import { getLiveClubs, liveLeagueEnabled, peekLiveClubs } from '@/lib/liveLeague'
+import {
+  getLiveClubs,
+  getLiveDivisions,
+  liveLeagueEnabled,
+  peekLiveClubs,
+  peekLiveDivisions,
+  type LiveDivision,
+} from '@/lib/liveLeague'
 import type { Club } from '@/types/site'
 
 /**
@@ -13,27 +20,20 @@ import type { Club } from '@/types/site'
  * Crests only — no plate, no frame, no card. A container around a crest
  * at this size turns the whole wall into a grid of identical boxes and
  * the crests stop reading as crests.
- *
- * No per-crest logic. The wall used to carry a scatter — a bottom-up row
- * cascade with per-crest rise, drift, tilt and start scale, the stagger
- * derived from each crest's grid row and the column count measured back
- * off the resolved `grid-template-columns` with a ResizeObserver. All of
- * that lived here and measured correctly; it was still wrong for a grid of
- * thirty-seven identical marks, which spends most of its on-screen life
- * half-arrived. The arrival is now one eased fade of the whole wall, in
- * CSS, so this component is a list again.
  */
 export function CrestWall() {
   const [liveClubs, setLiveClubs] = useState<Club[] | null>(() => peekLiveClubs())
+  const [liveDivisions, setLiveDivisions] = useState<LiveDivision[] | null>(() => peekLiveDivisions())
 
   useEffect(() => {
     if (!liveLeagueEnabled) return
     const controller = new AbortController()
     getLiveClubs(controller.signal)
       .then(setLiveClubs)
-      .catch(() => {
-        /* fall back to static clubs if unreachable */
-      })
+      .catch(() => {})
+    getLiveDivisions(controller.signal)
+      .then(setLiveDivisions)
+      .catch(() => {})
     return () => controller.abort()
   }, [])
 
@@ -41,6 +41,8 @@ export function CrestWall() {
     const source = liveClubs ?? siteData.clubs
     return source.filter((club) => club.isFeatured !== false)
   }, [liveClubs])
+
+  const divisionCount = liveDivisions ? liveDivisions.length : (siteData.divisions?.length ?? 0)
 
   if (!clubs.length) return null
 
@@ -53,7 +55,7 @@ export function CrestWall() {
           lede={
             clubs.length === 1
               ? 'One club featured this season.'
-              : `${clubs.length} clubs entered this season, spread across ${siteData.divisions?.length ?? 0} divisions.`
+              : `${clubs.length} clubs entered this season, spread across ${divisionCount} ${divisionCount === 1 ? 'division' : 'divisions'}.`
           }
           action={
             <ButtonLink to="/clubs" variant="outline">

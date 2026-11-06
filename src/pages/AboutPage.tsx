@@ -14,15 +14,21 @@ import {
 import { SITE, siteData } from '@/data'
 import { asset } from '@/lib/assets'
 import { communityFlag } from '@/lib/format'
-import { getLiveFormats, liveLeagueEnabled } from '@/lib/liveLeague'
-import type { Format } from '@/types/site'
+import { getLiveClubs, getLiveDivisions, getLiveFormats, getLiveRegions, liveLeagueEnabled, peekLiveClubs, peekLiveDivisions, type HomepageRegion, type LiveDivision } from '@/lib/liveLeague'
+import type { Club, Format } from '@/types/site'
 
 export default function AboutPage() {
   const [liveFormats, setLiveFormats] = useState<Format[] | null>(null)
+  const [liveClubs, setLiveClubs] = useState<Club[] | null>(() => peekLiveClubs())
+  const [liveDivisions, setLiveDivisions] = useState<LiveDivision[] | null>(() => peekLiveDivisions())
+  const [liveRegions, setLiveRegions] = useState<HomepageRegion[] | null>(null)
 
   useEffect(() => {
     if (!liveLeagueEnabled) return
     const controller = new AbortController()
+    getLiveClubs(controller.signal).then(setLiveClubs).catch(() => {})
+    getLiveDivisions(controller.signal).then(setLiveDivisions).catch(() => {})
+    getLiveRegions(controller.signal).then(setLiveRegions).catch(() => {})
     getLiveFormats(controller.signal)
       .then(setLiveFormats)
       .catch(() => {
@@ -37,10 +43,10 @@ export default function AboutPage() {
   )
 
   const stats = [
-    { k: String(siteData.clubs.length), v: 'Clubs registered' },
+    { k: String(liveClubs?.length ?? siteData.clubs.length), v: 'Clubs registered' },
     { k: String(formats.length), v: 'Competition formats' },
-    { k: '5', v: 'Pro Club divisions' },
-    { k: '5', v: 'Countries' },
+    { k: String(liveDivisions?.length ?? siteData.divisions.length), v: 'Pro Club divisions' },
+    { k: String(liveRegions?.length ?? 5), v: 'Countries' },
   ]
 
   return (

@@ -17,16 +17,22 @@ import { matchIndexOf } from '@/lib/match'
 import { asset } from '@/lib/assets'
 import { CLUB_PLACEHOLDER, cx, stripFlag, totalGoals } from '@/lib/format'
 import {
+  getLiveClubs,
+  getLiveDivisions,
   getLiveFormats,
   getLiveResults,
   getLiveStandings,
   featuredStandingDivision,
   liveLeagueEnabled,
   orderedStandingDivisions,
+  peekLiveClubs,
+  peekLiveDivisions,
+  peekLiveStandings,
+  type LiveDivision,
   type LiveStandings,
 } from '@/lib/liveLeague'
 import { useSeasonName } from '@/lib/season'
-import type { Format, Standing, StandingDivision } from '@/types/site'
+import type { Club, Format, Standing, StandingDivision } from '@/types/site'
 
 
 /* ==================================================================== HERO */
@@ -1017,6 +1023,46 @@ export function ResultsPreview() {
 
 /* ================================================================== ABOUT */
 export function AboutStrip() {
+  const [liveClubs, setLiveClubs] = useState<Club[] | null>(() => peekLiveClubs())
+  const [liveDivisions, setLiveDivisions] = useState<LiveDivision[] | null>(() => peekLiveDivisions())
+  const [liveStandings, setLiveStandings] = useState<LiveStandings | null>(() => peekLiveStandings())
+
+  useEffect(() => {
+    if (!liveLeagueEnabled) return
+    const controller = new AbortController()
+    getLiveClubs(controller.signal).then(setLiveClubs).catch(() => {})
+    getLiveDivisions(controller.signal).then(setLiveDivisions).catch(() => {})
+    getLiveStandings(controller.signal).then(setLiveStandings).catch(() => {})
+    return () => controller.abort()
+  }, [])
+
+  const clubsCount = liveClubs ? liveClubs.length : siteData.clubs.length
+
+  const divisionCount = liveDivisions ? liveDivisions.length : (siteData.divisions?.length ?? 5)
+  const divisionHint = useMemo(() => {
+    if (liveDivisions && liveDivisions.length > 0) {
+      if (liveDivisions.length === 1) return liveDivisions[0].name
+      return `${liveDivisions[0].name} → ${liveDivisions[liveDivisions.length - 1].name}`
+    }
+    if (siteData.divisions && siteData.divisions.length > 0) {
+      if (siteData.divisions.length === 1) return siteData.divisions[0]
+      return `${siteData.divisions[0]} → ${siteData.divisions[siteData.divisions.length - 1]}`
+    }
+    return 'This season'
+  }, [liveDivisions])
+
+  const goalsCount = useMemo(() => {
+    if (!liveStandings) return totalGoals(siteData.results)
+    let sum = 0
+    let playedAny = false
+    for (const div of Object.values(liveStandings.divisions)) {
+      for (const row of div.rows) {
+        sum += (row.gf ?? 0)
+        if (row.pl > 0) playedAny = true
+      }
+    }
+    return playedAny ? sum : totalGoals(siteData.results)
+  }, [liveStandings])
   return (
     <Section>
       <Container size="wide">
@@ -1042,9 +1088,9 @@ export function AboutStrip() {
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <StatTile label="Clubs registered" value={siteData.clubs.length} hint="Across SEA" />
-            <StatTile label="Goals scored" value={totalGoals(siteData.results)} hint="This season" />
-            <StatTile label="Divisions" value="5" hint="Championship → Div 3" />
+            <StatTile label="Clubs registered" value={clubsCount} hint="Across SEA" />
+            <StatTile label="Goals scored" value={goalsCount} hint="This season" />
+            <StatTile label="Divisions" value={divisionCount} hint={divisionHint} />
             <StatTile label="Entry fee" value={SITE.registrationFee} hint="Per team" />
           </div>
         </div>

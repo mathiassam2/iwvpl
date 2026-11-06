@@ -341,6 +341,12 @@ export async function getLiveResultsPage(
   }
 }
 
+let cachedLiveStandings: LiveStandings | null = null
+
+export function peekLiveStandings(): LiveStandings | null {
+  return cachedLiveStandings
+}
+
 export async function getLiveStandings(
   signal: AbortSignal,
   seasonId?: number,
@@ -434,7 +440,9 @@ export async function getLiveStandings(
       : { from: Math.max(1, teamCount - movement.relegation + 1), to: teamCount }
   }
 
-  return { season: response.season, divisions }
+  const result = { season: response.season, divisions }
+  cachedLiveStandings = result
+  return result
 }
 
 /* ------------------------------------------------------------------ clubs */
@@ -518,6 +526,33 @@ export async function getLiveRegions(signal: AbortSignal): Promise<HomepageRegio
     art: r.art_url,
     sortOrder: r.sort_order,
   }))
+}
+
+/* -------------------------------------------------------------- divisions */
+
+export interface LiveDivision {
+  id: number
+  name: string
+  slug: string
+  season_id?: number
+  season?: string
+  sort_order: number
+  promotion_count?: number | null
+  relegation_count?: number | null
+  is_active?: number | boolean
+  max_teams?: number
+}
+
+let cachedLiveDivisions: LiveDivision[] | null = null
+
+export function peekLiveDivisions(): LiveDivision[] | null {
+  return cachedLiveDivisions
+}
+
+export async function getLiveDivisions(signal?: AbortSignal): Promise<LiveDivision[]> {
+  const response = await get<{ divisions: LiveDivision[] }>('/api/divisions', signal)
+  cachedLiveDivisions = response.divisions
+  return response.divisions
 }
 
 /* ---------------------------------------------------------------- players */
