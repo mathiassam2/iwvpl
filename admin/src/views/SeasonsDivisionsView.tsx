@@ -23,7 +23,7 @@ import {
   type Division,
   type RolloverRecord,
 } from '../api'
-import type { Guard, Report } from '../utils'
+import { normalizeSearch, type Guard, type Report } from '../utils'
 
 /** A season is editable while it is live or still a private draft. */
 function isEditableSeason(season: AdminSeason | null): boolean {
@@ -1569,7 +1569,7 @@ function ManageDivisionClubs({
     .sort((a, b) => a.name.localeCompare(b.name))
   const available = clubs
     .filter((club) => club.status === 'active' && club.division_id !== division.id)
-    .filter((club) => club.name.toLowerCase().includes(search.trim().toLowerCase()))
+    .filter((club) => normalizeSearch(club.name).includes(normalizeSearch(search)))
     .sort((a, b) => a.name.localeCompare(b.name))
 
   const change = async (club: Club, targetDivisionId: number | null) => {

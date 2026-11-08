@@ -47,7 +47,7 @@ import {
   type PitchPlayer,
   type Squad,
 } from '@/lib/fixtures'
-import { AVATAR_PLACEHOLDER, CLUB_PLACEHOLDER, compressClubLogo, cx, stripFlag } from '@/lib/format'
+import { AVATAR_PLACEHOLDER, CLUB_PLACEHOLDER, compressClubLogo, cx, normalizeSearch, stripFlag } from '@/lib/format'
 import { getLiveClubs, getLiveMatches, type Club, type Match } from '@/lib/liveLeague'
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -1863,7 +1863,7 @@ export default function DashboardPage() {
                           <div className="mt-2 max-h-36 sm:max-h-44 overflow-y-auto space-y-1 divide-y divide-white/5">
                             {squadList
                               .filter((p) =>
-                                p.gamertag.toLowerCase().includes(slotSearch.toLowerCase().trim()),
+                                normalizeSearch(p.gamertag).includes(normalizeSearch(slotSearch)),
                               )
                               .map((p) => {
                                 const isAssigned = starters.some((s) => s?.playerId === p.id)

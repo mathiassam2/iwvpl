@@ -15,7 +15,7 @@ import {
 import { FormGuide, MatchRow, StatTile } from '@/components/league'
 import { NextMatchCard, Pitch, TableSnippet, TeamFormStrip } from '@/components/club'
 import { SITE, siteData } from '@/data'
-import { AVATAR_PLACEHOLDER, CLUB_PLACEHOLDER, clubSlug, cx, stripFlag } from '@/lib/format'
+import { AVATAR_PLACEHOLDER, CLUB_PLACEHOLDER, clubSlug, cx, isSameClub, stripFlag } from '@/lib/format'
 import { matchIndexOf } from '@/lib/match'
 import {
   getLiveClub,
@@ -44,7 +44,7 @@ const STATUS_TONE = {
 
 /** Names differ only by flag emoji / case between the datasets. */
 function sameClub(a: string, b: string): boolean {
-  return clubSlug(stripFlag(a)) === clubSlug(stripFlag(b))
+  return isSameClub(a, b)
 }
 
 export default function ClubDetailPage() {
@@ -152,12 +152,13 @@ export default function ClubDetailPage() {
   }, [slug])
 
   const crawled = useMemo(() => {
-    const target = clubSlug(slug)
     const fromLiveList = peekLiveClubs()?.find(
-      (c) => (c.slug ? c.slug.toLowerCase() === slug.toLowerCase() : false) || clubSlug(stripFlag(c.name)) === target,
+      (c) => isSameClub(c.slug, slug) || isSameClub(c.name, slug),
     )
     if (fromLiveList) return { ...fromLiveList, status: 'Active' as const }
-    const found = siteData.clubs.find((c) => clubSlug(stripFlag(c.name)) === target)
+    const found = siteData.clubs.find(
+      (c) => isSameClub(c.slug, slug) || isSameClub(c.name, slug),
+    )
     return found ? { ...found, status: 'Active' as const } : undefined
   }, [slug])
 
@@ -174,8 +175,8 @@ export default function ClubDetailPage() {
         const found = div.rows.find(
           (r) =>
             sameClub(r.team, club.name) ||
-            clubSlug(stripFlag(r.team)) === clubSlug(stripFlag(slug)) ||
-            (club.slug && clubSlug(stripFlag(r.team)) === clubSlug(stripFlag(club.slug))),
+            isSameClub(r.team, slug) ||
+            (club.slug ? isSameClub(r.team, club.slug) : false),
         )
         if (found) {
           liveStanding = found
@@ -642,7 +643,7 @@ export default function ClubDetailPage() {
                   {club.description}
                 </p>
               )}
-              {user?.role === 'club_manager' && (user.clubSlug === slug || user.clubId === liveClub?.id) && (
+              {user?.role === 'club_manager' && (isSameClub(user.clubSlug, slug) || user.clubId === liveClub?.id) && (
                 <div className="mt-2.5">
                   {!isEditingDesc ? (
                     <button

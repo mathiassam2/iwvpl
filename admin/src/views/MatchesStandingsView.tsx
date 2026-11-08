@@ -22,6 +22,7 @@ import {
   type Standing,
 } from '../api'
 import {
+  normalizeSearch,
   formatKickoffDisplay,
   toDatetimeLocalValue,
   type Guard,
@@ -485,7 +486,7 @@ export function MatchesStandingsView({
 
   // Apply search, resultFilter, and roundFilter to rounds
   const displayedRounds = useMemo(() => {
-    const q = search.trim().toLowerCase()
+    const q = normalizeSearch(search)
     return allRounds
       .filter((r) => roundFilter === 'all' || String(r.roundNumber) === roundFilter)
       .map((r) => {
@@ -494,7 +495,9 @@ export function MatchesStandingsView({
           if (resultFilter === 'pending' && hasScore) return false
           if (resultFilter === 'completed' && !hasScore) return false
           if (q) {
-            const matchText = `${m.home_name} ${m.home_code ?? ''} ${m.away_name} ${m.away_code ?? ''} ${m.division_name ?? ''}`.toLowerCase()
+            const matchText = normalizeSearch(
+              `${m.home_name} ${m.home_code ?? ''} ${m.away_name} ${m.away_code ?? ''} ${m.division_name ?? ''}`,
+            )
             if (!matchText.includes(q)) return false
           }
           return true

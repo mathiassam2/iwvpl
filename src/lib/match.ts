@@ -7,7 +7,7 @@
  */
 
 import { siteData } from '@/data'
-import { clubSlug, stripFlag } from '@/lib/format'
+import { clubSlug, isSameClub, slugify, stripFlag } from '@/lib/format'
 import type { Match } from '@/types/site'
 
 export function matchHref(index: number): string {
@@ -34,11 +34,13 @@ export function findMatch(param: string | undefined): { match: Match; index: num
 
   // Fall back to slug matching so a hand-typed URL still lands somewhere.
   const target = param.toLowerCase()
+  const targetSlug = slugify(param)
   const index = siteData.results.findIndex(
     (m) =>
       `${clubSlug(stripFlag(m.home))}-vs-${clubSlug(stripFlag(m.away))}` === target ||
-      clubSlug(stripFlag(m.home)) === target ||
-      clubSlug(stripFlag(m.away)) === target,
+      `${slugify(m.home)}-vs-${slugify(m.away)}` === targetSlug ||
+      isSameClub(m.home, target) ||
+      isSameClub(m.away, target),
   )
   return index >= 0 ? { match: siteData.results[index], index } : null
 }

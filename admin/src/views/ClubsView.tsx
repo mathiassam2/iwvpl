@@ -41,6 +41,7 @@ import {
   type PendingClub,
 } from '../api'
 import {
+  normalizeSearch,
   compressImageFile,
   DEFAULT_REGIONS,
   ISO_TO_FLAG,
@@ -1412,11 +1413,11 @@ export function ClubsView({
     }
 
     if (search.trim()) {
-      const q = search.trim().toLowerCase()
-      const matchName = club.name.toLowerCase().includes(q)
-      const matchCode = (club.short_code ?? '').toLowerCase().includes(q)
-      const matchSlug = club.slug.toLowerCase().includes(q)
-      const matchMgr = (club.manager_email ?? '').toLowerCase().includes(q) || (club.manager_name ?? '').toLowerCase().includes(q)
+      const q = normalizeSearch(search)
+      const matchName = normalizeSearch(club.name).includes(q)
+      const matchCode = normalizeSearch(club.short_code ?? '').includes(q)
+      const matchSlug = normalizeSearch(club.slug).includes(q)
+      const matchMgr = normalizeSearch(club.manager_email ?? '').includes(q) || normalizeSearch(club.manager_name ?? '').includes(q)
       if (!matchName && !matchCode && !matchSlug && !matchMgr) return false
     }
     return true

@@ -80,11 +80,83 @@ export function formatDate(d: string): string {
   return t.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
 }
 
-export function slugify(s: string): string {
+export function normalizeDiacritics(s: string): string {
   return (s || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
+/**
+ * Normalise search text so that case, flag emojis, and diacritics match uniformly.
+ * E.g. "TORJÄGER VFC 🇲🇾" -> "torjager vfc".
+ */
+export function normalizeSearch(s: string): string {
+  return normalizeDiacritics(stripFlag(s))
+    .toLowerCase()
+    .trim()
+}
+
+export function slugify(s: string): string {
+  return normalizeDiacritics(s || '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
+}
+
+/**
+ * Test whether two club references refer to the same club, resilient to:
+ * - Flag emojis (🇲🇾, 🇸🇬, etc.)
+ * - Case differences
+ * - Slugs vs full names (e.g. 'torjager-vfc' vs 'TORJÄGER VFC')
+ * - Diacritics / umlauts / accents (e.g. 'TORJÄGER' vs 'TORJAGER')
+ * - Unicode slugs vs ascii slugs
+ */
+export function isSameClub(a?: string | null, b?: string | null): boolean {
+  if (!a || !b) return false
+  const cleanA = stripFlag(a).trim()
+  const cleanB = stripFlag(b).trim()
+  if (!cleanA || !cleanB) return false
+
+  // 1. Direct lowercase match
+  if (cleanA.toLowerCase() === cleanB.toLowerCase()) return true
+
+  // 2. Unicode slug match
+  if (clubSlug(cleanA) === clubSlug(cleanB)) return true
+
+  // 3. Diacritic-insensitive slug match (e.g. torjager-vfc === torjäger-vfc)
+  const slugA = slugify(cleanA)
+  const slugB = slugify(cleanB)
+  if (slugA && slugB && slugA === slugB) return true
+
+  // 4. Diacritic-insensitive normalized text match
+  const normA = normalizeSearch(cleanA)
+  const normB = normalizeSearch(cleanB)
+  if (normA && normB && normA === normB) return true
+
+  return false
+}
+
+/**
+ * Test whether a club name or slug matches a filter (exact or substring).
+ */
+export function clubMatchesFilter(clubNameOrSlug?: string | null, filter?: string | null): boolean {
+  if (!clubNameOrSlug) return false
+  if (!filter || filter === 'all') return true
+  if (isSameClub(clubNameOrSlug, filter)) return true
+
+  const normTarget = normalizeSearch(clubNameOrSlug)
+  const normFilter = normalizeSearch(filter)
+  if (normFilter && normTarget.includes(normFilter)) return true
+
+  const slugTarget = slugify(clubNameOrSlug)
+  const slugFilter = slugify(filter)
+  if (slugFilter && slugTarget.includes(slugFilter)) return true
+
+  const uSlugTarget = clubSlug(stripFlag(clubNameOrSlug))
+  const uSlugFilter = clubSlug(stripFlag(filter))
+  if (uSlugFilter && uSlugTarget.includes(uSlugFilter)) return true
+
+  return false
 }
 
 /** Group matches by their `date` field, preserving descending order. */

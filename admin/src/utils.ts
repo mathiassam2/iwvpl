@@ -70,8 +70,20 @@ export function toDatetimeLocalValue(kickoff: string | null): string {
   return normalized.slice(0, 16)
 }
 
+export function normalizeDiacritics(s: string): string {
+  return (s || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
+export function normalizeSearch(s: string): string {
+  return normalizeDiacritics(s || '')
+    .toLowerCase()
+    .trim()
+}
+
 export function slugifyText(input: string): string {
-  return (input || '')
+  return normalizeDiacritics(input || '')
     .toLowerCase()
     .trim()
     .replace(/[^a-z0-9]+/g, '-')

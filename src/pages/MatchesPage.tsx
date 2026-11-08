@@ -5,7 +5,7 @@ import { MatchRow } from '@/components/league'
 import { Container, EmptyState, Section, Select, SmartImage } from '@/components/ui'
 import { SITE, siteData } from '@/data'
 import { useAuth } from '@/lib/auth'
-import { CLUB_PLACEHOLDER, cx, stripFlag } from '@/lib/format'
+import { CLUB_PLACEHOLDER, clubMatchesFilter, clubSlug, cx, isSameClub, normalizeSearch, slugify, stripFlag } from '@/lib/format'
 import {
   getLiveMatches,
   getLiveSeasonClubs,
@@ -290,9 +290,11 @@ function ClubCombobox({
   }, [hasPrompt])
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase()
+    const q = normalizeSearch(query)
     if (!q) return options
-    return options.filter((c) => c.label.toLowerCase().includes(q))
+    return options.filter(
+      (c) => normalizeSearch(c.label).includes(q) || clubMatchesFilter(c.value, q),
+    )
   }, [options, query])
 
   const selectedClub = options.find((c) => c.value === value)
@@ -463,14 +465,10 @@ function ClubScheduleMatchRow({
 
   const homeName = stripFlag(match.home).trim()
   const awayName = stripFlag(match.away).trim()
-  const homeSlug = homeName.toLowerCase().replace(/[^a-z0-9]+/g, '-')
-  const awaySlug = awayName.toLowerCase().replace(/[^a-z0-9]+/g, '-')
-  const cleanSelected = selectedClubSlug.toLowerCase().trim()
-
   const isHomeSelected =
-    homeSlug === cleanSelected || homeName.toLowerCase() === cleanSelected
+    isSameClub(homeName, selectedClubSlug) || clubMatchesFilter(homeName, selectedClubSlug)
   const isAwaySelected =
-    awaySlug === cleanSelected || awayName.toLowerCase() === cleanSelected
+    isSameClub(awayName, selectedClubSlug) || clubMatchesFilter(awayName, selectedClubSlug)
 
   return (
     <Link
@@ -635,7 +633,10 @@ export default function MatchesPage() {
       return {
         id: user.clubId ?? null,
         name: stripFlag(user.clubName).trim(),
-        slug: user.clubSlug || stripFlag(user.clubName).toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+        slug:
+          user.clubSlug ||
+          clubSlug(stripFlag(user.clubName)) ||
+          slugify(stripFlag(user.clubName)),
       }
     }
     if (pinnedClub && pinnedClub.name) {
@@ -646,9 +647,9 @@ export default function MatchesPage() {
 
   const isMyClubActive = Boolean(
     resolvedMyClub &&
-      (team === resolvedMyClub.slug ||
-        team.toLowerCase() === resolvedMyClub.name.toLowerCase() ||
-        stripFlag(team).toLowerCase() === resolvedMyClub.name.toLowerCase()),
+      (isSameClub(team, resolvedMyClub.slug) ||
+        isSameClub(team, resolvedMyClub.name) ||
+        clubMatchesFilter(team, resolvedMyClub.name)),
   )
 
   // 1. Load seasons list
@@ -763,9 +764,9 @@ export default function MatchesPage() {
           const name = stripFlag(sideName).trim()
           if (name && !clubsMap.has(name)) {
             const matchedSeasonClub = seasonClubs.find(
-              (c) => stripFlag(c.name).toLowerCase() === name.toLowerCase(),
+              (c) => isSameClub(c.name, name) || isSameClub(c.slug, name),
             )
-            const slug = matchedSeasonClub?.slug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+            const slug = matchedSeasonClub?.slug || clubSlug(name) || slugify(name)
             const logo = matchedSeasonClub?.logo || sideLogo || null
             clubsMap.set(name, { slug, id: matchedSeasonClub?.id ?? null, logo })
           }
@@ -792,22 +793,13 @@ export default function MatchesPage() {
       )
     }
 
-    const cleanTeam = String(team || 'all').trim().toLowerCase()
+    const cleanTeam = String(team || 'all').trim()
     if (cleanTeam !== 'all') {
-      result = result.filter((m) => {
-        const homeName = stripFlag(m.home).toLowerCase().trim()
-        const awayName = stripFlag(m.away).toLowerCase().trim()
-        const homeSlug = homeName.replace(/[^a-z0-9]+/g, '-')
-        const awaySlug = awayName.replace(/[^a-z0-9]+/g, '-')
-        return (
-          homeSlug === cleanTeam ||
-          awaySlug === cleanTeam ||
-          homeName === cleanTeam ||
-          awayName === cleanTeam ||
-          homeName.includes(cleanTeam) ||
-          awayName.includes(cleanTeam)
-        )
-      })
+      result = result.filter(
+        (m) =>
+          clubMatchesFilter(m.home, cleanTeam) ||
+          clubMatchesFilter(m.away, cleanTeam),
+      )
     }
 
     return result
@@ -887,24 +879,22 @@ export default function MatchesPage() {
   // Match Helper to test if a match is user's club
   const isMatchMyClub = (m: Match) => {
     if (!resolvedMyClub) return false
-    const home = stripFlag(m.home).toLowerCase().trim()
-    const away = stripFlag(m.away).toLowerCase().trim()
-    const target = resolvedMyClub.name.toLowerCase().trim()
-    const targetSlug = resolvedMyClub.slug.toLowerCase().trim()
     return (
-      home === target ||
-      away === target ||
-      home.replace(/[^a-z0-9]+/g, '-') === targetSlug ||
-      away.replace(/[^a-z0-9]+/g, '-') === targetSlug
+      isSameClub(m.home, resolvedMyClub.name) ||
+      isSameClub(m.home, resolvedMyClub.slug) ||
+      isSameClub(m.away, resolvedMyClub.name) ||
+      isSameClub(m.away, resolvedMyClub.slug)
     )
   }
 
   const getMyClubSide = (m: Match): 'home' | 'away' | null => {
     if (!resolvedMyClub) return null
-    const home = stripFlag(m.home).toLowerCase().trim()
-    const target = resolvedMyClub.name.toLowerCase().trim()
-    const targetSlug = resolvedMyClub.slug.toLowerCase().trim()
-    if (home === target || home.replace(/[^a-z0-9]+/g, '-') === targetSlug) return 'home'
+    if (
+      isSameClub(m.home, resolvedMyClub.name) ||
+      isSameClub(m.home, resolvedMyClub.slug)
+    ) {
+      return 'home'
+    }
     return 'away'
   }
 

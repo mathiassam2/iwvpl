@@ -5,7 +5,7 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { StatTile } from '@/components/league'
 import { Badge, Button, Container, EmptyState, Section, Select, SmartImage, Tabs } from '@/components/ui'
 import { siteData } from '@/data'
-import { CLUB_PLACEHOLDER, cx, stripFlag } from '@/lib/format'
+import { CLUB_PLACEHOLDER, cx, isSameClub, normalizeSearch, stripFlag } from '@/lib/format'
 
 type Scope = 'all' | 'in' | 'out' | 'internal'
 
@@ -135,7 +135,7 @@ export default function TransferPage() {
   }, [rows])
 
   const filtered = useMemo(() => {
-    const term = q.trim().toLowerCase()
+    const term = normalizeSearch(q)
     return rows.filter((r) => {
       const f = r.from.free
       const t = r.to.free
@@ -144,11 +144,10 @@ export default function TransferPage() {
       if (scope === 'internal' && (f || t)) return false
 
       if (club !== 'all') {
-        const target = club.toUpperCase()
-        if (stripFlag(r.from.name).toUpperCase() !== target && stripFlag(r.to.name).toUpperCase() !== target)
+        if (!isSameClub(r.from.name, club) && !isSameClub(r.to.name, club))
           return false
       }
-      if (term && !r.player.toLowerCase().includes(term)) return false
+      if (term && !normalizeSearch(r.player).includes(term)) return false
       return true
     })
   }, [rows, scope, club, q])

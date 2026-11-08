@@ -236,9 +236,11 @@ league.get(
 league.get(
   '/clubs/:slug/logo',
   handler(async (req, res) => {
+    const requestedSlug = req.params.slug
+    const asciiSlug = (requestedSlug || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
     const row = await queryOne<{ logo: string | null }>(
-      'SELECT COALESCE(logo_local, logo_url) AS logo FROM clubs WHERE slug = ? LIMIT 1',
-      [req.params.slug],
+      'SELECT COALESCE(logo_local, logo_url) AS logo FROM clubs WHERE (slug = ? OR slug = ?) LIMIT 1',
+      [requestedSlug, asciiSlug],
     )
     const logo = row?.logo
     if (!logo) return res.status(404).end()
@@ -278,9 +280,9 @@ league.get(
               END AS logo_url,
               ${clubLogoSql('c')} AS logo_local,
               c.status, c.is_featured, c.description, c.formation, c.source_url, c.starting_xi_json
-         FROM clubs c WHERE c.slug = ?`,
+         FROM clubs c WHERE (c.slug = ? OR c.slug = ?) LIMIT 1`,
 
-      [req.params.slug],
+      [req.params.slug, (req.params.slug || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '')],
     )
     if (!club) return res.status(404).json({ error: 'Club not found' })
 
@@ -429,6 +431,9 @@ league.get(
       typeof requestedClubSlug === 'string' && requestedClubSlug.trim()
         ? requestedClubSlug.trim().slice(0, 140)
         : null
+    const clubSlugAscii = clubSlug
+      ? clubSlug.normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+      : null
     const latestFirst = req.query.sort === 'latest'
     const result = req.query.result === 'pending' || req.query.result === 'completed'
       ? req.query.result
@@ -451,7 +456,7 @@ league.get(
     const where = `(? IS NULL OR m.status = ?)
       AND (? IS NULL OR m.season_id = ?)
       AND (? IS NULL OR m.division_id = ?)
-      AND (? IS NULL OR home.slug = ? OR away.slug = ?)
+      AND (? IS NULL OR home.slug = ? OR home.slug = ? OR away.slug = ? OR away.slug = ?)
       AND ${scoreFilter}
       AND ${searchFilter}`
     const whereParams = [
@@ -463,7 +468,9 @@ league.get(
       divisionId,
       clubSlug,
       clubSlug,
+      clubSlugAscii,
       clubSlug,
+      clubSlugAscii,
       ...(search ? [searchPattern, searchPattern, searchPattern, searchPattern] : []),
     ]
     const { date, datetime } = kualaLumpurClock()

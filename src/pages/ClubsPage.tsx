@@ -4,7 +4,7 @@ import { ClubCard } from '@/components/league'
 import { Container, EmptyState, Section, Select, Tabs } from '@/components/ui'
 import { SITE, siteData } from '@/data'
 import type { ClubStatus } from '@/types/site'
-import { stripFlag } from '@/lib/format'
+import { clubMatchesFilter, normalizeSearch, stripFlag } from '@/lib/format'
 import { getLiveClubs, liveLeagueEnabled, peekLiveClubs } from '@/lib/liveLeague'
 import { useSeasonName } from '@/lib/season'
 import type { Club } from '@/types/site'
@@ -59,11 +59,15 @@ export default function ClubsPage() {
   }, [clubs])
 
   const filtered = useMemo(() => {
-    const term = q.trim().toLowerCase()
+    const term = normalizeSearch(q)
     return clubs.filter((c) => {
       if (filter !== 'all' && c.status !== filter) return false
       if (!term) return true
-      return stripFlag(c.name).toLowerCase().includes(term) || c.code.toLowerCase().includes(term)
+      return (
+        normalizeSearch(c.name).includes(term) ||
+        normalizeSearch(c.code).includes(term) ||
+        clubMatchesFilter(c.slug, term)
+      )
     })
   }, [clubs, filter, q])
 

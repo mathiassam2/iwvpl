@@ -42,3 +42,21 @@ export function clubSlug(name: string): string {
 export function gamertagKey(gamertag: string): string {
   return (gamertag || '').trim().toLowerCase()
 }
+export function normalizeDiacritics(s: string): string {
+  return (s || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
+export function normalizeSearch(s: string): string {
+  return normalizeDiacritics(stripFlag(s))
+    .toLowerCase()
+    .trim()
+}
+
+export function slugify(s: string): string {
+  return normalizeDiacritics(s || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
