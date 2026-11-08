@@ -234,6 +234,8 @@ export default function DashboardPage() {
   const [playerOffersList, setPlayerOffersList] = useState<Offer[]>([])
   const [playerJoinRequestsList, setPlayerJoinRequestsList] = useState<JoinRequest[]>([])
   const [showSignModal, setShowSignModal] = useState(false)
+  const [playerToRelease, setPlayerToRelease] = useState<{ id: number; name: string } | null>(null)
+  const [confirmLeaveClubModal, setConfirmLeaveClubModal] = useState(false)
 
   // Matches & Calendar state
   const [matches, setMatches] = useState<Match[]>([])
@@ -437,6 +439,9 @@ export default function DashboardPage() {
           setSquadList(pList)
           initLineupState(clubObj, pList)
         }
+      } else {
+        setMyClub(null)
+        setSquadList([])
       }
     } catch (err) {
       setNotice({ kind: 'error', text: msg(err) })
@@ -1042,13 +1047,19 @@ export default function DashboardPage() {
   }
 
   // Leave club handler (Player)
-  const handleLeaveClub = async () => {
-    if (!confirm('Are you sure you want to leave your club and become a free agent?')) return
+  const handleLeaveClub = () => {
+    setConfirmLeaveClubModal(true)
+  }
+
+  const executeLeaveClub = async () => {
     setBusy(true)
     try {
       await leaveClub()
-      setNotice({ kind: 'ok', text: 'You have left the club.' })
-      await loadPlayerData()
+      setNotice({ kind: 'ok', text: 'You have left the club and are now a free agent.' })
+      setConfirmLeaveClubModal(false)
+      setMyClub(null)
+      setSquadList([])
+      await Promise.all([loadPlayerData(), refresh()])
     } catch (err) {
       setNotice({ kind: 'error', text: msg(err) })
     } finally {
@@ -1115,12 +1126,17 @@ export default function DashboardPage() {
   }
 
   // Squad Release handler (Manager)
-  const handleReleasePlayer = async (pId: number, name: string) => {
-    if (!confirm(`Are you sure you want to release ${name} from your squad?`)) return
+  const handleReleasePlayer = (pId: number, name: string) => {
+    setPlayerToRelease({ id: pId, name })
+  }
+
+  const executeReleasePlayer = async () => {
+    if (!playerToRelease) return
     setBusy(true)
     try {
-      await releaseSquadPlayer(pId)
-      setNotice({ kind: 'ok', text: `Released ${name} to free agency.` })
+      await releaseSquadPlayer(playerToRelease.id)
+      setNotice({ kind: 'ok', text: `Released ${playerToRelease.name} to free agency.` })
+      setPlayerToRelease(null)
       await loadManagerData()
     } catch (err) {
       setNotice({ kind: 'error', text: msg(err) })
@@ -2209,15 +2225,16 @@ export default function DashboardPage() {
                           </div>
 
                           {isManager && (
-                            <button
-                              type="button"
-                              disabled={busy}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={busy || !transferWindowOpen}
                               onClick={() => handleReleasePlayer(p.id, p.gamertag)}
-                              className="text-[10px] font-bold text-slate-500 hover:text-red-400"
-                              title="Release player from club"
+                              className="border-red-500/30 text-red-400 hover:bg-red-500/10 text-[10px] font-bold px-2 py-0.5 h-auto"
+                              title="Release player from squad"
                             >
                               Release
-                            </button>
+                            </Button>
                           )}
                         </li>
                       )
@@ -2370,6 +2387,112 @@ export default function DashboardPage() {
                         )
                       })}
                     </ul>
+                  )}
+                </div>
+
+                {/* Manager Box 3: Active Squad Roster & Releases */}
+                <div className="lg:col-span-2 rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#0f1015]/95 to-[#090a0d]/98 p-5 shadow-xl sm:p-6 backdrop-blur-md">
+                  <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/[0.08] pb-4">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c4f82a]">
+                          Squad Management
+                        </p>
+                        {!transferWindowOpen && (
+                          <span className="rounded bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-400">
+                            Window Closed
+                          </span>
+                        )}
+                      </div>
+                      <h3 className="text-base font-black uppercase tracking-wider text-white">
+                        Active Squad & Free Agency Releases ({squadList.length} / {maxSquadSize})
+                      </h3>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <Button
+                        size="sm"
+                        disabled={busy || !transferWindowOpen || squadList.length >= maxSquadSize}
+                        onClick={() => setShowSignModal(true)}
+                        className="bg-[#c4f82a] text-black text-xs font-bold hover:bg-[#b0e026]"
+                      >
+                        + Sign Free Agent
+                      </Button>
+                    </div>
+                  </div>
+
+                  {squadList.length === 0 ? (
+                    <p className="py-12 text-center text-xs text-slate-400">
+                      No players currently registered in squad.
+                    </p>
+                  ) : (
+                    <div className="mt-4 divide-y divide-white/5 max-h-[460px] overflow-y-auto">
+                      {squadList.map((p, idx) => {
+                        const isStarter = starters.some((s) => s?.playerId === p.id)
+                        const isBench = bench.some((b) => b.playerId === p.id)
+                        return (
+                          <div
+                            key={p.id}
+                            className="flex items-center justify-between gap-3 py-3 px-2 rounded-lg hover:bg-white/[0.02] transition-colors"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span className="w-7 font-mono text-xs font-bold text-slate-400">
+                                #{p.shirt_number ?? idx + 1}
+                              </span>
+                              <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-white/10 border border-white/10">
+                                <img
+                                  src={p.avatar_local || AVATAR_PLACEHOLDER}
+                                  alt=""
+                                  onError={(e) => {
+                                    e.currentTarget.src = AVATAR_PLACEHOLDER
+                                  }}
+                                  className="h-full w-full object-cover"
+                                />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-bold text-white truncate">{p.gamertag}</p>
+                                <div className="flex items-center gap-1.5 mt-0.5">
+                                  {p.position && (
+                                    <span
+                                      className={cx(
+                                        'rounded px-1.5 py-0.2 text-[9px] font-black uppercase border',
+                                        getPositionBadgeStyle(p.position),
+                                      )}
+                                    >
+                                      {p.position}
+                                    </span>
+                                  )}
+                                  <span
+                                    className={cx(
+                                      'rounded px-1.5 py-0.2 text-[9px] font-black uppercase',
+                                      isStarter
+                                        ? 'bg-[#c4f82a]/20 text-[#c4f82a]'
+                                        : isBench
+                                          ? 'bg-amber-500/20 text-amber-300'
+                                          : 'bg-white/5 text-slate-400',
+                                    )}
+                                  >
+                                    {isStarter ? 'Starting XI' : isBench ? 'Substitute' : 'Reserve'}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={busy || !transferWindowOpen}
+                                onClick={() => handleReleasePlayer(p.id, p.gamertag)}
+                                className="border-red-500/30 text-red-400 hover:bg-red-500/10 text-xs font-bold"
+                              >
+                                Release
+                              </Button>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
                   )}
                 </div>
               </>
@@ -3129,6 +3252,92 @@ export default function DashboardPage() {
             void loadManagerData()
           }}
         />
+      )}
+
+      {/* Release Player Confirmation Modal */}
+      {playerToRelease && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="w-full max-w-md rounded-2xl border border-red-500/30 bg-[#0f1015] p-6 shadow-2xl">
+            <div className="flex items-center gap-3 text-red-400 mb-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-500/10 border border-red-500/20">
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-base font-black uppercase tracking-wider text-white">Release Player</h3>
+                <p className="text-xs text-slate-400">Return player to Free Agency pool</p>
+              </div>
+            </div>
+
+            <p className="text-sm text-slate-300">
+              Are you sure you want to release <strong className="text-white">{playerToRelease.name}</strong> from your squad? They will immediately become an unrestricted free agent and will be removed from your active lineup.
+            </p>
+
+            <div className="mt-6 flex items-center justify-end gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy}
+                onClick={() => setPlayerToRelease(null)}
+                className="text-xs font-bold"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                disabled={busy}
+                onClick={executeReleasePlayer}
+                className="bg-red-500 text-white hover:bg-red-600 text-xs font-bold"
+              >
+                {busy ? 'Releasing...' : 'Confirm Release'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Leave Club Confirmation Modal */}
+      {confirmLeaveClubModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="w-full max-w-md rounded-2xl border border-red-500/30 bg-[#0f1015] p-6 shadow-2xl">
+            <div className="flex items-center gap-3 text-red-400 mb-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-500/10 border border-red-500/20">
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-base font-black uppercase tracking-wider text-white">Leave Club</h3>
+                <p className="text-xs text-slate-400">Return to Free Agency</p>
+              </div>
+            </div>
+
+            <p className="text-sm text-slate-300">
+              Are you sure you want to leave <strong className="text-white">{myClub?.name || 'your club'}</strong>? You will become a Free Agent and can apply or sign with other clubs.
+            </p>
+
+            <div className="mt-6 flex items-center justify-end gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy}
+                onClick={() => setConfirmLeaveClubModal(false)}
+                className="text-xs font-bold"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                disabled={busy}
+                onClick={executeLeaveClub}
+                className="bg-red-500 text-white hover:bg-red-600 text-xs font-bold"
+              >
+                {busy ? 'Leaving...' : 'Confirm Leave Club'}
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Account Settings Modal */}

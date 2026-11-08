@@ -126,7 +126,9 @@ async function ownPlayer(userId: number, candidateGamertag?: string): Promise<{
   if (!row) {
     throw Object.assign(new Error('This account has no player profile.'), { status: 404 })
   }
-  if (row.is_free_agent) {
+  if (row.club_id) {
+    row.is_free_agent = 0
+  } else if (row.is_free_agent) {
     row.club_id = null
   }
   return row
@@ -742,10 +744,59 @@ player.post(
         [me.id],
       )
       await conn.execute(
+        `UPDATE users
+            SET club_id = NULL, updated_at = NOW()
+          WHERE id = ? AND role NOT IN ('admin', 'owner')`,
+        [req.user!.id],
+      )
+      await conn.execute(
+        `UPDATE transfer_requests
+            SET status = 'cancelled', responded_at = NOW()
+          WHERE player_id = ? AND (from_club_id = ? OR to_club_id = ?) AND status = 'pending'`,
+        [me.id, previous, previous],
+      )
+      await conn.execute(
         `INSERT INTO transfers (player_id, from_club_id, to_club_id, occurred_at, kind, created_at)
          VALUES (?, ?, NULL, CURDATE(), 'free', NOW())`,
         [me.id, previous],
       )
+
+      // Remove player from starting XI / bench if present
+      const [clubRows] = await conn.query(
+        'SELECT starting_xi_json FROM clubs WHERE id = ? FOR UPDATE',
+        [previous],
+      )
+      const currentClub = (clubRows as any[])[0]
+      if (currentClub?.starting_xi_json) {
+        try {
+          const parsed = JSON.parse(currentClub.starting_xi_json)
+          let modified = false
+          if (Array.isArray(parsed.starters)) {
+            for (let i = 0; i < parsed.starters.length; i++) {
+              const s = parsed.starters[i]
+              if (s && (Number(s.playerId) === Number(me.id) || String(s.gamertag ?? '').toLowerCase() === me.gamertag.toLowerCase())) {
+                parsed.starters[i] = null
+                modified = true
+              }
+            }
+          }
+          if (Array.isArray(parsed.bench)) {
+            const beforeLen = parsed.bench.length
+            parsed.bench = parsed.bench.filter(
+              (b: any) => b && Number(b.playerId) !== Number(me.id) && String(b.gamertag ?? '').toLowerCase() !== me.gamertag.toLowerCase(),
+            )
+            if (parsed.bench.length !== beforeLen) modified = true
+          }
+          if (modified) {
+            await conn.execute(
+              'UPDATE clubs SET starting_xi_json = ?, updated_at = NOW() WHERE id = ?',
+              [JSON.stringify(parsed), previous],
+            )
+          }
+        } catch {
+          /* ignore json errors */
+        }
+      }
     })
 
     await notifyClubOwner(

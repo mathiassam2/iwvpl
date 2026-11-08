@@ -69,7 +69,11 @@ async function ownClub(userId: number): Promise<{
     status: string
     starting_xi_json: string | null
   }>(
-    'SELECT id, name, slug, short_code, flag, logo_local, logo_url, status, starting_xi_json FROM clubs WHERE id = (SELECT club_id FROM users WHERE id = ?)',
+    `SELECT c.id, c.name, c.slug, c.short_code, c.flag, c.logo_local, c.logo_url, c.status, c.starting_xi_json
+       FROM clubs c
+       INNER JOIN users u ON u.club_id = c.id
+      WHERE u.id = ?
+      LIMIT 1`,
 
     [userId],
   )
@@ -739,7 +743,25 @@ manager.post(
         [playerId],
       )
 
-      // 2. Insert transfer history record
+      // 2. Clear club_id on player's user account if they have one (unless they are club manager/admin)
+      if (player.user_id) {
+        await conn.execute(
+          `UPDATE users
+              SET club_id = NULL, updated_at = NOW()
+            WHERE id = ? AND role NOT IN ('club_manager', 'admin', 'owner')`,
+          [player.user_id],
+        )
+      }
+
+      // 3. Cancel any pending join requests or offers between player and this club
+      await conn.execute(
+        `UPDATE transfer_requests
+            SET status = 'cancelled', responded_at = NOW()
+          WHERE player_id = ? AND (from_club_id = ? OR to_club_id = ?) AND status = 'pending'`,
+        [playerId, club.id, club.id],
+      )
+
+      // 4. Insert transfer history record
       await conn.execute(
         `INSERT INTO transfers (player_id, from_club_id, to_club_id, occurred_at, kind, created_at)
          VALUES (?, ?, NULL, CURDATE(), 'released', NOW())`,
@@ -799,9 +821,15 @@ manager.post(
 )
 
 manager.delete('/players/:playerId', (req: any, res: any, next: any) => {
-    req.url = '/players/' + req.params.playerId + '/release'
-    return (manager as any).handle(req, res, next)
-  })
+  req.url = '/players/' + req.params.playerId + '/release'
+  req.method = 'POST'
+  return (manager as any).handle(req, res, next)
+})
+
+manager.delete('/players/:playerId/release', (req: any, res: any, next: any) => {
+  req.method = 'POST'
+  return (manager as any).handle(req, res, next)
+})
 
 manager.patch(
   '/players/:playerId',
