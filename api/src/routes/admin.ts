@@ -21,7 +21,7 @@ import {
   roundRobinLegs,
   roundRobinRounds,
 } from '../domain/generateFixtures.js'
-import { clearResult, setResult } from '../domain/applyResult.js'
+import { clearResult, setResult, syncClubForm } from '../domain/applyResult.js'
 import { hashPassword, MAX_PASSWORD_BYTES, notify } from '../domain/auth.js'
 import {
   applySeasonRollover,
@@ -465,6 +465,8 @@ admin.post(
         [homeScore, awayScore, id] as Params,
       )
 
+      await syncClubForm(conn, match.season_id, [match.home_club_id, match.away_club_id])
+
       await replaceMatchPlayerStats(conn, match, playersList)
 
       // Team stats: one row per match, replaced wholesale so clearing a value
@@ -895,6 +897,8 @@ admin.post(
         [homeScore, awayScore, id] as Params,
       )
 
+      await syncClubForm(conn, match.season_id, [match.home_club_id, match.away_club_id])
+
       return { ids, wasPlayed }
     })
 
@@ -970,6 +974,8 @@ admin.delete(
           WHERE id = ?`,
         [id],
       )
+
+      await syncClubForm(conn, match.season_id, [match.home_club_id, match.away_club_id])
 
       return { ok: true }
     })
@@ -1160,10 +1166,12 @@ admin.post(
 
       await conn.execute(
         `UPDATE matches
-            SET home_score = ?, away_score = ?, ea_match_id = ?, status = 'finished', updated_at = NOW()
+            SET home_score = ?, away_score = ?, status = 'finished', ea_match_id = ?, updated_at = NOW()
           WHERE id = ?`,
         [homeScore, awayScore, eaMatchId, id] as Params,
       )
+
+      await syncClubForm(conn, match.season_id, [match.home_club_id, match.away_club_id])
 
       await replaceMatchPlayerStats(conn, match, playersList)
 

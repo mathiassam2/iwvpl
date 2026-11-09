@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Transactional application of results to the standings snapshot.
  *
  * Wraps the pure arithmetic in standings.ts with row locking and ordering, so
@@ -227,4 +227,62 @@ export async function clearResult(
 ): Promise<void> {
   await reverse(conn, ids.seasonId, ids.divisionId, previous)
   await reposition(conn, ids.seasonId, ids.divisionId, await divisionNames(conn, ids.divisionId))
+}
+
+/**
+ * Synchronize the form string for given clubs in a season from their actual
+ * finished matches in chronological order.
+ *
+ * This guards against desynchronization when results are entered out of
+ * chronological order or edited/undone.
+ */
+export async function syncClubForm(
+  conn: PoolConnection,
+  seasonId: number,
+  clubIds: number[],
+): Promise<void> {
+  for (const clubId of clubIds) {
+    const [rows] = await conn.query(
+      `SELECT m.home_club_id, m.away_club_id, m.home_score, m.away_score
+         FROM matches m
+        WHERE m.season_id = ?
+          AND (m.home_club_id = ? OR m.away_club_id = ?)
+          AND m.home_score IS NOT NULL
+          AND m.away_score IS NOT NULL
+          AND m.status = 'finished'
+        ORDER BY COALESCE(m.kickoff, m.updated_at) ASC, m.id ASC`,
+      [seasonId, clubId, clubId],
+    )
+    const matches = rows as Array<{
+      home_club_id: number
+      away_club_id: number
+      home_score: number
+      away_score: number
+    }>
+
+    if (matches.length > 0) {
+      const outcomes: string[] = []
+      for (const m of matches) {
+        if (m.home_club_id === clubId) {
+          outcomes.push(m.home_score > m.away_score ? 'W' : m.home_score < m.away_score ? 'L' : 'D')
+        } else {
+          outcomes.push(m.away_score > m.home_score ? 'W' : m.away_score < m.home_score ? 'L' : 'D')
+        }
+      }
+      const formStr = outcomes.slice(-5).join('')
+      await conn.execute(
+        `UPDATE standings_snapshot
+            SET form = ?, updated_at = NOW()
+          WHERE season_id = ? AND club_id = ?`,
+        [formStr, seasonId, clubId],
+      )
+    } else {
+      await conn.execute(
+        `UPDATE standings_snapshot
+            SET form = '', updated_at = NOW()
+          WHERE season_id = ? AND club_id = ? AND played = 0`,
+        [seasonId, clubId],
+      )
+    }
+  }
 }
