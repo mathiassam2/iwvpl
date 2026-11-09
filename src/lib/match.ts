@@ -10,8 +10,22 @@ import { siteData } from '@/data'
 import { clubSlug, isSameClub, slugify, stripFlag } from '@/lib/format'
 import type { Match } from '@/types/site'
 
-export function matchHref(index: number): string {
+export function matchHref(index: number | string | undefined | null): string {
+  if (index == null || (typeof index === 'number' && index < 0)) return '/matches'
   return `/matches/${index}`
+}
+
+/**
+ * Robust link generator for a match.
+ * Always prefers `match.id` (database match id), falls back to static index if valid,
+ * or '/matches'. Never returns '/matches/-1'.
+ */
+export function matchHrefFor(match?: Match | null, fallbackIndex?: number): string {
+  if (match?.id != null) return `/matches/${match.id}`
+  const idx = fallbackIndex !== undefined ? fallbackIndex : (match ? matchIndexOf(match) : -1)
+  if (typeof idx === 'number' && idx >= 0) return `/matches/${idx}`
+  if (typeof idx === 'string' && idx) return `/matches/${idx}`
+  return '/matches'
 }
 
 /**

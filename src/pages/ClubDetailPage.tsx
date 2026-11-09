@@ -16,7 +16,7 @@ import { FormGuide, MatchRow, StatTile } from '@/components/league'
 import { NextMatchCard, Pitch, TableSnippet, TeamFormStrip } from '@/components/club'
 import { SITE, siteData } from '@/data'
 import { AVATAR_PLACEHOLDER, CLUB_PLACEHOLDER, clubSlug, cx, isSameClub, stripFlag } from '@/lib/format'
-import { matchIndexOf } from '@/lib/match'
+import { matchHrefFor, matchIndexOf } from '@/lib/match'
 import {
   getLiveClub,
   getLiveMatches,
@@ -269,22 +269,10 @@ export default function ClubDetailPage() {
   }
 
   const name = stripFlag(club.name)
-  const lastHref = data.last
-    ? data.last.id != null
-      ? `/matches/${data.last.id}`
-      : matchIndexOf(data.last) >= 0
-        ? `/matches/${matchIndexOf(data.last)}`
-        : '/matches'
-    : '/matches'
+  const lastHref = matchHrefFor(data.last)
 
   const nextMatchTarget = data.next ?? data.last
-  const nextMatchHref = nextMatchTarget
-    ? nextMatchTarget.id != null
-      ? `/matches/${nextMatchTarget.id}`
-      : matchIndexOf(nextMatchTarget) >= 0
-        ? `/matches/${matchIndexOf(nextMatchTarget)}`
-        : '/matches'
-    : '/matches'
+  const nextMatchHref = matchHrefFor(nextMatchTarget)
 
   const overview = (
     <div className="space-y-6">
@@ -364,7 +352,11 @@ export default function ClubDetailPage() {
         ) : (
           <div className="surface divide-y divide-[var(--border)] overflow-hidden rounded-card">
             {data.matches.slice(0, 6).map((m) => (
-              <MatchRow key={`${m.url}-${m.home}`} match={m} index={matchIndexOf(m)} />
+              <MatchRow
+                key={m.id ? `match-${m.id}` : `${m.url}-${m.home}`}
+                match={m}
+                index={m.id ?? (matchIndexOf(m) >= 0 ? matchIndexOf(m) : undefined)}
+              />
             ))}
           </div>
         )}

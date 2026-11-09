@@ -259,15 +259,15 @@ export default function ResultsPage() {
                   </div>
                   {/* overflow-hidden + rounded here so the row-hover highlight
                       fills each row edge to edge, not the card's rounded corners */}
-                  <div className="surface divide-y divide-[var(--border)] overflow-hidden rounded-card">
-                    {matches.map((m) => (
-                      <MatchRow
-                        key={m.url + m.home}
-                        match={m}
-                        index={liveLeagueEnabled ? undefined : matchIndexOf(m)}
-                      />
-                    ))}
-                  </div>
+                    <div className="surface divide-y divide-[var(--border)] overflow-hidden rounded-card">
+                      {matches.map((m) => (
+                        <MatchRow
+                          key={m.id ? `match-${m.id}` : m.url + m.home}
+                          match={m}
+                          index={m.id ?? (matchIndexOf(m) >= 0 ? matchIndexOf(m) : undefined)}
+                        />
+                      ))}
+                    </div>
                 </section>
               ))}
             </div>

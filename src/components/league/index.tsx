@@ -12,7 +12,7 @@ import {
   stripFlag,
   weekday,
 } from '@/lib/format'
-import { matchHref } from '@/lib/match'
+import { matchHref, matchHrefFor } from '@/lib/match'
 import { playerHref } from '@/lib/players'
 
 /* ============================================================ Form guide dots */
@@ -347,10 +347,11 @@ export function MatchRow({
   const played = match.hs !== '' && match.as !== ''
   const isHomeMyClub = isMyClub && (myClubSide === 'home' || (!myClubSide && Boolean(match.home)))
   const isAwayMyClub = isMyClub && (myClubSide === 'away' || (!myClubSide && Boolean(match.away)))
+  const href = matchHrefFor(match, index)
 
   return (
     <Link
-      to={index === undefined ? '/matches' : matchHref(index)}
+      to={href}
       className={cx(
         'row-hover match-tpl group grid items-center gap-3 px-3 py-3.5 sm:gap-5 sm:px-4 transition-all',
         isMyClub &&

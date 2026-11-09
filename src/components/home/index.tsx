@@ -988,7 +988,7 @@ export function ResultsPreview() {
                   </p>
                   <MatchRow
                     match={m}
-                    index={liveLeagueEnabled ? undefined : matchIndexOf(m)}
+                    index={m.id ?? (matchIndexOf(m) >= 0 ? matchIndexOf(m) : undefined)}
                   />
                 </div>
               ))}

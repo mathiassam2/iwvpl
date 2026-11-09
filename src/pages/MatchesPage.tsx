@@ -14,7 +14,7 @@ import {
   type LeagueClub,
   type LeagueSeason,
 } from '@/lib/liveLeague'
-import { matchHref, matchIndexOf } from '@/lib/match'
+import { matchHref, matchHrefFor, matchIndexOf } from '@/lib/match'
 import { useSeasonName } from '@/lib/season'
 import type { Match } from '@/types/site'
 
@@ -470,9 +470,11 @@ function ClubScheduleMatchRow({
   const isAwaySelected =
     isSameClub(awayName, selectedClubSlug) || clubMatchesFilter(awayName, selectedClubSlug)
 
+  const href = matchHrefFor(match, index)
+
   return (
     <Link
-      to={index === undefined ? '/matches' : matchHref(index)}
+      to={href}
       className="group block px-3.5 py-3 transition-colors hover:bg-white/[0.03] sm:px-4"
     >
       {/* Mobile top meta row (< sm) */}

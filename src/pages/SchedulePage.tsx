@@ -68,7 +68,11 @@ export default function SchedulePage() {
                   </div>
                   <div className="surface divide-y divide-[var(--border)] overflow-hidden rounded-card">
                     {matches.map((m) => (
-                      <MatchRow key={`${m.url}-${m.home}-${m.away}`} match={m} index={matchIndexOf(m)} />
+                      <MatchRow
+                        key={m.id ? `match-${m.id}` : `${m.url}-${m.home}-${m.away}`}
+                        match={m}
+                        index={m.id ?? (matchIndexOf(m) >= 0 ? matchIndexOf(m) : undefined)}
+                      />
                     ))}
                   </div>
                 </section>
