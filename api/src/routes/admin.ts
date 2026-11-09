@@ -1363,6 +1363,10 @@ admin.delete(
       await conn.execute('DELETE FROM match_events WHERE match_id = ?', [id])
       await conn.execute('DELETE FROM match_stats WHERE match_id = ?', [id])
       await conn.execute('DELETE FROM matches WHERE id = ?', [id])
+
+      if (match.home_score !== null && match.away_score !== null) {
+        await syncClubForm(conn, match.season_id, [match.home_club_id, match.away_club_id])
+      }
       return { ok: true as const }
     })
 
