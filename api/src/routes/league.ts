@@ -880,7 +880,7 @@ league.get(
     res.setHeader('Expires', '0')
     const requestedSeasonId = req.query.seasonId
     let seasonId: number | null = null
-    if (requestedSeasonId !== undefined) {
+    if (requestedSeasonId !== undefined && requestedSeasonId !== '') {
       seasonId = Number(requestedSeasonId)
       if (!Number.isSafeInteger(seasonId) || seasonId < 1) {
         return res.status(400).json({ error: 'seasonId must be a positive integer.' })
@@ -892,14 +892,38 @@ league.get(
       seasonId = cur?.id ?? null
     }
 
+    // `divisionId` narrows a board to one division of the season. Omitted (or
+    // empty) means the combined board: totals summed per player across every
+    // division they played in, so a mid-season mover appears once.
+    const requestedDivisionId = req.query.divisionId
+    let divisionId: number | null = null
+    if (requestedDivisionId !== undefined && requestedDivisionId !== '') {
+      divisionId = Number(requestedDivisionId)
+      if (!Number.isSafeInteger(divisionId) || divisionId < 1) {
+        return res.status(400).json({ error: 'divisionId must be a positive integer.' })
+      }
+    }
+
     const currentSeason = await queryOne<{ id: number; name: string }>(
       'SELECT id, name FROM seasons WHERE id = ? AND is_draft = FALSE',
       [seasonId],
     )
 
+    const divisions =
+      seasonId === null
+        ? []
+        : await queryAll(
+            `SELECT id, name, slug, sort_order
+               FROM divisions
+              WHERE season_id = ? AND is_active = TRUE
+              ORDER BY sort_order, id`,
+            [seasonId],
+          )
+
     const fetchBoard = async (col: 'goals' | 'assists' | 'saves') => {
       return queryAll(
-        `SELECT ps.${col} AS value, p.id AS player_id, p.gamertag, p.slug,
+        `SELECT CAST(SUM(ps.${col}) AS UNSIGNED) AS value,
+                p.id AS player_id, p.gamertag, p.slug,
                 ${playerCelebrationSql('p')} AS celebration_image,
                 p.avatar_local,
                 c.name AS club_name, c.slug AS club_slug, c.flag AS club_flag,
@@ -907,10 +931,13 @@ league.get(
            FROM player_season_stats ps
            JOIN players p ON p.id = ps.player_id
            LEFT JOIN clubs c ON c.id = p.club_id
-          WHERE (? IS NULL OR ps.season_id = ?) AND ps.${col} > 0
-          ORDER BY ps.${col} DESC, p.gamertag ASC
+          WHERE (? IS NULL OR ps.season_id = ?)
+            AND (? IS NULL OR ps.division_id = ?)
+            AND ps.${col} > 0
+          GROUP BY p.id, c.id
+          ORDER BY value DESC, p.gamertag ASC
           LIMIT 25`,
-        [seasonId, seasonId],
+        [seasonId, seasonId, divisionId, divisionId],
       )
     }
 
@@ -922,6 +949,8 @@ league.get(
 
     res.json({
       season: currentSeason,
+      divisionId,
+      divisions,
       boards: [
         { title: 'TOP SCORERS', key: 'goals', rows: scorers },
         { title: 'TOP PLAYMAKERS', key: 'assists', rows: assists },
@@ -946,22 +975,49 @@ league.get(
       })
     }
 
+    const requestedSeasonId = req.query.seasonId
+    let seasonId: number | null = null
+    if (requestedSeasonId !== undefined && requestedSeasonId !== '') {
+      seasonId = Number(requestedSeasonId)
+      if (!Number.isSafeInteger(seasonId) || seasonId < 1) {
+        return res.status(400).json({ error: 'seasonId must be a positive integer.' })
+      }
+    } else {
+      const cur = await queryOne<{ id: number }>(
+        'SELECT id FROM seasons WHERE is_current = TRUE LIMIT 1',
+      )
+      seasonId = cur?.id ?? null
+    }
+
+    const requestedDivisionId = req.query.divisionId
+    let divisionId: number | null = null
+    if (requestedDivisionId !== undefined && requestedDivisionId !== '') {
+      divisionId = Number(requestedDivisionId)
+      if (!Number.isSafeInteger(divisionId) || divisionId < 1) {
+        return res.status(400).json({ error: 'divisionId must be a positive integer.' })
+      }
+    }
+
     const limit = intParam(req.query.limit, 10, 1, 100)
     const rows = await queryAll<Row>(
-      `SELECT ps.${column} AS value, p.id AS player_id, p.gamertag, p.slug,
+      `SELECT CAST(SUM(ps.${column}) AS UNSIGNED) AS value,
+              p.id AS player_id, p.gamertag, p.slug,
               ${playerCelebrationSql('p')} AS celebration_image,
               p.avatar_local, c.name AS club_name, c.slug AS club_slug, c.flag AS club_flag,
               ${clubLogoSql('c')} AS club_logo
          FROM player_season_stats ps
          JOIN players p ON p.id = ps.player_id
          LEFT JOIN clubs c ON c.id = p.club_id
-        WHERE ps.${column} > 0
-        ORDER BY ps.${column} DESC, p.gamertag ASC
+        WHERE (? IS NULL OR ps.season_id = ?)
+          AND (? IS NULL OR ps.division_id = ?)
+          AND ps.${column} > 0
+        GROUP BY p.id, c.id
+        ORDER BY value DESC, p.gamertag ASC
         LIMIT ?`,
-      [limit],
+      [seasonId, seasonId, divisionId, divisionId, limit],
     )
 
-    res.json({ board: column, rows })
+    res.json({ board: column, seasonId, divisionId, rows })
   }),
 )
 

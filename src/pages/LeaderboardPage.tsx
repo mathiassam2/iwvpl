@@ -8,7 +8,9 @@ import { useSeasonName } from '@/lib/season'
 import {
   getLiveLeaderboardSummary,
   getLiveSeasons,
+  getSeasonDivisions,
   type LeagueSeason,
+  type LiveDivision,
   type LiveLeaderboardSummary,
 } from '@/lib/liveLeague'
 import type { Leaderboard } from '@/types/site'
@@ -17,7 +19,10 @@ export default function LeaderboardPage() {
   const seasonName = useSeasonName()
   const [seasons, setSeasons] = useState<LeagueSeason[]>([])
   const [seasonId, setSeasonId] = useState<number | null>(null)
+  const [divisions, setDivisions] = useState<LiveDivision[]>([])
+  const [divisionId, setDivisionId] = useState<number | null>(null)
   const [liveData, setLiveData] = useState<LiveLeaderboardSummary | null>(null)
+  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -33,18 +38,37 @@ export default function LeaderboardPage() {
     return () => controller.abort()
   }, [])
 
+  // Divisions follow the season, so a stale division id can never be sent.
   useEffect(() => {
     if (!seasonId) return
     const controller = new AbortController()
-    setLiveData(null)
-    void getLiveLeaderboardSummary(controller.signal, seasonId).then((res) => {
-      if (res) setLiveData(res)
-    })
+    setDivisionId(null)
+    setDivisions([])
+    void getSeasonDivisions(seasonId, controller.signal)
+      .then((list) => setDivisions(list))
+      .catch(() => setDivisions([]))
     return () => controller.abort()
   }, [seasonId])
 
+  useEffect(() => {
+    if (!seasonId) return
+    const controller = new AbortController()
+    setLoading(true)
+    void getLiveLeaderboardSummary(controller.signal, seasonId, divisionId)
+      .then((res) => {
+        if (res && !controller.signal.aborted) setLiveData(res)
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false)
+      })
+    return () => controller.abort()
+  }, [seasonId, divisionId])
+
   const selectedSeason = seasons.find((s) => s.id === seasonId) ?? null
   const seasonLabel = liveData?.season?.name || selectedSeason?.name || seasonName
+  const selectedDivision = divisions.find((d) => d.id === divisionId) ?? null
+  const scopeLabel =
+    divisions.length > 1 ? (selectedDivision?.name ?? 'Combined divisions') : null
 
   const effectiveBoards: Leaderboard[] = useMemo(() => {
     if (liveData) {
@@ -103,11 +127,16 @@ export default function LeaderboardPage() {
                 </p>
                 <p className="mt-1 text-sm text-[var(--text-muted)]">
                   Showing {seasonLabel}
+                  {scopeLabel ? ` · ${scopeLabel}` : ''}
+                  {loading ? ' · Updating…' : ''}
                 </p>
               </div>
               <Select
                 value={seasonId ? String(seasonId) : ''}
-                onChange={(value) => setSeasonId(Number(value))}
+                onChange={(value) => {
+                  setDivisionId(null)
+                  setSeasonId(Number(value))
+                }}
                 options={seasons.map((s) => ({
                   value: String(s.id),
                   label: `${s.name}${Boolean(s.is_current) ? ' · Live' : ''}`,
@@ -116,6 +145,25 @@ export default function LeaderboardPage() {
                 size="sm"
                 className="min-w-[15rem]"
               />
+            </div>
+          )}
+
+          {divisions.length > 1 && (
+            <div className="mb-6">
+              <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--text-faint)]">
+                Division filter
+              </p>
+              <div className="border-b border-[var(--border)]">
+                <Tabs
+                  tabs={[
+                    { id: 'combined', label: 'Combined' },
+                    ...divisions.map((d) => ({ id: String(d.id), label: d.name })),
+                  ]}
+                  active={divisionId === null ? 'combined' : String(divisionId)}
+                  onChange={(id) => setDivisionId(id === 'combined' ? null : Number(id))}
+                  idPrefix="lb-div"
+                />
+              </div>
             </div>
           )}
 

@@ -741,6 +741,8 @@ export interface LiveLeaderboardRow {
 
 export interface LiveLeaderboardSummary {
   season: { id: number; name: string } | null
+  divisionId?: number | null
+  divisions?: Array<{ id: number; name: string; slug: string; sort_order: number }>
   boards: Array<{
     title: string
     key: 'goals' | 'assists' | 'saves'
@@ -757,17 +759,30 @@ export function peekLiveLeaderboards(): LiveLeaderboardSummary | null {
 export async function getLiveLeaderboardSummary(
   signal?: AbortSignal,
   seasonId?: number | null,
+  divisionId?: number | null,
 ): Promise<LiveLeaderboardSummary | null> {
   try {
-    const query = seasonId
-      ? `?seasonId=${encodeURIComponent(String(seasonId))}&_=${Date.now()}`
-      : `?_=${Date.now()}`
-    const res = await get<LiveLeaderboardSummary>(`/api/leaderboards/summary${query}`, signal)
+    const params = new URLSearchParams({ _: String(Date.now()) })
+    if (seasonId) params.set('seasonId', String(seasonId))
+    if (divisionId) params.set('divisionId', String(divisionId))
+    const res = await get<LiveLeaderboardSummary>(`/api/leaderboards/summary?${params}`, signal)
     cachedLiveLeaderboards = res
     return res
   } catch {
     return null
   }
+}
+
+/** Divisions belonging to one season, used by the leaderboard filter. */
+export async function getSeasonDivisions(
+  seasonId: number,
+  signal?: AbortSignal,
+): Promise<LiveDivision[]> {
+  const response = await get<{ divisions: LiveDivision[] }>(
+    `/api/divisions?seasonId=${encodeURIComponent(String(seasonId))}`,
+    signal,
+  )
+  return response.divisions
 }
 
 let cachedLiveTransfers: Transfer[] | null = null
