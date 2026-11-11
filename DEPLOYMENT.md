@@ -44,7 +44,7 @@ The deployment script [`scripts/deploy-cpanel.mjs`](file:///d:/IWVPL_v2/scripts/
 1. Runs `npm --prefix api run build` (builds TypeScript API into `api/dist/`).
 2. Runs `npm --prefix admin run build` (builds Vite admin SPA into `admin/dist/`).
 3. Runs `npm run build` with `BASE_PATH=/` (builds Vite public SPA into `dist/`).
-4. Stages `dist/`, `admin/dist/`, `api/dist/`, `api/migrations/`, `site_data.json`, and `app.cjs` into a staging folder.
+4. Stages `dist/`, `admin/dist/`, `api/dist/`, `api/migrations/`, `site_data.json`, and `app.cjs`; it runs `npm ci --omit=dev` for Linux x64 and bundles the API runtime dependencies under `api/node_modules/`.
 5. Archives into `iwvpl_v2_bundle.tar.gz`.
 6. Authenticates with cPanel API (`https://iwvpl.asia:2083`).
 7. Uploads and extracts the bundle into `/home/iwvq7995/iwvpl_v2_app`.
@@ -77,7 +77,9 @@ npm run deploy:beta
 
 ## 4. Verification Checklist After Deploy
 
-After the script finishes with `Restart result: { result: 'success' ... }`:
+The script waits for `/api/health` to report both the API and database ready after the Passenger restart. A restart acknowledgment alone is not considered a successful deployment.
+
+After the script finishes with `Health check passed`:
 
 1. **Public Site**: Open [https://beta.iwvpl.asia](https://beta.iwvpl.asia)
    - Verify layout, hero carousel, and assets load without 404s.
