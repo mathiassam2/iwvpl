@@ -1613,6 +1613,346 @@ export interface EaClubDeepProfile {
   }>
 }
 
+export interface EaTeamStatLine {
+  possession: number | null
+  shots: number | null
+  shotsOnTarget: number | null
+  passes: number | null
+  passAttempts: number | null
+  passAccuracy: number | null
+  dribbleSuccess: number | null
+  tackles: number | null
+  tackleAttempts: number | null
+  tackleSuccessRate: number | null
+  interceptions: number | null
+  saves: number | null
+  fouls: number | null
+  corners: number | null
+  offsides: number | null
+  freeKicks: number | null
+  penalties: number | null
+  yellowCards: number | null
+  redCards: number | null
+  xg: number | null
+  ballRecoveryTime: number | null
+}
+
+export interface EaMatchSummary {
+  matchId: string
+  matchType: 'leagueMatch' | 'friendlyMatch' | 'playoffMatch'
+  timestamp: number
+  dateFormatted: string
+  opponentId: string
+  opponentName: string
+  goalsFor: number
+  goalsAgainst: number
+  result: 'W' | 'D' | 'L'
+  players: EaPlayerStatItem[]
+  teamStats: EaTeamStatLine
+  opponentTeamStats: EaTeamStatLine
+}
+
+export interface EaMatchRecordSummary {
+  played: number
+  wins: number
+  draws: number
+  losses: number
+  goalsFor: number
+  goalsAgainst: number
+  goalDifference: number
+  cleanSheets: number
+  form: string
+  winRate: number
+  avgGoalsFor: number
+  avgGoalsAgainst: number
+}
+
+export interface EaClubFullProfile {
+  clubId: string
+  name: string
+  platform: string
+  fetchedAt: string
+  cached: boolean
+  stale: boolean
+  stats: {
+    gamesPlayed: number
+    wins: number
+    draws: number
+    losses: number
+    goalsFor: number
+    goalsAgainst: number
+    goalDifference: number
+    skillRating: number
+    bestDivision: string
+    winStreak: number
+    unbeatenStreak: number
+    promotion: number
+    relegation: number
+  }
+  roster: Array<{
+    gamertag: string
+    proName: string
+    position: string
+    overallRating: number
+    gamesPlayed: number
+    goals: number
+    assists: number
+    ratingAve: number
+  }>
+  matches: {
+    league: EaMatchSummary[]
+    friendly: EaMatchSummary[]
+    playoff: EaMatchSummary[]
+  }
+  summaries: {
+    league: EaMatchRecordSummary
+    friendly: EaMatchRecordSummary
+    playoff: EaMatchRecordSummary
+    all: EaMatchRecordSummary
+  }
+  warnings: string[]
+}
+
+/* ------------------------------------------------ club dossier (read-only) */
+
+export interface DossierSeason {
+  id: number
+  name: string
+  year: number
+  is_current: boolean | number
+}
+
+export interface DossierOpponent {
+  id: number
+  name: string
+  slug: string
+  short_code: string | null
+  flag: string | null
+  logo: string | null
+}
+
+export interface DossierTeamStats {
+  possession: [number | null, number | null]
+  shots: [number | null, number | null]
+  on_target: [number | null, number | null]
+  corners: [number | null, number | null]
+  fouls: [number | null, number | null]
+  offsides: [number | null, number | null]
+  pass_accuracy: [number | null, number | null]
+  dribble_success: [number | null, number | null]
+  shot_accuracy: [number | null, number | null]
+  ball_recovery_time: [number | null, number | null]
+  xg: [number | null, number | null]
+  passes: [number | null, number | null]
+  tackles: [number | null, number | null]
+  tackles_won: [number | null, number | null]
+  interceptions: [number | null, number | null]
+  saves: [number | null, number | null]
+  free_kicks: [number | null, number | null]
+  penalties: [number | null, number | null]
+  yellow_cards: [number | null, number | null]
+  red_cards: [number | null, number | null]
+}
+
+export interface DossierPlayerStat {
+  id: number
+  match_id?: number
+  player_id: number | null
+  club_id: number
+  gamertag: string
+  player_slug?: string | null
+  player_avatar?: string | null
+  pro_name?: string | null
+  pos?: string | null
+  platform?: string | null
+  rating?: number | string | null
+  goals: number
+  assists: number
+  shots: number
+  shot_accuracy?: number | null
+  passes: number
+  pass_attempts?: number | null
+  pass_accuracy?: number | null
+  dribbles?: number | null
+  dribble_success_rate?: number | null
+  tackles: number
+  tackle_attempts?: number | null
+  tackle_success_rate?: number | null
+  offsides?: number | null
+  fouls_committed?: number | null
+  possession_won?: number | null
+  possession_lost?: number | null
+  minutes_played?: number | null
+  distance_covered?: number | string | null
+  distance_sprinted?: number | string | null
+  saves: number
+  clean_sheet: boolean | number
+  is_mom: boolean | number
+  yellow_cards?: number | null
+  red_cards?: number | null
+}
+
+export interface DossierMatchEvent {
+  match_id: number
+  minute: number
+  type: string
+  team_side: 'home' | 'away'
+  player_name: string | null
+  detail: string | null
+  score: string | null
+}
+
+export interface DossierMatch {
+  id: number
+  kickoff: string | null
+  status: string
+  is_home: boolean
+  score_for: number | null
+  score_against: number | null
+  result: 'W' | 'D' | 'L' | null
+  round_number: number | null
+  division_id: number | null
+  division_name: string | null
+  division_slug: string | null
+  ea_match_id: string | null
+  venue: string | null
+  stream_url: string | null
+  opponent: DossierOpponent
+  team_stats: DossierTeamStats | null
+  player_stats: DossierPlayerStat[]
+  opponent_player_stats: DossierPlayerStat[]
+  events: DossierMatchEvent[]
+}
+
+export interface DossierPlayerTotal {
+  player_id: number | null
+  gamertag: string
+  slug: string | null
+  avatar: string | null
+  appearances: number
+  goals: number
+  assists: number
+  shots: number
+  passes: number
+  tackles: number
+  saves: number
+  clean_sheets: number
+  mom: number
+  yellow_cards: number
+  red_cards: number
+  minutes_played: number
+  avg_rating: number | null
+}
+
+export interface DossierRecordSummary {
+  played: number
+  won: number
+  drawn: number
+  lost: number
+  goalsFor: number
+  goalsAgainst: number
+  goalDifference: number
+  points: number
+  winRate: number
+  form: string
+}
+
+export interface ClubDossier {
+  ok: true
+  club: {
+    id: number
+    name: string
+    slug: string
+    short_code: string | null
+    flag: string | null
+    logo: string | null
+    status: string
+    description: string | null
+    formation: string | null
+    starting_xi: unknown
+    ea_club_id: string | null
+    ea_club_name: string | null
+    created_at: string
+    manager: { name: string | null; email: string | null; gamertag: string | null }
+  }
+  seasons: DossierSeason[]
+  season: (DossierSeason & { is_current: boolean | number }) | null
+  division: { id: number; name: string; slug: string } | null
+  standing: {
+    position: number
+    played: number
+    won: number
+    drawn: number
+    lost: number
+    goals_for: number
+    goals_against: number
+    goal_difference: number
+    points: number
+    form: string
+  } | null
+  division_table: Array<{
+    position: number
+    played: number
+    won: number
+    drawn: number
+    lost: number
+    goals_for: number
+    goals_against: number
+    goal_difference: number
+    points: number
+    form: string
+    club_id: number
+    name: string
+    slug: string
+    short_code: string | null
+    flag: string | null
+    logo: string | null
+  }>
+  squad: Array<{
+    id: number
+    gamertag: string
+    slug: string
+    shirt_number: number | null
+    avatar_local: string | null
+    position: string | null
+    is_starting_11: boolean | number | null
+    is_free_agent: boolean | number
+  }>
+  matches: DossierMatch[]
+  player_totals: DossierPlayerTotal[]
+  summary: {
+    tracked: DossierRecordSummary
+    home: DossierRecordSummary
+    away: DossierRecordSummary
+    with_box_score: boolean
+  }
+}
+
+export interface ClubEaProfileResponse {
+  ok: true
+  linked: boolean
+  club: {
+    id: number
+    name: string
+    slug: string
+    ea_club_id: string | null
+    ea_club_name: string | null
+  }
+  profile: EaClubFullProfile | null
+}
+
+export const getClubDossier = (slug: string, seasonId?: number | null) =>
+  request<ClubDossier>(
+    `/api/admin/clubs/${encodeURIComponent(slug)}/dossier${
+      seasonId == null ? '' : `?seasonId=${seasonId}`
+    }`,
+  )
+
+export const getClubEaProfile = (slug: string, refresh = false) =>
+  request<ClubEaProfileResponse>(
+    `/api/admin/clubs/${encodeURIComponent(slug)}/ea-profile${refresh ? '?refresh=1' : ''}`,
+  )
+
 export interface AutoMatchItem {
   clubId: number
   clubName: string

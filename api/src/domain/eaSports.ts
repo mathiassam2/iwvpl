@@ -28,21 +28,32 @@ export interface EaPlayerStatItem {
   gamertag: string
   proName?: string
   pos: string
+  platform?: string
   rating: number
   goals: number
   assists: number
   shots: number
+  shotAccuracy?: number
   passes: number
   passAttempts?: number
   passAccuracy?: number
+  dribbles?: number
+  dribbleSuccessRate?: number
   tackles: number
   tackleAttempts?: number
   tackleSuccessRate?: number
+  offsides?: number
+  foulsCommitted?: number
+  possessionWon?: number
+  possessionLost?: number
   saves: number
   cleanSheet: boolean
   isMom: boolean
+  yellowCards?: number
   redCards?: number
   minutesPlayed?: number
+  distanceCovered?: number
+  distanceSprinted?: number
 }
 
 export interface EaSuggestedTeamStats {
@@ -250,7 +261,7 @@ async function fetchMatchesForClub(
 
 function parsePlayersForClub(rawPlayers: any, conceded: number): EaPlayerStatItem[] {
   if (!rawPlayers || typeof rawPlayers !== 'object') return []
-  const list = Object.values(rawPlayers) as any[]
+  const list = Array.isArray(rawPlayers) ? rawPlayers : (Object.values(rawPlayers) as any[])
 
   return list.map((p) => {
     const goals = Math.max(0, Number.parseInt(String(p.goals ?? 0), 10) || 0)
@@ -267,8 +278,7 @@ function parsePlayersForClub(rawPlayers: any, conceded: number): EaPlayerStatIte
       tackleAttempts > 0 ? Math.min(100, Math.round((tackles / tackleAttempts) * 100)) : undefined
     const rating = Math.max(0, Math.min(10, Number.parseFloat(String(p.rating ?? 0)) || 0))
     const isMom = String(p.mom) === '1' || p.mom === 1
-    const redCards = Math.max(0, Number.parseInt(String(p.redcards ?? 0), 10) || 0)
-    const rawSec = Number.parseInt(String(p.secondsPlayed ?? p.gameTime ?? 0), 10) || 0
+    const rawSec = Number.parseInt(String(p.secondsPlayed ?? p.secondsplayed ?? p.gameTime ?? 0), 10) || 0
     const minutesPlayed = rawSec > 0 ? Math.min(120, Math.max(1, Math.round(rawSec / 60))) : 90
     const proName = p.vproname ? String(p.vproname).trim() : undefined
 
@@ -276,25 +286,46 @@ function parsePlayersForClub(rawPlayers: any, conceded: number): EaPlayerStatIte
     const hasDefCs = String(p.cleansheetsdef) === '1' || p.cleansheetsdef === 1
     const cleanSheet = conceded === 0 || hasGkCs || hasDefCs
 
+    const numberOrUndefined = (...keys: string[]): number | undefined => {
+      for (const key of keys) {
+        const value = p[key]
+        if (value === null || value === undefined || value === '') continue
+        const parsed = Number.parseFloat(String(value))
+        if (Number.isFinite(parsed)) return parsed
+      }
+      return undefined
+    }
+
     return {
-      gamertag: String(p.playername ?? '').trim(),
+      gamertag: String(p.playername ?? p.name ?? '').trim(),
       proName,
-      pos: String(p.pos ?? 'midfielder').toLowerCase(),
+      pos: String(p.pos ?? p.position ?? 'midfielder').toLowerCase(),
+      platform: p.platform ? String(p.platform) : undefined,
       rating,
       goals,
       assists,
       shots,
+      shotAccuracy: numberOrUndefined('shotaccuracy'),
       passes,
       passAttempts,
       passAccuracy,
+      dribbles: numberOrUndefined('dribbles'),
+      dribbleSuccessRate: numberOrUndefined('dribblesuccessrate', 'dribblesuccess'),
       tackles,
       tackleAttempts,
       tackleSuccessRate,
+      offsides: numberOrUndefined('offsides'),
+      foulsCommitted: numberOrUndefined('foulscommitted', 'fouls'),
+      possessionWon: numberOrUndefined('possessionwon'),
+      possessionLost: numberOrUndefined('possessionlost'),
       saves,
       cleanSheet,
       isMom,
-      redCards,
+      yellowCards: numberOrUndefined('yellowcards'),
+      redCards: numberOrUndefined('redcards', 'red'),
       minutesPlayed,
+      distanceCovered: numberOrUndefined('distancecovered'),
+      distanceSprinted: numberOrUndefined('distancesprinted'),
     }
   })
 }
@@ -496,6 +527,458 @@ export async function getCandidateMatchesForFixture(
   })
 
   return candidates
+}
+
+export interface EaTeamStatLine {
+  possession: number | null
+  shots: number | null
+  shotsOnTarget: number | null
+  passes: number | null
+  passAttempts: number | null
+  passAccuracy: number | null
+  dribbleSuccess: number | null
+  tackles: number | null
+  tackleAttempts: number | null
+  tackleSuccessRate: number | null
+  interceptions: number | null
+  saves: number | null
+  fouls: number | null
+  corners: number | null
+  offsides: number | null
+  freeKicks: number | null
+  penalties: number | null
+  yellowCards: number | null
+  redCards: number | null
+  xg: number | null
+  ballRecoveryTime: number | null
+}
+
+export interface EaMatchSummary {
+  matchId: string
+  matchType: EaMatchType
+  timestamp: number
+  dateFormatted: string
+  opponentId: string
+  opponentName: string
+  goalsFor: number
+  goalsAgainst: number
+  result: 'W' | 'D' | 'L'
+  players: EaPlayerStatItem[]
+  teamStats: EaTeamStatLine
+  opponentTeamStats: EaTeamStatLine
+}
+
+export interface EaMatchRecordSummary {
+  played: number
+  wins: number
+  draws: number
+  losses: number
+  goalsFor: number
+  goalsAgainst: number
+  goalDifference: number
+  cleanSheets: number
+  form: string
+  winRate: number
+  avgGoalsFor: number
+  avgGoalsAgainst: number
+}
+
+export interface EaClubFullProfile {
+  clubId: string
+  name: string
+  platform: string
+  fetchedAt: string
+  cached: boolean
+  stale: boolean
+  stats: {
+    gamesPlayed: number
+    wins: number
+    draws: number
+    losses: number
+    goalsFor: number
+    goalsAgainst: number
+    goalDifference: number
+    skillRating: number
+    bestDivision: string
+    winStreak: number
+    unbeatenStreak: number
+    promotion: number
+    relegation: number
+  }
+  roster: Array<{
+    gamertag: string
+    proName: string
+    position: string
+    overallRating: number
+    gamesPlayed: number
+    goals: number
+    assists: number
+    ratingAve: number
+  }>
+  matches: {
+    league: EaMatchSummary[]
+    friendly: EaMatchSummary[]
+    playoff: EaMatchSummary[]
+  }
+  summaries: {
+    league: EaMatchRecordSummary
+    friendly: EaMatchRecordSummary
+    playoff: EaMatchRecordSummary
+    all: EaMatchRecordSummary
+  }
+  warnings: string[]
+}
+
+export type EaMatchType = 'leagueMatch' | 'friendlyMatch' | 'playoffMatch'
+
+function parseNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null
+  const parsed = Number.parseFloat(String(value).replace(/,/g, ''))
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function parseInteger(value: unknown): number {
+  const parsed = parseNumber(value)
+  return parsed == null ? 0 : Math.max(0, Math.round(parsed))
+}
+
+function firstNumber(...values: unknown[]): number | null {
+  for (const value of values) {
+    const parsed = parseNumber(value)
+    if (parsed != null) return parsed
+  }
+  return null
+}
+
+function normaliseTeamStats(
+  rawAgg: any,
+  players: EaPlayerStatItem[],
+): EaTeamStatLine {
+  const agg = rawAgg && typeof rawAgg === 'object' ? rawAgg : {}
+  const sum = (key: keyof EaPlayerStatItem) =>
+    players.reduce((acc, player) => acc + (Number(player[key]) || 0), 0)
+
+  const passes = firstNumber(agg.passesmade, agg.passes) ?? sum('passes')
+  const passAttempts = Math.max(
+    passes ?? 0,
+    firstNumber(agg.passattempts) ?? players.reduce((acc, p) => acc + (p.passAttempts ?? p.passes), 0),
+  )
+  const tackles = firstNumber(agg.tacklesmade, agg.tackles) ?? sum('tackles')
+  const tackleAttempts = Math.max(
+    tackles ?? 0,
+    firstNumber(agg.tackleattempts) ?? players.reduce((acc, p) => acc + (p.tackleAttempts ?? p.tackles), 0),
+  )
+  const passAccuracy =
+    firstNumber(agg.passaccuracy) ??
+    (passAttempts > 0 ? Math.round(((passes ?? 0) / passAttempts) * 100) : null)
+  const tackleSuccessRate =
+    firstNumber(agg.tacklesuccessrate) ??
+    (tackleAttempts > 0 ? Math.round(((tackles ?? 0) / tackleAttempts) * 100) : null)
+
+  return {
+    possession: firstNumber(agg.possession, agg.ballpossession),
+    shots: firstNumber(agg.shots, agg.shotsmade) ?? sum('shots'),
+    shotsOnTarget: firstNumber(agg.shotsongoal, agg.shotsontarget, agg.ontarget),
+    passes,
+    passAttempts,
+    passAccuracy,
+    dribbleSuccess: firstNumber(agg.dribblesuccess, agg.dribblesuccessrate),
+    tackles,
+    tackleAttempts,
+    tackleSuccessRate,
+    interceptions: firstNumber(agg.interceptions),
+    saves: firstNumber(agg.saves) ?? sum('saves'),
+    fouls: firstNumber(agg.fouls),
+    corners: firstNumber(agg.corners),
+    offsides: firstNumber(agg.offsides),
+    freeKicks: firstNumber(agg.freekicks),
+    penalties: firstNumber(agg.penalties),
+    yellowCards: firstNumber(agg.yellowcards) ?? sum('yellowCards'),
+    redCards: firstNumber(agg.redcards) ?? sum('redCards'),
+    xg: firstNumber(agg.xg, agg.expectedgoals),
+    ballRecoveryTime: firstNumber(agg.ballrecoverytime),
+  }
+}
+
+function clubEntries(raw: any): Array<[string, any]> {
+  if (!raw || typeof raw !== 'object') return []
+  if (Array.isArray(raw)) {
+    return raw.map((entry, index) => [
+      String(entry?.clubId ?? entry?.teamId ?? entry?.id ?? index),
+      entry,
+    ])
+  }
+  return Object.entries(raw)
+}
+
+function parseEaMatchList(rawMatches: any[], clubId: string, matchType: EaMatchType): EaMatchSummary[] {
+  const cid = String(clubId)
+  const summaries: EaMatchSummary[] = []
+
+  for (const match of Array.isArray(rawMatches) ? rawMatches : []) {
+    if (!match) continue
+    const entries = clubEntries(match.clubs)
+    if (entries.length === 0) continue
+
+    const mine = entries.find(([id]) => id === cid)
+    const opponent = entries.find(([id]) => id !== cid)
+    if (!mine || !opponent) continue
+
+    const [, myData] = mine
+    const [opponentId, opponentData] = opponent
+    const goalsFor = parseInteger(myData?.goals)
+    const goalsAgainst = parseInteger(opponentData?.goals)
+    const result: 'W' | 'D' | 'L' = goalsFor > goalsAgainst ? 'W' : goalsFor === goalsAgainst ? 'D' : 'L'
+
+    const playersRaw = match.players?.[cid] ?? match.players?.[Number(cid)] ?? null
+    const opponentPlayersRaw =
+      match.players?.[opponentId] ?? match.players?.[Number(opponentId)] ?? null
+    const players = parsePlayersForClub(playersRaw, goalsAgainst)
+    const opponentPlayers = parsePlayersForClub(opponentPlayersRaw, goalsFor)
+
+    const timestamp = Number(match.timestamp) || 0
+    const dateFormatted = timestamp
+      ? new Date(timestamp * 1000).toLocaleString('en-GB', {
+          timeZone: 'UTC',
+          dateStyle: 'medium',
+          timeStyle: 'short',
+        })
+      : 'Unknown date'
+
+    summaries.push({
+      matchId: String(match.matchId ?? match.id ?? ''),
+      matchType,
+      timestamp,
+      dateFormatted,
+      opponentId,
+      opponentName:
+        opponentData?.details?.name ??
+        opponentData?.name ??
+        opponentData?.clubName ??
+        `Club #${opponentId}`,
+      goalsFor,
+      goalsAgainst,
+      result,
+      players,
+      teamStats: normaliseTeamStats(match.aggregate?.[cid], players),
+      opponentTeamStats: normaliseTeamStats(match.aggregate?.[opponentId], opponentPlayers),
+    })
+  }
+
+  summaries.sort((a, b) => b.timestamp - a.timestamp)
+  return summaries
+}
+
+function summarizeMatchList(matches: EaMatchSummary[]): EaMatchRecordSummary {
+  const played = matches.length
+  const wins = matches.filter((match) => match.result === 'W').length
+  const draws = matches.filter((match) => match.result === 'D').length
+  const losses = matches.filter((match) => match.result === 'L').length
+  const goalsFor = matches.reduce((acc, match) => acc + match.goalsFor, 0)
+  const goalsAgainst = matches.reduce((acc, match) => acc + match.goalsAgainst, 0)
+  const cleanSheets = matches.filter((match) => match.goalsAgainst === 0).length
+
+  return {
+    played,
+    wins,
+    draws,
+    losses,
+    goalsFor,
+    goalsAgainst,
+    goalDifference: goalsFor - goalsAgainst,
+    cleanSheets,
+    form: matches
+      .slice(0, 5)
+      .map((match) => match.result)
+      .reverse()
+      .join(''),
+    winRate: played > 0 ? Math.round((wins / played) * 100) : 0,
+    avgGoalsFor: played > 0 ? Math.round((goalsFor / played) * 10) / 10 : 0,
+    avgGoalsAgainst: played > 0 ? Math.round((goalsAgainst / played) * 10) / 10 : 0,
+  }
+}
+
+const fullProfileCache = new Map<string, { timestamp: number; data: EaClubFullProfile }>()
+const FULL_PROFILE_CACHE_TTL_MS = 5 * 60 * 1000
+
+interface EaFetchResult {
+  data: any
+  error: string | null
+}
+
+async function fetchEaJson(url: string): Promise<EaFetchResult> {
+  try {
+    const res = await fetch(url, { headers: EA_HEADERS })
+    if (!res.ok) return { data: null, error: `EA responded ${res.status}` }
+    return { data: await res.json(), error: null }
+  } catch (err) {
+    return { data: null, error: err instanceof Error ? err.message : 'EA request failed' }
+  }
+}
+
+/**
+ * Fetch the complete EA Pro Clubs picture for a club: overall record, roster,
+ * and every league / friendly / playoff match with player box scores.
+ *
+ * Responses are cached for five minutes because one dossier open costs five
+ * upstream calls, and EA rate-limits. A refresh bypasses the cache; if EA is
+ * unreachable the last good snapshot is returned and flagged as stale rather
+ * than replacing a usable screen with an error.
+ */
+export async function fetchEaClubFullProfile(
+  clubId: string,
+  platform = 'common-gen5',
+  options: { refresh?: boolean } = {},
+): Promise<EaClubFullProfile> {
+  const cid = String(clubId).trim()
+  if (!cid) throw new Error('A club id is required.')
+
+  const cacheKey = `${platform}:${cid}`
+  const cached = fullProfileCache.get(cacheKey)
+  const now = Date.now()
+
+  if (cached && !options.refresh && now - cached.timestamp < FULL_PROFILE_CACHE_TTL_MS) {
+    return { ...cached.data, cached: true, stale: false }
+  }
+
+  const base = 'https://proclubs.ea.com/api/fc'
+  const query = `clubId=${encodeURIComponent(cid)}&platform=${encodeURIComponent(platform)}`
+  const matchesQuery = `clubIds=${encodeURIComponent(cid)}&platform=${encodeURIComponent(platform)}`
+
+  const [statsResult, membersResult, leagueResult, friendlyResult, playoffResult] =
+    await Promise.all([
+      fetchEaJson(`${base}/clubs/overallStats?clubIds=${encodeURIComponent(cid)}&platform=${encodeURIComponent(platform)}`),
+      fetchEaJson(`${base}/members/stats?${query}`),
+      fetchEaJson(`${base}/clubs/matches?${matchesQuery}&matchType=leagueMatch`),
+      fetchEaJson(`${base}/clubs/matches?${matchesQuery}&matchType=friendlyMatch`),
+      fetchEaJson(`${base}/clubs/matches?${matchesQuery}&matchType=playoffMatch`),
+    ])
+
+  const warnings: string[] = []
+  for (const [label, result] of [
+    ['overall stats', statsResult],
+    ['roster', membersResult],
+    ['league matches', leagueResult],
+    ['friendly matches', friendlyResult],
+    ['playoff matches', playoffResult],
+  ] as const) {
+    if (result.error) warnings.push(`Could not load ${label}: ${result.error}`)
+  }
+
+  const statsRows = Array.isArray(statsResult.data) ? statsResult.data : []
+  const statsRow =
+    statsRows.find((row: any) => String(row?.clubId ?? row?.id ?? '') === cid) ?? statsRows[0] ?? {}
+
+  const membersData = membersResult.data ?? {}
+  const membersRows: any[] = Array.isArray(membersData?.members)
+    ? membersData.members
+    : Array.isArray(membersData)
+      ? membersData
+      : []
+
+  const roster = membersRows.map((member) => ({
+    gamertag: String(member.name ?? member.playername ?? '').trim(),
+    proName: String(member.proName ?? '').trim(),
+    position: String(member.favoritePosition ?? member.proPos ?? member.pos ?? 'Midfielder'),
+    overallRating: parseInteger(member.proOverall ?? member.overallRating),
+    gamesPlayed: parseInteger(member.gamesPlayed),
+    goals: parseInteger(member.goals),
+    assists: parseInteger(member.assists),
+    ratingAve: parseNumber(member.ratingAve) ?? 0,
+  }))
+
+  const leagueMatches = parseEaMatchList(
+    Array.isArray(leagueResult.data) ? leagueResult.data : [],
+    cid,
+    'leagueMatch',
+  )
+  const friendlyMatches = parseEaMatchList(
+    Array.isArray(friendlyResult.data) ? friendlyResult.data : [],
+    cid,
+    'friendlyMatch',
+  )
+  const playoffMatches = parseEaMatchList(
+    Array.isArray(playoffResult.data) ? playoffResult.data : [],
+    cid,
+    'playoffMatch',
+  )
+
+  const gamesPlayed = parseInteger(statsRow.gamesPlayed ?? statsRow.gamesplayed)
+  const wins = parseInteger(statsRow.wins)
+  const draws = parseInteger(statsRow.ties ?? statsRow.draws)
+  const losses = parseInteger(statsRow.losses)
+  const goalsFor = parseInteger(statsRow.goals)
+  const goalsAgainst = parseInteger(statsRow.goalsAgainst ?? statsRow.goalsagainst)
+
+  const name =
+    String(
+      statsRow.clubName ??
+        statsRow.name ??
+        membersData?.clubName ??
+        membersData?.name ??
+        leagueMatches[0]?.opponentName ??
+        '',
+    ).trim() || `Club #${cid}`
+
+  const profile: EaClubFullProfile = {
+    clubId: cid,
+    name,
+    platform,
+    fetchedAt: new Date().toISOString(),
+    cached: false,
+    stale: false,
+    stats: {
+      gamesPlayed,
+      wins,
+      draws,
+      losses,
+      goalsFor,
+      goalsAgainst,
+      goalDifference: goalsFor - goalsAgainst,
+      skillRating: parseInteger(statsRow.skillRating),
+      bestDivision: String(statsRow.bestDivision ?? 'Unranked'),
+      winStreak: parseInteger(statsRow.wstreak),
+      unbeatenStreak: parseInteger(statsRow.unbeatenstreak),
+      promotion: parseInteger(statsRow.promotions),
+      relegation: parseInteger(statsRow.relegations),
+    },
+    roster,
+    matches: {
+      league: leagueMatches,
+      friendly: friendlyMatches,
+      playoff: playoffMatches,
+    },
+    summaries: {
+      league: summarizeMatchList(leagueMatches),
+      friendly: summarizeMatchList(friendlyMatches),
+      playoff: summarizeMatchList(playoffMatches),
+      all: summarizeMatchList([...leagueMatches, ...friendlyMatches, ...playoffMatches]),
+    },
+    warnings,
+  }
+
+  const hasData =
+    gamesPlayed > 0 ||
+    roster.length > 0 ||
+    leagueMatches.length > 0 ||
+    friendlyMatches.length > 0 ||
+    playoffMatches.length > 0
+
+  if (hasData) {
+    fullProfileCache.set(cacheKey, { timestamp: now, data: profile })
+    return profile
+  }
+
+  if (cached) {
+    return { ...cached.data, cached: true, stale: true }
+  }
+
+  if (warnings.length > 0) {
+    throw new Error(warnings[0])
+  }
+
+  fullProfileCache.set(cacheKey, { timestamp: now, data: profile })
+  return profile
 }
 
 export interface EaClubDeepProfile {
