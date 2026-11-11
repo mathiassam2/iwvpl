@@ -379,6 +379,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .fixture-slot-name {
   max-width: 100%; min-height: 17px; color: var(--muted); font-size: 11px; font-weight: 650;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  box-sizing: border-box;
 }
 .fixture-slot.filled .fixture-slot-name { color: var(--text); }
 .fixture-slot .custom-select { width: 100%; min-width: 0; }
@@ -2869,6 +2870,9 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 }
 
 .adm-pill-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   padding: 7px 13px;
   border-radius: 999px;
   border: 1px solid var(--border);
@@ -2876,6 +2880,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   color: var(--muted);
   font-size: 12.5px;
   font-weight: 700;
+  line-height: 1.2;
   cursor: pointer;
 }
 
@@ -6216,7 +6221,7 @@ input:checked + .adm-slider:before {
   font-size: 13px;
 }
 
-.adm-club-picker {
+.adm-modal.adm-club-picker {
   max-height: 88vh;
   overflow-y: auto;
 }
@@ -6307,7 +6312,8 @@ input:checked + .adm-slider:before {
 
 .adm-dossier-toolbar {
   position: relative;
-  z-index: 20;
+  z-index: 25;
+  overflow: visible;
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
@@ -6322,6 +6328,9 @@ input:checked + .adm-slider:before {
 }
 
 .adm-dossier-tally-panel {
+  position: relative;
+  z-index: 20;
+  overflow: visible;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -6396,6 +6405,7 @@ input:checked + .adm-slider:before {
 .adm-club-picker {
   position: relative;
   width: min(100%, 430px);
+  overflow: visible;
 }
 
 .adm-club-picker-trigger {
@@ -6846,19 +6856,30 @@ input:checked + .adm-slider:before {
 }
 
 .adm-dossier-tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-width: 20px;
-  padding: 1px 6px;
+  height: 18px;
+  padding: 0 6px;
   border-radius: 999px;
   background: var(--surface-hover);
   color: var(--faint);
   font-size: 10px;
   font-weight: 800;
+  line-height: 1;
+  box-sizing: border-box;
   text-align: center;
 }
 
 .adm-dossier-tab.is-active .adm-dossier-tab-count {
   background: var(--accent-soft);
   color: var(--accent);
+}
+
+.adm-pill-tab.is-active .adm-dossier-tab-count {
+  background: rgb(0 0 0 / 22%);
+  color: #0b0d0f;
 }
 
 /* Overview ------------------------------------------------------------- */
@@ -7095,6 +7116,7 @@ input:checked + .adm-slider:before {
   min-width: 26px;
   height: 22px;
   padding: 0 7px;
+  box-sizing: border-box;
   border: 1px solid var(--border-strong);
   border-radius: 6px;
   color: var(--muted);

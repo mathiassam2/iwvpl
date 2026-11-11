@@ -177,6 +177,9 @@ async function main() {
     `import('./api/dist/server.js').catch((err) => {\n  console.error('Failed to boot IWVPL server:', err);\n  process.exit(1);\n});\n`,
   )
 
+  mkdirSync(join(stageDir, 'tmp'), { recursive: true })
+  writeFileSync(join(stageDir, 'tmp', 'restart.txt'), String(Date.now()))
+
   execSync(`tar -czf "${archivePath}" -C "${stageDir}" .`, { stdio: 'inherit' })
 
   console.log('3. Uploading and extracting on cPanel...')
@@ -213,7 +216,13 @@ async function main() {
   })
 
   console.log('4. Restarting Passenger Node.js app...')
-  const restart = await callCloudlinux(session, 'restart', { 'app-root': 'iwvpl_v2_app' })
+  // Stop and restart to ensure stale worker processes recycle cleanly
+  await callCloudlinux(session, 'stop', { 'app-root': 'iwvpl_v2_app' }).catch(() => {})
+  await new Promise((r) => setTimeout(r, 2000))
+  let restart = await callCloudlinux(session, 'start', { 'app-root': 'iwvpl_v2_app' })
+  if (restart?.result !== 'success') {
+    restart = await callCloudlinux(session, 'restart', { 'app-root': 'iwvpl_v2_app' })
+  }
   console.log('Restart result:', restart)
   if (restart?.result !== 'success') {
     throw new Error('cPanel did not confirm the Passenger app restart.')
