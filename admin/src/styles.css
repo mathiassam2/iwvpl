@@ -6647,6 +6647,367 @@ input:checked + .adm-slider:before {
   font-size: 13px;
 }
 
+/* Dossier Guide Banner ------------------------------------------------ */
+
+.adm-dossier-guide-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px;
+  border: 1px solid rgb(56 189 248 / 28%);
+  border-radius: var(--dossier-radius);
+  background: linear-gradient(105deg, rgb(56 189 248 / 9%), transparent 65%), var(--surface);
+  box-shadow: 0 4px 18px rgb(0 0 0 / 20%);
+}
+
+.adm-dossier-guide-content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.adm-dossier-guide-badge span {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid rgb(56 189 248 / 38%);
+  background: rgb(56 189 248 / 12%);
+  color: #38bdf8;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.adm-dossier-guide-text strong {
+  display: block;
+  color: var(--text);
+  font-size: 13.5px;
+  font-weight: 750;
+  margin-bottom: 2px;
+}
+
+.adm-dossier-guide-text p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.adm-dossier-guide-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.adm-dossier-guide-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  color: #cbd5e1;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.adm-dossier-guide-actions {
+  flex-shrink: 0;
+}
+
+/* Dossier Onboarding Hero & Features ----------------------------------- */
+
+.adm-dossier-onboarding {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 32px 28px;
+  border: 1px solid var(--border);
+  border-radius: var(--dossier-radius);
+  background:
+    radial-gradient(ellipse at 85% 0%, rgb(200 255 61 / 6%), transparent 30rem),
+    radial-gradient(ellipse at 15% 100%, rgb(56 189 248 / 5%), transparent 30rem),
+    var(--surface);
+}
+
+.adm-dossier-onboarding-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 780px;
+}
+
+.adm-dossier-onboarding-head h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.adm-dossier-onboarding-head p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.adm-dossier-features-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.adm-dossier-feature-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-raised);
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.adm-dossier-feature-card:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-2px);
+}
+
+.adm-dossier-feature-card.is-highlight {
+  border-color: rgb(200 255 61 / 30%);
+  background:
+    linear-gradient(135deg, rgb(200 255 61 / 5%), transparent 70%),
+    var(--surface-raised);
+}
+
+.adm-dossier-feature-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.adm-dossier-feature-card.is-highlight .adm-dossier-feature-badge {
+  border-color: rgb(200 255 61 / 35%);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.adm-dossier-feature-card h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 750;
+}
+
+.adm-dossier-feature-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.55;
+  flex: 1;
+}
+
+.adm-dossier-feature-footer {
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid rgb(255 255 255 / 6%);
+  color: var(--faint);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* Workflow Steps ------------------------------------------------------- */
+
+.adm-dossier-workflow-box {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 20px;
+  border: 1px solid rgb(56 189 248 / 20%);
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgb(56 189 248 / 4%), transparent 60%), var(--surface-raised);
+}
+
+.adm-dossier-workflow-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.adm-dossier-workflow-head strong {
+  color: #38bdf8;
+  font-size: 13.5px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.adm-dossier-workflow-head span {
+  color: var(--faint);
+  font-size: 11.5px;
+}
+
+.adm-dossier-workflow-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.adm-dossier-workflow-step {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.adm-dossier-step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.adm-dossier-step-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.adm-dossier-step-body strong {
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.adm-dossier-step-body span {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+/* Quick Start Clubs ---------------------------------------------------- */
+
+.adm-dossier-quick-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.adm-dossier-quick-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.adm-dossier-quick-head h4 {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.adm-dossier-quick-head p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.adm-dossier-quick-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 10px;
+}
+
+.adm-dossier-quick-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-raised);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.adm-dossier-quick-card:hover {
+  border-color: var(--accent);
+  background: var(--surface-hover);
+  transform: translateY(-1px);
+}
+
+.adm-dossier-quick-card:focus-visible {
+  outline: 2px solid var(--accent);
+  border-color: var(--accent);
+}
+
+.adm-dossier-quick-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.adm-dossier-quick-info strong {
+  overflow: hidden;
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adm-dossier-quick-info small {
+  color: var(--faint);
+  font-size: 10.5px;
+}
+
+.adm-dossier-quick-arrow {
+  color: var(--faint);
+  font-size: 14px;
+  transition: transform 0.15s ease, color 0.15s ease;
+}
+
+.adm-dossier-quick-card:hover .adm-dossier-quick-arrow {
+  color: var(--accent);
+  transform: translateX(2px);
+}
+
+@media (max-width: 900px) {
+  .adm-dossier-features-grid,
+  .adm-dossier-workflow-steps {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Hero ----------------------------------------------------------------- */
 
 .adm-dossier-hero {

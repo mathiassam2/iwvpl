@@ -138,7 +138,7 @@ function ClubPicker({
   clubs: Club[]
   value: string | null
   disabled?: boolean
-  onChange: (slug: string) => void
+  onChange: (slug: string | null) => void
 }) {
   const [open, setOpen] = useState(false)
   const [opensUp, setOpensUp] = useState(false)
@@ -233,7 +233,30 @@ function ClubPicker({
             />
             <kbd>{filtered.length}</kbd>
           </div>
-          <div className="adm-club-picker-list">
+                    <div className="adm-club-picker-list">
+            <button
+              type="button"
+              role="option"
+              aria-selected={value === null}
+              className={`adm-club-picker-option${value === null ? ' is-selected' : ''}`}
+              onClick={() => {
+                onChange(null)
+                setOpen(false)
+              }}
+            >
+              <span
+                className="adm-dossier-crest adm-dossier-crest-fallback is-sm"
+                style={{ background: 'var(--accent-soft)', color: 'var(--accent)', fontWeight: 800 }}
+                aria-hidden="true"
+              >
+                📋
+              </span>
+              <span className="adm-club-picker-option-text">
+                <strong>Overview &amp; Onboarding Hub</strong>
+                <small>Feature walkthrough, tally guide &amp; quick-start clubs</small>
+              </span>
+              {value === null && <span className="adm-club-picker-check">✓</span>}
+            </button>
             {filtered.length === 0 ? (
               <p className="adm-club-picker-empty">No clubs match “{query}”.</p>
             ) : (
@@ -670,6 +693,148 @@ function EaMatchDetail({ match }: { match: EaMatchSummary }) {
   )
 }
 
+/* -------------------------------------------------------- onboarding hero */
+
+function DossierOnboardingHero({
+  clubs,
+  onSelectClub,
+}: {
+  clubs: Club[]
+  onSelectClub: (slug: string) => void
+}) {
+  const activeClubs = useMemo(() => {
+    return [...clubs]
+      .sort((a, b) => {
+        const aScore = (a.ea_club_id ? 100 : 0) + (a.status === 'active' ? 50 : 0) + (a.players || 0)
+        const bScore = (b.ea_club_id ? 100 : 0) + (b.status === 'active' ? 50 : 0) + (b.players || 0)
+        return bScore - aScore
+      })
+      .slice(0, 18)
+  }, [clubs])
+
+  return (
+    <div className="adm-dossier-onboarding">
+      <div className="adm-dossier-onboarding-head">
+        <span className="adm-eyebrow" style={{ color: 'var(--accent)', fontWeight: 800 }}>
+          ADMIN INTELLIGENCE HUB
+        </span>
+        <h2>Welcome to the IWVPL Club Dossier</h2>
+        <p>
+          The Club Dossier gives league administrators complete visibility into club performance,
+          squad registrations, and official match history. It replaces tedious manual scorekeeping
+          with automated <strong>EA Pro Clubs Match Tallying</strong>.
+        </p>
+      </div>
+
+      <div className="adm-dossier-features-grid">
+        <div className="adm-dossier-feature-card is-highlight">
+          <div className="adm-dossier-feature-badge">⚡ Match Automation</div>
+          <h3>1-Click EA Match Tallying</h3>
+          <p>
+            Connect official IWVPL fixtures directly to EA Sports servers. Automatically import
+            the final score and every player&apos;s individual goals, assists, saves, tackles, and
+            match ratings in seconds without manual calculation.
+          </p>
+          <div className="adm-dossier-feature-footer">
+            ✓ Smart EA match suggestions · Difference preview · Safe re-tallying
+          </div>
+        </div>
+
+        <div className="adm-dossier-feature-card">
+          <div className="adm-dossier-feature-badge">👥 Squad Audit</div>
+          <h3>Roster &amp; Player Diagnostics</h3>
+          <p>
+            Review club rosters, verify active player registrations, check squad depth, and
+            view aggregated player stats across the entire season. Spot missing links or duplicate
+            accounts before match day.
+          </p>
+          <div className="adm-dossier-feature-footer">
+            ✓ Sortable player totals · Clean sheets · Registration check
+          </div>
+        </div>
+
+        <div className="adm-dossier-feature-card">
+          <div className="adm-dossier-feature-badge">📊 Telemetry Audit</div>
+          <h3>Dual-Source Form &amp; History</h3>
+          <p>
+            Cross-reference official IWVPL league results with raw EA Sports server logs, win rates,
+            and clean-sheet streaks across League, Friendly, and Playoff competitions.
+          </p>
+          <div className="adm-dossier-feature-footer">
+            ✓ Head-to-head records · Scoreline verification · EA telemetry
+          </div>
+        </div>
+      </div>
+
+      <div className="adm-dossier-workflow-box">
+        <div className="adm-dossier-workflow-head">
+          <strong>How to Tally an Official Fixture in 3 Simple Steps:</strong>
+          <span>Zero manual spreadsheet work required</span>
+        </div>
+        <div className="adm-dossier-workflow-steps">
+          <div className="adm-dossier-workflow-step">
+            <span className="adm-dossier-step-num">1</span>
+            <div className="adm-dossier-step-body">
+              <strong>Select a Club</strong>
+              <span>Use the search bar above or click any club from the quick-start list below.</span>
+            </div>
+          </div>
+          <div className="adm-dossier-workflow-step">
+            <span className="adm-dossier-step-num">2</span>
+            <div className="adm-dossier-step-body">
+              <strong>Click &ldquo;Tally&rdquo; on Fixture</strong>
+              <span>Find the scheduled or finished match in the fixture list or use the top tally selector.</span>
+            </div>
+          </div>
+          <div className="adm-dossier-workflow-step">
+            <span className="adm-dossier-step-num">3</span>
+            <div className="adm-dossier-step-body">
+              <strong>Apply &amp; Confirm</strong>
+              <span>Select the matching EA game candidate, review the scoreline, and save all stats in one click.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {clubs.length > 0 && (
+        <div className="adm-dossier-quick-section">
+          <div className="adm-dossier-quick-head">
+            <div>
+              <h4>⚡ Quick-Start: Jump into a Club</h4>
+              <p>Click any active club below to load its intelligence dossier immediately:</p>
+            </div>
+            <span className="adm-text-muted" style={{ fontSize: '11.5px' }}>
+              Showing {activeClubs.length} active clubs
+            </span>
+          </div>
+
+          <div className="adm-dossier-quick-grid">
+            {activeClubs.map((club) => (
+              <button
+                key={club.slug}
+                type="button"
+                className="adm-dossier-quick-card"
+                onClick={() => onSelectClub(club.slug)}
+              >
+                <ClubCrest src={club.logo_local || club.logo_url} name={club.name} size="sm" />
+                <div className="adm-dossier-quick-info">
+                  <strong>{club.name}</strong>
+                  <small>
+                    {club.flag ? `${club.flag} ` : ''}
+                    {club.short_code ? `${club.short_code} · ` : ''}
+                    {club.ea_club_id ? 'EA linked' : `${club.players || 0} players`}
+                  </small>
+                </div>
+                <span className="adm-dossier-quick-arrow" aria-hidden="true">&rarr;</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 /* -------------------------------------------------------------- dossier view */
 
 export function ClubDossierView({
@@ -705,7 +870,24 @@ export function ClubDossierView({
   const [eaTallyMatch, setEaTallyMatch] = useState<Match | null>(null)
   const [tallyMatchId, setTallyMatchId] = useState<number | null>(null)
   const [iwvplFilter, setIWVPLFilter] = useState<'all' | 'played' | 'upcoming'>('all')
-  const [playerSort, setPlayerSort] = useState<{ key: PlayerSortKey; direction: 'asc' | 'desc' }>({
+  const [showGuideBanner, setShowGuideBanner] = useState(() => {
+    return window.localStorage.getItem('iwvpl_dossier_guide_dismissed') !== 'true'
+  })
+
+  const dismissGuideBanner = () => {
+    setShowGuideBanner(false)
+    window.localStorage.setItem('iwvpl_dossier_guide_dismissed', 'true')
+  }
+
+  const toggleGuideBanner = () => {
+    setShowGuideBanner((current) => {
+      const next = !current
+      if (next) window.localStorage.removeItem('iwvpl_dossier_guide_dismissed')
+      return next
+    })
+  }
+
+    const [playerSort, setPlayerSort] = useState<{ key: PlayerSortKey; direction: 'asc' | 'desc' }>({
     key: 'goals',
     direction: 'desc',
   })
@@ -723,7 +905,8 @@ export function ClubDossierView({
         setClubs(list)
         setSelectedSlug((current) => {
           if (current && list.some((club) => club.slug === current)) return current
-          return list.find((club) => club.status === 'active')?.slug ?? list[0]?.slug ?? null
+          if (initialSlug && list.some((club) => club.slug === initialSlug)) return initialSlug
+          return null
         })
       })
       .catch(() => {
@@ -802,7 +985,7 @@ export function ClubDossierView({
     void loadEaProfile(selectedSlug, false)
   }, [selectedSlug, loadEaProfile])
 
-  const selectClub = (slug: string) => {
+  const selectClub = (slug: string | null) => {
     if (slug === selectedSlug) return
     setSelectedSlug(slug)
     setSeasonId(null)
@@ -997,6 +1180,14 @@ export function ClubDossierView({
           <button
             type="button"
             className="adm-btn adm-btn-secondary"
+            onClick={toggleGuideBanner}
+            title="Toggle Dossier & Match Tallying Guide"
+          >
+            {showGuideBanner ? 'Hide Guide' : '💡 Guide'}
+          </button>
+          <button
+            type="button"
+            className="adm-btn adm-btn-secondary"
             disabled={!selectedSlug || eaLoading || !linked}
             onClick={() => selectedSlug && void loadEaProfile(selectedSlug, true)}
           >
@@ -1008,20 +1199,53 @@ export function ClubDossierView({
         </div>
       </section>
 
-      {!selectedSlug || clubsLoading ? (
-        <section className="adm-card adm-dossier-placeholder">
-          {clubsLoading ? (
-            <>
-              <span className="spinner" aria-hidden="true" />
-              <h3>Loading clubs…</h3>
-              <p>Connecting to the live league database.</p>
-            </>
-          ) : (
-            <>
-              <h3>Choose a club to open its dossier</h3>
-              <p>Search for any IWVPL club above to see league and EA data.</p>
-            </>
-          )}
+      {showGuideBanner && (
+        <section className="adm-dossier-guide-banner" aria-label="Dossier quick guide">
+          <div className="adm-dossier-guide-content">
+            <div className="adm-dossier-guide-badge">
+              <span>💡 ADMIN ONBOARDING GUIDE</span>
+            </div>
+            <div className="adm-dossier-guide-text">
+              <strong>Supercharge match day with automated EA Match Tallying</strong>
+              <p>
+                Link scheduled or finished fixtures directly to EA Pro Clubs server logs to instantly import scorelines,
+                individual player goals, assists, saves, and ratings with difference previews and zero manual typing.
+              </p>
+            </div>
+            <div className="adm-dossier-guide-tags">
+              <span className="adm-dossier-guide-pill">⚡ 1-Click EA Match Sync</span>
+              <span className="adm-dossier-guide-pill">👥 Squad &amp; Ratings Roster</span>
+              <span className="adm-dossier-guide-pill">🔄 Safe Re-Tallying</span>
+            </div>
+          </div>
+          <div className="adm-dossier-guide-actions">
+            <button
+              type="button"
+              className="adm-btn adm-btn-ghost adm-btn-sm"
+              onClick={dismissGuideBanner}
+              title="Dismiss this tip (can be reopened via Guide button)"
+            >
+              Dismiss
+            </button>
+          </div>
+        </section>
+      )}
+
+      {!selectedSlug ? (
+        clubsLoading ? (
+          <section className="adm-card adm-dossier-placeholder" aria-busy="true">
+            <span className="spinner" aria-hidden="true" />
+            <h3>Loading clubs…</h3>
+            <p>Connecting to the live league database.</p>
+          </section>
+        ) : (
+          <DossierOnboardingHero clubs={clubs} onSelectClub={selectClub} />
+        )
+      ) : clubsLoading ? (
+        <section className="adm-card adm-dossier-placeholder" aria-busy="true">
+          <span className="spinner" aria-hidden="true" />
+          <h3>Loading clubs…</h3>
+          <p>Connecting to the live league database.</p>
         </section>
       ) : loading && !dossier ? (
         <section className="adm-card adm-dossier-placeholder" aria-busy="true">
