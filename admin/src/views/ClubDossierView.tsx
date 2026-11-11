@@ -12,8 +12,10 @@ import {
   type EaClubFullProfile,
   type EaMatchSummary,
   type EaPlayerStatItem,
+  type Match,
 } from '../api'
 import { CustomSelect } from '../CustomSelect'
+import { EaMatchResultModal } from './EaMatchResultModal'
 import { formatKickoffDisplay, normalizeSearch, type Guard, type Report } from '../utils'
 
 type DossierTab = 'overview' | 'iwvpl' | 'ea' | 'squad' | 'players'
@@ -139,6 +141,7 @@ function ClubPicker({
   onChange: (slug: string) => void
 }) {
   const [open, setOpen] = useState(false)
+  const [opensUp, setOpensUp] = useState(false)
   const [query, setQuery] = useState('')
   const rootRef = useRef<HTMLDivElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
@@ -170,15 +173,25 @@ function ClubPicker({
     })
   }, [clubs, query])
 
+  const toggleOpen = () => {
+    if (!open && rootRef.current) {
+      const rect = rootRef.current.getBoundingClientRect()
+      const spaceAbove = rect.top
+      const spaceBelow = window.innerHeight - rect.bottom
+      setOpensUp(spaceBelow < 390 && spaceAbove > spaceBelow)
+    }
+    setOpen((current) => !current)
+  }
+
   return (
-    <div className="adm-club-picker" ref={rootRef}>
+    <div className={`adm-club-picker${opensUp ? ' opens-up' : ''}`} ref={rootRef}>
       <button
         type="button"
         className="adm-club-picker-trigger"
         aria-haspopup="listbox"
         aria-expanded={open}
         disabled={disabled}
-        onClick={() => setOpen((current) => !current)}
+        onClick={toggleOpen}
       >
         {selected ? (
           <>
@@ -689,6 +702,8 @@ export function ClubDossierView({
   const [eaError, setEaError] = useState<string | null>(null)
   const [expandedMatch, setExpandedMatch] = useState<number | null>(null)
   const [expandedEaMatch, setExpandedEaMatch] = useState<string | null>(null)
+  const [eaTallyMatch, setEaTallyMatch] = useState<Match | null>(null)
+  const [tallyMatchId, setTallyMatchId] = useState<number | null>(null)
   const [iwvplFilter, setIWVPLFilter] = useState<'all' | 'played' | 'upcoming'>('all')
   const [playerSort, setPlayerSort] = useState<{ key: PlayerSortKey; direction: 'asc' | 'desc' }>({
     key: 'goals',
@@ -822,6 +837,35 @@ export function ClubDossierView({
     })
   }, [dossier, iwvplFilter])
 
+  const tallyableMatches = useMemo(
+    () => {
+      const matches = (dossier?.matches ?? []).filter(
+        (match) =>
+          match.status === 'scheduled' ||
+          (match.score_for !== null && match.score_against !== null),
+      )
+      return matches.sort((a, b) => {
+        const aFinished = a.score_for !== null && a.score_against !== null
+        const bFinished = b.score_for !== null && b.score_against !== null
+        if (aFinished !== bFinished) return aFinished ? 1 : -1
+        const aKickoff = a.kickoff ?? ''
+        const bKickoff = b.kickoff ?? ''
+        return aFinished ? bKickoff.localeCompare(aKickoff) : aKickoff.localeCompare(bKickoff)
+      })
+    },
+    [dossier?.matches],
+  )
+  const selectedTallyMatch =
+    tallyableMatches.find((match) => match.id === tallyMatchId) ?? tallyableMatches[0] ?? null
+  const tallyMatchOptions = tallyableMatches.map((match) => {
+    const hasResult = match.score_for !== null && match.score_against !== null
+    const date = match.kickoff ? formatKickoffDisplay(match.kickoff) : 'Unscheduled'
+    return {
+      value: String(match.id),
+      label: `${match.opponent.name} · ${date} · ${hasResult ? 'Re-tally' : 'Scheduled'}`,
+    }
+  })
+
   const eaMatches = eaProfile?.matches[eaTab] ?? []
   const activeEaSummary = eaProfile?.summaries[eaTab] ?? null
 
@@ -894,6 +938,36 @@ export function ClubDossierView({
         .getElementById(`dossier-match-${matchId}`)
         ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     }, 30)
+  }
+
+  const openEaTally = (match: DossierMatch) => {
+    if (!dossier) return
+    const home = match.is_home ? dossier.club : match.opponent
+    const away = match.is_home ? match.opponent : dossier.club
+    setTallyMatchId(match.id)
+    setEaTallyMatch({
+      id: match.id,
+      kickoff: match.kickoff,
+      status: match.status,
+      home_score: match.is_home ? match.score_for : match.score_against,
+      away_score: match.is_home ? match.score_against : match.score_for,
+      division_id: match.division_id,
+      division_name: match.division_name,
+      division_slug: match.division_slug,
+      season_id: dossier.season?.id,
+      round_number: match.round_number,
+      home_club_id: home.id,
+      home_name: home.name,
+      home_slug: home.slug,
+      home_code: home.short_code,
+      home_logo: home.logo,
+      away_club_id: away.id,
+      away_name: away.name,
+      away_slug: away.slug,
+      away_code: away.short_code,
+      away_logo: away.logo,
+      ea_match_id: match.ea_match_id,
+    })
   }
 
   return (
@@ -1012,6 +1086,34 @@ export function ClubDossierView({
                   ⚙ Manage club
                 </button>
               )}
+            </div>
+          </section>
+
+          <section className="adm-dossier-tally-panel" aria-label="EA match tally">
+            <div>
+              <span className="adm-eyebrow">EA MATCH TALLY</span>
+              <strong>Link a fixture to its EA match</strong>
+              <p>
+                Apply the full EA score and player stats. Re-tallying a finished fixture updates
+                its recorded result and season totals.
+              </p>
+            </div>
+            <div className="adm-dossier-tally-actions">
+              <CustomSelect
+                value={selectedTallyMatch ? String(selectedTallyMatch.id) : ''}
+                options={tallyMatchOptions}
+                onChange={(value) => setTallyMatchId(Number(value))}
+                disabled={!tallyMatchOptions.length || loading}
+                ariaLabel="Select a scheduled or finished fixture to tally"
+              />
+              <button
+                type="button"
+                className="adm-btn adm-btn-primary"
+                disabled={!selectedTallyMatch || loading}
+                onClick={() => selectedTallyMatch && openEaTally(selectedTallyMatch)}
+              >
+                Tally selected fixture
+              </button>
             </div>
           </section>
 
@@ -1474,40 +1576,59 @@ export function ClubDossierView({
                         id={`dossier-match-${match.id}`}
                         className={`adm-dossier-match${expanded ? ' is-open' : ''}`}
                       >
-                        <button
-                          type="button"
-                          className="adm-dossier-match-summary"
-                          aria-expanded={expanded}
-                          onClick={() => setExpandedMatch(expanded ? null : match.id)}
-                        >
-                          <span className="adm-dossier-match-date">
-                            {match.kickoff ? formatKickoffDisplay(match.kickoff) : 'Unscheduled'}
-                          </span>
-                          <span className="adm-dossier-match-opponent">
-                            <ClubCrest src={match.opponent.logo} name={match.opponent.name} size="sm" />
-                            <span>
-                              <strong>{match.opponent.name}</strong>
-                              <small>
-                                {match.is_home ? 'Home' : 'Away'}
-                                {match.division_name ? ` · ${match.division_name}` : ''}
-                                {match.round_number ? ` · Round ${match.round_number}` : ''}
-                              </small>
+                        <div className="adm-dossier-match-head">
+                          <button
+                            type="button"
+                            className="adm-dossier-match-summary"
+                            aria-expanded={expanded}
+                            onClick={() => setExpandedMatch(expanded ? null : match.id)}
+                          >
+                            <span className="adm-dossier-match-date">
+                              {match.kickoff ? formatKickoffDisplay(match.kickoff) : 'Unscheduled'}
                             </span>
-                          </span>
-                          <span className="adm-dossier-match-score">
-                            {match.score_for !== null && match.score_against !== null
-                              ? `${match.score_for}–${match.score_against}`
-                              : 'vs'}
-                          </span>
-                          <ResultBadge
-                            result={match.result}
-                            fallback={match.status === 'scheduled' ? 'Scheduled' : match.status}
-                          />
-                          {match.ea_match_id && <span className="adm-dossier-ea-pill">EA</span>}
-                          <span className="adm-dossier-chevron" aria-hidden="true">
-                            {expanded ? '▴' : '▾'}
-                          </span>
-                        </button>
+                            <span className="adm-dossier-match-opponent">
+                              <ClubCrest src={match.opponent.logo} name={match.opponent.name} size="sm" />
+                              <span>
+                                <strong>{match.opponent.name}</strong>
+                                <small>
+                                  {match.is_home ? 'Home' : 'Away'}
+                                  {match.division_name ? ` · ${match.division_name}` : ''}
+                                  {match.round_number ? ` · Round ${match.round_number}` : ''}
+                                </small>
+                              </span>
+                            </span>
+                            <span className="adm-dossier-match-score">
+                              {match.score_for !== null && match.score_against !== null
+                                ? `${match.score_for}–${match.score_against}`
+                                : 'vs'}
+                            </span>
+                            <ResultBadge
+                              result={match.result}
+                              fallback={match.status === 'scheduled' ? 'Scheduled' : match.status}
+                            />
+                            {match.ea_match_id && <span className="adm-dossier-ea-pill">EA</span>}
+                            <span className="adm-dossier-chevron" aria-hidden="true">
+                              {expanded ? '▴' : '▾'}
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            className="adm-btn adm-btn-secondary adm-btn-sm adm-dossier-match-tally"
+                            disabled={
+                              match.status !== 'scheduled' &&
+                              !(match.score_for !== null && match.score_against !== null)
+                            }
+                            title={
+                              match.status === 'scheduled' ||
+                              (match.score_for !== null && match.score_against !== null)
+                                ? 'Link this IWVPL fixture to an EA match and apply its score and stats'
+                                : 'Only scheduled or finished fixtures can be tallied'
+                            }
+                            onClick={() => openEaTally(match)}
+                          >
+                            {match.score_for !== null && match.score_against !== null ? 'Re-tally' : 'Tally'}
+                          </button>
+                        </div>
                         {expanded && <IWVPLMatchDetail match={match} />}
                       </article>
                     )
@@ -1954,6 +2075,18 @@ export function ClubDossierView({
               )}
             </section>
           )}
+
+          <EaMatchResultModal
+            isOpen={eaTallyMatch !== null}
+            match={eaTallyMatch}
+            onClose={() => setEaTallyMatch(null)}
+            onSuccess={(message) => {
+              report('ok', message)
+              setReloadNonce((current) => current + 1)
+            }}
+            guard={guard}
+            report={report}
+          />
         </>
       ) : null}
     </div>

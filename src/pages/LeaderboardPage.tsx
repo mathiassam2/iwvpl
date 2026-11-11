@@ -119,56 +119,75 @@ export default function LeaderboardPage() {
 
       <Section>
         <Container size="narrow">
-          {seasons.length > 0 && (
-            <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--text-faint)]">
-                  Season filter
-                </p>
-                <p className="mt-1 text-sm text-[var(--text-muted)]">
-                  Showing {seasonLabel}
-                  {scopeLabel ? ` · ${scopeLabel}` : ''}
-                  {loading ? ' · Updating…' : ''}
-                </p>
-              </div>
-              <Select
-                value={seasonId ? String(seasonId) : ''}
-                onChange={(value) => {
-                  setDivisionId(null)
-                  setSeasonId(Number(value))
-                }}
-                options={seasons.map((s) => ({
-                  value: String(s.id),
-                  label: `${s.name}${Boolean(s.is_current) ? ' · Live' : ''}`,
-                }))}
-                ariaLabel="Select season"
-                size="sm"
-                className="min-w-[15rem]"
-              />
+          {(seasons.length > 0 || divisions.length > 1) && (
+            <div className="surface mb-6 flex flex-col gap-3 rounded-card px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+              {seasons.length > 0 && (
+                <div className="flex items-center justify-between gap-3 sm:justify-start">
+                  <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--text-faint)]">
+                    Season
+                  </span>
+                  <Select
+                    value={seasonId ? String(seasonId) : ''}
+                    onChange={(value) => {
+                      setDivisionId(null)
+                      setSeasonId(Number(value))
+                    }}
+                    options={seasons.map((s) => ({
+                      value: String(s.id),
+                      label: `${s.name}${Boolean(s.is_current) ? ' · Live' : ''}`,
+                    }))}
+                    ariaLabel="Select season"
+                    size="sm"
+                    className="min-w-[12rem]"
+                  />
+                </div>
+              )}
+
+              {divisions.length > 1 && (
+                <div className="flex items-center justify-between gap-3 sm:justify-start">
+                  <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--text-faint)]">
+                    Division
+                  </span>
+                  <div
+                    role="group"
+                    aria-label="Filter leaderboard by division"
+                    className="no-scrollbar inline-flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-[var(--border)] bg-[var(--surface-2)] p-1"
+                  >
+                    {[
+                      { id: 'combined', label: 'Combined' },
+                      ...divisions.map((d) => ({ id: String(d.id), label: d.name })),
+                    ].map((d) => {
+                      const on = d.id === 'combined' ? divisionId === null : divisionId === Number(d.id)
+                      return (
+                        <button
+                          key={d.id}
+                          type="button"
+                          aria-pressed={on}
+                          onClick={() => setDivisionId(d.id === 'combined' ? null : Number(d.id))}
+                          className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition-colors duration-200 ${
+                            on
+                              ? 'bg-[var(--accent-solid)] text-[var(--on-volt)]'
+                              : 'text-[var(--text-muted)] hover:text-[var(--text-strong)]'
+                          }`}
+                        >
+                          {d.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
-          {divisions.length > 1 && (
-            <div className="mb-6">
-              <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--text-faint)]">
-                Division filter
-              </p>
-              <div className="border-b border-[var(--border)]">
-                <Tabs
-                  tabs={[
-                    { id: 'combined', label: 'Combined' },
-                    ...divisions.map((d) => ({ id: String(d.id), label: d.name })),
-                  ]}
-                  active={divisionId === null ? 'combined' : String(divisionId)}
-                  onChange={(id) => setDivisionId(id === 'combined' ? null : Number(id))}
-                  idPrefix="lb-div"
-                />
-              </div>
-            </div>
-          )}
+          <p role="status" className="sr-only">
+            Showing {seasonLabel}
+            {scopeLabel ? `, ${scopeLabel}` : ''}
+            {loading ? ', updating' : ''}
+          </p>
 
           {/* bare tabs — no outer container */}
-          <div className="mb-8 border-b border-[var(--border)]">
+          <div className="mb-8 flex items-end justify-between gap-3 border-b border-[var(--border)]">
             <Tabs
               tabs={effectiveBoards.map((b) => ({
                 id: b.title,
@@ -179,6 +198,11 @@ export default function LeaderboardPage() {
               onChange={setActive}
               idPrefix="lb"
             />
+            {loading && (
+              <span className="shrink-0 pb-2.5 text-[11px] font-semibold text-[var(--accent-text)]">
+                Updating…
+              </span>
+            )}
           </div>
 
           {board ? (
