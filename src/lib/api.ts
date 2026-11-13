@@ -437,25 +437,50 @@ export interface TotwPlayer {
   clubLogo: string | null
   playerId?: number | null
   playerSlug?: string | null
+  /** The registered player's own avatar, used when no poster photo was uploaded. */
+  avatarUrl?: string | null
+  /** The rating this pick was justified by, taken from the team's game week. */
+  rating?: number | null
+  goals?: number
+  assists?: number
   closeUrl: string | null
   candidUrl: string | null
+}
+
+/** A division that has its own Team of the Week. */
+export interface TotwDivision {
+  id: number
+  name: string
+  slug: string
+  seasonName: string
+  weekCount: number
 }
 
 export interface TotwWeekSummary {
   id: number
   label: string
   publishedAt: string | null
+  divisionId: number | null
+  divisionName: string | null
+  gameWeek: number | null
 }
 
 export interface TotwResponse {
+  divisions: TotwDivision[]
+  divisionId: number | null
   weeks: TotwWeekSummary[]
   week: (TotwWeekSummary & { players: TotwPlayer[] }) | null
 }
 
 export const getTotwAccess = () => request<{ allowed: boolean }>('/api/totw/access')
 
-export const getTotw = (weekId?: number | null) =>
-  request<TotwResponse>(`/api/totw${weekId ? `?week=${weekId}` : ''}`)
+export const getTotw = (weekId?: number | null, divisionId?: number | null) => {
+  const params = new URLSearchParams()
+  if (weekId) params.set('week', String(weekId))
+  if (divisionId) params.set('division', String(divisionId))
+  const query = params.toString()
+  return request<TotwResponse>(`/api/totw${query ? `?${query}` : ''}`)
+}
 
 /* --------------------------------------------------------- transfer window */
 

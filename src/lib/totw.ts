@@ -410,14 +410,29 @@ function drawCard(
   const nameTop = lastBase - (rest ? lineGap : 0) - nameSize
   g.font = `700 ${Math.max(11, h * 0.046)}px ${FONT}`
   g.fillStyle = 'rgba(255,255,255,0.78)'
-  g.fillText(p.position.toUpperCase(), tx, nameTop - h * 0.018)
+  const posText = p.position.toUpperCase()
+  g.fillText(posText, tx, nameTop - h * 0.018)
+
+  // The rating the pick was justified by, from the team's own game week.
+  const rating = p.rating != null ? Number(p.rating).toFixed(1) : null
+  if (rating) {
+    const posWidth = g.measureText(posText).width
+    g.fillStyle = VOLT
+    g.font = `800 ${Math.max(12, h * 0.05)}px ${FONT}`
+    g.fillText(rating, tx + posWidth + w * 0.035, nameTop - h * 0.018)
+  }
+
   g.fillStyle = VOLT
   g.fillRect(tx, baseY + h * 0.012, Math.min(maxW, w * 0.09), Math.max(3, h * 0.012))
 
   g.restore()
 }
 
-export async function renderTotwPoster(label: string, players: TotwPlayer[]): Promise<Blob> {
+export async function renderTotwPoster(
+  label: string,
+  players: TotwPlayer[],
+  subtitle?: string,
+): Promise<Blob> {
   try {
     await Promise.all([
       document.fonts.load(`800 100px ${FONT}`),
@@ -430,7 +445,11 @@ export async function renderTotwPoster(label: string, players: TotwPlayer[]): Pr
   const bySlot = new Map(players.map((p) => [p.slot, p]))
   const photoJobs = players.map(async (p) => ({
     slot: p.slot,
-    close: p.closeUrl ? await loadBitmap(photoSrc(p.closeUrl), 'include') : null,
+    close: p.closeUrl
+      ? await loadBitmap(photoSrc(p.closeUrl), 'include')
+      : p.avatarUrl
+        ? await loadBitmap(photoSrc(p.avatarUrl), 'include')
+        : null,
     candid: p.candidUrl ? await loadBitmap(photoSrc(p.candidUrl), 'include') : null,
     club: p.clubLogo ? await loadBitmap(asset(p.clubLogo), 'include') : null,
   }))
@@ -460,6 +479,15 @@ export async function renderTotwPoster(label: string, players: TotwPlayer[]): Pr
   ;(g as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = '2px'
   g.fillText(label.toUpperCase(), W - 60, 150)
   ;(g as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = '0px'
+
+  // Division and game week, so the poster says which team it is.
+  const sub = (subtitle ?? '').trim()
+  if (sub) {
+    g.textAlign = 'right'
+    g.fillStyle = 'rgba(255,255,255,0.72)'
+    g.font = `700 22px ${FONT}`
+    g.fillText(sub.toUpperCase(), W - 60, 186)
+  }
 
   // Formation grid.
   const top = 400

@@ -247,6 +247,66 @@
   box-sizing: border-box;
 }
 
+/* Division tabs: one Team of the Week per division. */
+.totw__divisions {
+  width: 100%;
+  max-width: min(50rem, calc((100dvh - 160px) * 0.95));
+  margin: 0 auto 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.4rem;
+  box-sizing: border-box;
+}
+.totw__division-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.8rem;
+  border-radius: 999px;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  background: rgb(255 255 255 / 0.04);
+  color: rgb(255 255 255 / 0.78);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.totw__division-tab:hover {
+  border-color: rgb(200 255 61 / 0.5);
+  color: #fff;
+}
+.totw__division-tab[aria-current='true'] {
+  background: var(--totw-volt);
+  border-color: var(--totw-volt);
+  color: var(--totw-ink);
+}
+.totw__division-tab b {
+  font-size: 0.62rem;
+  font-weight: 800;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.14);
+}
+.totw__division-tab[aria-current='true'] b {
+  background: rgb(10 11 13 / 0.22);
+}
+
+/* Which division and game week the board is showing. */
+.totw__context {
+  width: 100%;
+  max-width: min(50rem, calc((100dvh - 160px) * 0.95));
+  margin: 0 auto 0.5rem;
+  text-align: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgb(255 255 255 / 0.5);
+}
+
 /* Matchweek Stepper (matches-style navigation) */
 .totw-stepper {
   position: relative;
@@ -705,6 +765,13 @@
   color: rgb(255 255 255 / 0.8);
   line-height: 1;
   margin-bottom: 2px;
+}
+/* The rating the pick was justified by, from the team's own game week. */
+.totw-card__rating {
+  margin-left: 0.35rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--totw-volt);
 }
 .totw-card__name {
   display: block;

@@ -180,6 +180,21 @@ async function rollbackMatchPlayerStats(
   await conn.execute('DELETE FROM match_player_stats WHERE match_id = ?', [matchId])
 }
 
+async function findUniquePlayerSlug(
+  conn: any,
+  gamertag: string,
+  fallbackKey: string,
+): Promise<string> {
+  const base = clubSlug(gamertag) || clubSlug(fallbackKey) || `player-${Date.now().toString(36)}`
+  let candidate = base
+  let suffix = 2
+  while (true) {
+    const [rows] = await conn.query('SELECT id FROM players WHERE slug = ? LIMIT 1', [candidate])
+    if ((rows as unknown[]).length === 0) return candidate
+    candidate = `${base}-${suffix++}`
+  }
+}
+
 async function replaceMatchPlayerStats(
   conn: any,
   match: { id: number; season_id: number; division_id: number; home_club_id: number; away_club_id: number },
@@ -235,13 +250,34 @@ async function replaceMatchPlayerStats(
     )
     let playerId = (existingPlayerRows as any[])[0]?.id
     if (!playerId) {
-      const pSlug = clubSlug(rawGamertag) || `player-${Date.now()}`
-      const [ins] = await conn.execute(
-        `INSERT INTO players (gamertag, gamertag_key, slug, club_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, NOW(), NOW())`,
-        [rawGamertag, gKey, pSlug, validClubId],
-      )
-      playerId = (ins as any).insertId
+      let pSlug = await findUniquePlayerSlug(conn, rawGamertag, gKey)
+      try {
+        const [ins] = await conn.execute(
+          `INSERT INTO players (gamertag, gamertag_key, slug, club_id, created_at, updated_at)
+           VALUES (?, ?, ?, ?, NOW(), NOW())`,
+          [rawGamertag, gKey, pSlug, validClubId],
+        )
+        playerId = (ins as any).insertId
+      } catch (err: any) {
+        if (err.code === 'ER_DUP_ENTRY' || err.errno === 1062) {
+          const [retryRows] = await conn.query(
+            'SELECT id FROM players WHERE gamertag_key = ? LIMIT 1',
+            [gKey],
+          )
+          playerId = (retryRows as any[])[0]?.id
+          if (!playerId) {
+            pSlug = `${pSlug}-${Date.now().toString(36)}`
+            const [insRetry] = await conn.execute(
+              `INSERT INTO players (gamertag, gamertag_key, slug, club_id, created_at, updated_at)
+               VALUES (?, ?, ?, ?, NOW(), NOW())`,
+              [rawGamertag, gKey, pSlug, validClubId],
+            )
+            playerId = (insRetry as any).insertId
+          }
+        } else {
+          throw err
+        }
+      }
     } else {
       await conn.execute(
         'UPDATE players SET club_id = COALESCE(club_id, ?), updated_at = NOW() WHERE id = ?',

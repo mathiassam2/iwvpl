@@ -14,20 +14,16 @@ import {
 import { TotwPaint } from '@/components/totw/TotwPaint'
 import '@/styles/totw.css'
 
-function parseWeekNum(label: string): number {
-  const m = label.match(/\d+/)
-  return m ? Number.parseInt(m[0], 10) : 0
-}
-
 function PlayerCard({ player }: { player: TotwPlayer }) {
   const [first, rest] = splitName(player.name)
   const solo = !(player.closeUrl && player.candidUrl)
   const club = player.clubName?.trim()
   const logo = player.clubLogo ? asset(player.clubLogo) : null
   const profile = player.playerSlug?.trim()
+  const rating = player.rating != null ? Number(player.rating) : null
   const label = `${player.name}, ${player.position}${club ? `, ${club}` : ''}${
-    profile ? ', view profile' : ''
-  }`
+    rating != null ? `, rated ${rating.toFixed(1)}` : ''
+  }${profile ? ', view profile' : ''}`
 
   const card = (
     <>
@@ -45,7 +41,7 @@ function PlayerCard({ player }: { player: TotwPlayer }) {
           }}
         />
       )}
-      {player.closeUrl && (
+      {player.closeUrl ? (
         <img
           className="totw-card__photo totw-card__photo--close"
           src={photoSrc(player.closeUrl)}
@@ -54,7 +50,16 @@ function PlayerCard({ player }: { player: TotwPlayer }) {
           decoding="async"
           draggable={false}
         />
-      )}
+      ) : player.avatarUrl ? (
+        <img
+          className="totw-card__photo totw-card__photo--close"
+          src={photoSrc(player.avatarUrl)}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          draggable={false}
+        />
+      ) : null}
       {player.candidUrl && (
         <img
           className="totw-card__photo totw-card__photo--candid"
@@ -76,7 +81,10 @@ function PlayerCard({ player }: { player: TotwPlayer }) {
       <div className="totw-card__info">
         {player.shirtNumber != null && <span className="totw-card__num">{player.shirtNumber}</span>}
         <div className="totw-card__text">
-          <span className="totw-card__pos">{player.position}</span>
+          <span className="totw-card__pos">
+            {player.position}
+            {rating != null && <b className="totw-card__rating">{rating.toFixed(1)}</b>}
+          </span>
           <span className="totw-card__name">
             <span>{first}</span>
             {rest && <span>{rest}</span>}
@@ -111,9 +119,13 @@ export default function TotwPage() {
   const { user } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
   const paramId = Number.parseInt(searchParams.get('week') ?? '', 10)
+  const paramDivision = Number.parseInt(searchParams.get('division') ?? '', 10)
   const [data, setData] = useState<TotwResponse | null>(null)
   const [weekId, setWeekId] = useState<number | null>(
     Number.isSafeInteger(paramId) && paramId > 0 ? paramId : null,
+  )
+  const [divisionId, setDivisionId] = useState<number | null>(
+    Number.isSafeInteger(paramDivision) && paramDivision > 0 ? paramDivision : null,
   )
   const [menuOpen, setMenuOpen] = useState(false)
   const stepperRef = useRef<HTMLDivElement>(null)
@@ -141,12 +153,17 @@ export default function TotwPage() {
   }, [menuOpen])
 
   const load = useCallback(
-    async (id: number | null) => {
+    async (id: number | null, division: number | null) => {
       if (first.current) setLoading(true)
       setError('')
       setLocked(false)
       try {
-        setData(await getTotw(id))
+        const result = await getTotw(id, division)
+        setData(result)
+        // The server decides which division is showing: a link to a week
+        // carries its own division, and without one the first division with a
+        // published team is used.
+        setDivisionId(result.divisionId)
       } catch (err) {
         if (err instanceof ApiError && err.status === 403) setLocked(true)
         else setError(err instanceof Error ? err.message : 'Could not load Team of the Week.')
@@ -158,10 +175,10 @@ export default function TotwPage() {
     [],
   )
 
-  // Reload on week change and when the visitor signs in or out.
+  // Reload on week or division change, and when the visitor signs in or out.
   useEffect(() => {
-    void load(weekId)
-  }, [load, weekId, user?.id])
+    void load(weekId, divisionId)
+  }, [load, weekId, divisionId, user?.id])
 
   const week = data?.week ?? null
   const bySlot = new Map((week?.players ?? []).map((p) => [p.slot, p]))
@@ -170,8 +187,10 @@ export default function TotwPage() {
   const chronologicalWeeks = useMemo(() => {
     if (!data?.weeks) return []
     return [...data.weeks].sort((a, b) => {
-      const numA = parseWeekNum(a.label)
-      const numB = parseWeekNum(b.label)
+      // The game week is the reliable order; the label is the fallback for
+      // weeks that were not bound to one.
+      const numA = a.gameWeek ?? Number.parseInt(a.label.match(/\d+/)?.[0] ?? '0', 10)
+      const numB = b.gameWeek ?? Number.parseInt(b.label.match(/\d+/)?.[0] ?? '0', 10)
       if (numA !== numB) return numA - numB
       return a.id - b.id
     })
@@ -187,7 +206,20 @@ export default function TotwPage() {
   const handleSelectWeek = (id: number | undefined) => {
     if (id == null) return
     setWeekId(id)
-    setSearchParams({ week: String(id) }, { replace: true })
+    const next = new URLSearchParams(searchParams)
+    next.set('week', String(id))
+    setSearchParams(next, { replace: true })
+  }
+
+  const handleSelectDivision = (id: number) => {
+    setDivisionId(id)
+    // A different division has its own weeks, so the old week id would point
+    // at nothing. Drop it and let the server pick that division's latest team.
+    setWeekId(null)
+    const next = new URLSearchParams(searchParams)
+    next.set('division', String(id))
+    next.delete('week')
+    setSearchParams(next, { replace: true })
   }
 
   const onDownload = async () => {
@@ -195,7 +227,10 @@ export default function TotwPage() {
     setBusy(true)
     setDownloadError('')
     try {
-      const blob = await renderTotwPoster(week.label, week.players)
+      const subtitle = [week.divisionName, week.gameWeek != null ? `Game Week ${week.gameWeek}` : null]
+        .filter(Boolean)
+        .join(' · ')
+      const blob = await renderTotwPoster(week.label, week.players, subtitle)
       const slug = week.label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
       downloadBlob(blob, `iwvpl-team-of-the-week-${slug || week.id}.png`)
     } catch (err) {
@@ -204,6 +239,9 @@ export default function TotwPage() {
       setBusy(false)
     }
   }
+
+  const divisions = data?.divisions ?? []
+  const showDivisions = divisions.length > 1
 
   return (
     <div className="totw">
@@ -221,6 +259,24 @@ export default function TotwPage() {
             player's club crest, with the club name on hover.
           </p>
         </header>
+
+        {/* Division tabs */}
+        {showDivisions && (
+          <nav className="totw__divisions" aria-label="Divisions">
+            {divisions.map((d) => (
+              <button
+                key={d.id}
+                type="button"
+                className="totw__division-tab"
+                aria-current={d.id === divisionId ? 'true' : undefined}
+                onClick={() => handleSelectDivision(d.id)}
+              >
+                <span>{d.name}</span>
+                {d.weekCount > 0 && <b>{d.weekCount}</b>}
+              </button>
+            ))}
+          </nav>
+        )}
 
         <section className="totw__board" aria-live="polite">
           {week && data?.weeks && data.weeks.length > 0 && (
@@ -350,6 +406,14 @@ export default function TotwPage() {
             </div>
           )}
 
+          {week && (
+            <p className="totw__context">
+              {[week.divisionName, week.gameWeek != null ? `Game Week ${week.gameWeek}` : null]
+                .filter(Boolean)
+                .join(' · ')}
+            </p>
+          )}
+
           {downloadError && (
             <p role="alert" className="totw__error-msg">
               {downloadError}
@@ -396,7 +460,11 @@ export default function TotwPage() {
           ) : !week ? (
             <div className="totw__state">
               <h2>No Team of the Week yet</h2>
-              <p>The first one will land here as soon as it is published.</p>
+              <p>
+                {divisions.length > 1
+                  ? 'This division has no published team yet. Try another division above.'
+                  : 'The first one will land here as soon as it is published.'}
+              </p>
             </div>
           ) : (
             <div className="totw__rows">

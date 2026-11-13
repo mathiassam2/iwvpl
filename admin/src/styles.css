@@ -2867,13 +2867,15 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  overflow: visible;
 }
 
 .adm-pill-tab {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  padding: 7px 13px;
+  /* Right padding bumped to 15px so the count badge never clips at card edge */
+  padding: 7px 15px 7px 13px;
   border-radius: 999px;
   border: 1px solid var(--border);
   background: var(--surface);
@@ -2882,6 +2884,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   font-weight: 700;
   line-height: 1.2;
   cursor: pointer;
+  overflow: visible;
 }
 
 .adm-pill-tab.is-active {
@@ -6099,6 +6102,102 @@ input:checked + .adm-slider:before {
   color: var(--faint);
 }
 
+/* New-team panel: division and game week binding. */
+.totw-new {
+  border-color: rgba(200, 255, 61, 0.22);
+}
+.totw-new .adm-field-grid {
+  margin-bottom: 14px;
+}
+
+/* Suggested players for the open slot. */
+.totw-suggestions {
+  display: grid;
+  gap: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.totw-suggestion {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.totw-suggestion:hover {
+  border-color: var(--accent);
+}
+.totw-suggestion.is-picked {
+  opacity: 0.55;
+}
+.totw-suggestion__avatar {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.06);
+}
+.totw-suggestion__avatar--empty {
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--faint);
+}
+.totw-suggestion__body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+.totw-suggestion__body strong {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.totw-suggestion__body small {
+  color: var(--faint);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.totw-suggestion__rating {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+.totw-suggestion__rating b {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.totw-suggestion__rating small {
+  color: var(--faint);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+/* The rating frozen onto a card, shown on the pitch. */
+.totw-slot__rating {
+  display: block;
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
 @media (max-width: 720px) {
   .totw-pitch__row {
     gap: 8px;
@@ -6312,7 +6411,7 @@ input:checked + .adm-slider:before {
 
 .adm-dossier-toolbar {
   position: relative;
-  z-index: 25;
+  z-index: 40;
   overflow: visible;
   display: flex;
   flex-wrap: wrap;
@@ -6329,7 +6428,7 @@ input:checked + .adm-slider:before {
 
 .adm-dossier-tally-panel {
   position: relative;
-  z-index: 20;
+  z-index: 10;
   overflow: visible;
   display: flex;
   align-items: center;
@@ -6366,6 +6465,8 @@ input:checked + .adm-slider:before {
   gap: 9px;
   width: min(100%, 560px);
   flex-shrink: 0;
+  /* Allow the CustomSelect dropdown to overflow this grid cell */
+  overflow: visible;
 }
 
 .adm-dossier-toolbar-main {

@@ -2074,12 +2074,56 @@ export interface TotwAdminWeekSummary {
   publishedAt: string | null
   createdAt: string
   updatedAt: string
+  divisionId: number | null
+  divisionName: string | null
+  gameWeek: number | null
   playerCount: number
 }
 
 export interface TotwAccess {
   mode: 'all' | 'selected'
   userIds: number[]
+}
+
+/** A division a Team of the Week can be made for. */
+export interface TotwDivision {
+  id: number
+  name: string
+  slug: string
+  seasonName: string
+}
+
+/** A game week of a division, with how much of it has been played and imported. */
+export interface TotwGameWeek {
+  gameWeek: number
+  matches: number
+  played: number
+  statRows: number
+}
+
+/** One candidate for a slot, ranked by the rating earned in that game week. */
+export interface TotwSuggestion {
+  playerId: number
+  gamertag: string
+  position: string
+  clubId: number | null
+  clubName: string | null
+  clubLogo: string | null
+  avatarUrl: string | null
+  rating: number
+  goals: number
+  assists: number
+  appearances: number
+  mom: number
+  picked: boolean
+}
+
+export interface TotwSuggestionResponse {
+  divisionId: number | null
+  gameWeek: number | null
+  group: 'GK' | 'DEF' | 'MID' | 'ST' | null
+  candidates: TotwSuggestion[]
+  reason: string | null
 }
 
 export interface TotwAdminPlayer {
@@ -2093,6 +2137,10 @@ export interface TotwAdminPlayer {
   clubLogo?: string | null
   playerId: number | null
   playerSlug?: string | null
+  avatarUrl?: string | null
+  rating?: number | null
+  goals?: number
+  assists?: number
   closeUrl: string | null
   candidUrl: string | null
 }
@@ -2110,7 +2158,9 @@ export interface TotwSlotInput {
 }
 
 export const getTotwOverview = () =>
-  request<{ weeks: TotwAdminWeekSummary[]; access: TotwAccess }>('/api/admin/totw')
+  request<{ weeks: TotwAdminWeekSummary[]; divisions: TotwDivision[]; access: TotwAccess }>(
+    '/api/admin/totw',
+  )
 
 export const saveTotwAccess = (access: TotwAccess) =>
   request<{ access: TotwAccess }>('/api/admin/totw/access', {
@@ -2118,26 +2168,50 @@ export const saveTotwAccess = (access: TotwAccess) =>
     body: JSON.stringify(access),
   }).then((r) => r.access)
 
-export const createTotwWeek = (label: string) =>
+export const getTotwGameWeeks = (divisionId: number) =>
+  request<{ gameWeeks: TotwGameWeek[] }>(
+    `/api/admin/totw/game-weeks?divisionId=${divisionId}`,
+  ).then((r) => r.gameWeeks)
+
+export const createTotwWeek = (input: {
+  label?: string | null
+  divisionId: number
+  gameWeek: number
+}) =>
   request<{ id: number }>('/api/admin/totw/weeks', {
     method: 'POST',
-    body: JSON.stringify({ label }),
+    body: JSON.stringify(input),
   }).then((r) => r.id)
 
 export const getTotwWeek = (id: number) =>
   request<{
-    week: { id: number; label: string; status: 'draft' | 'published'; publishedAt: string | null }
+    week: {
+      id: number
+      label: string
+      status: 'draft' | 'published'
+      publishedAt: string | null
+      divisionId: number | null
+      gameWeek: number | null
+    }
     players: TotwAdminPlayer[]
   }>(`/api/admin/totw/weeks/${id}`)
 
 export const updateTotwWeek = (
   id: number,
-  input: { label?: string; status?: 'draft' | 'published' },
+  input: {
+    label?: string
+    status?: 'draft' | 'published'
+    divisionId?: number
+    gameWeek?: number
+  },
 ) =>
   request<{ ok: true }>(`/api/admin/totw/weeks/${id}`, {
     method: 'PUT',
     body: JSON.stringify(input),
   })
+
+export const getTotwSuggestions = (weekId: number, slot: number) =>
+  request<TotwSuggestionResponse>(`/api/admin/totw/suggestions?weekId=${weekId}&slot=${slot}`)
 
 export const deleteTotwWeek = (id: number) =>
   request<{ ok: true }>(`/api/admin/totw/weeks/${id}`, { method: 'DELETE' })
