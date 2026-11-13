@@ -86,9 +86,9 @@ export function LeaderboardPodium({ board }: { board: Leaderboard }) {
   const title = boardTitle(board.title)
 
   const slots = [
-    { row: second, place: 2, label: '2ND · RUNNER-UP' },
-    { row: first, place: 1, label: '1ST · CHAMPION' },
-    { row: third, place: 3, label: '3RD · RUNNER-UP' },
+    { row: second, place: 2, label: '2ND · RUNNER-UP', short: '2ND' },
+    { row: first, place: 1, label: '1ST · CHAMPION', short: '1ST' },
+    { row: third, place: 3, label: '3RD · RUNNER-UP', short: '3RD' },
   ]
 
   return (
@@ -102,7 +102,7 @@ export function LeaderboardPodium({ board }: { board: Leaderboard }) {
 
       {/* 3-Column Podium Stage with bottom-aligned Olympic step tiers */}
       <div className="grid grid-cols-3 items-end gap-2.5 sm:gap-4 md:gap-6 max-w-4xl mx-auto overflow-visible">
-        {slots.map(({ row, place, label }) => {
+        {slots.map(({ row, place, label, short }) => {
           const isFirst = place === 1
           const isCustomCelebration = Boolean(
             row?.celebrationImage &&
@@ -195,24 +195,28 @@ export function LeaderboardPodium({ board }: { board: Leaderboard }) {
                       : 'linear-gradient(180deg, #161a24 0%, #0c0f16 100%)',
                   }}
                 >
-                  {/* Rank Pill Badge */}
+                  {/* Rank Pill Badge. A third of a phone screen cannot hold the
+                      full title, so the place alone is shown there and the
+                      badge never grows past its card. */}
                   <span
                     aria-label={`Rank ${place}`}
                     className={cx(
-                      'relative mx-auto inline-flex items-center justify-center gap-1.5 rounded-full font-display font-black tracking-wider uppercase whitespace-nowrap',
+                      'relative mx-auto inline-flex max-w-full items-center justify-center gap-1.5 overflow-hidden rounded-full font-display font-black tracking-wider uppercase',
                       isFirst
-                        ? 'h-6.5 px-3 text-[10px] sm:h-7 sm:px-3.5 sm:text-[11px]'
-                        : 'h-6 px-2.5 text-[9.5px] sm:h-6.5 sm:px-3 sm:text-[10px]',
+                        ? 'h-6.5 px-2.5 text-[10px] sm:h-7 sm:px-3.5 sm:text-[11px]'
+                        : 'h-6 px-2 text-[9.5px] sm:h-6.5 sm:px-3 sm:text-[10px]',
                     )}
                     style={{
                       background: badgeTheme.bg,
                       color: badgeTheme.color,
                       boxShadow: badgeTheme.shadow,
-                      whiteSpace: 'nowrap',
                     }}
                   >
                     <PodiumAwardIcon place={place} isFirst={isFirst} />
-                    <span className="whitespace-nowrap">{label}</span>
+                    <span className="min-w-0 truncate">
+                      <span className="sm:hidden">{short}</span>
+                      <span className="hidden sm:inline">{label}</span>
+                    </span>
                   </span>
 
                   {/* Player Gamertag */}

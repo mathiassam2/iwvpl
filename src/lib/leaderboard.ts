@@ -6,7 +6,8 @@
  * the static fallback calls them "TOP SCORER", "TOP ASSIST" and "TOP SAVES".
  * A title test that only knows the second spelling counts a playmaker's
  * assists as saves, so the unit is resolved from the meaning of the words
- * instead, and every board is shown under one canonical title.
+ * instead, and every board is shown under one canonical title: TOP SCORERS,
+ * TOP ASSISTS and MOST SAVES.
  */
 
 export type LeaderboardUnit = 'goals' | 'assists' | 'saves'
@@ -27,7 +28,7 @@ export function boardTitle(title: string): string {
     case 'assists':
       return 'TOP ASSISTS'
     case 'saves':
-      return 'TOP GOALKEEPERS'
+      return 'MOST SAVES'
   }
 }
 

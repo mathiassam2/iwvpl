@@ -925,7 +925,7 @@ league.get(
       boards: [
         { title: 'TOP SCORERS', key: 'goals', rows: scorers },
         { title: 'TOP ASSISTS', key: 'assists', rows: assists },
-        { title: 'TOP GOALKEEPERS', key: 'saves', rows: saves },
+        { title: 'MOST SAVES', key: 'saves', rows: saves },
       ],
     })
   }),
