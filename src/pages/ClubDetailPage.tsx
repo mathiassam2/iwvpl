@@ -16,6 +16,7 @@ import { FormGuide, MatchRow, StatTile } from '@/components/league'
 import { NextMatchCard, Pitch, TableSnippet, TeamFormStrip } from '@/components/club'
 import { SITE, siteData } from '@/data'
 import { AVATAR_PLACEHOLDER, CLUB_PLACEHOLDER, clubSlug, cx, isSameClub, stripFlag } from '@/lib/format'
+import { boardTitle } from '@/lib/leaderboard'
 import { matchHrefFor, matchIndexOf } from '@/lib/match'
 import {
   getLiveClub,
@@ -236,7 +237,7 @@ export default function ClubDetailPage() {
       .slice(0, 8)
     const scorers = siteData.leaderboards
       .map((board) => ({
-        board: board.title,
+        board: boardTitle(board.title),
         rows: board.rows.filter((r) => sameClub(r.team, club.name)),
       }))
       .filter((g) => g.rows.length > 0)

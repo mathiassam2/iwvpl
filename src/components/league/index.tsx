@@ -13,6 +13,7 @@ import {
   weekday,
 } from '@/lib/format'
 import { matchHref, matchHrefFor } from '@/lib/match'
+import { boardUnit } from '@/lib/leaderboard'
 import { playerHref } from '@/lib/players'
 
 /* ============================================================ Form guide dots */
@@ -532,11 +533,7 @@ export function LeaderboardTable({
   limit?: number
   offset?: number
 }) {
-  const unit = board.title.includes('SCOR')
-    ? 'goals'
-    : board.title.includes('ASSIST')
-      ? 'assists'
-      : 'saves'
+  const unit = boardUnit(board.title)
   const rows = board.rows.slice(offset, typeof limit === 'number' ? offset + limit : undefined)
   const start = offset
 

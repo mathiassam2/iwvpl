@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import type { Leaderboard } from '@/types/site'
 import { AVATAR_PLACEHOLDER, DEFAULT_PODIUM_IMAGES, cx, stripFlag } from '@/lib/format'
+import { boardTitle, boardUnit } from '@/lib/leaderboard'
 import { playerHref } from '@/lib/players'
 
 function PodiumAwardIcon({ place, isFirst }: { place: number; isFirst: boolean }) {
@@ -81,11 +82,8 @@ export function LeaderboardPodium({ board }: { board: Leaderboard }) {
   const [first, second, third] = board.rows
   if (!first) return null
 
-  const unit = board.title.includes('SCOR')
-    ? 'goals'
-    : board.title.includes('ASSIST')
-      ? 'assists'
-      : 'saves'
+  const unit = boardUnit(board.title)
+  const title = boardTitle(board.title)
 
   const slots = [
     { row: second, place: 2, label: '2ND · RUNNER-UP' },
@@ -98,7 +96,7 @@ export function LeaderboardPodium({ board }: { board: Leaderboard }) {
       {/* Stage Header Eyebrow */}
       <div className="text-center mb-4 sm:mb-5">
         <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--accent-soft)] px-3.5 py-1 text-[10px] font-extrabold tracking-[0.18em] uppercase text-[var(--accent-text)] border border-[var(--accent-ring)]">
-          ★ {board.title} PODIUM HONOURS ★
+          ★ {title} PODIUM HONOURS ★
         </span>
       </div>
 

@@ -4,6 +4,7 @@ import { LeaderboardTable } from '@/components/league'
 import { LeaderboardPodium } from '@/components/league/LeaderboardPodium'
 import { Container, Section, Select, Tabs } from '@/components/ui'
 import { siteData } from '@/data'
+import { boardLabel } from '@/lib/leaderboard'
 import { useSeasonName } from '@/lib/season'
 import {
   getLiveLeaderboardSummary,
@@ -124,7 +125,7 @@ export default function LeaderboardPage() {
             <Tabs
               tabs={effectiveBoards.map((b) => ({
                 id: b.title,
-                label: b.title.replace('TOP ', 'Top ').toLowerCase(),
+                label: boardLabel(b.title),
                 count: b.rows.length,
               }))}
               active={active}

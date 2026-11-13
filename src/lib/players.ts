@@ -10,6 +10,7 @@
 
 import { siteData } from '@/data'
 import { AVATAR_PLACEHOLDER, clubSlug, isoToFlag, stripFlag } from '@/lib/format'
+import { boardUnit } from '@/lib/leaderboard'
 import type { LeaderboardRow } from '@/types/site'
 
 export interface PlayerStat {
@@ -45,9 +46,7 @@ function samePlayer(a: string, b: string): boolean {
 }
 
 function unitFor(board: string): PlayerStat['unit'] {
-  if (board.includes('ASSIST')) return 'assists'
-  if (board.includes('SAVE')) return 'saves'
-  return 'goals'
+  return boardUnit(board)
 }
 
 /** Current club from the most recent move, used when no board lists the player. */

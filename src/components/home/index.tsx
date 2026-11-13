@@ -16,6 +16,7 @@ import { SITE, siteData } from '@/data'
 import { matchIndexOf } from '@/lib/match'
 import { asset } from '@/lib/assets'
 import { CLUB_PLACEHOLDER, cx, stripFlag, totalGoals } from '@/lib/format'
+import { boardTitle } from '@/lib/leaderboard'
 import {
   getLiveClubs,
   getLiveDivisions,
@@ -1008,7 +1009,7 @@ export function ResultsPreview() {
             {board && (
               <div className="surface overflow-hidden rounded-card">
                 <p className="border-b border-[var(--border)] bg-[var(--surface-2)] px-5 py-3.5 text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--accent-text)]">
-                  {board.title}
+                  {boardTitle(board.title)}
                 </p>
                 {/* top 10 only on the home page */}
                 <LeaderboardTable board={board} limit={10} />
