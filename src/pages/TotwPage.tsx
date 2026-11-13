@@ -260,25 +260,25 @@ export default function TotwPage() {
           </p>
         </header>
 
-        {/* Division tabs */}
-        {showDivisions && (
-          <nav className="totw__divisions" aria-label="Divisions">
-            {divisions.map((d) => (
-              <button
-                key={d.id}
-                type="button"
-                className="totw__division-tab"
-                aria-current={d.id === divisionId ? 'true' : undefined}
-                onClick={() => handleSelectDivision(d.id)}
-              >
-                <span>{d.name}</span>
-                {d.weekCount > 0 && <b>{d.weekCount}</b>}
-              </button>
-            ))}
-          </nav>
-        )}
-
         <section className="totw__board" aria-live="polite">
+          {/* Division tabs belong in the board column, not as a separate grid item. */}
+          {showDivisions && (
+            <nav className="totw__divisions" aria-label="Divisions">
+              {divisions.map((d) => (
+                <button
+                  key={d.id}
+                  type="button"
+                  className="totw__division-tab"
+                  aria-current={d.id === divisionId ? 'true' : undefined}
+                  onClick={() => handleSelectDivision(d.id)}
+                >
+                  <span>{d.name}</span>
+                  {d.weekCount > 0 && <b>{d.weekCount}</b>}
+                </button>
+              ))}
+            </nav>
+          )}
+
           {week && data?.weeks && data.weeks.length > 0 && (
             <div className="totw__board-header">
               {/* Matches-style Matchweek Stepper (left/right navigation) */}
