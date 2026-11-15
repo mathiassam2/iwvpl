@@ -47,7 +47,7 @@ async function callApi2(session, mod, func, params = {}) {
     ...params,
   }).toString()
   const url = `https://iwvpl.asia:2083${session.token}/json-api/cpanel?${qs}`
-  const r = await fetch(url, { headers: { Cookie: session.cookieHeader } })
+  const r = await fetch(url, { headers: { Cookie: session.cookieHeader }, signal: AbortSignal.timeout(60_000) })
   return r.json()
 }
 
@@ -68,6 +68,7 @@ async function callCloudlinux(session, method, params = {}) {
       'Content-Type': 'application/x-www-form-urlencoded',
     },
     body: body.toString(),
+    signal: AbortSignal.timeout(60_000),
   })
   return r.json()
 }
@@ -127,7 +128,7 @@ async function main() {
   for (const htmlFile of [join(stageDir, 'dist', 'index.html'), join(stageDir, 'admin', 'dist', 'index.html')]) {
     if (existsSync(htmlFile)) {
       let html = readFileSync(htmlFile, 'utf8')
-      html = html.replace(/(src|href)="(\/assets\/[^"]+\.(?:js|css))"/g, `$1="$2?v=${v}"`)
+      html = html.replace(/(src|href)="((?:\/admin)?\/assets\/[^"]+\.(?:js|css))"/g, `$1="$2?v=${v}"`)
       writeFileSync(htmlFile, html)
     }
   }
