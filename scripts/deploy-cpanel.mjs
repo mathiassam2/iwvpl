@@ -72,6 +72,36 @@ async function callCloudlinux(session, method, params = {}) {
   return r.json()
 }
 
+async function verifyDeploymentHealth() {
+  const url = 'https://iwvpl.asia/api/health'
+  let lastFailure = 'no response'
+
+  for (let attempt = 1; attempt <= 20; attempt++) {
+    try {
+      const response = await fetch(url, {
+        headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(8_000),
+      })
+      if (response.ok) {
+        const health = await response.json()
+        if (health.status === 'ok' && health.database === 'reachable') {
+          console.log(`Health check passed (database ${health.database}, ${health.latencyMs} ms).`)
+          return
+        }
+        lastFailure = `health endpoint reported ${health.status ?? 'unknown'}`
+      } else {
+        lastFailure = `health endpoint returned HTTP ${response.status}`
+      }
+    } catch (err) {
+      lastFailure = err instanceof Error ? err.message : 'request failed'
+    }
+
+    if (attempt < 20) await new Promise((resolvePromise) => setTimeout(resolvePromise, 3_000))
+  }
+
+  throw new Error(`Deployment health check failed after restart: ${lastFailure}`)
+}
+
 async function main() {
   console.log('1. Building api, admin, and public web bundles...')
   execSync('npm --prefix api run build', { cwd: repoRoot, stdio: 'inherit' })
@@ -111,6 +141,15 @@ async function main() {
   cpSync(join(repoRoot, 'api', 'migrations'), join(stageDir, 'api', 'migrations'), {
     recursive: true,
   })
+  const stagedApiDir = join(stageDir, 'api')
+  cpSync(join(repoRoot, 'api', 'package.json'), join(stagedApiDir, 'package.json'))
+  cpSync(join(repoRoot, 'api', 'package-lock.json'), join(stagedApiDir, 'package-lock.json'))
+  console.log('Installing production API dependencies into the deployment bundle...')
+  execSync('npm ci --omit=dev --os=linux --cpu=x64', {
+    cwd: stagedApiDir,
+    stdio: 'inherit',
+  })
+
   if (existsSync(join(repoRoot, 'api', '.env.production'))) {
     cpSync(join(repoRoot, 'api', '.env.production'), join(stageDir, '.env'))
     cpSync(join(repoRoot, 'api', '.env.production'), join(stageDir, 'api', '.env'))
@@ -137,6 +176,9 @@ async function main() {
     join(stageDir, 'app.cjs'),
     `import('./api/dist/server.js').catch((err) => {\n  console.error('Failed to boot IWVPL server:', err);\n  process.exit(1);\n});\n`,
   )
+
+  mkdirSync(join(stageDir, 'tmp'), { recursive: true })
+  writeFileSync(join(stageDir, 'tmp', 'restart.txt'), String(Date.now()))
 
   execSync(`tar -czf "${archivePath}" -C "${stageDir}" .`, { stdio: 'inherit' })
 
@@ -174,14 +216,28 @@ async function main() {
   })
 
   console.log('4. Restarting Passenger Node.js app...')
-  const restart = await callCloudlinux(session, 'restart', { 'app-root': 'iwvpl_v2_app' })
+  // Stop and restart to ensure stale worker processes recycle cleanly
+  await callCloudlinux(session, 'stop', { 'app-root': 'iwvpl_v2_app' }).catch(() => {})
+  await new Promise((r) => setTimeout(r, 2000))
+  let restart = await callCloudlinux(session, 'start', { 'app-root': 'iwvpl_v2_app' })
+  if (restart?.result !== 'success') {
+    restart = await callCloudlinux(session, 'restart', { 'app-root': 'iwvpl_v2_app' })
+  }
   console.log('Restart result:', restart)
+  if (restart?.result !== 'success') {
+    throw new Error('cPanel did not confirm the Passenger app restart.')
+  }
+
+  console.log('5. Verifying the deployed API and database...')
+  await verifyDeploymentHealth()
 
   rmSync(stageDir, { recursive: true, force: true })
   rmSync(archivePath, { force: true })
 }
 
 main().catch((err) => {
+  rmSync(stageDir, { recursive: true, force: true })
+  rmSync(archivePath, { force: true })
   console.error(err)
   process.exit(1)
 })

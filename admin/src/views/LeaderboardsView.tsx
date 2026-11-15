@@ -12,13 +12,6 @@ import { CelebrationCropperModal } from './CelebrationCropperModal'
 
 type LeaderboardCategory = 'goals' | 'assists' | 'saves' | 'all'
 
-/**
- * The order a board is ranked in: the tally first, the gamertag to break a
- * tie. The site breaks a tie the same way, so the table and the podium
- * preview both read the list through these. Breaking a tie differently in
- * the two places is what put one player on the stage and another third in
- * the list.
- */
 const compareGoals = (a: AdminPlayerStat, b: AdminPlayerStat) =>
   b.goals - a.goals || a.gamertag.localeCompare(b.gamertag)
 
@@ -31,11 +24,8 @@ const compareSaves = (a: AdminPlayerStat, b: AdminPlayerStat) =>
   a.gamertag.localeCompare(b.gamertag)
 
 /**
- * One entry per player for the combined view.
- *
- * A player can have a tally in more than one division, and the site shows
- * one entry for them there, so the podium preview merges the rows the same
- * way instead of putting the same player on the stage twice.
+ * Collapse per-division stat rows into one row per player for the Combined
+ * podium, tie-breaking consistently with the public site.
  */
 function mergeAcrossDivisions(stats: AdminPlayerStat[]): AdminPlayerStat[] {
   const merged = new Map<number, AdminPlayerStat>()
@@ -50,6 +40,11 @@ function mergeAcrossDivisions(stats: AdminPlayerStat[]): AdminPlayerStat[] {
     existing.saves += stat.saves
     existing.clean_sheets += stat.clean_sheets
     existing.appearances += stat.appearances
+    if (existing.division_id !== stat.division_id) {
+      existing.division_id = 0
+      existing.division_name = 'Combined'
+      existing.division_slug = null
+    }
   }
   return [...merged.values()]
 }
@@ -112,10 +107,27 @@ export function LeaderboardsView({
     void loadData(selectedSeasonId === '' ? undefined : Number(selectedSeasonId))
   }, [selectedSeasonId, loadData])
 
+  // Reset the division when a reload no longer lists it (e.g. season change).
+  useEffect(() => {
+    if (!data) return
+    if (
+      divisionFilter !== 'all' &&
+      !data.divisions.some((d) => String(d.id) === divisionFilter)
+    ) {
+      setDivisionFilter('all')
+    }
+  }, [data, divisionFilter])
+
+  // Stats narrowed to the selected division (or all of them for Combined).
+  const scopedStats = useMemo(() => {
+    if (!data) return []
+    if (divisionFilter === 'all') return data.stats
+    return data.stats.filter((s) => String(s.division_id) === divisionFilter)
+  }, [data, divisionFilter])
+
   // Filtered stats list
   const filteredStats = useMemo(() => {
-    if (!data) return []
-    let list = [...data.stats]
+    let list = [...scopedStats]
 
     if (activeCategory === 'goals') {
       list = list.filter((s) => s.goals > 0).sort(compareGoals)
@@ -123,10 +135,6 @@ export function LeaderboardsView({
       list = list.filter((s) => s.assists > 0).sort(compareAssists)
     } else if (activeCategory === 'saves') {
       list = list.filter((s) => s.saves > 0 || s.clean_sheets > 0).sort(compareSaves)
-    }
-
-    if (divisionFilter !== 'all') {
-      list = list.filter((s) => String(s.division_id) === divisionFilter)
     }
 
     if (search.trim()) {
@@ -140,13 +148,12 @@ export function LeaderboardsView({
     }
 
     return list
-  }, [data, activeCategory, divisionFilter, search])
+  }, [scopedStats, activeCategory, search])
 
-  // Top 3 Podium for active category
+  // Top 3 Podium for active category. Combined sums a player's divisions so the
+  // podium matches the public leaderboard.
   const podiumTop3 = useMemo(() => {
     if (!data) return [null, null, null]
-    // The same rows the table ranks, in the same order: the third place on
-    // stage has to be the third place in the list below it.
     const list =
       divisionFilter === 'all'
         ? mergeAcrossDivisions(data.stats)
@@ -206,6 +213,31 @@ export function LeaderboardsView({
     setFormCelebration(stat.celebration_image ?? '')
     setFormPlayerSearch(stat.gamertag)
     setStatModalOpen(true)
+  }
+
+  /**
+   * Podium rows in the Combined view are summed copies, so edit the player's
+   * real stat row from the division that contributes most to this category.
+   */
+  const openPodiumEdit = (stat: AdminPlayerStat) => {
+    const rows = (data?.stats ?? []).filter(
+      (s) =>
+        s.player_id === stat.player_id &&
+        (divisionFilter === 'all' || String(s.division_id) === divisionFilter),
+    )
+    if (rows.length <= 1) {
+      openEditStatModal(rows[0] ?? stat)
+      return
+    }
+    const score = (s: AdminPlayerStat) =>
+      activeCategory === 'goals'
+        ? s.goals
+        : activeCategory === 'assists'
+          ? s.assists
+          : activeCategory === 'saves'
+            ? s.saves + s.clean_sheets
+            : s.goals + s.assists + s.saves
+    openEditStatModal([...rows].sort((a, b) => score(b) - score(a))[0])
   }
 
   // Handle Player Select in modal
@@ -440,7 +472,10 @@ export function LeaderboardsView({
           {data && data.seasons.length > 0 && (
             <select
               value={selectedSeasonId}
-              onChange={(e) => setSelectedSeasonId(e.target.value === '' ? '' : Number(e.target.value))}
+              onChange={(e) => {
+                setDivisionFilter('all')
+                setSelectedSeasonId(e.target.value === '' ? '' : Number(e.target.value))
+              }}
               className="adm-select"
               style={{ minWidth: 170 }}
             >
@@ -465,28 +500,28 @@ export function LeaderboardsView({
             className={`adm-pill-tab ${activeCategory === 'goals' ? 'is-active' : ''}`}
             onClick={() => setActiveCategory('goals')}
           >
-            ⚽ Top Scorers ({data?.stats.filter((s) => s.goals > 0).length ?? 0})
+            ⚽ Top Scorers ({scopedStats.filter((s) => s.goals > 0).length})
           </button>
           <button
             type="button"
             className={`adm-pill-tab ${activeCategory === 'assists' ? 'is-active' : ''}`}
             onClick={() => setActiveCategory('assists')}
           >
-            🎯 Top Assists ({data?.stats.filter((s) => s.assists > 0).length ?? 0})
+            🎯 Top Assists ({scopedStats.filter((s) => s.assists > 0).length})
           </button>
           <button
             type="button"
             className={`adm-pill-tab ${activeCategory === 'saves' ? 'is-active' : ''}`}
             onClick={() => setActiveCategory('saves')}
           >
-            🧤 Most Saves ({data?.stats.filter((s) => s.saves > 0 || s.clean_sheets > 0).length ?? 0})
+            🧤 Most Saves ({scopedStats.filter((s) => s.saves > 0 || s.clean_sheets > 0).length})
           </button>
           <button
             type="button"
             className={`adm-pill-tab ${activeCategory === 'all' ? 'is-active' : ''}`}
             onClick={() => setActiveCategory('all')}
           >
-            📋 All Stats ({data?.stats.length ?? 0})
+            📋 All Stats ({scopedStats.length})
           </button>
         </div>
 
@@ -514,6 +549,31 @@ export function LeaderboardsView({
           />
         </div>
       </div>
+
+      {/* Division Filter Tabs */}
+      {data && data.divisions.length > 1 && (
+        <div className="adm-toolbar" style={{ marginTop: -8, marginBottom: 20 }}>
+          <div className="adm-pill-tabs">
+            <button
+              type="button"
+              className={`adm-pill-tab ${divisionFilter === 'all' ? 'is-active' : ''}`}
+              onClick={() => setDivisionFilter('all')}
+            >
+              Combined
+            </button>
+            {data.divisions.map((d) => (
+              <button
+                key={d.id}
+                type="button"
+                className={`adm-pill-tab ${divisionFilter === String(d.id) ? 'is-active' : ''}`}
+                onClick={() => setDivisionFilter(String(d.id))}
+              >
+                {d.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Live 3D Podium Preview Stage */}
       {activeCategory !== 'all' && (
@@ -553,7 +613,7 @@ export function LeaderboardsView({
                 if (podiumTop3[1]) openCropperForPlayer(podiumTop3[1])
               }}
               onEditStat={() => {
-                if (podiumTop3[1]) openEditStatModal(podiumTop3[1])
+                if (podiumTop3[1]) openPodiumEdit(podiumTop3[1])
               }}
             />
 
@@ -567,7 +627,7 @@ export function LeaderboardsView({
                 if (podiumTop3[0]) openCropperForPlayer(podiumTop3[0])
               }}
               onEditStat={() => {
-                if (podiumTop3[0]) openEditStatModal(podiumTop3[0])
+                if (podiumTop3[0]) openPodiumEdit(podiumTop3[0])
               }}
             />
 
@@ -580,7 +640,7 @@ export function LeaderboardsView({
                 if (podiumTop3[2]) openCropperForPlayer(podiumTop3[2])
               }}
               onEditStat={() => {
-                if (podiumTop3[2]) openEditStatModal(podiumTop3[2])
+                if (podiumTop3[2]) openPodiumEdit(podiumTop3[2])
               }}
             />
           </div>

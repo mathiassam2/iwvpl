@@ -38,6 +38,16 @@ export function EaMatchResultModal({
   const [homeSquad, setHomeSquad] = useState<Array<{ id: number; gamertag: string; shirt_number?: number | null }>>([])
   const [awaySquad, setAwaySquad] = useState<Array<{ id: number; gamertag: string; shirt_number?: number | null }>>([])
   const [submitting, setSubmitting] = useState(false)
+  const nextHomeScore = homeScore === '' ? null : Number(homeScore)
+  const nextAwayScore = awayScore === '' ? null : Number(awayScore)
+  const resultWillChange =
+    match?.home_score != null &&
+    match.away_score != null &&
+    nextHomeScore != null &&
+    nextAwayScore != null &&
+    Number.isInteger(nextHomeScore) &&
+    Number.isInteger(nextAwayScore) &&
+    (Number(match.home_score) !== nextHomeScore || Number(match.away_score) !== nextAwayScore)
 
   // Load EA candidates when modal opens
   useEffect(() => {
@@ -518,6 +528,18 @@ export function EaMatchResultModal({
                 />
               </div>
             </div>
+
+            {resultWillChange && match && (
+              <div className="adm-ea-result-change" role="status">
+                <strong>
+                  Result change: {match.home_score}–{match.away_score} → {nextHomeScore}–{nextAwayScore}
+                </strong>
+                <span>
+                  Applying this EA result replaces the recorded score and recalculates the fixture&apos;s
+                  standings and player season totals.
+                </span>
+              </div>
+            )}
 
             {/* Isolation Guarantee Notice */}
             <div

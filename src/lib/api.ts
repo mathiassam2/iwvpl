@@ -447,6 +447,15 @@ export interface TotwPlayer {
   candidUrl: string | null
 }
 
+/** A division that has its own Team of the Week. */
+export interface TotwDivision {
+  id: number
+  name: string
+  slug: string
+  seasonName: string
+  weekCount: number
+}
+
 export interface TotwWeekSummary {
   id: number
   label: string
@@ -474,11 +483,11 @@ export interface TotwResponse {
 export const getTotwAccess = () => request<{ allowed: boolean }>('/api/totw/access')
 
 export const getTotw = (weekId?: number | null, divisionId?: number | null) => {
-  const q = new URLSearchParams()
-  if (weekId) q.set('week', String(weekId))
-  if (divisionId) q.set('division', String(divisionId))
-  const s = q.toString()
-  return request<TotwResponse>(`/api/totw${s ? `?${s}` : ''}`)
+  const params = new URLSearchParams()
+  if (weekId) params.set('week', String(weekId))
+  if (divisionId) params.set('division', String(divisionId))
+  const query = params.toString()
+  return request<TotwResponse>(`/api/totw${query ? `?${query}` : ''}`)
 }
 
 /* --------------------------------------------------------- transfer window */

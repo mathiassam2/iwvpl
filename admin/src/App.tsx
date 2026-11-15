@@ -12,6 +12,7 @@ import {
   getSiteContent,
 
 } from './api'
+import { ClubDossierView } from './views/ClubDossierView'
 import { ClubsView } from './views/ClubsView'
 import { MatchesStandingsView } from './views/MatchesStandingsView'
 import { LeaderboardsView } from './views/LeaderboardsView'
@@ -21,7 +22,7 @@ import { UsersPlayersView } from './views/UsersPlayersView'
 import { WebsiteContentView } from './views/WebsiteContentView'
 import { TotwView } from './views/TotwView'
 
-export type AdminTab = 'overview' | 'clubs' | 'matches' | 'leaderboards' | 'seasons' | 'users' | 'totw' | 'website'
+export type AdminTab = 'overview' | 'clubs' | 'dossier' | 'matches' | 'leaderboards' | 'seasons' | 'users' | 'totw' | 'website'
 
 interface Notice {
   kind: 'ok' | 'error' | 'info'
@@ -107,6 +108,14 @@ const NAV_ITEMS: Array<{
     subtitle: 'Approve new manager sign-ups, upload club logos, assign divisions & regions, and manage squads.',
   },
   {
+    id: 'dossier',
+    label: 'Club Dossier',
+    shortLabel: 'Dossier',
+    icon: '📋',
+    title: 'Club Dossier',
+    subtitle: 'Every fixture, EA FC Pro Clubs match and player box score for a club, in one read-only intelligence view.',
+  },
+  {
     id: 'matches',
     label: 'Matches & Standings',
     shortLabel: 'Matches',
@@ -163,6 +172,7 @@ export default function App() {
     return 'overview'
   })
   const [subTarget, setSubTarget] = useState<string | undefined>(undefined)
+  const [dossierSlug, setDossierSlug] = useState<string | undefined>(undefined)
   const [toasts, setToasts] = useState<Toast[]>([])
   const [pendingCount, setPendingCount] = useState(0)
   const nextToastId = useRef(0)
@@ -225,7 +235,15 @@ export default function App() {
 
   const handleNavigate = useCallback((nextTab: AdminTab, sub?: string) => {
     setSubTarget(sub)
+    if (nextTab === 'dossier' && sub) setDossierSlug(sub)
     setTab(nextTab)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [])
+
+  const openDossier = useCallback((slug: string) => {
+    setDossierSlug(slug)
+    setSubTarget(undefined)
+    setTab('dossier')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }, [])
 
@@ -331,6 +349,16 @@ export default function App() {
               report={report}
               initialSub={subTarget}
               onPendingCountChange={setPendingCount}
+              onOpenDossier={openDossier}
+            />
+          )}
+          {tab === 'dossier' && (
+            <ClubDossierView
+              guard={guard}
+              report={report}
+              initialSlug={dossierSlug}
+              onOpenClubs={() => handleNavigate('clubs')}
+              onOpenMatches={() => handleNavigate('matches')}
             />
           )}
           {tab === 'matches' && (

@@ -474,11 +474,13 @@ export function ClubsView({
   report,
   initialSub,
   onPendingCountChange,
+  onOpenDossier,
 }: {
   guard: Guard
   report: Report
   initialSub?: string
   onPendingCountChange: (count: number) => void
+  onOpenDossier?: (slug: string) => void
 }) {
   const [clubs, setClubs] = useState<Club[]>([])
   const [pendingClubs, setPendingClubs] = useState<PendingClub[]>([])
@@ -3003,9 +3005,24 @@ export function ClubsView({
                 <span className="adm-eyebrow">CLUB DRAWER</span>
                 <h3>{editName || drawerClubSlug}</h3>
               </div>
-              <button type="button" className="adm-close-btn" onClick={closeDrawer}>
-                ×
-              </button>
+              <div className="adm-drawer-head-actions">
+                {onOpenDossier && drawerClubSlug && (
+                  <button
+                    type="button"
+                    className="adm-btn adm-btn-secondary adm-btn-sm"
+                    onClick={() => {
+                      const slug = drawerClubSlug
+                      closeDrawer()
+                      if (slug) onOpenDossier(slug)
+                    }}
+                  >
+                    📋 Open dossier
+                  </button>
+                )}
+                <button type="button" className="adm-close-btn" onClick={closeDrawer}>
+                  ×
+                </button>
+              </div>
             </div>
 
             <div className="adm-drawer-body">

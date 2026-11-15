@@ -90,7 +90,15 @@ async function canView(req: any): Promise<boolean> {
   return access.userIds.includes(user.id)
 }
 
-/* -------------------------------------------------------------- the shape */
+/* --------------------------------------------------------- position groups */
+
+/**
+ * The four groups a slot can belong to. The suggestion engine ranks a slot
+ * from the pool of players whose recorded position falls in that group, so the
+ * admin is choosing between goalkeepers for the keeper slot and not between
+ * whoever happens to have scored lately.
+ */
+export type PositionGroup = 'GK' | 'DEF' | 'MID' | 'ST'
 
 /**
  * Which positions belong to which group.
@@ -98,7 +106,7 @@ async function canView(req: any): Promise<boolean> {
  * The C/L/R variants are EA's own abbreviations for the same lines (LCM plays
  * as a CM, LCB as a CB) and sit in the same group.
  */
-const POSITION_GROUP_MEMBERS: Record<string, string[]> = {
+const POSITION_GROUP_MEMBERS: Record<PositionGroup, string[]> = {
   GK: ['GK'],
   DEF: ['LB', 'LWB', 'CB', 'RB', 'RWB', 'LCB', 'RCB'],
   MID: ['CDM', 'CM', 'CAM', 'LM', 'RM', 'LW', 'RW', 'LCM', 'RCM'],
@@ -109,17 +117,29 @@ const POSITION_GROUP_MEMBERS: Record<string, string[]> = {
 const SLOT_POSITIONS = ['ST', 'ST', 'LM', 'CM', 'CM', 'RM', 'LB', 'CB', 'CB', 'RB', 'GK']
 
 /** Which group a recorded position belongs to. Null when it is not one we know. */
-function positionGroup(position: unknown): string | null {
+function positionGroup(position: unknown): PositionGroup | null {
   const p = String(position ?? '').trim().toUpperCase()
   if (!p) return null
-  for (const group of Object.keys(POSITION_GROUP_MEMBERS)) {
+  for (const group of Object.keys(POSITION_GROUP_MEMBERS) as PositionGroup[]) {
     if (POSITION_GROUP_MEMBERS[group].includes(p)) return group
   }
   return null
 }
 
 /** The group each formation slot belongs to. */
-const SLOT_GROUPS = SLOT_POSITIONS.map((p) => positionGroup(p))
+const SLOT_GROUPS: PositionGroup[] = SLOT_POSITIONS.map((p) => positionGroup(p) as PositionGroup)
+
+/* -------------------------------------------------------------- divisions */
+
+interface DivisionRow {
+  id: number
+  name: string
+  slug: string
+  season_id: number
+  season_name: string
+  sort_order: number
+  is_current: number
+}
 
 /**
  * The divisions a Team of the Week can be made for.
@@ -129,16 +149,8 @@ const SLOT_GROUPS = SLOT_POSITIONS.map((p) => positionGroup(p))
  * League. If the current season somehow has none, every active division is
  * returned instead of an empty picker.
  */
-async function listDivisions() {
-  const rows = await queryAll<{
-    id: number
-    name: string
-    slug: string
-    season_id: number
-    sort_order: number
-    season_name: string
-    is_current: number
-  }>(
+async function listDivisions(): Promise<DivisionRow[]> {
+  const rows = await queryAll<DivisionRow>(
     `SELECT d.id, d.name, d.slug, d.season_id, d.sort_order,
             s.name AS season_name, s.is_current
        FROM divisions d
@@ -150,13 +162,20 @@ async function listDivisions() {
   return current.length > 0 ? current : rows
 }
 
+interface GameWeekRow {
+  gameWeek: number
+  matches: number
+  played: number
+  statRows: number
+}
+
 /**
  * The game weeks that have fixtures in a division, with how many of those
  * fixtures have been played and how many player-stat rows have been imported
  * for them. The stat count is what tells the admin whether the suggestion
  * list will have anything in it.
  */
-async function listGameWeeks(divisionId: number) {
+async function listGameWeeks(divisionId: number): Promise<GameWeekRow[]> {
   const [fixtures, stats] = await Promise.all([
     queryAll<{ gameWeek: number; matches: number; played: number }>(
       `SELECT round_number AS gameWeek,
@@ -177,6 +196,7 @@ async function listGameWeeks(divisionId: number) {
       [divisionId],
     ),
   ])
+
   const statsByWeek = new Map(stats.map((s) => [Number(s.gameWeek), Number(s.statRows)]))
   return fixtures.map((f) => {
     const gameWeek = Number(f.gameWeek)
@@ -189,6 +209,23 @@ async function listGameWeeks(divisionId: number) {
   })
 }
 
+/* ------------------------------------------------------------- suggestions */
+
+interface SuggestionRow {
+  player_id: number
+  gamertag: string
+  pos: string
+  club_id: number | null
+  club_name: string | null
+  club_logo: string | null
+  avatar: string | null
+  rating: number
+  goals: number
+  assists: number
+  appearances: number
+  mom: number
+}
+
 /**
  * Players worth a slot, ranked by the rating they earned in one game week.
  *
@@ -197,11 +234,14 @@ async function listGameWeeks(divisionId: number) {
  * did not feature that week is not a candidate for that week's team, and a
  * rating from a different week is a different number entirely.
  */
-async function suggestPlayers(divisionId: number, gameWeek: number, group: string) {
-  const positions = POSITION_GROUP_MEMBERS[group] ?? []
+async function suggestPlayers(
+  divisionId: number,
+  gameWeek: number,
+  group: PositionGroup,
+): Promise<SuggestionRow[]> {
+  const positions = POSITION_GROUP_MEMBERS[group]
   const placeholders = positions.map(() => '?').join(',')
-  if (!positions.length) return []
-  return queryAll(
+  return queryAll<SuggestionRow>(
     `SELECT ps.player_id AS player_id,
             MAX(ps.gamertag) AS gamertag,
             MAX(ps.pos) AS pos,
@@ -399,6 +439,7 @@ totw.get(
     if (!(await canView(req))) fail(403, 'Team of the Week is not available to your account yet.')
 
     const divisions = await listDivisions()
+
     const published = await queryAll<{
       id: number
       label: string
@@ -433,19 +474,25 @@ totw.get(
     ) {
       divisionId = requestedDivision
     }
+
     if (divisionId === null) {
       // Default to the first division that actually has a published team.
-      const withWeeks = new Set(published.map((w) => w.division_id).filter((v) => v != null))
+      const withWeeks = new Set(
+        published.map((w) => w.division_id).filter((v): v is number => v != null),
+      )
       divisionId = divisions.find((d) => withWeeks.has(d.id))?.id ?? null
     }
 
     const weeks = published
       .filter((w) => (divisionId === null ? true : w.division_id === divisionId))
-      .sort((a, b) => Number(a.game_week ?? 0) - Number(b.game_week ?? 0) || a.id - b.id)
+      .sort(
+        (a, b) =>
+          Number(a.game_week ?? 0) - Number(b.game_week ?? 0) || a.id - b.id,
+      )
 
-    const current =
-      (requested && weeks.some((w) => w.id === requested.id) ? requested : weeks[weeks.length - 1]) ??
-      null
+    const current = (requested && weeks.some((w) => w.id === requested.id)
+      ? requested
+      : weeks[weeks.length - 1]) ?? null
 
     let players: ReturnType<typeof serializePlayer>[] = []
     if (current) {
@@ -562,6 +609,7 @@ async function resolveBinding(divisionIdRaw: unknown, gameWeekRaw: unknown) {
   if (!Number.isSafeInteger(divisionId) || divisionId < 1) {
     fail(400, 'Pick the division this team belongs to.')
   }
+
   const divisions = await listDivisions()
   const division = divisions.find((d) => d.id === divisionId)
   if (!division) fail(400, 'That division is not available.')
@@ -570,15 +618,21 @@ async function resolveBinding(divisionIdRaw: unknown, gameWeekRaw: unknown) {
   if (!Number.isSafeInteger(gameWeek) || gameWeek < 1) {
     fail(400, 'Pick the game week this team covers.')
   }
+
   const weeks = await listGameWeeks(divisionId)
   if (!weeks.some((w) => w.gameWeek === gameWeek)) {
     fail(400, `Game week ${gameWeek} has no fixtures in ${division.name}.`)
   }
+
   return { divisionId, gameWeek, division }
 }
 
 /** Refuses a second team for the same division and game week. */
-async function assertNoDuplicate(divisionId: number, gameWeek: number, exceptWeekId?: number) {
+async function assertNoDuplicate(
+  divisionId: number,
+  gameWeek: number,
+  exceptWeekId?: number,
+): Promise<void> {
   const clash = await queryOne<{ id: number }>(
     `SELECT id FROM totw_weeks
       WHERE division_id = ? AND game_week = ? AND (? IS NULL OR id <> ?)
@@ -668,13 +722,15 @@ totwAdmin.post(
       req.body?.gameWeek,
     )
     await assertNoDuplicate(divisionId, gameWeek)
+
     const label =
       req.body?.label === undefined || String(req.body.label ?? '').trim() === ''
         ? `Game Week ${gameWeek}`
         : cleanLabel(req.body.label)
+
     const [result] = await pool.execute(
       `INSERT INTO totw_weeks (label, status, division_id, season_id, game_week, created_at, updated_at)
-         VALUES (?, 'draft', ?, ?, ?, NOW(), NOW())`,
+       VALUES (?, 'draft', ?, ?, ?, NOW(), NOW())`,
       [label, divisionId, division.season_id, gameWeek],
     ).catch((err: any) => {
       // The unique index on (division_id, game_week) is the real guard; this
@@ -723,7 +779,9 @@ totwAdmin.put(
 
     let divisionId = week.division_id
     let gameWeek = week.game_week == null ? null : Number(week.game_week)
-    const rebinding = req.body?.divisionId !== undefined || req.body?.gameWeek !== undefined
+    const rebinding =
+      req.body?.divisionId !== undefined || req.body?.gameWeek !== undefined
+
     if (rebinding) {
       const resolved = await resolveBinding(
         req.body?.divisionId ?? divisionId,
@@ -775,7 +833,7 @@ totwAdmin.delete(
 )
 
 /** Rewrites the frozen rating of every player in a week from that week. */
-async function resnapshotRatings(weekId: number, divisionId: number, gameWeek: number) {
+async function resnapshotRatings(weekId: number, divisionId: number, gameWeek: number): Promise<void> {
   const rows = await queryAll<{ id: number; player_id: number | null }>(
     'SELECT id, player_id FROM totw_players WHERE week_id = ?',
     [weekId],
@@ -802,8 +860,10 @@ totwAdmin.get(
   '/suggestions',
   handler(async (req, res) => {
     const slot = req.query.slot === undefined ? null : slotIndex(req.query.slot)
+
     let divisionId: number | null = null
     let gameWeek: number | null = null
+
     const weekParam = req.query.weekId
     if (weekParam !== undefined && String(weekParam) !== '') {
       const week = await loadWeek(weekId(weekParam))
@@ -826,12 +886,15 @@ totwAdmin.get(
     }
 
     const groupParam = String(req.query.group ?? '').trim().toUpperCase()
-    const group =
-      groupParam === 'GK' || groupParam === 'DEF' || groupParam === 'MID' || groupParam === 'ST'
+    const group: PositionGroup =
+      (groupParam === 'GK' ||
+        groupParam === 'DEF' ||
+        groupParam === 'MID' ||
+        groupParam === 'ST')
         ? groupParam
         : slot === null
           ? 'MID'
-          : (SLOT_GROUPS[slot] ?? 'MID')
+          : SLOT_GROUPS[slot]
 
     const rows = await suggestPlayers(divisionId, gameWeek, group)
 
@@ -839,7 +902,7 @@ totwAdmin.get(
     // may still want them, they just should not be added twice by accident.
     const pickedIds = new Set<number>()
     if (weekParam !== undefined && String(weekParam) !== '') {
-      const picked = await queryAll<{ player_id: number }>(
+      const picked = await queryAll<{ player_id: number | null }>(
         'SELECT player_id FROM totw_players WHERE week_id = ? AND player_id IS NOT NULL',
         [weekId(weekParam)],
       )
@@ -850,7 +913,7 @@ totwAdmin.get(
       divisionId,
       gameWeek,
       group,
-      candidates: rows.map((r: any) => ({
+      candidates: rows.map((r) => ({
         playerId: Number(r.player_id),
         gamertag: r.gamertag,
         position: r.pos,
@@ -943,14 +1006,12 @@ totwAdmin.put(
       if (incoming === null || incoming === '') return { keep: false as const, value: null, has: false }
       return { keep: false as const, value: cleanImage(incoming, what), has: true }
     }
-
     const close = resolvePhoto(body.photoClose, Boolean(existing?.has_close), 'Close-up photo')
     const candid = resolvePhoto(body.photoCandid, Boolean(existing?.has_candid), 'Candid photo')
-
     // A pick made from the suggestion list carries the player's own avatar,
     // so a photo is only required when there is nothing else to show.
     if (!close.has && !candid.has && !playerId) {
-      fail(400, 'Upload a photo for this player.')
+      fail(400, 'Upload at least one photo for this player.')
     }
 
     // The rating is taken from this team's own game week, never from the
@@ -977,7 +1038,7 @@ totwAdmin.put(
         'goals = ?',
         'assists = ?',
       ]
-      const params: (number | string | null)[] = [
+      const params: (string | number | null)[] = [
         name,
         shirtNumber,
         position,
@@ -1038,6 +1099,7 @@ totwAdmin.delete(
     const week = await loadWeek(weekId(req.params.id))
     const slot = slotIndex(req.params.slot)
     await execute('DELETE FROM totw_players WHERE week_id = ? AND slot = ?', [week.id, slot])
+
     // A published week with nobody left in it has nothing to show.
     const left = await queryOne<{ n: number }>(
       'SELECT COUNT(*) AS n FROM totw_players WHERE week_id = ?',

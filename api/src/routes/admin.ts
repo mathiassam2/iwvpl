@@ -13,7 +13,7 @@
  */
 
 import { Router } from 'express'
-import { searchEaClubs, getCandidateMatchesForFixture, fetchEaClubDeepProfile, autoMatchClubs } from '../domain/eaSports.js'
+import { searchEaClubs, getCandidateMatchesForFixture, fetchEaClubDeepProfile, fetchEaClubFullProfile, autoMatchClubs } from '../domain/eaSports.js'
 import { execute, queryAll, queryOne, withTransaction, type Params } from '../db.js'
 import {
   previewFixtures,
@@ -180,6 +180,21 @@ async function rollbackMatchPlayerStats(
   await conn.execute('DELETE FROM match_player_stats WHERE match_id = ?', [matchId])
 }
 
+async function findUniquePlayerSlug(
+  conn: any,
+  gamertag: string,
+  fallbackKey: string,
+): Promise<string> {
+  const base = clubSlug(gamertag) || clubSlug(fallbackKey) || `player-${Date.now().toString(36)}`
+  let candidate = base
+  let suffix = 2
+  while (true) {
+    const [rows] = await conn.query('SELECT id FROM players WHERE slug = ? LIMIT 1', [candidate])
+    if ((rows as unknown[]).length === 0) return candidate
+    candidate = `${base}-${suffix++}`
+  }
+}
+
 async function replaceMatchPlayerStats(
   conn: any,
   match: { id: number; season_id: number; division_id: number; home_club_id: number; away_club_id: number },
@@ -235,13 +250,34 @@ async function replaceMatchPlayerStats(
     )
     let playerId = (existingPlayerRows as any[])[0]?.id
     if (!playerId) {
-      const pSlug = clubSlug(rawGamertag) || `player-${Date.now()}`
-      const [ins] = await conn.execute(
-        `INSERT INTO players (gamertag, gamertag_key, slug, club_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, NOW(), NOW())`,
-        [rawGamertag, gKey, pSlug, validClubId],
-      )
-      playerId = (ins as any).insertId
+      let pSlug = await findUniquePlayerSlug(conn, rawGamertag, gKey)
+      try {
+        const [ins] = await conn.execute(
+          `INSERT INTO players (gamertag, gamertag_key, slug, club_id, created_at, updated_at)
+           VALUES (?, ?, ?, ?, NOW(), NOW())`,
+          [rawGamertag, gKey, pSlug, validClubId],
+        )
+        playerId = (ins as any).insertId
+      } catch (err: any) {
+        if (err.code === 'ER_DUP_ENTRY' || err.errno === 1062) {
+          const [retryRows] = await conn.query(
+            'SELECT id FROM players WHERE gamertag_key = ? LIMIT 1',
+            [gKey],
+          )
+          playerId = (retryRows as any[])[0]?.id
+          if (!playerId) {
+            pSlug = `${pSlug}-${Date.now().toString(36)}`
+            const [insRetry] = await conn.execute(
+              `INSERT INTO players (gamertag, gamertag_key, slug, club_id, created_at, updated_at)
+               VALUES (?, ?, ?, ?, NOW(), NOW())`,
+              [rawGamertag, gKey, pSlug, validClubId],
+            )
+            playerId = (insRetry as any).insertId
+          }
+        } else {
+          throw err
+        }
+      }
     } else {
       await conn.execute(
         'UPDATE players SET club_id = COALESCE(club_id, ?), updated_at = NOW() WHERE id = ?',
@@ -982,6 +1018,578 @@ admin.delete(
 
     if ('error' in result) return res.status(result.status).json({ error: result.error })
     res.json({ ok: true, matchId: id })
+  }),
+)
+
+/* --------------------------------------------- club dossier (admin read view) */
+
+function matchClubLogoSql(alias: string): string {
+  return `CASE
+    WHEN LEFT(COALESCE(${alias}.logo_local, ${alias}.logo_url, ''), 5) = 'data:'
+      THEN CONCAT('/api/clubs/', ${alias}.slug, '/logo?v=', COALESCE(UNIX_TIMESTAMP(${alias}.updated_at), 1))
+    ELSE COALESCE(${alias}.logo_local, ${alias}.logo_url)
+  END`
+}
+
+/** Normalise an admin slug the same way the public club route does. */
+function slugCandidates(raw: string): [string, string] {
+  const lower = raw.toLowerCase()
+  const deaccented = raw
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+  return [lower, deaccented]
+}
+
+interface DossierRecordSummary {
+  played: number
+  won: number
+  drawn: number
+  lost: number
+  goalsFor: number
+  goalsAgainst: number
+  goalDifference: number
+  points: number
+  winRate: number
+  form: string
+}
+
+function summariseDossierMatches(results: Array<'W' | 'D' | 'L'>, goalsFor: number, goalsAgainst: number): DossierRecordSummary {
+  const won = results.filter((r) => r === 'W').length
+  const drawn = results.filter((r) => r === 'D').length
+  const lost = results.filter((r) => r === 'L').length
+  const played = results.length
+  return {
+    played,
+    won,
+    drawn,
+    lost,
+    goalsFor,
+    goalsAgainst,
+    goalDifference: goalsFor - goalsAgainst,
+    points: won * 3 + drawn,
+    winRate: played > 0 ? Math.round((won / played) * 100) : 0,
+    form: results.slice(0, 5).reverse().join(''),
+  }
+}
+
+admin.get(
+  '/clubs/:slug/dossier',
+  handler(async (req, res) => {
+    const rawSlug = String(req.params.slug ?? '').trim()
+    if (!rawSlug) {
+      res.status(400).json({ error: 'Club slug is required.' })
+      return
+    }
+    const [slug, deaccented] = slugCandidates(rawSlug)
+
+    const club = await queryOne<any>(
+      `SELECT c.id, c.name, c.slug, c.short_code, c.flag, ${matchClubLogoSql('c')} AS logo,
+              c.status, c.description, c.formation, c.starting_xi_json,
+              c.ea_club_id, c.ea_club_name, c.created_at
+         FROM clubs c
+        WHERE (c.slug = ? OR c.slug = ?)
+        LIMIT 1`,
+      [slug, deaccented],
+    )
+    if (!club) {
+      res.status(404).json({ error: 'Club not found.' })
+      return
+    }
+
+    let seasons = await queryAll<any>(
+      `SELECT DISTINCT s.id, s.name, s.year, s.is_current
+         FROM seasons s
+        WHERE s.is_draft = FALSE
+          AND (
+            EXISTS (
+              SELECT 1 FROM matches m
+               WHERE m.season_id = s.id AND (m.home_club_id = ? OR m.away_club_id = ?)
+            )
+            OR EXISTS (
+              SELECT 1 FROM divisions d
+                JOIN division_clubs dc ON dc.division_id = d.id
+               WHERE d.season_id = s.id AND dc.club_id = ?
+            )
+          )
+        ORDER BY s.year DESC, s.id DESC`,
+      [club.id, club.id, club.id],
+    )
+
+    // A club with no fixtures or division row yet should still open on the
+    // current season rather than showing an empty selector.
+    if (seasons.length === 0) {
+      seasons = await queryAll<any>(
+        `SELECT id, name, year, is_current FROM seasons
+          WHERE is_draft = FALSE
+          ORDER BY year DESC, id DESC`,
+      )
+    }
+
+    const requestedSeasonId = Number.parseInt(String(req.query.seasonId ?? ''), 10)
+    const requestedSeason =
+      Number.isSafeInteger(requestedSeasonId) && requestedSeasonId > 0
+        ? seasons.find((season) => Number(season.id) === requestedSeasonId)
+        : null
+    const selectedSeason =
+      requestedSeason ??
+      seasons.find((season) => Boolean(season.is_current)) ??
+      seasons[0] ??
+      null
+    const seasonId = selectedSeason ? Number(selectedSeason.id) : null
+
+    let division = seasonId
+      ? await queryOne<any>(
+          `SELECT d.id, d.name, d.slug
+             FROM divisions d
+             JOIN division_clubs dc ON dc.division_id = d.id
+            WHERE dc.club_id = ? AND d.season_id = ?
+            ORDER BY d.sort_order, d.id
+            LIMIT 1`,
+          [club.id, seasonId],
+        )
+      : undefined
+
+    if (!division && seasonId) {
+      division = await queryOne<any>(
+        `SELECT d.id, d.name, d.slug
+           FROM matches m
+           JOIN divisions d ON d.id = m.division_id
+          WHERE m.season_id = ? AND (m.home_club_id = ? OR m.away_club_id = ?)
+          ORDER BY m.id DESC
+          LIMIT 1`,
+        [seasonId, club.id, club.id],
+      )
+    }
+
+    const [standing, managerRows, squad, divisionTable] = await Promise.all([
+      seasonId && division
+        ? queryOne<any>(
+            `SELECT position, played, won, drawn, lost, goals_for, goals_against,
+                    goal_difference, points, form
+               FROM standings_snapshot
+              WHERE season_id = ? AND division_id = ? AND club_id = ?
+              LIMIT 1`,
+            [seasonId, division.id, club.id],
+          )
+        : Promise.resolve(undefined),
+      queryAll<any>(
+        `SELECT u.id, u.email, u.display_name, u.role, p.gamertag
+           FROM users u
+           LEFT JOIN players p ON p.user_id = u.id
+          WHERE u.club_id = ?
+            AND u.is_active = TRUE
+            AND u.role IN ('club_manager', 'admin', 'owner')
+          ORDER BY FIELD(u.role, 'owner', 'admin', 'club_manager'), u.id ASC`,
+        [club.id],
+      ),
+      queryAll<any>(
+        `SELECT id, gamertag, slug, shirt_number, avatar_local, position, is_starting_11, is_free_agent
+           FROM players
+          WHERE club_id = ?
+          ORDER BY COALESCE(shirt_number, 999), gamertag`,
+        [club.id],
+      ),
+      seasonId && division
+        ? queryAll<any>(
+            `SELECT s.position, s.played, s.won, s.drawn, s.lost, s.goals_for, s.goals_against,
+                    s.goal_difference, s.points, s.form, s.club_id,
+                    c.name, c.slug, c.short_code, c.flag, ${matchClubLogoSql('c')} AS logo
+               FROM standings_snapshot s
+               JOIN clubs c ON c.id = s.club_id
+              WHERE s.season_id = ? AND s.division_id = ?
+              ORDER BY s.position ASC, s.id ASC`,
+            [seasonId, division.id],
+          )
+        : Promise.resolve([]),
+    ])
+
+    const matches = seasonId
+      ? await queryAll<any>(
+          `SELECT m.id, m.kickoff, m.status, m.home_score, m.away_score, m.round_number,
+                  m.ea_match_id, m.venue, m.stream_url, m.division_id, m.season_id,
+                  d.name AS division_name, d.slug AS division_slug,
+                  home.id AS home_club_id, home.name AS home_name, home.slug AS home_slug,
+                  home.short_code AS home_code, home.flag AS home_flag, ${matchClubLogoSql('home')} AS home_logo,
+                  away.id AS away_club_id, away.name AS away_name, away.slug AS away_slug,
+                  away.short_code AS away_code, away.flag AS away_flag, ${matchClubLogoSql('away')} AS away_logo
+             FROM matches m
+             JOIN clubs home ON home.id = m.home_club_id
+             JOIN clubs away ON away.id = m.away_club_id
+             LEFT JOIN divisions d ON d.id = m.division_id
+            WHERE m.season_id = ? AND (m.home_club_id = ? OR m.away_club_id = ?)
+            ORDER BY (m.kickoff IS NULL) ASC, m.kickoff DESC, m.id DESC`,
+          [seasonId, club.id, club.id],
+        )
+      : []
+
+    const matchIds: number[] = matches.map((match) => Number(match.id))
+    const placeholders = matchIds.map(() => '?').join(',')
+    const [matchStatsRows, playerStatRows, eventRows] = matchIds.length
+      ? await Promise.all([
+          queryAll<any>(`SELECT * FROM match_stats WHERE match_id IN (${placeholders})`, matchIds),
+          queryAll<any>(
+            `SELECT mps.*, p.slug AS player_slug, p.avatar_local AS player_avatar
+               FROM match_player_stats mps
+               LEFT JOIN players p ON p.id = mps.player_id
+              WHERE mps.match_id IN (${placeholders})
+              ORDER BY mps.match_id, mps.club_id, mps.gamertag`,
+            matchIds,
+          ),
+          queryAll<any>(
+            `SELECT match_id, minute, type, team_side, player_name, detail, score
+               FROM match_events
+              WHERE match_id IN (${placeholders})
+              ORDER BY match_id, minute, id`,
+            matchIds,
+          ),
+        ])
+      : [[] as any[], [] as any[], [] as any[]]
+
+    const statsByMatch = new Map<number, any>()
+    for (const row of matchStatsRows) statsByMatch.set(Number(row.match_id), row)
+
+    const playersByMatch = new Map<number, any[]>()
+    for (const row of playerStatRows) {
+      const key = Number(row.match_id)
+      const list = playersByMatch.get(key) ?? []
+      list.push(row)
+      playersByMatch.set(key, list)
+    }
+
+    const eventsByMatch = new Map<number, any[]>()
+    for (const row of eventRows) {
+      const key = Number(row.match_id)
+      const list = eventsByMatch.get(key) ?? []
+      list.push(row)
+      eventsByMatch.set(key, list)
+    }
+
+    const statPair = (row: any, key: string): [number | null, number | null] => [
+      row?.[`${key}_home`] == null ? null : Number(row[`${key}_home`]),
+      row?.[`${key}_away`] == null ? null : Number(row[`${key}_away`]),
+    ]
+
+    const dossierMatches = matches.map((match) => {
+      const isHome = Number(match.home_club_id) === Number(club.id)
+      const scoreFor = isHome ? match.home_score : match.away_score
+      const scoreAgainst = isHome ? match.away_score : match.home_score
+      const hasScore = scoreFor !== null && scoreAgainst !== null
+      const result: 'W' | 'D' | 'L' | null = hasScore
+        ? scoreFor > scoreAgainst
+          ? 'W'
+          : scoreFor === scoreAgainst
+            ? 'D'
+            : 'L'
+        : null
+
+      const statsRow = statsByMatch.get(Number(match.id))
+      const allPlayers = playersByMatch.get(Number(match.id)) ?? []
+      const ownPlayers = allPlayers.filter((row) => Number(row.club_id) === Number(club.id))
+      const opponentPlayers = allPlayers.filter((row) => Number(row.club_id) !== Number(club.id))
+      const opponent = isHome
+        ? {
+            id: match.away_club_id,
+            name: match.away_name,
+            slug: match.away_slug,
+            short_code: match.away_code,
+            flag: match.away_flag,
+            logo: match.away_logo,
+          }
+        : {
+            id: match.home_club_id,
+            name: match.home_name,
+            slug: match.home_slug,
+            short_code: match.home_code,
+            flag: match.home_flag,
+            logo: match.home_logo,
+          }
+
+      return {
+        id: Number(match.id),
+        kickoff: match.kickoff,
+        status: match.status,
+        is_home: isHome,
+        score_for: scoreFor,
+        score_against: scoreAgainst,
+        result,
+        round_number: match.round_number,
+        division_id: match.division_id,
+        division_name: match.division_name,
+        division_slug: match.division_slug,
+        ea_match_id: match.ea_match_id,
+        venue: match.venue,
+        stream_url: match.stream_url,
+        opponent,
+        team_stats: statsRow
+          ? {
+              possession: statPair(statsRow, 'possession'),
+              shots: statPair(statsRow, 'shots'),
+              on_target: statPair(statsRow, 'on_target'),
+              corners: statPair(statsRow, 'corners'),
+              fouls: statPair(statsRow, 'fouls'),
+              offsides: statPair(statsRow, 'offsides'),
+              pass_accuracy: statPair(statsRow, 'pass_accuracy'),
+              dribble_success: statPair(statsRow, 'dribble_success'),
+              shot_accuracy: statPair(statsRow, 'shot_accuracy'),
+              ball_recovery_time: statPair(statsRow, 'ball_recovery_time'),
+              xg: statPair(statsRow, 'xg'),
+              passes: statPair(statsRow, 'passes'),
+              tackles: statPair(statsRow, 'tackles'),
+              tackles_won: statPair(statsRow, 'tackles_won'),
+              interceptions: statPair(statsRow, 'interceptions'),
+              saves: statPair(statsRow, 'saves'),
+              free_kicks: statPair(statsRow, 'free_kicks'),
+              penalties: statPair(statsRow, 'penalties'),
+              yellow_cards: statPair(statsRow, 'yellow_cards'),
+              red_cards: statPair(statsRow, 'red_cards'),
+            }
+          : null,
+        player_stats: ownPlayers,
+        opponent_player_stats: opponentPlayers,
+        events: eventsByMatch.get(Number(match.id)) ?? [],
+      }
+    })
+
+    const completed = dossierMatches.filter(
+      (match) => match.score_for !== null && match.score_against !== null,
+    )
+    const results = completed.map((match) => match.result as 'W' | 'D' | 'L')
+    const summary = summariseDossierMatches(
+      results,
+      completed.reduce((acc, match) => acc + Number(match.score_for), 0),
+      completed.reduce((acc, match) => acc + Number(match.score_against), 0),
+    )
+    const homeMatches = completed.filter((match) => match.is_home)
+    const awayMatches = completed.filter((match) => !match.is_home)
+    const homeSummary = summariseDossierMatches(
+      homeMatches.map((match) => match.result as 'W' | 'D' | 'L'),
+      homeMatches.reduce((acc, match) => acc + Number(match.score_for), 0),
+      homeMatches.reduce((acc, match) => acc + Number(match.score_against), 0),
+    )
+    const awaySummary = summariseDossierMatches(
+      awayMatches.map((match) => match.result as 'W' | 'D' | 'L'),
+      awayMatches.reduce((acc, match) => acc + Number(match.score_for), 0),
+      awayMatches.reduce((acc, match) => acc + Number(match.score_against), 0),
+    )
+
+    interface PlayerTotal {
+      player_id: number | null
+      gamertag: string
+      slug: string | null
+      avatar: string | null
+      appearances: number
+      goals: number
+      assists: number
+      shots: number
+      passes: number
+      tackles: number
+      saves: number
+      clean_sheets: number
+      mom: number
+      yellow_cards: number
+      red_cards: number
+      minutes_played: number
+      rating_sum: number
+      rating_count: number
+    }
+
+    const totals = new Map<string, PlayerTotal>()
+    for (const row of playerStatRows) {
+      if (Number(row.club_id) !== Number(club.id)) continue
+      const key = row.player_id != null ? `id:${row.player_id}` : `tag:${String(row.gamertag).toLowerCase()}`
+      const current =
+        totals.get(key) ??
+        {
+          player_id: row.player_id == null ? null : Number(row.player_id),
+          gamertag: String(row.gamertag ?? ''),
+          slug: row.player_slug ?? null,
+          avatar: row.player_avatar ?? null,
+          appearances: 0,
+          goals: 0,
+          assists: 0,
+          shots: 0,
+          passes: 0,
+          tackles: 0,
+          saves: 0,
+          clean_sheets: 0,
+          mom: 0,
+          yellow_cards: 0,
+          red_cards: 0,
+          minutes_played: 0,
+          rating_sum: 0,
+          rating_count: 0,
+        }
+
+      const rating = Number(row.rating) || 0
+      current.appearances += 1
+      current.goals += Number(row.goals) || 0
+      current.assists += Number(row.assists) || 0
+      current.shots += Number(row.shots) || 0
+      current.passes += Number(row.passes) || 0
+      current.tackles += Number(row.tackles) || 0
+      current.saves += Number(row.saves) || 0
+      current.clean_sheets += row.clean_sheet ? 1 : 0
+      current.mom += row.is_mom ? 1 : 0
+      current.yellow_cards += Number(row.yellow_cards) || 0
+      current.red_cards += Number(row.red_cards) || 0
+      current.minutes_played += Number(row.minutes_played) || 0
+      if (rating > 0) {
+        current.rating_sum += rating
+        current.rating_count += 1
+      }
+      totals.set(key, current)
+    }
+
+    const playerTotals = Array.from(totals.values())
+      .map((row) => ({
+        player_id: row.player_id,
+        gamertag: row.gamertag,
+        slug: row.slug,
+        avatar: row.avatar,
+        appearances: row.appearances,
+        goals: row.goals,
+        assists: row.assists,
+        shots: row.shots,
+        passes: row.passes,
+        tackles: row.tackles,
+        saves: row.saves,
+        clean_sheets: row.clean_sheets,
+        mom: row.mom,
+        yellow_cards: row.yellow_cards,
+        red_cards: row.red_cards,
+        minutes_played: row.minutes_played,
+        avg_rating: row.rating_count > 0 ? Math.round((row.rating_sum / row.rating_count) * 10) / 10 : null,
+      }))
+      .sort((a, b) => b.goals - a.goals || b.assists - a.assists || b.appearances - a.appearances)
+
+    const managerNames = managerRows
+      .map((row) =>
+        String(row.display_name || row.gamertag || (row.email ? row.email.split('@')[0] : '')).trim(),
+      )
+      .filter(Boolean)
+
+    let startingXi: unknown = null
+    if (club.starting_xi_json) {
+      try {
+        startingXi = JSON.parse(String(club.starting_xi_json))
+      } catch {
+        startingXi = null
+      }
+    }
+
+    res.json({
+      ok: true,
+      club: {
+        id: Number(club.id),
+        name: club.name,
+        slug: club.slug,
+        short_code: club.short_code,
+        flag: club.flag,
+        logo: club.logo,
+        status: club.status,
+        description: club.description,
+        formation: club.formation,
+        starting_xi: startingXi,
+        ea_club_id: club.ea_club_id,
+        ea_club_name: club.ea_club_name,
+        created_at: club.created_at,
+        manager: {
+          name: managerNames.join(', ') || null,
+          email: managerRows[0]?.email ?? null,
+          gamertag: managerRows[0]?.gamertag ?? null,
+        },
+      },
+      seasons,
+      season: selectedSeason
+        ? {
+            id: Number(selectedSeason.id),
+            name: selectedSeason.name,
+            year: Number(selectedSeason.year),
+            is_current: selectedSeason.is_current,
+          }
+        : null,
+      division: division
+        ? { id: Number(division.id), name: division.name, slug: division.slug }
+        : null,
+      standing: standing ?? null,
+      division_table: divisionTable,
+      squad,
+      matches: dossierMatches,
+      player_totals: playerTotals,
+      summary: {
+        tracked: summary,
+        home: homeSummary,
+        away: awaySummary,
+        with_box_score: playerStatRows.length > 0,
+      },
+    })
+  }),
+)
+
+admin.get(
+  '/clubs/:slug/ea-profile',
+  handler(async (req, res) => {
+    const rawSlug = String(req.params.slug ?? '').trim()
+    if (!rawSlug) {
+      res.status(400).json({ error: 'Club slug is required.' })
+      return
+    }
+    const [slug, deaccented] = slugCandidates(rawSlug)
+
+    const club = await queryOne<any>(
+      `SELECT id, name, slug, ea_club_id, ea_club_name
+         FROM clubs
+        WHERE (slug = ? OR slug = ?)
+        LIMIT 1`,
+      [slug, deaccented],
+    )
+    if (!club) {
+      res.status(404).json({ error: 'Club not found.' })
+      return
+    }
+
+    if (!club.ea_club_id) {
+      res.json({
+        ok: true,
+        linked: false,
+        club: {
+          id: Number(club.id),
+          name: club.name,
+          slug: club.slug,
+          ea_club_id: null,
+          ea_club_name: null,
+        },
+        profile: null,
+      })
+      return
+    }
+
+    const refresh = req.query.refresh === '1' || req.query.refresh === 'true'
+    try {
+      const profile = await fetchEaClubFullProfile(String(club.ea_club_id), 'common-gen5', {
+        refresh,
+      })
+      res.json({
+        ok: true,
+        linked: true,
+        club: {
+          id: Number(club.id),
+          name: club.name,
+          slug: club.slug,
+          ea_club_id: club.ea_club_id,
+          ea_club_name: club.ea_club_name,
+        },
+        profile,
+      })
+    } catch (err) {
+      res.status(502).json({
+        error:
+          err instanceof Error
+            ? `Could not load EA Pro Clubs data: ${err.message}`
+            : 'Could not load EA Pro Clubs data.',
+      })
+    }
   }),
 )
 
