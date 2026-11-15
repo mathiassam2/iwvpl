@@ -654,11 +654,18 @@
   transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
   z-index: 2;
 }
+/*
+ * The portrait is the backdrop the name sits on, so it fills the card. It is
+ * always the photo the team uploaded for the Team of the Week - a player's
+ * league profile picture is not a portrait of them in the kit, and the card
+ * is about the upload, not the account.
+ */
 .totw-card__photo--close {
-  right: 0;
-  height: 86%;
-  width: 74%;
-  object-position: right bottom;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 8%;
   filter: grayscale(1) contrast(1.12) brightness(1.02);
 }
 .totw-card__photo--candid {
@@ -669,14 +676,13 @@
   width: 50%;
   object-position: left bottom;
 }
+/* One photo is the backdrop rather than a cutout beside another one. */
 .totw-card[data-solo] .totw-card__photo {
-  left: 7%;
-  right: auto;
-  top: auto;
-  bottom: 2%;
-  width: 86%;
-  height: 86%;
-  object-position: center bottom;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 8%;
 }
 .totw-card[data-solo] .totw-card__photo--candid {
   filter: none;
