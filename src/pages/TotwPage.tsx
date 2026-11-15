@@ -9,7 +9,6 @@ import {
   downloadBlob,
   photoSrc,
   renderTotwPdf,
-  renderTotwPoster,
   splitName,
   type TotwWeekInfo,
 } from '@/lib/totw'
@@ -216,7 +215,7 @@ export default function TotwPage() {
     setSearchParams(next, { replace: true })
   }
 
-  const onDownload = async (format: 'pdf' | 'png' = 'pdf') => {
+  const onDownload = async () => {
     if (!week || busy) return
     setBusy(true)
     setDownloadError('')
@@ -227,13 +226,8 @@ export default function TotwPage() {
         divisionName: week.divisionName,
         gameWeek: week.gameWeek,
       }
-      if (format === 'pdf') {
-        const blob = await renderTotwPdf(weekInfo, week.players)
-        downloadBlob(blob, `iwvpl-team-of-the-week-${slug || week.id}.pdf`)
-      } else {
-        const blob = await renderTotwPoster(weekInfo, week.players)
-        downloadBlob(blob, `iwvpl-team-of-the-week-${slug || week.id}.png`)
-      }
+      const blob = await renderTotwPdf(weekInfo, week.players)
+      downloadBlob(blob, `iwvpl-team-of-the-week-${slug || week.id}.pdf`)
     } catch (err) {
       setDownloadError(err instanceof Error ? err.message : 'Could not create the poster.')
     } finally {
@@ -258,24 +252,24 @@ export default function TotwPage() {
           </p>
         </header>
 
-        {(data?.divisions?.length ?? 0) > 1 && (
-          <nav className="totw__divisions" aria-label="Divisions">
-            {data?.divisions.map((d) => (
-              <button
-                key={d.id}
-                type="button"
-                className="totw__division-tab"
-                aria-current={d.id === divisionId ? 'true' : undefined}
-                onClick={() => handleSelectDivision(d.id)}
-              >
-                <span>{d.name}</span>
-                {d.weekCount > 0 && <b>{d.weekCount}</b>}
-              </button>
-            ))}
-          </nav>
-        )}
-
         <section className="totw__board" aria-live="polite">
+          {(data?.divisions?.length ?? 0) > 1 && (
+            <nav className="totw__divisions" aria-label="Divisions">
+              {data?.divisions.map((d) => (
+                <button
+                  key={d.id}
+                  type="button"
+                  className="totw__division-tab"
+                  aria-current={d.id === divisionId ? 'true' : undefined}
+                  onClick={() => handleSelectDivision(d.id)}
+                >
+                  <span>{d.name}</span>
+                  {d.weekCount > 0 && <b>{d.weekCount}</b>}
+                </button>
+              ))}
+            </nav>
+          )}
+
           {week && data?.weeks && data.weeks.length > 0 && (
             <div className="totw__board-header">
               {/* Matches-style Matchweek Stepper (left/right navigation) */}
@@ -379,7 +373,7 @@ export default function TotwPage() {
                 <button
                   type="button"
                   className="totw__download-pill"
-                  onClick={() => onDownload('pdf')}
+                  onClick={onDownload}
                   disabled={busy}
                   title={busy ? 'Preparing PDF…' : 'Download 1:1 PDF poster'}
                   aria-label={busy ? 'Preparing PDF…' : 'Download 1:1 PDF poster'}
@@ -406,16 +400,6 @@ export default function TotwPage() {
                       <span>Download PDF</span>
                     </>
                   )}
-                </button>
-                <button
-                  type="button"
-                  className="totw__download-pill totw__download-pill--ghost"
-                  onClick={() => onDownload('png')}
-                  disabled={busy}
-                  title="Download as PNG image"
-                  aria-label="Download as PNG image"
-                >
-                  <span>PNG</span>
                 </button>
               </div>
             </div>
