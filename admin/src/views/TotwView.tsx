@@ -737,6 +737,7 @@ export function TotwView({ guard, report }: { guard: Guard; report: Report }) {
 
       <TotwPhotoStudio
         isOpen={studioOpen}
+        slot={slot}
         gamertag={fName.trim() || 'Player'}
         clubName={fClub.trim() || undefined}
         clubFlag={selectedClub?.flag ?? undefined}

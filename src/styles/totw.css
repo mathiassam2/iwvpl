@@ -589,6 +589,10 @@
   .totw__row--gk {
     width: calc(100% / 2.5);
   }
+  .totw__row[data-cols='2'] .totw-card,
+  .totw__row[data-cols='2'] .totw__skeleton {
+    aspect-ratio: 2.2;
+  }
 }
 
 @media (max-width: 767px) {

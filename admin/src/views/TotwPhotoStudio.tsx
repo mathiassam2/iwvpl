@@ -15,6 +15,7 @@ import { compressImageFile } from '../utils'
 
 export interface TotwPhotoStudioProps {
   isOpen: boolean
+  slot?: number | null
   gamertag: string
   clubName?: string
   clubFlag?: string
@@ -27,14 +28,9 @@ export interface TotwPhotoStudioProps {
   onRemove?: () => void | Promise<void>
 }
 
-/** The card size the studio frames in, and the size it exports at (2x). */
-const STAGE_WIDTH = 320
-const STAGE_HEIGHT = 280
-const EXPORT_WIDTH = 640
-const EXPORT_HEIGHT = 560
-
 export function TotwPhotoStudio({
   isOpen,
+  slot,
   gamertag,
   clubName,
   clubFlag,
@@ -46,6 +42,8 @@ export function TotwPhotoStudio({
   onApply,
   onRemove,
 }: TotwPhotoStudioProps) {
+  const isDefaultWide = slot === 0 || slot === 1 || position === 'ST' || position === 'CF'
+  const [cardShape, setCardShape] = useState<'standard' | 'wide'>(isDefaultWide ? 'wide' : 'standard')
   const [imageSrc, setImageSrc] = useState<string | null>(initialImage)
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
@@ -56,6 +54,23 @@ export function TotwPhotoStudio({
   const [panStart, setPanStart] = useState({ x: 0, y: 0 })
   const [applying, setApplying] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Wide cards (e.g. strikers in a 2-col row) are ~2.28:1; standard cards are ~1.14:1.
+  const stageWidth = cardShape === 'wide' ? 480 : 320
+  const stageHeight = cardShape === 'wide' ? 210 : 280
+  const exportWidth = stageWidth * 2
+  const exportHeight = stageHeight * 2
+
+  useEffect(() => {
+    if (isOpen) {
+      setImageSrc(initialImage)
+      setZoom(1)
+      setPan({ x: 0, y: 0 })
+      setFlipH(false)
+      setImgNatural(null)
+      setCardShape(isDefaultWide ? 'wide' : 'standard')
+    }
+  }, [isOpen, initialImage, isDefaultWide])
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -157,24 +172,24 @@ export function TotwPhotoStudio({
       })
 
       const canvas = document.createElement('canvas')
-      canvas.width = EXPORT_WIDTH
-      canvas.height = EXPORT_HEIGHT
+      canvas.width = exportWidth
+      canvas.height = exportHeight
       const ctx = canvas.getContext('2d')
       if (!ctx) throw new Error('Canvas 2D context unavailable')
-      ctx.clearRect(0, 0, EXPORT_WIDTH, EXPORT_HEIGHT)
+      ctx.clearRect(0, 0, exportWidth, exportHeight)
       ctx.imageSmoothingEnabled = true
       ctx.imageSmoothingQuality = 'high'
 
-      const scaleRatio = EXPORT_WIDTH / STAGE_WIDTH
+      const scaleRatio = exportWidth / stageWidth
 
       // Cover the card with the photo, the same way the card does, then apply
       // the drag and the zoom on top of it.
-      const fitScale = Math.max(STAGE_WIDTH / img.naturalWidth, STAGE_HEIGHT / img.naturalHeight)
+      const fitScale = Math.max(stageWidth / img.naturalWidth, stageHeight / img.naturalHeight)
       const baseW = img.naturalWidth * fitScale
       const baseH = img.naturalHeight * fitScale
 
       ctx.save()
-      ctx.translate(EXPORT_WIDTH / 2 + pan.x * scaleRatio, EXPORT_HEIGHT / 2 + pan.y * scaleRatio)
+      ctx.translate(exportWidth / 2 + pan.x * scaleRatio, exportHeight / 2 + pan.y * scaleRatio)
       ctx.scale((flipH ? -1 : 1) * zoom, zoom)
       ctx.drawImage(img, (-baseW * scaleRatio) / 2, (-baseH * scaleRatio) / 2, baseW * scaleRatio, baseH * scaleRatio)
       ctx.restore()
@@ -193,16 +208,16 @@ export function TotwPhotoStudio({
     } finally {
       setApplying(false)
     }
-  }, [imageSrc, pan, zoom, flipH, onApply, onClose])
+  }, [imageSrc, pan, zoom, flipH, stageWidth, stageHeight, exportWidth, exportHeight, onApply, onClose])
 
   if (!isOpen) return null
 
   // The photo is drawn at the size it covers the card with, then moved.
   const fitScale = imgNatural
-    ? Math.max(STAGE_WIDTH / imgNatural.width, STAGE_HEIGHT / imgNatural.height)
+    ? Math.max(stageWidth / imgNatural.width, stageHeight / imgNatural.height)
     : 1
-  const displayW = imgNatural ? imgNatural.width * fitScale : STAGE_WIDTH
-  const displayH = imgNatural ? imgNatural.height * fitScale : STAGE_HEIGHT
+  const displayW = imgNatural ? imgNatural.width * fitScale : stageWidth
+  const displayH = imgNatural ? imgNatural.height * fitScale : stageHeight
 
   return (
     <div className="adm-modal-backdrop" onClick={onClose} style={{ zIndex: 1200 }}>
@@ -210,7 +225,7 @@ export function TotwPhotoStudio({
         className="adm-modal"
         onClick={(e) => e.stopPropagation()}
         style={{
-          maxWidth: 560,
+          maxWidth: 620,
           width: '95%',
           maxHeight: '92vh',
           display: 'flex',
@@ -256,7 +271,32 @@ export function TotwPhotoStudio({
             }}
           >
             <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.7)' }}>
-              ✨ <strong style={{ color: '#fff' }}>This is the card.</strong> Drag the photo to frame it.
+              ✨ <strong style={{ color: '#fff' }}>1:1 Card Preview:</strong> Drag to position the player.
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <button
+                type="button"
+                className={`adm-pill-tab ${cardShape === 'wide' ? 'is-active' : ''}`}
+                style={{ padding: '3px 9px', fontSize: 11 }}
+                onClick={() => {
+                  setCardShape('wide')
+                  setPan({ x: 0, y: 0 })
+                }}
+              >
+                ▬ Wide (Striker)
+              </button>
+              <button
+                type="button"
+                className={`adm-pill-tab ${cardShape === 'standard' ? 'is-active' : ''}`}
+                style={{ padding: '3px 9px', fontSize: 11 }}
+                onClick={() => {
+                  setCardShape('standard')
+                  setPan({ x: 0, y: 0 })
+                }}
+              >
+                ▮ Standard (Mid / Def / GK)
+              </button>
             </div>
           </div>
 
@@ -268,8 +308,8 @@ export function TotwPhotoStudio({
             onPointerCancel={handlePointerUp}
             onWheel={handleWheel}
             style={{
-              width: STAGE_WIDTH,
-              height: STAGE_HEIGHT,
+              width: stageWidth,
+              height: stageHeight,
               maxWidth: '100%',
               margin: '0 auto',
               position: 'relative',
@@ -280,6 +320,7 @@ export function TotwPhotoStudio({
               cursor: isDragging ? 'grabbing' : imageSrc ? 'grab' : 'default',
               userSelect: 'none',
               touchAction: 'none',
+              transition: 'width 0.2s ease, height 0.2s ease',
             }}
           >
             {imageSrc ? (
