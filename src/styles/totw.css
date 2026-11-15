@@ -108,6 +108,35 @@
     align-items: stretch;
     overflow: hidden;
   }
+
+  /*
+   * The layout is a hero on the left and the board on the right, and the
+   * board can carry a divisions row above it. That row is a third child of
+   * a two column grid, so without a place for it the grid put it in the
+   * second column of the first row - which stretched the tabs to the height
+   * of that row - and pushed the board into the narrow column under the
+   * hero, where the cards were squeezed until the text sat on the portrait.
+   */
+  .totw__layout {
+    grid-template-rows: auto minmax(0, 1fr);
+    row-gap: 0;
+  }
+  .totw__hero {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+  }
+  .totw__board {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+  .totw__divisions {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: start;
+  }
+  .totw__layout:has(.totw__divisions) .totw__board {
+    grid-row: 2;
+  }
 }
 
 /* ---------------------------------------------------------------- hero */
