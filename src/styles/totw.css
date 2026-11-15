@@ -897,3 +897,58 @@
     animation: none;
   }
 }
+
+
+/* ------------------------------------------------------------- downloads & typography */
+
+.totw__download-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.totw__download-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.42rem 0.85rem;
+  border-radius: 999px;
+  background: var(--totw-volt);
+  color: var(--totw-ink);
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 0.76rem;
+  letter-spacing: 0.02em;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 16px -2px rgb(200 255 61 / 0.38);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+}
+
+.totw__download-pill:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px -2px rgb(200 255 61 / 0.6);
+}
+
+.totw__download-pill:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.totw__download-pill--ghost {
+  background: rgb(255 255 255 / 0.08);
+  color: #fff;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  box-shadow: none;
+}
+
+.totw__download-pill--ghost:hover:not(:disabled) {
+  background: rgb(255 255 255 / 0.16);
+  border-color: rgb(255 255 255 / 0.3);
+  box-shadow: 0 4px 12px -2px rgb(0 0 0 / 0.5);
+}
+
+.totw-card__name--long {
+  line-height: 1.02;
+  word-break: break-word;
+}

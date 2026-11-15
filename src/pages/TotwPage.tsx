@@ -8,8 +8,10 @@ import {
   TOTW_ROWS,
   downloadBlob,
   photoSrc,
+  renderTotwPdf,
   renderTotwPoster,
   splitName,
+  type TotwWeekInfo,
 } from '@/lib/totw'
 import { TotwPaint } from '@/components/totw/TotwPaint'
 import '@/styles/totw.css'
@@ -32,6 +34,17 @@ function PlayerCard({ player }: { player: TotwPlayer }) {
   // backdrop the name sits on, so a player's league profile picture is never
   // used in its place.
   const backdrop = player.candidUrl ?? player.closeUrl
+
+  // Scale down font size for long player names so they are shown in full without truncation
+  const maxWordLen = Math.max(...player.name.trim().split(/\s+/).map((w) => w.length))
+  const nameStyle = useMemo(() => {
+    if (maxWordLen <= 9) return undefined
+    const scale = Math.max(0.65, 1 - (maxWordLen - 9) * 0.045)
+    return {
+      fontSize: `clamp(${0.52 * scale}rem, ${1.35 * scale}vh, ${0.98 * scale}rem)`,
+      letterSpacing: '-0.02em',
+    }
+  }, [maxWordLen])
 
   const card = (
     <>
@@ -74,7 +87,7 @@ function PlayerCard({ player }: { player: TotwPlayer }) {
             {player.position}
             {player.rating != null && <b className="totw-card__rating">{player.rating.toFixed(1)}</b>}
           </span>
-          <span className="totw-card__name">
+          <span className={`totw-card__name ${maxWordLen > 9 ? 'totw-card__name--long' : ''}`} style={nameStyle}>
             <span>{first}</span>
             {rest && <span>{rest}</span>}
           </span>
@@ -203,14 +216,24 @@ export default function TotwPage() {
     setSearchParams(next, { replace: true })
   }
 
-  const onDownload = async () => {
+  const onDownload = async (format: 'pdf' | 'png' = 'pdf') => {
     if (!week || busy) return
     setBusy(true)
     setDownloadError('')
     try {
-      const blob = await renderTotwPoster(week.label, week.players)
       const slug = week.label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
-      downloadBlob(blob, `iwvpl-team-of-the-week-${slug || week.id}.png`)
+      const weekInfo: TotwWeekInfo = {
+        label: week.label,
+        divisionName: week.divisionName,
+        gameWeek: week.gameWeek,
+      }
+      if (format === 'pdf') {
+        const blob = await renderTotwPdf(weekInfo, week.players)
+        downloadBlob(blob, `iwvpl-team-of-the-week-${slug || week.id}.pdf`)
+      } else {
+        const blob = await renderTotwPoster(weekInfo, week.players)
+        downloadBlob(blob, `iwvpl-team-of-the-week-${slug || week.id}.png`)
+      }
     } catch (err) {
       setDownloadError(err instanceof Error ? err.message : 'Could not create the poster.')
     } finally {
@@ -352,31 +375,49 @@ export default function TotwPage() {
                 </button>
               </div>
 
-              <button
-                type="button"
-                className="totw__download-btn"
-                onClick={onDownload}
-                disabled={busy}
-                title={busy ? 'Preparing poster…' : 'Download poster'}
-                aria-label={busy ? 'Preparing poster…' : 'Download poster'}
-              >
-                {busy ? (
-                  <svg className="totw__spinner" width="16" height="16" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-                  </svg>
-                ) : (
-                  <svg width="17" height="17" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                    <path
-                      d="M8 2.5v7.5m0 0L5 7m3 3l3-3M2.5 13h11"
-                      stroke="currentColor"
-                      strokeWidth="1.9"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                )}
-              </button>
+              <div className="totw__download-group">
+                <button
+                  type="button"
+                  className="totw__download-pill"
+                  onClick={() => onDownload('pdf')}
+                  disabled={busy}
+                  title={busy ? 'Preparing PDF…' : 'Download 1:1 PDF poster'}
+                  aria-label={busy ? 'Preparing PDF…' : 'Download 1:1 PDF poster'}
+                >
+                  {busy ? (
+                    <>
+                      <svg className="totw__spinner" width="14" height="14" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                      </svg>
+                      <span>PDF</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                        <path
+                          d="M8 2.5v7.5m0 0L5 7m3 3l3-3M2.5 13h11"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                      <span>Download PDF</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  className="totw__download-pill totw__download-pill--ghost"
+                  onClick={() => onDownload('png')}
+                  disabled={busy}
+                  title="Download as PNG image"
+                  aria-label="Download as PNG image"
+                >
+                  <span>PNG</span>
+                </button>
+              </div>
             </div>
           )}
 

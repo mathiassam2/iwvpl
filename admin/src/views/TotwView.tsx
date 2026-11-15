@@ -6,7 +6,9 @@ import {
   getAdminClubs,
   getAdminPlayers,
   getAdminUsers,
+  getTotwGameWeeks,
   getTotwOverview,
+  getTotwSuggestions,
   getTotwWeek,
   saveTotwAccess,
   saveTotwSlot,
@@ -15,8 +17,11 @@ import {
   type AdminUser,
   type Club,
   type TotwAccess,
+  type TotwAdminDivision,
+  type TotwAdminGameWeek,
   type TotwAdminPlayer,
   type TotwAdminWeekSummary,
+  type TotwSuggestion,
 } from '../api'
 import { compressImageFile, type Guard, type Report } from '../utils'
 import { TotwPhotoStudio } from './TotwPhotoStudio'
@@ -93,12 +98,33 @@ function PhotoField({
 
 export function TotwView({ guard, report }: { guard: Guard; report: Report }) {
   const [weeks, setWeeks] = useState<TotwAdminWeekSummary[]>([])
+  const [divisions, setDivisions] = useState<TotwAdminDivision[]>([])
+  const [divisionFilter, setDivisionFilter] = useState<'all' | number>('all')
   const [access, setAccess] = useState<TotwAccess>({ mode: 'selected', userIds: [] })
   const [weekId, setWeekId] = useState<number | null>(null)
-  const [week, setWeek] = useState<{ id: number; label: string; status: 'draft' | 'published' } | null>(null)
+  const [week, setWeek] = useState<{
+    id: number
+    label: string
+    status: 'draft' | 'published'
+    divisionId: number | null
+    gameWeek: number | null
+  } | null>(null)
   const [players, setPlayers] = useState<TotwAdminPlayer[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
+
+  // Create week modal state
+  const [createModalOpen, setCreateModalOpen] = useState(false)
+  const [newDivisionId, setNewDivisionId] = useState<number | null>(null)
+  const [newGameWeek, setNewGameWeek] = useState<number | ''>('')
+  const [newLabel, setNewLabel] = useState('')
+  const [availableGameWeeks, setAvailableGameWeeks] = useState<TotwAdminGameWeek[]>([])
+  const [loadingGameWeeks, setLoadingGameWeeks] = useState(false)
+
+  // Suggestions state for slot editor
+  const [suggestions, setSuggestions] = useState<TotwSuggestion[]>([])
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false)
+  const [suggestionReason, setSuggestionReason] = useState<string | null>(null)
 
   const [labelDraft, setLabelDraft] = useState('')
   const [clubs, setClubs] = useState<Club[]>([])
@@ -126,6 +152,7 @@ export function TotwView({ guard, report }: { guard: Guard; report: Report }) {
   const loadOverview = useCallback(async () => {
     const o = await guard(getTotwOverview, 'Could not load Team of the Week')
     setWeeks(o.weeks)
+    setDivisions(o.divisions ?? [])
     setAccess(o.access)
     setAccessDraft(o.access)
     return o
@@ -134,7 +161,13 @@ export function TotwView({ guard, report }: { guard: Guard; report: Report }) {
   const loadWeek = useCallback(
     async (id: number) => {
       const r = await guard(() => getTotwWeek(id), 'Could not load that week')
-      setWeek({ id: r.week.id, label: r.week.label, status: r.week.status })
+      setWeek({
+        id: r.week.id,
+        label: r.week.label,
+        status: r.week.status,
+        divisionId: r.week.divisionId ?? null,
+        gameWeek: r.week.gameWeek ?? null,
+      })
       setLabelDraft(r.week.label)
       setPlayers(r.players)
     },
@@ -178,21 +211,77 @@ export function TotwView({ guard, report }: { guard: Guard; report: Report }) {
 
   /* ------------------------------------------------------------- weeks */
 
-  const addWeek = async () => {
-    const label = window.prompt('Name this week (e.g. "Matchweek 12"):')?.trim()
-    if (!label) return
+  const openCreateModal = () => {
+    const defaultDiv = divisionFilter !== 'all' ? divisionFilter : (divisions[0]?.id ?? null)
+    setNewDivisionId(defaultDiv)
+    setNewGameWeek('')
+    setNewLabel('')
+    setAvailableGameWeeks([])
+    setCreateModalOpen(true)
+    if (defaultDiv) {
+      void loadGameWeeksForDivision(defaultDiv)
+    }
+  }
+
+  const loadGameWeeksForDivision = async (divId: number) => {
+    setLoadingGameWeeks(true)
+    try {
+      const gws = await guard(() => getTotwGameWeeks(divId), 'Could not load game weeks')
+      setAvailableGameWeeks(gws ?? [])
+      if (gws && gws.length > 0) {
+        const existingGws = new Set(weeks.filter((w) => w.divisionId === divId).map((w) => w.gameWeek))
+        const nextGw = gws.find((gw) => !existingGws.has(gw.gameWeek)) ?? gws[gws.length - 1]
+        if (nextGw) {
+          setNewGameWeek(nextGw.gameWeek)
+          setNewLabel(`Game Week ${nextGw.gameWeek}`)
+        }
+      }
+    } catch {
+      /* ignore */
+    } finally {
+      setLoadingGameWeeks(false)
+    }
+  }
+
+  const handleDivisionChangeInModal = (divId: number) => {
+    setNewDivisionId(divId)
+    setNewGameWeek('')
+    setNewLabel('')
+    void loadGameWeeksForDivision(divId)
+  }
+
+  const handleGameWeekChangeInModal = (gw: number) => {
+    setNewGameWeek(gw)
+    setNewLabel(`Game Week ${gw}`)
+  }
+
+  const handleCreateWeek = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!newDivisionId) return report('error', 'Select a division.')
+    if (newGameWeek === '' || Number(newGameWeek) <= 0) return report('error', 'Select or enter a game week.')
     setBusy(true)
     try {
-      const id = await guard(() => createTotwWeek(label), 'Could not create the week')
+      const id = await guard(
+        () =>
+          createTotwWeek({
+            divisionId: newDivisionId,
+            gameWeek: Number(newGameWeek),
+            label: newLabel.trim() || `Game Week ${newGameWeek}`,
+          }),
+        'Could not create the week',
+      )
+      setCreateModalOpen(false)
       await loadOverview()
       setWeekId(id)
-      report('ok', `Created ${label}. Fill in the XI, then publish it.`)
+      report('ok', `Created ${newLabel.trim() || `Game Week ${newGameWeek}`}. Fill in the XI, then publish it.`)
     } catch {
       /* reported */
     } finally {
       setBusy(false)
     }
   }
+
+  const addWeek = openCreateModal
 
   const renameWeek = async () => {
     if (!week || labelDraft.trim() === week.label) return
@@ -292,7 +381,30 @@ export function TotwView({ guard, report }: { guard: Guard; report: Report }) {
     setFPlayerId(p?.playerId ?? null)
     setFCandid(undefined)
     setLookup('')
+    setSuggestions([])
+    setSuggestionReason(null)
+
+    if (week && week.divisionId != null && week.gameWeek != null) {
+      setLoadingSuggestions(true)
+      getTotwSuggestions({
+        weekId: week.id,
+        slot: index,
+        divisionId: week.divisionId,
+        gameWeek: week.gameWeek,
+      })
+        .then((res) => {
+          setSuggestions(res.candidates ?? [])
+          setSuggestionReason(res.reason ?? null)
+        })
+        .catch(() => {
+          setSuggestions([])
+        })
+        .finally(() => {
+          setLoadingSuggestions(false)
+        })
+    }
     setFormError('')
+
   }
 
   const lookupResults = useMemo(() => {
@@ -310,6 +422,21 @@ export function TotwView({ guard, report }: { guard: Guard; report: Report }) {
     setFClubId(p.club_id)
     setFPlayerId(p.id)
     setLookup('')
+  }
+
+  const pickSuggestion = (s: TotwSuggestion) => {
+    setFName(s.gamertag)
+    setFPosition(s.position)
+    setFClub(s.clubName ?? '')
+    setFClubId(s.clubId)
+    setFPlayerId(s.playerId)
+    const poolPlayer = pool.find((p) => p.id === s.playerId)
+    if (poolPlayer?.shirt_number != null) {
+      setFNumber(String(poolPlayer.shirt_number))
+    }
+    if (s.avatarUrl && !fCandid && !editing?.candidUrl) {
+      setFCandid(s.avatarUrl)
+    }
   }
 
   const onClubInput = (value: string) => {
@@ -333,6 +460,7 @@ export function TotwView({ guard, report }: { guard: Guard; report: Report }) {
     if (!fPosition.trim()) return setFormError('Enter a position.')
     if (!hasCandid && fPlayerId == null) return setFormError('Upload a photo for this player.')
     setFormError('')
+
     setBusy(true)
     try {
       await guard(
@@ -378,6 +506,11 @@ export function TotwView({ guard, report }: { guard: Guard; report: Report }) {
 
   if (loading) return <div className="adm-empty">Loading Team of the Week…</div>
 
+  const filteredWeeks = useMemo(() => {
+    if (divisionFilter === 'all') return weeks
+    return weeks.filter((w) => w.divisionId === divisionFilter)
+  }, [weeks, divisionFilter])
+
   const filled = players.length
 
   return (
@@ -385,6 +518,30 @@ export function TotwView({ guard, report }: { guard: Guard; report: Report }) {
       {/* Week bar */}
       <section className="adm-card totw-bar">
         <div className="totw-bar__main">
+          {divisions.length > 0 && (
+            <label className="adm-field" style={{ minWidth: 190 }}>
+              <span>Division</span>
+              <select
+                className="adm-select"
+                value={divisionFilter}
+                onChange={(e) => {
+                  const val = e.target.value === 'all' ? 'all' : Number(e.target.value)
+                  setDivisionFilter(val)
+                  if (val !== 'all') {
+                    const match = weeks.find((w) => w.divisionId === val)
+                    if (match) setWeekId(match.id)
+                  }
+                }}
+              >
+                <option value="all">All Divisions ({weeks.length})</option>
+                {divisions.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name} ({weeks.filter((w) => w.divisionId === d.id).length})
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label className="adm-field" style={{ minWidth: 220 }}>
             <span>Week</span>
             <select
@@ -394,9 +551,9 @@ export function TotwView({ guard, report }: { guard: Guard; report: Report }) {
               disabled={weeks.length === 0}
             >
               {weeks.length === 0 && <option value="">No weeks yet</option>}
-              {weeks.map((w) => (
+              {filteredWeeks.map((w) => (
                 <option key={w.id} value={w.id}>
-                  {w.label} · {w.status === 'published' ? 'Live' : 'Draft'} · {w.playerCount}/11
+                  {(w.divisionName ? w.divisionName + ' · ' : '') + w.label} · {w.status === 'published' ? 'Live' : 'Draft'} · {w.playerCount}/11
                 </option>
               ))}
             </select>
@@ -600,6 +757,72 @@ export function TotwView({ guard, report }: { guard: Guard; report: Report }) {
             </div>
             <div className="adm-drawer-body">
               <form onSubmit={submitSlot} className="adm-form-stack">
+                {/* Suggestions for this slot / game week */}
+                <div className="adm-drawer-section">
+                  <div className="adm-drawer-section-title">
+                    <span>
+                      Top Performers
+                      {week?.divisionId ? ' · ' + (divisions.find((d) => d.id === week.divisionId)?.name ?? '') : ''}
+                      {week?.gameWeek != null ? ' GW ' + week.gameWeek : ''}
+                    </span>
+                  </div>
+                  {loadingSuggestions ? (
+                    <p className="adm-text-muted" style={{ fontSize: 12 }}>Loading match ratings for this slot…</p>
+                  ) : suggestions.length > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 220, overflowY: 'auto' }}>
+                      {suggestions.map((s) => (
+                        <button
+                          type="button"
+                          key={s.playerId}
+                          onClick={() => pickSuggestion(s)}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '6px 10px',
+                            background: fPlayerId === s.playerId ? 'rgba(200,255,61,0.15)' : 'rgba(255,255,255,0.03)',
+                            border: '1px solid ' + (fPlayerId === s.playerId ? 'var(--accent)' : 'rgba(255,255,255,0.08)'),
+                            borderRadius: 8,
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            color: '#fff',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                            {s.clubLogo && (
+                              <img src={s.clubLogo} alt="" style={{ width: 22, height: 22, objectFit: 'contain', flexShrink: 0 }} />
+                            )}
+                            <div style={{ minWidth: 0 }}>
+                              <strong style={{ display: 'block', fontSize: 13, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                                {s.gamertag}
+                              </strong>
+                              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>
+                                {s.position} · {s.clubName ?? 'Free Agent'}
+                                {s.goals > 0 ? ' · ⚽ ' + s.goals : ''}
+                                {s.assists > 0 ? ' · 🎯 ' + s.assists : ''}
+                                {s.mom > 0 ? ' · 🏆 MoM' : ''}
+                              </span>
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                            {s.picked && (
+                              <span style={{ fontSize: 9.5, padding: '2px 6px', background: 'rgba(255,255,255,0.1)', borderRadius: 4, color: 'rgba(255,255,255,0.7)' }}>
+                                Picked
+                              </span>
+                            )}
+                            <span style={{ fontWeight: 800, fontSize: 13, color: 'var(--accent)', background: 'rgba(200,255,61,0.1)', padding: '2px 7px', borderRadius: 6 }}>
+                              ★ {s.rating.toFixed(1)}
+                            </span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="adm-text-muted" style={{ fontSize: 12, margin: 0 }}>
+                      {suggestionReason || 'No match ratings recorded for this game week yet.'}
+                    </p>
+                  )}
+                </div>
                 <div className="adm-drawer-section">
                   <div className="adm-drawer-section-title">
                     <span>Autofill from a registered player</span>
@@ -732,6 +955,91 @@ export function TotwView({ guard, report }: { guard: Guard; report: Report }) {
               </form>
             </div>
           </aside>
+        </div>
+      )}
+
+      {createModalOpen && (
+        <div className="adm-modal-backdrop" onClick={() => setCreateModalOpen(false)}>
+          <div className="adm-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460 }}>
+            <div className="adm-modal-head">
+              <h3>Create Team of the Week</h3>
+              <button type="button" className="adm-close-btn" onClick={() => setCreateModalOpen(false)}>
+                ×
+              </button>
+            </div>
+            <form onSubmit={handleCreateWeek} className="adm-modal-body adm-form-stack" style={{ padding: 20 }}>
+              <label className="adm-field">
+                <span>Division *</span>
+                <select
+                  className="adm-select"
+                  value={newDivisionId ?? ''}
+                  onChange={(e) => handleDivisionChangeInModal(Number(e.target.value))}
+                  required
+                >
+                  <option value="" disabled>Select Division</option>
+                  {divisions.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name} ({d.seasonName})
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="adm-field">
+                <span>Game Week *</span>
+                {loadingGameWeeks ? (
+                  <div className="adm-input" style={{ opacity: 0.6 }}>Loading game weeks…</div>
+                ) : availableGameWeeks.length > 0 ? (
+                  <select
+                    className="adm-select"
+                    value={newGameWeek}
+                    onChange={(e) => handleGameWeekChangeInModal(Number(e.target.value))}
+                    required
+                  >
+                    <option value="" disabled>Select Game Week</option>
+                    {availableGameWeeks.map((gw) => (
+                      <option key={gw.gameWeek} value={gw.gameWeek}>
+                        Game Week {gw.gameWeek} ({gw.played}/{gw.matches} played{gw.statRows > 0 ? ', ' + gw.statRows + ' stats' : ''})
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="number"
+                    min={1}
+                    max={99}
+                    className="adm-input"
+                    placeholder="e.g. 1"
+                    value={newGameWeek}
+                    onChange={(e) => handleGameWeekChangeInModal(e.target.value === '' ? '' : Number(e.target.value))}
+                    required
+                  />
+                )}
+              </label>
+
+              <label className="adm-field">
+                <span>Display Title *</span>
+                <input
+                  className="adm-input"
+                  value={newLabel}
+                  placeholder={'Game Week ' + (newGameWeek || 1)}
+                  onChange={(e) => setNewLabel(e.target.value)}
+                />
+                <small className="adm-text-muted" style={{ fontSize: 11, marginTop: 4 }}>
+                  Shown on the site and downloads. Defaults to Game Week {newGameWeek || 1}.
+                </small>
+              </label>
+
+              <div className="adm-modal-foot" style={{ marginTop: 14, padding: 0 }}>
+                <button type="button" className="adm-btn adm-btn-ghost" onClick={() => setCreateModalOpen(false)}>
+                  Cancel
+                </button>
+                <button type="submit" className="adm-btn adm-btn-primary" disabled={busy || !newDivisionId || newGameWeek === ''}>
+                  {busy ? 'Creating…' : 'Create Team of the Week'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 

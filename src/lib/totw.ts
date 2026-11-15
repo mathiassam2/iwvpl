@@ -64,9 +64,15 @@ export function useTotwAccess(): boolean {
 /* ------------------------------------------------------------------ poster */
 
 const W = 1200
-const H = 1800
+const H = 1760
 const VOLT = '#c8ff3d'
 const FONT = "'Sora (display)', 'Sora', system-ui, -apple-system, 'Segoe UI', sans-serif"
+
+export type TotwWeekInfo = {
+  label: string
+  divisionName?: string | null
+  gameWeek?: number | null
+}
 
 type Drawable = CanvasImageSource & { width: number; height: number }
 
@@ -87,7 +93,29 @@ function makeCanvas(w: number, h: number): [HTMLCanvasElement, CanvasRenderingCo
   return [c, c.getContext('2d')!]
 }
 
-/** Desaturates with a touch of contrast, matching the monochrome close-ups. */
+function drawRoundedRect(
+  g: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+) {
+  const radius = Math.min(r, w / 2, h / 2)
+  g.beginPath()
+  g.moveTo(x + radius, y)
+  g.lineTo(x + w - radius, y)
+  g.quadraticCurveTo(x + w, y, x + w, y + radius)
+  g.lineTo(x + w, y + h - radius)
+  g.quadraticCurveTo(x + w, y + h, x + w - radius, y + h)
+  g.lineTo(x + radius, y + h)
+  g.quadraticCurveTo(x, y + h, x, y + h - radius)
+  g.lineTo(x, y + radius)
+  g.quadraticCurveTo(x, y, x + radius, y)
+  g.closePath()
+}
+
+/** Desaturates with a touch of contrast, matching the monochrome close-ups and club watermarks. */
 function monochrome(img: Drawable): HTMLCanvasElement {
   const [c, g] = makeCanvas(img.width, img.height)
   g.drawImage(img, 0, 0)
@@ -99,29 +127,6 @@ function monochrome(img: Drawable): HTMLCanvasElement {
     d[i] = d[i + 1] = d[i + 2] = v
   }
   g.putImageData(data, 0, 0)
-  return c
-}
-
-/** Fits `img` inside a bw x bh box, pinned to the bottom, with the lower edge faded out. */
-function fadedBox(
-  img: Drawable,
-  bw: number,
-  bh: number,
-  anchor: 'left' | 'center' | 'right',
-  fade: number,
-): HTMLCanvasElement {
-  const [c, g] = makeCanvas(bw, bh)
-  const scale = Math.min(bw / img.width, bh / img.height)
-  const dw = img.width * scale
-  const dh = img.height * scale
-  const dx = anchor === 'left' ? 0 : anchor === 'right' ? bw - dw : (bw - dw) / 2
-  g.drawImage(img, dx, bh - dh, dw, dh)
-  g.globalCompositeOperation = 'destination-out'
-  const grad = g.createLinearGradient(0, bh * (1 - fade), 0, bh)
-  grad.addColorStop(0, 'rgba(0,0,0,0)')
-  grad.addColorStop(1, 'rgba(0,0,0,1)')
-  g.fillStyle = grad
-  g.fillRect(0, bh * (1 - fade), bw, bh * fade)
   return c
 }
 
@@ -259,7 +264,6 @@ function drawPaintVariant(
     drawDot(190, 88, 1.4, VOLT)
     drawDot(42, 190, 1.4, VOLT, 0.75)
   } else {
-    // v === 5
     poly(g, mapPts([[42, 240], [106, 12], [136, 18], [76, 240]]), DARK, 0.7)
     poly(g, mapPts([[48, 240], [114, 16], [140, 22], [84, 240]]), EMERALD, 0.85)
     poly(g, mapPts([[54, 240], [112, 16], [128, 14], [124, 34], [138, 28], [130, 52], [82, 240]]), VOLT, 0.98)
@@ -286,9 +290,9 @@ function drawClubName(
   const name = (clubName ?? '').trim()
   if (!name) return
 
-  const pad = Math.max(4, h * 0.014)
-  const fontSize = Math.max(9, h * 0.036)
-  const maxTextW = Math.max(24, w * 0.66)
+  const pad = Math.max(6, h * 0.02)
+  const fontSize = Math.max(9, Math.round(h * 0.038))
+  const maxTextW = Math.max(30, w * 0.64)
   g.save()
   g.font = `800 ${fontSize}px ${FONT}`
   let text = name.toUpperCase()
@@ -312,53 +316,72 @@ function drawClubName(
 function drawCard(
   g: CanvasRenderingContext2D,
   p: TotwPlayer,
-  photos: { close: Drawable | null; candid: Drawable | null; club: Drawable | null },
+  photos: { candid: Drawable | null; club: Drawable | null },
   x: number,
   y: number,
   w: number,
   h: number,
 ) {
   g.save()
-  g.beginPath()
-  g.rect(x, y, w, h)
+  const r = 12
+
+  // 1. Clip card with rounded corners
+  drawRoundedRect(g, x, y, w, h, r)
   g.clip()
 
-  // Dynamic multi-tone grunge brushpaint pattern matching web view.
+  // 2. Base dark card background matching web .totw-card
+  g.fillStyle = '#0d1016'
+  g.fillRect(x, y, w, h)
+
+  const cardGrad = g.createLinearGradient(0, y, 0, y + h)
+  cardGrad.addColorStop(0, 'rgba(255, 255, 255, 0.05)')
+  cardGrad.addColorStop(1, 'rgba(255, 255, 255, 0.01)')
+  g.fillStyle = cardGrad
+  g.fillRect(x, y, w, h)
+
+  // 3. Dynamic multi-tone grunge brushpaint pattern
   drawPaintVariant(g, p.slot, x, y, w, h)
 
-  const closeGray = photos.close ? monochrome(photos.close) : null
-  const photoH = h * 0.86
-  if (closeGray && photos.candid) {
-    const bw = w * 0.74
-    const big = fadedBox(closeGray, bw, photoH, 'right', 0.3)
-    g.drawImage(big, x + w - bw, y + h - photoH - h * 0.02)
-    const sw = w * 0.5
-    const sh = h * 0.62
-    const small = fadedBox(photos.candid, sw, sh, 'left', 0.18)
-    g.drawImage(small, x + w * 0.02, y + h * 0.17)
-  } else {
-    const only = closeGray ?? photos.candid
-    if (only) {
-      const bw = w * 0.86
-      const box = fadedBox(only, bw, photoH, 'center', 0.28)
-      g.drawImage(box, x + (w - bw) / 2, y + h - photoH - h * 0.02)
+  // 4. Player photo (object-fit: cover, centered, with bottom fade mask)
+  if (photos.candid) {
+    const img = photos.candid
+    const imgRatio = img.width / img.height
+    const cardRatio = w / h
+    let dw: number, dh: number, dx: number, dy: number
+    if (imgRatio > cardRatio) {
+      dh = h
+      dw = h * imgRatio
+      dx = x + (w - dw) / 2
+      dy = y
+    } else {
+      dw = w
+      dh = w / imgRatio
+      dx = x
+      dy = y + (h - dh) / 2
     }
+
+    g.save()
+    g.drawImage(img, dx, dy, dw, dh)
+
+    // Bottom fade mask matching web: linear-gradient(to bottom, #000 68%, transparent 100%)
+    g.globalCompositeOperation = 'destination-out'
+    const fadeGrad = g.createLinearGradient(0, y + h * 0.66, 0, y + h)
+    fadeGrad.addColorStop(0, 'rgba(0, 0, 0, 0)')
+    fadeGrad.addColorStop(1, 'rgba(0, 0, 0, 1)')
+    g.fillStyle = fadeGrad
+    g.fillRect(x, y + h * 0.66, w, h * 0.34)
+    g.restore()
   }
 
-  // Legibility gradient under the text.
-  const shade = g.createLinearGradient(0, y + h * 0.6, 0, y + h)
+  // 5. Legibility gradient shade under text
+  const shade = g.createLinearGradient(0, y + h * 0.52, 0, y + h)
   shade.addColorStop(0, 'rgba(10,11,13,0)')
-  shade.addColorStop(1, 'rgba(10,11,13,0.82)')
+  shade.addColorStop(1, 'rgba(10,11,13,0.88)')
   g.fillStyle = shade
-  g.fillRect(x, y + h * 0.6, w, h * 0.4)
+  g.fillRect(x, y + h * 0.52, w, h * 0.48)
 
-  // Club name, always visible at the top-right on the poster.
-  drawClubName(g, p.clubName, x, y, w, h)
-
-  // Number, position, name.
-  const pad = w * 0.065
-
-  // Club crest in the lower right, matching height of player info block.
+  // 6. Club crest in lower right, grayscale watermark
+  const pad = Math.max(10, w * 0.06)
   if (photos.club) {
     const crestH = h * 0.26
     const maxCrestW = w * 0.28
@@ -366,61 +389,104 @@ function drawCard(
     const crestW = photos.club.width * scale
     const finalH = photos.club.height * scale
     const crestX = x + w - pad - crestW
-    const crestY = y + h * 0.95 - finalH
+    const crestY = y + h * 0.94 - finalH
     const clubGray = monochrome(photos.club)
     g.save()
-    g.globalAlpha = 0.4
+    g.globalAlpha = 0.35
     g.drawImage(clubGray, crestX, crestY, crestW, finalH)
     g.restore()
   }
 
+  // 7. Club name at top-right
+  drawClubName(g, p.clubName, x, y, w, h)
+
+  // 8. Shirt number
+  const num = p.shirtNumber == null ? '' : String(p.shirtNumber)
   const numSize = Math.round(h * 0.19)
   g.textBaseline = 'alphabetic'
   g.textAlign = 'left'
-  const num = p.shirtNumber == null ? '' : String(p.shirtNumber)
   g.font = `800 ${numSize}px ${FONT}`
   g.fillStyle = VOLT
   const numW = num ? g.measureText(num).width : 0
-  const baseY = y + h * 0.94
-  if (num) g.fillText(num, x + pad, baseY)
+  const baseY = y + h * 0.93
+  if (num) {
+    g.fillText(num, x + pad, baseY)
+  }
 
-  const tx = x + pad + numW + (num ? w * 0.04 : 0)
-  const maxW = x + w - pad - tx - (photos.club ? (w * 0.28 + pad * 0.3) : 0)
-  const [first, rest] = splitName(p.name.toUpperCase())
-  const fit = (text: string, start: number, weight: number) => {
-    let size = start
-    g.font = `${weight} ${size}px ${FONT}`
-    while (size > 9 && g.measureText(text).width > maxW) {
-      size -= 1
-      g.font = `${weight} ${size}px ${FONT}`
+  // 9. Position & rating, and Player name
+  const tx = x + pad + numW + (num ? Math.max(8, w * 0.035) : 0)
+  const crestReserved = photos.club ? w * 0.26 + pad * 0.2 : 0
+  const maxW = Math.max(36, x + w - pad - tx - crestReserved)
+
+  const [first, rest] = splitName(p.name.trim().toUpperCase())
+
+  // Dynamic font sizing for name - FULL NAME, NO TRUNCATION
+  const fitSize = (text: string, startSize: number) => {
+    let size = startSize
+    g.font = `800 ${size}px ${FONT}`
+    while (size > 7 && g.measureText(text).width > maxW) {
+      size -= 0.5
+      g.font = `800 ${size}px ${FONT}`
     }
     return size
   }
-  const nameSize = Math.min(fit(first, h * 0.082, 800), rest ? fit(rest, h * 0.082, 800) : 999)
+
+  const initialSize = Math.max(12, Math.round(h * 0.082))
+  let nameSize = fitSize(first, initialSize)
+  if (rest) {
+    nameSize = Math.min(nameSize, fitSize(rest, initialSize))
+  }
+
   g.font = `800 ${nameSize}px ${FONT}`
-  g.fillStyle = '#fff'
-  const lineGap = nameSize * 1.12
-  const lastBase = baseY - h * 0.03
+  g.fillStyle = '#ffffff'
+  const lineGap = Math.round(nameSize * 1.08)
+  const lastBase = baseY - h * 0.025
   if (rest) {
     g.fillText(first, tx, lastBase - lineGap)
     g.fillText(rest, tx, lastBase)
   } else {
     g.fillText(first, tx, lastBase)
   }
+
+  // Position & Rating above name
   const nameTop = lastBase - (rest ? lineGap : 0) - nameSize
-  g.font = `700 ${Math.max(11, h * 0.046)}px ${FONT}`
-  g.fillStyle = 'rgba(255,255,255,0.78)'
-  g.fillText(p.position.toUpperCase(), tx, nameTop - h * 0.018)
+  const posFontSize = Math.max(10, Math.round(h * 0.044))
+  g.font = `700 ${posFontSize}px ${FONT}`
+  g.fillStyle = 'rgba(255,255,255,0.8)'
+  const posText = p.position.toUpperCase()
+  g.fillText(posText, tx, nameTop - h * 0.016)
+
+  if (p.rating != null) {
+    const posW = g.measureText(posText).width
+    g.fillStyle = VOLT
+    g.font = `800 ${posFontSize}px ${FONT}`
+    g.fillText(`★ ${p.rating.toFixed(1)}`, tx + posW + 6, nameTop - h * 0.016)
+  }
+
+  // Volt underline accent bar
   g.fillStyle = VOLT
-  g.fillRect(tx, baseY + h * 0.012, Math.min(maxW, w * 0.09), Math.max(3, h * 0.012))
+  g.fillRect(tx, baseY + 6, Math.min(maxW, 24), 2.5)
+
+  // 10. Card border
+  g.strokeStyle = 'rgba(255, 255, 255, 0.1)'
+  g.lineWidth = 1.5
+  drawRoundedRect(g, x, y, w, h, r)
+  g.stroke()
 
   g.restore()
 }
 
-export async function renderTotwPoster(label: string, players: TotwPlayer[]): Promise<Blob> {
+export async function renderTotwPosterCanvas(
+  infoOrLabel: string | TotwWeekInfo,
+  players: TotwPlayer[],
+): Promise<HTMLCanvasElement> {
+  const info: TotwWeekInfo =
+    typeof infoOrLabel === 'string' ? { label: infoOrLabel } : infoOrLabel
+
   try {
     await Promise.all([
       document.fonts.load(`800 100px ${FONT}`),
+      document.fonts.load(`800 30px ${FONT}`),
       document.fonts.load(`700 40px ${FONT}`),
     ])
   } catch {
@@ -428,12 +494,14 @@ export async function renderTotwPoster(label: string, players: TotwPlayer[]): Pr
   }
 
   const bySlot = new Map(players.map((p) => [p.slot, p]))
-  const photoJobs = players.map(async (p) => ({
-    slot: p.slot,
-    close: p.closeUrl ? await loadBitmap(photoSrc(p.closeUrl), 'include') : null,
-    candid: p.candidUrl ? await loadBitmap(photoSrc(p.candidUrl), 'include') : null,
-    club: p.clubLogo ? await loadBitmap(asset(p.clubLogo), 'include') : null,
-  }))
+  const photoJobs = players.map(async (p) => {
+    const photoUrl = p.candidUrl || p.closeUrl
+    return {
+      slot: p.slot,
+      candid: photoUrl ? await loadBitmap(photoSrc(photoUrl), 'include') : null,
+      club: p.clubLogo ? await loadBitmap(asset(p.clubLogo), 'include') : null,
+    }
+  })
   const photos = await Promise.all(photoJobs)
   const photoBySlot = new Map(photos.map((p) => [p.slot, p]))
 
@@ -444,35 +512,69 @@ export async function renderTotwPoster(label: string, players: TotwPlayer[]): Pr
   g.textBaseline = 'alphabetic'
   g.textAlign = 'left'
   g.fillStyle = '#fff'
-  g.font = `800 26px ${FONT}`
+  g.font = `800 24px ${FONT}`
   ;(g as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = '3px'
-  g.fillText('ISLAND-WIDE VIRTUAL PREMIER LEAGUE', 60, 100)
+  g.fillText('ISLAND-WIDE VIRTUAL PREMIER LEAGUE', 60, 96)
   ;(g as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = '0px'
-  g.font = `800 92px ${FONT}`
-  g.fillText('TEAM OF THE', 60, 236)
+
+  g.font = `800 84px ${FONT}`
+  g.fillText('TEAM OF THE', 60, 220)
   g.fillStyle = VOLT
-  g.font = `800 140px ${FONT}`
-  g.fillText('WEEK', 56, 356)
+  g.font = `800 130px ${FONT}`
+  g.fillText('WEEK', 56, 336)
+
+  // Header Context (Division & Game Week) at top-right
+  const contextParts = [
+    info.divisionName,
+    info.gameWeek != null ? `GAME WEEK ${info.gameWeek}` : null,
+  ].filter(Boolean)
+
+  if (contextParts.length > 0) {
+    g.textAlign = 'right'
+    g.fillStyle = 'rgba(255,255,255,0.65)'
+    g.font = `700 18px ${FONT}`
+    ;(g as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = '2px'
+    g.fillText(contextParts.join(' · ').toUpperCase(), W - 60, 110)
+    ;(g as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = '0px'
+  }
 
   g.textAlign = 'right'
   g.fillStyle = VOLT
-  g.font = `800 30px ${FONT}`
+  g.font = `800 32px ${FONT}`
   ;(g as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = '2px'
-  g.fillText(label.toUpperCase(), W - 60, 150)
+  g.fillText(info.label.toUpperCase(), W - 60, 150)
   ;(g as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = '0px'
 
-  // Formation grid.
-  const top = 400
-  const rowH = 322
+  // Formation grid: 4 rows with gaps matching the web layout
+  const top = 376
+  const rowH = 300
+  const rowGap = 16
+  const colGap = 14
+  const padX = 40
+
   TOTW_ROWS.forEach((row, ri) => {
-    const cellW = row.length === 1 ? W / 3 : (W - 60) / row.length
-    const startX = row.length === 1 ? (W - cellW) / 2 : 30
-    row.forEach((slot, ci) => {
+    const rowY = top + ri * (rowH + rowGap)
+    if (row.length === 1) {
+      // Goalkeeper: centered card matching web width ~ 1/3.4
+      const cellW = Math.round((W - padX * 2) / 3.4)
+      const startX = Math.round((W - cellW) / 2)
+      const slot = row[0]
       const p = bySlot.get(slot)
-      if (!p) return
-      const ph = photoBySlot.get(slot) ?? { close: null, candid: null, club: null }
-      drawCard(g, p, ph, startX + ci * cellW, top + ri * rowH, cellW, rowH)
-    })
+      if (p) {
+        const ph = photoBySlot.get(slot) ?? { candid: null, club: null }
+        drawCard(g, p, ph, startX, rowY, cellW, rowH)
+      }
+    } else {
+      const totalColGaps = (row.length - 1) * colGap
+      const cellW = Math.round((W - padX * 2 - totalColGaps) / row.length)
+      row.forEach((slot, ci) => {
+        const p = bySlot.get(slot)
+        if (!p) return
+        const ph = photoBySlot.get(slot) ?? { candid: null, club: null }
+        const startX = padX + ci * (cellW + colGap)
+        drawCard(g, p, ph, startX, rowY, cellW, rowH)
+      })
+    }
   })
 
   // Footer.
@@ -481,18 +583,119 @@ export async function renderTotwPoster(label: string, players: TotwPlayer[]): Pr
   g.font = `700 18px ${FONT}`
   g.textAlign = 'left'
   ;(g as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = '4px'
-  g.fillText('BEST XI', 60, H - 78)
-  g.fillText('THIS WEEK', 60, H - 50)
+  g.fillText('BEST XI', 60, H - 54)
+  g.fillText('THIS WEEK', 60, H - 30)
   g.fillStyle = VOLT
-  g.fillRect(60, H - 34, 64, 4)
+  g.fillRect(60, H - 18, 64, 4)
   g.fillStyle = '#ffffff'
   g.textAlign = 'right'
-  g.fillText('IWVPL.ASIA', W - 60, H - 48)
+  g.fillText('IWVPL.ASIA', W - 60, H - 30)
   ;(g as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = '0px'
 
+  return canvas
+}
+
+/** Generates a standard PDF-1.4 file wrapping the rendered poster image in high resolution. */
+export function createPdfFromJpeg(
+  jpegBytes: Uint8Array,
+  imgWidth: number,
+  imgHeight: number,
+  ptWidth = 595.28,
+  ptHeight = 872.74,
+): Uint8Array {
+  const parts: Uint8Array[] = []
+  let offset = 0
+  const offsets: number[] = []
+
+  function addString(str: string) {
+    const bytes = new TextEncoder().encode(str)
+    parts.push(bytes)
+    offset += bytes.length
+  }
+
+  function addBytes(bytes: Uint8Array) {
+    parts.push(bytes)
+    offset += bytes.length
+  }
+
+  addString('%PDF-1.4\n%\xFF\xFF\xFF\xFF\n')
+
+  // Object 1: Catalog
+  offsets[1] = offset
+  addString('1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n')
+
+  // Object 2: Pages
+  offsets[2] = offset
+  addString('2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n')
+
+  // Object 3: Page
+  offsets[3] = offset
+  addString(
+    `3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${ptWidth.toFixed(2)} ${ptHeight.toFixed(2)}] /Contents 4 0 R /Resources << /XObject << /Im1 5 0 R >> >> >>\nendobj\n`,
+  )
+
+  // Object 4: Contents (fits the image precisely onto the page)
+  const contentStream = `q ${ptWidth.toFixed(2)} 0 0 ${ptHeight.toFixed(2)} 0 0 cm /Im1 Do Q`
+  offsets[4] = offset
+  addString(
+    `4 0 obj\n<< /Length ${contentStream.length} >>\nstream\n${contentStream}\nendstream\nendobj\n`,
+  )
+
+  // Object 5: Image XObject (JPEG data)
+  offsets[5] = offset
+  addString(
+    `5 0 obj\n<< /Type /XObject /Subtype /Image /Width ${imgWidth} /Height ${imgHeight} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpegBytes.length} >>\nstream\n`,
+  )
+  addBytes(jpegBytes)
+  addString('\nendstream\nendobj\n')
+
+  // Cross reference table
+  const xrefOffset = offset
+  addString('xref\n0 6\n')
+  addString('0000000000 65535 f \n')
+  for (let i = 1; i <= 5; i++) {
+    addString(String(offsets[i]).padStart(10, '0') + ' 00000 n \n')
+  }
+  addString(`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`)
+
+  let totalLen = 0
+  for (const p of parts) totalLen += p.length
+  const merged = new Uint8Array(totalLen)
+  let cur = 0
+  for (const p of parts) {
+    merged.set(p, cur)
+    cur += p.length
+  }
+  return merged
+}
+
+export async function renderTotwPoster(
+  infoOrLabel: string | TotwWeekInfo,
+  players: TotwPlayer[],
+): Promise<Blob> {
+  const canvas = await renderTotwPosterCanvas(infoOrLabel, players)
   return new Promise<Blob>((resolve, reject) =>
     canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Could not create the poster image.'))), 'image/png'),
   )
+}
+
+export async function renderTotwPdf(
+  infoOrLabel: string | TotwWeekInfo,
+  players: TotwPlayer[],
+): Promise<Blob> {
+  const canvas = await renderTotwPosterCanvas(infoOrLabel, players)
+  const jpegBlob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (b) => (b ? resolve(b) : reject(new Error('Could not encode poster to JPEG.'))),
+      'image/jpeg',
+      0.95,
+    )
+  })
+  const jpegBytes = new Uint8Array(await jpegBlob.arrayBuffer())
+  const ptWidth = 595.28
+  const ptHeight = 595.28 * (canvas.height / canvas.width)
+  const pdfBytes = createPdfFromJpeg(jpegBytes, canvas.width, canvas.height, ptWidth, ptHeight)
+  return new Blob([pdfBytes.buffer as ArrayBuffer], { type: 'application/pdf' })
 }
 
 export function downloadBlob(blob: Blob, filename: string) {
