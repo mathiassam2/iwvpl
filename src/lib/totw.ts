@@ -19,6 +19,24 @@ export const TOTW_ROWS: number[][] = [[0, 1], [2, 3, 4, 5], [6, 7, 8, 9], [10]]
 
 export const TOTW_DEFAULT_POSITIONS = ['ST', 'ST', 'LM', 'CM', 'CM', 'RM', 'LB', 'CB', 'CB', 'RB', 'GK']
 
+/** Maps specific or raw positions to the broad display category. */
+export function formatPositionCategory(position?: string | null, slot?: number): string {
+  const p = (position ?? '').trim().toUpperCase()
+  if (['GK', 'GOALKEEPER'].includes(p)) return 'Goalkeeper'
+  if (['LB', 'LWB', 'CB', 'RB', 'RWB', 'LCB', 'RCB', 'DEF', 'DEFENDER'].includes(p)) return 'Defender'
+  if (['CDM', 'CM', 'CAM', 'LM', 'RM', 'LW', 'RW', 'LCM', 'RCM', 'MID', 'MIDFIELDER'].includes(p)) return 'Midfielder'
+  if (['CF', 'ST', 'ATT', 'FWD', 'FORWARD', 'STRIKER'].includes(p)) return 'Striker'
+
+  // Fallback to slot layout if position string is unrecognized
+  if (slot !== undefined) {
+    if (slot === 10) return 'Goalkeeper'
+    if (slot >= 6 && slot <= 9) return 'Defender'
+    if (slot >= 2 && slot <= 5) return 'Midfielder'
+    if (slot >= 0 && slot <= 1) return 'Striker'
+  }
+  return position || ''
+}
+
 export const photoSrc = (url: string) => (/^https?:\/\//i.test(url) ? url : apiUrl(url))
 
 /** Splits a display name over two lines: first word, then the rest. */
@@ -453,7 +471,7 @@ function drawCard(
   const posFontSize = Math.max(10, Math.round(h * 0.044))
   g.font = `700 ${posFontSize}px ${FONT}`
   g.fillStyle = 'rgba(255,255,255,0.8)'
-  const posText = p.position.toUpperCase()
+  const posText = formatPositionCategory(p.position, p.slot).toUpperCase()
   g.fillText(posText, tx, nameTop - h * 0.016)
 
   if (p.rating != null) {

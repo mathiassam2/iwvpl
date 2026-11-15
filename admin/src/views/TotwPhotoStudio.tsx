@@ -28,6 +28,22 @@ export interface TotwPhotoStudioProps {
   onRemove?: () => void | Promise<void>
 }
 
+export function formatPositionCategory(position?: string | null, slot?: number): string {
+  const p = (position ?? '').trim().toUpperCase()
+  if (['GK', 'GOALKEEPER'].includes(p)) return 'Goalkeeper'
+  if (['LB', 'LWB', 'CB', 'RB', 'RWB', 'LCB', 'RCB', 'DEF', 'DEFENDER'].includes(p)) return 'Defender'
+  if (['CDM', 'CM', 'CAM', 'LM', 'RM', 'LW', 'RW', 'LCM', 'RCM', 'MID', 'MIDFIELDER'].includes(p)) return 'Midfielder'
+  if (['CF', 'ST', 'ATT', 'FWD', 'FORWARD', 'STRIKER'].includes(p)) return 'Striker'
+
+  if (slot !== undefined) {
+    if (slot === 10) return 'Goalkeeper'
+    if (slot >= 6 && slot <= 9) return 'Defender'
+    if (slot >= 2 && slot <= 5) return 'Midfielder'
+    if (slot >= 0 && slot <= 1) return 'Striker'
+  }
+  return position || ''
+}
+
 export function TotwPhotoStudio({
   isOpen,
   slot,
@@ -437,7 +453,7 @@ export function TotwPhotoStudio({
                     marginBottom: 2,
                   }}
                 >
-                  {position || ''}
+                  {formatPositionCategory(position, slot).toUpperCase() || ''}
                 </span>
                 <span
                   style={{

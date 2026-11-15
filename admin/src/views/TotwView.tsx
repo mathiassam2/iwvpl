@@ -24,12 +24,12 @@ import {
   type TotwSuggestion,
 } from '../api'
 import { compressImageFile, type Guard, type Report } from '../utils'
-import { TotwPhotoStudio } from './TotwPhotoStudio'
+import { formatPositionCategory, TotwPhotoStudio } from './TotwPhotoStudio'
 
 /** Fixed 4-4-2, in display order: attack, midfield, defence, keeper. */
 const ROWS: number[][] = [[0, 1], [2, 3, 4, 5], [6, 7, 8, 9], [10]]
 const DEFAULT_POSITIONS = ['ST', 'ST', 'LM', 'CM', 'CM', 'RM', 'LB', 'CB', 'CB', 'RB', 'GK']
-const POSITION_OPTIONS = ['GK', 'LB', 'CB', 'RB', 'LWB', 'RWB', 'CDM', 'CM', 'CAM', 'LM', 'RM', 'LW', 'RW', 'CF', 'ST']
+const POSITION_OPTIONS = ['Goalkeeper', 'Defender', 'Midfielder', 'Striker']
 
 type Photo = string | null | undefined // undefined: unchanged, null: removed, string: new data URL
 
@@ -375,7 +375,7 @@ export function TotwView({ guard, report }: { guard: Guard; report: Report }) {
     setSlot(index)
     setFName(p?.name ?? '')
     setFNumber(p?.shirtNumber != null ? String(p.shirtNumber) : '')
-    setFPosition(p?.position ?? DEFAULT_POSITIONS[index])
+    setFPosition(formatPositionCategory(p?.position, index))
     setFClub(p?.clubName ?? '')
     setFClubId(p?.clubId ?? null)
     setFPlayerId(p?.playerId ?? null)
@@ -426,7 +426,7 @@ export function TotwView({ guard, report }: { guard: Guard; report: Report }) {
 
   const pickSuggestion = (s: TotwSuggestion) => {
     setFName(s.gamertag)
-    setFPosition(s.position)
+    setFPosition(formatPositionCategory(s.position, slot ?? undefined))
     setFClub(s.clubName ?? '')
     setFClubId(s.clubId)
     setFPlayerId(s.playerId)
@@ -706,7 +706,7 @@ export function TotwView({ guard, report }: { guard: Guard; report: Report }) {
                       className={`totw-slot ${p ? 'is-filled' : ''}`}
                       onClick={() => openSlot(index)}
                     >
-                      <span className="totw-slot__pos">{p?.position ?? DEFAULT_POSITIONS[index]}</span>
+                      <span className="totw-slot__pos">{formatPositionCategory(p?.position, index)}</span>
                       {thumb ? (
                         <img src={thumb} alt="" className="totw-slot__img" />
                       ) : (
@@ -749,7 +749,7 @@ export function TotwView({ guard, report }: { guard: Guard; report: Report }) {
             <div className="adm-drawer-head">
               <div>
                 <span className="adm-eyebrow">TEAM OF THE WEEK</span>
-                <h3>{editing ? `Edit ${editing.name}` : `Add ${DEFAULT_POSITIONS[slot]}`}</h3>
+                <h3>{editing ? `Edit ${editing.name}` : `Add ${formatPositionCategory(null, slot)}`}</h3>
               </div>
               <button type="button" className="adm-close-btn" onClick={() => setSlot(null)}>
                 ×
@@ -797,7 +797,7 @@ export function TotwView({ guard, report }: { guard: Guard; report: Report }) {
                                 {s.gamertag}
                               </strong>
                               <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>
-                                {s.position} · {s.clubName ?? 'Free Agent'}
+                                {formatPositionCategory(s.position)} · {s.clubName ?? 'Free Agent'}
                                 {s.goals > 0 ? ' · ⚽ ' + s.goals : ''}
                                 {s.assists > 0 ? ' · 🎯 ' + s.assists : ''}
                                 {s.mom > 0 ? ' · 🏆 MoM' : ''}

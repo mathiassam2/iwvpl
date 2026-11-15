@@ -7,6 +7,7 @@ import { CLUB_PLACEHOLDER } from '@/lib/format'
 import {
   TOTW_ROWS,
   downloadBlob,
+  formatPositionCategory,
   photoSrc,
   renderTotwPdf,
   splitName,
@@ -25,7 +26,8 @@ function PlayerCard({ player }: { player: TotwPlayer }) {
   const club = player.clubName?.trim()
   const logo = player.clubLogo ? asset(player.clubLogo) : null
   const profile = player.playerSlug?.trim()
-  const label = `${player.name}, ${player.position}${club ? `, ${club}` : ''}${
+  const displayPos = formatPositionCategory(player.position, player.slot)
+  const label = `${player.name}, ${displayPos}${club ? `, ${club}` : ''}${
     profile ? ', view profile' : ''
   }`
 
@@ -83,7 +85,7 @@ function PlayerCard({ player }: { player: TotwPlayer }) {
         {player.shirtNumber != null && <span className="totw-card__num">{player.shirtNumber}</span>}
         <div className="totw-card__text">
           <span className="totw-card__pos">
-            {player.position}
+            {displayPos}
             {player.rating != null && <b className="totw-card__rating">{player.rating.toFixed(1)}</b>}
           </span>
           <span className={`totw-card__name ${maxWordLen > 9 ? 'totw-card__name--long' : ''}`} style={nameStyle}>
