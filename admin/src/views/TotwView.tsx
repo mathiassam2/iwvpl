@@ -502,14 +502,14 @@ export function TotwView({ guard, report }: { guard: Guard; report: Report }) {
     }
   }
 
-  /* ------------------------------------------------------------ render */
-
-  if (loading) return <div className="adm-empty">Loading Team of the Week…</div>
-
   const filteredWeeks = useMemo(() => {
     if (divisionFilter === 'all') return weeks
     return weeks.filter((w) => w.divisionId === divisionFilter)
   }, [weeks, divisionFilter])
+
+  /* ------------------------------------------------------------ render */
+
+  if (loading) return <div className="adm-empty">Loading Team of the Week…</div>
 
   const filled = players.length
 
