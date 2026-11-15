@@ -12,6 +12,48 @@ import { CelebrationCropperModal } from './CelebrationCropperModal'
 
 type LeaderboardCategory = 'goals' | 'assists' | 'saves' | 'all'
 
+/**
+ * The order a board is ranked in: the tally first, the gamertag to break a
+ * tie. The site breaks a tie the same way, so the table and the podium
+ * preview both read the list through these. Breaking a tie differently in
+ * the two places is what put one player on the stage and another third in
+ * the list.
+ */
+const compareGoals = (a: AdminPlayerStat, b: AdminPlayerStat) =>
+  b.goals - a.goals || a.gamertag.localeCompare(b.gamertag)
+
+const compareAssists = (a: AdminPlayerStat, b: AdminPlayerStat) =>
+  b.assists - a.assists || a.gamertag.localeCompare(b.gamertag)
+
+const compareSaves = (a: AdminPlayerStat, b: AdminPlayerStat) =>
+  b.saves + b.clean_sheets - (a.saves + a.clean_sheets) ||
+  b.saves - a.saves ||
+  a.gamertag.localeCompare(b.gamertag)
+
+/**
+ * One entry per player for the combined view.
+ *
+ * A player can have a tally in more than one division, and the site shows
+ * one entry for them there, so the podium preview merges the rows the same
+ * way instead of putting the same player on the stage twice.
+ */
+function mergeAcrossDivisions(stats: AdminPlayerStat[]): AdminPlayerStat[] {
+  const merged = new Map<number, AdminPlayerStat>()
+  for (const stat of stats) {
+    const existing = merged.get(stat.player_id)
+    if (!existing) {
+      merged.set(stat.player_id, { ...stat })
+      continue
+    }
+    existing.goals += stat.goals
+    existing.assists += stat.assists
+    existing.saves += stat.saves
+    existing.clean_sheets += stat.clean_sheets
+    existing.appearances += stat.appearances
+  }
+  return [...merged.values()]
+}
+
 export function LeaderboardsView({
   report,
   guard,
@@ -76,13 +118,11 @@ export function LeaderboardsView({
     let list = [...data.stats]
 
     if (activeCategory === 'goals') {
-      list = list.filter((s) => s.goals > 0).sort((a, b) => b.goals - a.goals || a.gamertag.localeCompare(b.gamertag))
+      list = list.filter((s) => s.goals > 0).sort(compareGoals)
     } else if (activeCategory === 'assists') {
-      list = list.filter((s) => s.assists > 0).sort((a, b) => b.assists - a.assists || a.gamertag.localeCompare(b.gamertag))
+      list = list.filter((s) => s.assists > 0).sort(compareAssists)
     } else if (activeCategory === 'saves') {
-      list = list
-        .filter((s) => s.saves > 0 || s.clean_sheets > 0)
-        .sort((a, b) => (b.saves + b.clean_sheets) - (a.saves + a.clean_sheets) || b.saves - a.saves || a.gamertag.localeCompare(b.gamertag))
+      list = list.filter((s) => s.saves > 0 || s.clean_sheets > 0).sort(compareSaves)
     }
 
     if (divisionFilter !== 'all') {
@@ -105,19 +145,23 @@ export function LeaderboardsView({
   // Top 3 Podium for active category
   const podiumTop3 = useMemo(() => {
     if (!data) return [null, null, null]
-    const list = [...data.stats]
-    let sorted: AdminPlayerStat[] = []
-    if (activeCategory === 'goals') {
-      sorted = list.filter((s) => s.goals > 0).sort((a, b) => b.goals - a.goals)
-    } else if (activeCategory === 'assists') {
-      sorted = list.filter((s) => s.assists > 0).sort((a, b) => b.assists - a.assists)
+    // The same rows the table ranks, in the same order: the third place on
+    // stage has to be the third place in the list below it.
+    const list =
+      divisionFilter === 'all'
+        ? mergeAcrossDivisions(data.stats)
+        : data.stats.filter((s) => String(s.division_id) === divisionFilter)
+
+    let sorted: AdminPlayerStat[]
+    if (activeCategory === 'assists') {
+      sorted = list.filter((s) => s.assists > 0).sort(compareAssists)
     } else if (activeCategory === 'saves') {
-      sorted = list.filter((s) => s.saves > 0 || s.clean_sheets > 0).sort((a, b) => b.saves - a.saves)
+      sorted = list.filter((s) => s.saves > 0 || s.clean_sheets > 0).sort(compareSaves)
     } else {
-      sorted = list.sort((a, b) => b.goals - a.goals)
+      sorted = list.filter((s) => s.goals > 0).sort(compareGoals)
     }
     return [sorted[0] ?? null, sorted[1] ?? null, sorted[2] ?? null]
-  }, [data, activeCategory])
+  }, [data, activeCategory, divisionFilter])
 
   // Search filtered players in modal
   const availablePlayers = useMemo(() => {
@@ -428,14 +472,14 @@ export function LeaderboardsView({
             className={`adm-pill-tab ${activeCategory === 'assists' ? 'is-active' : ''}`}
             onClick={() => setActiveCategory('assists')}
           >
-            🎯 Top Playmakers ({data?.stats.filter((s) => s.assists > 0).length ?? 0})
+            🎯 Top Assists ({data?.stats.filter((s) => s.assists > 0).length ?? 0})
           </button>
           <button
             type="button"
             className={`adm-pill-tab ${activeCategory === 'saves' ? 'is-active' : ''}`}
             onClick={() => setActiveCategory('saves')}
           >
-            🧤 Top Goalkeepers ({data?.stats.filter((s) => s.saves > 0 || s.clean_sheets > 0).length ?? 0})
+            🧤 Most Saves ({data?.stats.filter((s) => s.saves > 0 || s.clean_sheets > 0).length ?? 0})
           </button>
           <button
             type="button"
@@ -446,13 +490,12 @@ export function LeaderboardsView({
           </button>
         </div>
 
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <div className="adm-toolbar-filters">
           {data && data.divisions.length > 0 && (
             <select
               value={divisionFilter}
               onChange={(e) => setDivisionFilter(e.target.value)}
               className="adm-select adm-select-sm"
-              style={{ minWidth: 140 }}
             >
               <option value="all">All Divisions</option>
               {data.divisions.map((d) => (
@@ -468,7 +511,6 @@ export function LeaderboardsView({
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search player or club…"
             className="adm-input adm-input-sm"
-            style={{ width: 200 }}
           />
         </div>
       </div>
@@ -493,25 +535,15 @@ export function LeaderboardsView({
               {activeCategory === 'goals'
                 ? '🏆 Golden Boot Honours'
                 : activeCategory === 'assists'
-                  ? '🎯 Playmaker of the Season'
-                  : '🧤 Golden Glove Standings'}
+                  ? '🎯 Assists of the Season'
+                  : '🧤 Most Saves Standings'}
             </h2>
             <p style={{ margin: '4px 0 0', fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>
               Click any player's celebration photo to crop, reposition, or upload a cutout with live pop-out preview.
             </p>
           </div>
 
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(3, 1fr)',
-              gap: 16,
-              alignItems: 'flex-end',
-              maxWidth: 820,
-              margin: '32px auto 8px',
-              padding: '0 12px',
-            }}
-          >
+          <div className="adm-podium-grid">
             {/* Slot #2 - 1st Runner-Up (Left) */}
             <PodiumPreviewSlot
               place={2}
@@ -1142,12 +1174,8 @@ function PodiumPreviewSlot({
 
   return (
     <div
+      className={isFirst ? 'adm-podium-slot adm-podium-slot--first' : 'adm-podium-slot'}
       style={{
-        position: 'relative',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        width: '100%',
         zIndex: isFirst ? 3 : 1,
       }}
     >
@@ -1172,18 +1200,9 @@ function PodiumPreviewSlot({
 
       {/* 3D Cutout Celebration Image Stage - Standing tall above the card */}
       <div
+        className={`adm-podium-cutout adm-podium-cutout--${place}`}
         style={{
-          position: 'relative',
-          width: '100%',
-          maxWidth: isFirst ? 280 : place === 2 ? 250 : 240,
-          height: isFirst ? 256 : place === 2 ? 208 : 176,
-          marginBottom: -8,
           zIndex: 1,
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'flex-end',
-          pointerEvents: 'none',
-          overflow: 'visible',
         }}
       >
         {(() => {
@@ -1215,11 +1234,10 @@ function PodiumPreviewSlot({
 
       {/* Pedestal Block (Sits in front of waist/cutout for seamless framing) */}
       <div
+        className={isFirst ? 'adm-podium-card adm-podium-card--first' : 'adm-podium-card'}
         style={{
-          width: '100%',
           minHeight: isFirst ? 220 : place === 2 ? 175 : 145,
           padding: isFirst ? '30px 16px 16px' : '26px 14px 14px',
-          borderRadius: 14,
           background: isFirst
             ? 'linear-gradient(180deg, #1f2736 0%, #10141f 100%)'
             : 'linear-gradient(180deg, #171b26 0%, #0d1017 100%)',
@@ -1227,27 +1245,15 @@ function PodiumPreviewSlot({
           boxShadow: isFirst
             ? '0 16px 36px rgba(0,0,0,0.7), inset 0 1px 0 rgba(200, 255, 61, 0.3)'
             : '0 10px 24px rgba(0,0,0,0.5)',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          textAlign: 'center',
-          position: 'relative',
-          zIndex: 10,
         }}
       >
         {/* Rank Pill */}
         <span
+          className="adm-podium-badge"
           style={{
             background: badgeStyle.bg,
             color: badgeStyle.color,
-            fontSize: 10,
-            fontWeight: 900,
-            letterSpacing: '0.08em',
-            padding: '3px 9px',
-            borderRadius: 99,
-            marginBottom: 8,
             boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-            whiteSpace: 'nowrap',
           }}
         >
           {badgeStyle.label}
@@ -1255,7 +1261,7 @@ function PodiumPreviewSlot({
 
         {stat ? (
           <>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, maxWidth: '100%' }}>
+            <div className="adm-podium-name-row">
               {stat.avatar_local && (
                 <img
                   src={stat.avatar_local}
@@ -1264,13 +1270,11 @@ function PodiumPreviewSlot({
                 />
               )}
               <strong
+                className="adm-podium-name"
                 style={{
                   fontSize: isFirst ? 16 : 14,
                   color: '#fff',
                   lineHeight: 1.2,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
                 }}
               >
                 {stat.gamertag}
@@ -1297,7 +1301,7 @@ function PodiumPreviewSlot({
               {unit}
             </span>
 
-            <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
+            <div className="adm-podium-actions">
               <button
                 type="button"
                 className="adm-btn adm-btn-secondary adm-btn-sm"
