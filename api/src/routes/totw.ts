@@ -105,12 +105,24 @@ export type PositionGroup = 'GK' | 'DEF' | 'MID' | 'ST'
  *
  * The C/L/R variants are EA's own abbreviations for the same lines (LCM plays
  * as a CM, LCB as a CB) and sit in the same group.
+ *
+ * This list has to cover every abbreviation the stats table can hold, because
+ * a position missing here is a position whose players never reach the
+ * suggestion list at all. EA records a wide forward as `LS` or `RS`, a holding
+ * midfielder as `LDM` or `RDM`, and some imports carry the verbose
+ * `GOALKEEPER`, `DEFENDER`, `MIDFIELDER` and `FORWARD`. Leaving those out is
+ * how a player with a perfect 10.0 rating and four goals stayed invisible to
+ * the admin while everyone below them showed up.
  */
 const POSITION_GROUP_MEMBERS: Record<PositionGroup, string[]> = {
-  GK: ['GK'],
-  DEF: ['LB', 'LWB', 'CB', 'RB', 'RWB', 'LCB', 'RCB'],
-  MID: ['CDM', 'CM', 'CAM', 'LM', 'RM', 'LW', 'RW', 'LCM', 'RCM'],
-  ST: ['CF', 'ST'],
+  GK: ['GK', 'GOALKEEPER'],
+  DEF: ['LB', 'LWB', 'CB', 'RB', 'RWB', 'LCB', 'RCB', 'DEF', 'DEFENDER'],
+  MID: [
+    'CDM', 'CM', 'CAM', 'LM', 'RM', 'LW', 'RW', 'LCM', 'RCM',
+    'LDM', 'RDM', 'LAM', 'RAM',
+    'MID', 'MIDFIELDER',
+  ],
+  ST: ['CF', 'ST', 'LS', 'RS', 'LF', 'RF', 'ATT', 'FWD', 'FORWARD', 'STRIKER'],
 }
 
 /** The fixed 4-4-2 slot layout: 0-1 attack, 2-5 midfield, 6-9 defence, 10 keeper. */
@@ -233,6 +245,11 @@ interface SuggestionRow {
  * were actually played, and a rating that was actually recorded. A player who
  * did not feature that week is not a candidate for that week's team, and a
  * rating from a different week is a different number entirely.
+ *
+ * The position filter keeps the list to the line the slot actually needs. It
+ * is a whitelist, so it has to know every abbreviation in use — see
+ * POSITION_GROUP_MEMBERS — and a row whose position is missing altogether is
+ * offered everywhere rather than dropped.
  */
 async function suggestPlayers(
   divisionId: number,
@@ -266,7 +283,14 @@ async function suggestPlayers(
         AND m.round_number = ?
         AND m.home_score IS NOT NULL AND m.away_score IS NOT NULL
         AND ps.rating IS NOT NULL AND ps.rating > 0
-        AND UPPER(ps.pos) IN (${placeholders})
+        AND (
+              UPPER(ps.pos) IN (${placeholders})
+              -- A row with no recorded position could belong to any line, so it
+              -- is offered everywhere rather than hidden from every slot.
+              OR ps.pos IS NULL
+              OR TRIM(ps.pos) = ''
+              OR UPPER(ps.pos) = 'ANY'
+            )
       GROUP BY ps.player_id
       ORDER BY rating DESC, goals DESC, assists DESC, appearances DESC, gamertag ASC
       LIMIT 50`,

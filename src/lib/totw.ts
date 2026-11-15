@@ -24,8 +24,15 @@ export function formatPositionCategory(position?: string | null, slot?: number):
   const p = (position ?? '').trim().toUpperCase()
   if (['GK', 'GOALKEEPER'].includes(p)) return 'Goalkeeper'
   if (['LB', 'LWB', 'CB', 'RB', 'RWB', 'LCB', 'RCB', 'DEF', 'DEFENDER'].includes(p)) return 'Defender'
-  if (['CDM', 'CM', 'CAM', 'LM', 'RM', 'LW', 'RW', 'LCM', 'RCM', 'MID', 'MIDFIELDER'].includes(p)) return 'Midfielder'
-  if (['CF', 'ST', 'ATT', 'FWD', 'FORWARD', 'STRIKER'].includes(p)) return 'Striker'
+  if (
+    [
+      'CDM', 'CM', 'CAM', 'LM', 'RM', 'LW', 'RW', 'LCM', 'RCM',
+      'LDM', 'RDM', 'LAM', 'RAM',
+      'MID', 'MIDFIELDER',
+    ].includes(p)
+  )
+    return 'Midfielder'
+  if (['CF', 'ST', 'LS', 'RS', 'LF', 'RF', 'ATT', 'FWD', 'FORWARD', 'STRIKER'].includes(p)) return 'Striker'
 
   // Fallback to slot layout if position string is unrecognized
   if (slot !== undefined) {
