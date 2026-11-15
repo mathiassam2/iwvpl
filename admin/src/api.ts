@@ -1734,7 +1734,40 @@ export interface TotwAdminWeekSummary {
   publishedAt: string | null
   createdAt: string
   updatedAt: string
+  divisionId: number | null
+  divisionName: string | null
+  gameWeek: number | null
   playerCount: number
+}
+
+export interface TotwAdminDivision {
+  id: number
+  name: string
+  slug: string
+  seasonName: string
+}
+
+export interface TotwAdminGameWeek {
+  gameWeek: number
+  matches: number
+  played: number
+  statRows: number
+}
+
+export interface TotwSuggestion {
+  playerId: number
+  gamertag: string
+  position: string
+  clubId: number | null
+  clubName: string | null
+  clubLogo: string | null
+  avatarUrl: string | null
+  rating: number
+  goals: number
+  assists: number
+  appearances: number
+  mom: number
+  picked: boolean
 }
 
 export interface TotwAccess {
@@ -1753,6 +1786,10 @@ export interface TotwAdminPlayer {
   clubLogo?: string | null
   playerId: number | null
   playerSlug?: string | null
+  avatarUrl?: string | null
+  rating?: number | null
+  goals?: number
+  assists?: number
   closeUrl: string | null
   candidUrl: string | null
 }
@@ -1770,7 +1807,11 @@ export interface TotwSlotInput {
 }
 
 export const getTotwOverview = () =>
-  request<{ weeks: TotwAdminWeekSummary[]; access: TotwAccess }>('/api/admin/totw')
+  request<{
+    weeks: TotwAdminWeekSummary[]
+    divisions: TotwAdminDivision[]
+    access: TotwAccess
+  }>('/api/admin/totw')
 
 export const saveTotwAccess = (access: TotwAccess) =>
   request<{ access: TotwAccess }>('/api/admin/totw/access', {
@@ -1778,21 +1819,64 @@ export const saveTotwAccess = (access: TotwAccess) =>
     body: JSON.stringify(access),
   }).then((r) => r.access)
 
-export const createTotwWeek = (label: string) =>
+export const getTotwGameWeeks = (divisionId: number) =>
+  request<{ gameWeeks: TotwAdminGameWeek[] }>(
+    `/api/admin/totw/game-weeks?divisionId=${divisionId}`,
+  ).then((r) => r.gameWeeks)
+
+export const getTotwSuggestions = (params: {
+  weekId?: number
+  slot?: number
+  group?: string
+  divisionId?: number
+  gameWeek?: number
+}) => {
+  const q = new URLSearchParams()
+  if (params.weekId != null) q.set('weekId', String(params.weekId))
+  if (params.slot != null) q.set('slot', String(params.slot))
+  if (params.group) q.set('group', params.group)
+  if (params.divisionId != null) q.set('divisionId', String(params.divisionId))
+  if (params.gameWeek != null) q.set('gameWeek', String(params.gameWeek))
+  return request<{
+    divisionId: number | null
+    gameWeek: number | null
+    group: string | null
+    candidates: TotwSuggestion[]
+    reason: string | null
+  }>(`/api/admin/totw/suggestions?${q.toString()}`)
+}
+
+export const createTotwWeek = (input: {
+  label?: string
+  divisionId: number
+  gameWeek: number
+}) =>
   request<{ id: number }>('/api/admin/totw/weeks', {
     method: 'POST',
-    body: JSON.stringify({ label }),
+    body: JSON.stringify(input),
   }).then((r) => r.id)
 
 export const getTotwWeek = (id: number) =>
   request<{
-    week: { id: number; label: string; status: 'draft' | 'published'; publishedAt: string | null }
+    week: {
+      id: number
+      label: string
+      status: 'draft' | 'published'
+      publishedAt: string | null
+      divisionId: number | null
+      gameWeek: number | null
+    }
     players: TotwAdminPlayer[]
   }>(`/api/admin/totw/weeks/${id}`)
 
 export const updateTotwWeek = (
   id: number,
-  input: { label?: string; status?: 'draft' | 'published' },
+  input: {
+    label?: string
+    status?: 'draft' | 'published'
+    divisionId?: number
+    gameWeek?: number
+  },
 ) =>
   request<{ ok: true }>(`/api/admin/totw/weeks/${id}`, {
     method: 'PUT',

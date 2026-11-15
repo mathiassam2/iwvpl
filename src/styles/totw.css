@@ -276,6 +276,68 @@
   box-sizing: border-box;
 }
 
+/* One tab per division, with how many weeks each has. */
+.totw__divisions {
+  width: 100%;
+  max-width: min(50rem, calc((100dvh - 160px) * 0.95));
+  margin: 0 auto 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 0.4rem;
+  box-sizing: border-box;
+}
+
+.totw__division-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.8rem;
+  border-radius: 999px;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  background: rgb(255 255 255 / 0.04);
+  color: rgb(255 255 255 / 0.78);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.totw__division-tab:hover {
+  border-color: rgb(200 255 61 / 0.5);
+  color: #fff;
+}
+.totw__division-tab[aria-current='true'] {
+  background: var(--totw-volt);
+  border-color: var(--totw-volt);
+  color: var(--totw-ink);
+}
+.totw__division-tab b {
+  font-size: 0.62rem;
+  font-weight: 800;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.14);
+}
+.totw__division-tab[aria-current='true'] b {
+  background: rgb(10 11 13 / 0.22);
+}
+
+/* Which division and game week the board is showing. */
+.totw__context {
+  width: 100%;
+  max-width: min(50rem, calc((100dvh - 160px) * 0.95));
+  margin: 0 auto 0.5rem;
+  text-align: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgb(255 255 255 / 0.5);
+}
+
 /* Matchweek Stepper (matches-style navigation) */
 .totw-stepper {
   position: relative;
@@ -643,9 +705,12 @@
 
 .totw-card__photo {
   position: absolute;
-  bottom: 2%;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   max-width: none;
-  object-fit: contain;
+  object-fit: cover;
+  object-position: center;
   pointer-events: none;
   user-select: none;
   -webkit-user-drag: none;
@@ -654,46 +719,9 @@
   transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
   z-index: 2;
 }
-/*
- * The portrait is the backdrop the name sits on, so it fills the card. It is
- * always the photo the team uploaded for the Team of the Week - a player's
- * league profile picture is not a portrait of them in the kit, and the card
- * is about the upload, not the account.
- */
-.totw-card__photo--close {
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center 8%;
-  filter: grayscale(1) contrast(1.12) brightness(1.02);
-}
-.totw-card__photo--candid {
-  left: 2%;
-  bottom: auto;
-  top: 17%;
-  height: 62%;
-  width: 50%;
-  object-position: left bottom;
-}
-/* One photo is the backdrop rather than a cutout beside another one. */
-.totw-card[data-solo] .totw-card__photo {
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center 8%;
-}
-.totw-card[data-solo] .totw-card__photo--candid {
-  filter: none;
-}
-.totw-card:hover .totw-card__photo--close,
-.totw-card:focus-visible .totw-card__photo--close {
+.totw-card:hover .totw-card__photo,
+.totw-card:focus-visible .totw-card__photo {
   transform: scale(1.04);
-}
-.totw-card:hover .totw-card__photo--candid,
-.totw-card:focus-visible .totw-card__photo--candid {
-  transform: translateX(-2%) scale(1.05);
 }
 
 .totw-card__shade {
@@ -740,6 +768,13 @@
   color: rgb(255 255 255 / 0.8);
   line-height: 1;
   margin-bottom: 2px;
+}
+/* The rating the pick was justified by, frozen when it was saved. */
+.totw-card__rating {
+  margin-left: 0.35rem;
+  color: var(--totw-volt);
+  font-weight: 800;
+  letter-spacing: 0.04em;
 }
 .totw-card__name {
   display: block;

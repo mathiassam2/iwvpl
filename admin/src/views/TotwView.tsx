@@ -19,6 +19,7 @@ import {
   type TotwAdminWeekSummary,
 } from '../api'
 import { compressImageFile, type Guard, type Report } from '../utils'
+import { TotwPhotoStudio } from './TotwPhotoStudio'
 
 /** Fixed 4-4-2, in display order: attack, midfield, defence, keeper. */
 const ROWS: number[][] = [[0, 1], [2, 3, 4, 5], [6, 7, 8, 9], [10]]
@@ -34,6 +35,7 @@ function PhotoField({
   value,
   onChange,
   onError,
+  onEdit,
 }: {
   label: string
   hint: string
@@ -41,6 +43,7 @@ function PhotoField({
   value: Photo
   onChange: (v: Photo) => void
   onError: (msg: string) => void
+  onEdit?: () => void
 }) {
   const preview = value === undefined ? existingUrl : value
   const pick = async (e: ChangeEvent<HTMLInputElement>) => {
@@ -73,6 +76,11 @@ function PhotoField({
           {preview ? 'Replace' : 'Upload'}
           <input type="file" accept="image/png,image/webp,image/jpeg" hidden onChange={pick} />
         </label>
+        {preview && onEdit && (
+          <button type="button" className="adm-btn adm-btn-secondary adm-btn-sm" onClick={onEdit}>
+            ✂ Reposition
+          </button>
+        )}
         {preview && (
           <button type="button" className="adm-btn adm-btn-ghost adm-btn-sm" onClick={() => onChange(null)}>
             Remove
@@ -107,8 +115,8 @@ export function TotwView({ guard, report }: { guard: Guard; report: Report }) {
   const [fClub, setFClub] = useState('')
   const [fClubId, setFClubId] = useState<number | null>(null)
   const [fPlayerId, setFPlayerId] = useState<number | null>(null)
-  const [fClose, setFClose] = useState<Photo>(undefined)
   const [fCandid, setFCandid] = useState<Photo>(undefined)
+  const [studioOpen, setStudioOpen] = useState(false)
   const [lookup, setLookup] = useState('')
   const [formError, setFormError] = useState('')
 
@@ -282,7 +290,6 @@ export function TotwView({ guard, report }: { guard: Guard; report: Report }) {
     setFClub(p?.clubName ?? '')
     setFClubId(p?.clubId ?? null)
     setFPlayerId(p?.playerId ?? null)
-    setFClose(undefined)
     setFCandid(undefined)
     setLookup('')
     setFormError('')
@@ -317,15 +324,14 @@ export function TotwView({ guard, report }: { guard: Guard; report: Report }) {
     return null
   }, [clubs, fClubId, fClub])
 
-  const hasClose = fClose === undefined ? Boolean(editing?.closeUrl) : fClose !== null
-  const hasCandid = fCandid === undefined ? Boolean(editing?.candidUrl) : fCandid !== null
+  const hasCandid = fCandid === undefined ? Boolean(editing?.candidUrl ?? editing?.closeUrl) : fCandid !== null
 
   const submitSlot = async (e: FormEvent) => {
     e.preventDefault()
     if (!week || slot === null) return
     if (!fName.trim()) return setFormError('Enter the player name.')
     if (!fPosition.trim()) return setFormError('Enter a position.')
-    if (!hasClose && !hasCandid) return setFormError('Upload at least one photo.')
+    if (!hasCandid && fPlayerId == null) return setFormError('Upload a photo for this player.')
     setFormError('')
     setBusy(true)
     try {
@@ -338,7 +344,7 @@ export function TotwView({ guard, report }: { guard: Guard; report: Report }) {
             clubId: fClubId,
             clubName: fClub.trim() || null,
             playerId: fPlayerId,
-            photoClose: fClose,
+            photoClose: null,
             photoCandid: fCandid,
           }),
         'Could not save this player',
@@ -691,23 +697,20 @@ export function TotwView({ guard, report }: { guard: Guard; report: Report }) {
                 </label>
 
                 <PhotoField
-                  label="Close-up (side profile)"
-                  hint="Large, shown behind. Transparent background works best."
-                  existingUrl={editing?.closeUrl ?? null}
-                  value={fClose}
-                  onChange={setFClose}
-                  onError={setFormError}
-                />
-                <PhotoField
-                  label="Candid / celebration"
-                  hint="Smaller, shown in front. Transparent background works best."
-                  existingUrl={editing?.candidUrl ?? null}
+                  label="Card photo"
+                  hint="The card's backdrop. Drag it to frame the player."
+                  existingUrl={editing?.candidUrl ?? editing?.closeUrl ?? null}
                   value={fCandid}
-                  onChange={setFCandid}
+                  onChange={(img) => {
+                    setFCandid(img)
+                    if (img) setStudioOpen(true)
+                  }}
                   onError={setFormError}
+                  onEdit={() => setStudioOpen(true)}
                 />
                 <p className="adm-text-muted" style={{ fontSize: 12, margin: 0 }}>
-                  At least one photo is required. With only one, it is shown on its own.
+                  A photo is required unless the player is picked from the league list, in which case
+                  their own avatar stands in.
                 </p>
 
                 {formError && (
@@ -731,6 +734,20 @@ export function TotwView({ guard, report }: { guard: Guard; report: Report }) {
           </aside>
         </div>
       )}
+
+      <TotwPhotoStudio
+        isOpen={studioOpen}
+        gamertag={fName.trim() || 'Player'}
+        clubName={fClub.trim() || undefined}
+        clubFlag={selectedClub?.flag ?? undefined}
+        shirtNumber={fNumber.trim() === '' ? null : Number(fNumber)}
+        position={fPosition.trim() || undefined}
+        clubLogo={selectedClub?.logo_local || selectedClub?.logo_url || null}
+        initialImage={fCandid === undefined ? editing?.candidUrl ?? editing?.closeUrl ?? null : fCandid}
+        onClose={() => setStudioOpen(false)}
+        onApply={(dataUrl) => setFCandid(dataUrl)}
+        onRemove={() => setFCandid(null)}
+      />
     </div>
   )
 }

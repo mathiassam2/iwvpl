@@ -21,13 +21,17 @@ function parseWeekNum(label: string): number {
 
 function PlayerCard({ player }: { player: TotwPlayer }) {
   const [first, rest] = splitName(player.name)
-  const solo = !(player.closeUrl && player.candidUrl)
   const club = player.clubName?.trim()
   const logo = player.clubLogo ? asset(player.clubLogo) : null
   const profile = player.playerSlug?.trim()
   const label = `${player.name}, ${player.position}${club ? `, ${club}` : ''}${
     profile ? ', view profile' : ''
   }`
+
+  // One photo per card: the one uploaded for the Team of the Week. It is the
+  // backdrop the name sits on, so a player's league profile picture is never
+  // used in its place.
+  const backdrop = player.candidUrl ?? player.closeUrl
 
   const card = (
     <>
@@ -45,20 +49,10 @@ function PlayerCard({ player }: { player: TotwPlayer }) {
           }}
         />
       )}
-      {player.closeUrl && (
+      {backdrop && (
         <img
-          className="totw-card__photo totw-card__photo--close"
-          src={photoSrc(player.closeUrl)}
-          alt=""
-          loading="lazy"
-          decoding="async"
-          draggable={false}
-        />
-      )}
-      {player.candidUrl && (
-        <img
-          className="totw-card__photo totw-card__photo--candid"
-          src={photoSrc(player.candidUrl)}
+          className="totw-card__photo"
+          src={photoSrc(backdrop)}
           alt=""
           loading="lazy"
           decoding="async"
@@ -76,7 +70,10 @@ function PlayerCard({ player }: { player: TotwPlayer }) {
       <div className="totw-card__info">
         {player.shirtNumber != null && <span className="totw-card__num">{player.shirtNumber}</span>}
         <div className="totw-card__text">
-          <span className="totw-card__pos">{player.position}</span>
+          <span className="totw-card__pos">
+            {player.position}
+            {player.rating != null && <b className="totw-card__rating">{player.rating.toFixed(1)}</b>}
+          </span>
           <span className="totw-card__name">
             <span>{first}</span>
             {rest && <span>{rest}</span>}
@@ -92,7 +89,6 @@ function PlayerCard({ player }: { player: TotwPlayer }) {
       <Link
         to={`/players/${encodeURIComponent(profile)}`}
         className="totw-card"
-        data-solo={solo || undefined}
         aria-label={label}
       >
         {card}
@@ -101,7 +97,7 @@ function PlayerCard({ player }: { player: TotwPlayer }) {
   }
 
   return (
-    <article className="totw-card" data-solo={solo || undefined} tabIndex={0} aria-label={label}>
+    <article className="totw-card" tabIndex={0} aria-label={label}>
       {card}
     </article>
   )
@@ -111,9 +107,13 @@ export default function TotwPage() {
   const { user } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
   const paramId = Number.parseInt(searchParams.get('week') ?? '', 10)
+  const divisionParam = Number.parseInt(searchParams.get('division') ?? '', 10)
   const [data, setData] = useState<TotwResponse | null>(null)
   const [weekId, setWeekId] = useState<number | null>(
     Number.isSafeInteger(paramId) && paramId > 0 ? paramId : null,
+  )
+  const [divisionId, setDivisionId] = useState<number | null>(
+    Number.isSafeInteger(divisionParam) && divisionParam > 0 ? divisionParam : null,
   )
   const [menuOpen, setMenuOpen] = useState(false)
   const stepperRef = useRef<HTMLDivElement>(null)
@@ -141,12 +141,16 @@ export default function TotwPage() {
   }, [menuOpen])
 
   const load = useCallback(
-    async (id: number | null) => {
+    async (id: number | null, division: number | null) => {
       if (first.current) setLoading(true)
       setError('')
       setLocked(false)
       try {
-        setData(await getTotw(id))
+        const res = await getTotw(id, division)
+        setData(res)
+        // The server decides which division a week belongs to, so the tab
+        // follows it rather than the other way round.
+        if (res.divisionId != null) setDivisionId(res.divisionId)
       } catch (err) {
         if (err instanceof ApiError && err.status === 403) setLocked(true)
         else setError(err instanceof Error ? err.message : 'Could not load Team of the Week.')
@@ -158,10 +162,10 @@ export default function TotwPage() {
     [],
   )
 
-  // Reload on week change and when the visitor signs in or out.
+  // Reload on week or division change and when the visitor signs in or out.
   useEffect(() => {
-    void load(weekId)
-  }, [load, weekId, user?.id])
+    void load(weekId, divisionId)
+  }, [load, weekId, divisionId, user?.id])
 
   const week = data?.week ?? null
   const bySlot = new Map((week?.players ?? []).map((p) => [p.slot, p]))
@@ -170,8 +174,8 @@ export default function TotwPage() {
   const chronologicalWeeks = useMemo(() => {
     if (!data?.weeks) return []
     return [...data.weeks].sort((a, b) => {
-      const numA = parseWeekNum(a.label)
-      const numB = parseWeekNum(b.label)
+      const numA = a.gameWeek ?? parseWeekNum(a.label)
+      const numB = b.gameWeek ?? parseWeekNum(b.label)
       if (numA !== numB) return numA - numB
       return a.id - b.id
     })
@@ -188,6 +192,15 @@ export default function TotwPage() {
     if (id == null) return
     setWeekId(id)
     setSearchParams({ week: String(id) }, { replace: true })
+  }
+
+  const handleSelectDivision = (id: number) => {
+    setDivisionId(id)
+    setWeekId(null)
+    const next = new URLSearchParams(searchParams)
+    next.set('division', String(id))
+    next.delete('week')
+    setSearchParams(next, { replace: true })
   }
 
   const onDownload = async () => {
@@ -221,6 +234,23 @@ export default function TotwPage() {
             player's club crest, with the club name on hover.
           </p>
         </header>
+
+        {(data?.divisions?.length ?? 0) > 1 && (
+          <nav className="totw__divisions" aria-label="Divisions">
+            {data?.divisions.map((d) => (
+              <button
+                key={d.id}
+                type="button"
+                className="totw__division-tab"
+                aria-current={d.id === divisionId ? 'true' : undefined}
+                onClick={() => handleSelectDivision(d.id)}
+              >
+                <span>{d.name}</span>
+                {d.weekCount > 0 && <b>{d.weekCount}</b>}
+              </button>
+            ))}
+          </nav>
+        )}
 
         <section className="totw__board" aria-live="polite">
           {week && data?.weeks && data.weeks.length > 0 && (
@@ -348,6 +378,14 @@ export default function TotwPage() {
                 )}
               </button>
             </div>
+          )}
+
+          {week && (
+            <p className="totw__context">
+              {[week.divisionName, week.gameWeek != null ? `Game Week ${week.gameWeek}` : null]
+                .filter(Boolean)
+                .join(' · ')}
+            </p>
           )}
 
           {downloadError && (
