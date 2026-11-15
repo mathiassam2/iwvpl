@@ -181,7 +181,10 @@ async function main() {
   mkdirSync(join(stageDir, 'tmp'), { recursive: true })
   writeFileSync(join(stageDir, 'tmp', 'restart.txt'), String(Date.now()))
 
-  execSync(`tar -czf "${archivePath}" -C "${stageDir}" .`, { stdio: 'inherit' })
+  // --force-local: GNU tar reads the "C:" in a Windows path as a remote host
+  // name and then fails with "Cannot connect to C: resolve failed". On Windows
+  // the archive is always local, so say so.
+  execSync(`tar --force-local -czf "${archivePath}" -C "${stageDir}" .`, { stdio: 'inherit' })
 
   console.log('3. Uploading and extracting on cPanel...')
   const session = await loginCpanel()
