@@ -236,13 +236,14 @@ export function ButtonLink({
 }
 
 /* ------------------------------------------------------------------ SmartImage */
-/** Image with graceful fallback to a local SVG placeholder. */
+/** Image with graceful fallback, instant cache detection, and no stale-bitmap bleed on src change. */
 export function SmartImage({
   src,
   fallback,
   alt,
   className,
   wrapperClassName,
+  priority = false,
   ...rest
 }: {
   src: string
@@ -250,23 +251,88 @@ export function SmartImage({
   alt: string
   className?: string
   wrapperClassName?: string
+  priority?: boolean
 } & Omit<ImgHTMLAttributes<HTMLImageElement>, 'src' | 'alt'>) {
-  const [failed, setFailed] = useState(false)
+  const [failedSrc, setFailedSrc] = useState<string | null>(null)
+  const failed = Boolean(src) && failedSrc === src
   const finalSrc = !src || failed ? fallback : src
-  const sizingClasses = className ? className.split(/\s+/).filter((cls) => /^(w-|h-|size-|rounded-|aspect-)/.test(cls)).join(' ') : ''
-  const finalWrapperClass = wrapperClassName || cx('block overflow-hidden shrink-0', sizingClasses)
+  const imgRef = useRef<HTMLImageElement>(null)
+  const [loadedSrc, setLoadedSrc] = useState<string | null>(() =>
+    finalSrc === fallback || finalSrc.startsWith('data:') ? finalSrc : null,
+  )
+
+  useLayoutEffect(() => {
+    const img = imgRef.current
+    if (
+      finalSrc === fallback ||
+      finalSrc.startsWith('data:') ||
+      (img && img.complete && img.naturalWidth > 0)
+    ) {
+      setLoadedSrc(finalSrc)
+    }
+  }, [finalSrc, fallback])
+
+  const isLoaded = loadedSrc === finalSrc
+  const sizingClasses = className
+    ? className
+        .split(/\s+/)
+        .filter((cls) => /^(w-|h-|size-|rounded-|aspect-)/.test(cls))
+        .join(' ')
+    : ''
+  const finalWrapperClass = cx(
+    wrapperClassName || cx('block overflow-hidden shrink-0', sizingClasses),
+    'relative',
+    !isLoaded && 'shimmer',
+  )
+
   return (
     <span className={finalWrapperClass}>
       <img
+        key={finalSrc}
+        ref={imgRef}
         src={finalSrc}
         alt={alt}
-        loading="lazy"
+        loading={priority ? 'eager' : rest.loading ?? 'lazy'}
+        fetchPriority={priority ? 'high' : rest.fetchPriority}
         decoding="async"
-        onError={() => setFailed(true)}
-        className={cx('block h-full w-full object-contain', className)}
+        onLoad={() => setLoadedSrc(finalSrc)}
+        onError={() => {
+          if (src && !failed) {
+            setFailedSrc(src)
+          } else {
+            setLoadedSrc(finalSrc)
+          }
+        }}
+        className={cx(
+          'block h-full w-full object-contain transition-opacity duration-200',
+          isLoaded ? 'opacity-100' : 'opacity-0',
+          className,
+        )}
         {...rest}
       />
     </span>
+  )
+}
+
+/* ----------------------------------------------------------------- LoadingBar */
+/** Slim indeterminate progress bar shown immediately during async tab/filter fetches. */
+export function LoadingBar({
+  active,
+  className,
+  label = 'Loading…',
+}: {
+  active: boolean
+  className?: string
+  label?: string
+}) {
+  if (!active) return null
+  return (
+    <div
+      role="progressbar"
+      aria-label={label}
+      aria-busy="true"
+      className={cx('loading-bar', className)}
+    />
   )
 }
 
@@ -276,53 +342,62 @@ export function Tabs({
   tabs,
   active,
   onChange,
+  onPrefetch,
+  loading = false,
   className,
   idPrefix = 'tab',
 }: {
   tabs: Array<{ id: string; label: string; count?: number }>
   active: string
   onChange: (id: string) => void
+  onPrefetch?: (id: string) => void
+  loading?: boolean
   className?: string
   idPrefix?: string
 }) {
   return (
-    <div
-      role="tablist"
-      className={cx('no-scrollbar -mx-1 flex gap-1 overflow-x-auto', className)}
-    >
-      {tabs.map((t) => {
-        const on = t.id === active
-        return (
-          <button
-            key={t.id}
-            id={`${idPrefix}-${t.id}`}
-            role="tab"
-            aria-selected={on}
-            aria-controls={`${idPrefix}-panel-${t.id}`}
-            onClick={() => onChange(t.id)}
-            className={cx(
-              'relative shrink-0 px-3.5 py-2.5 text-sm font-semibold transition-colors duration-300 sm:px-4',
-              on
-                ? 'text-[var(--text-strong)]'
-                : 'text-[var(--text-muted)] hover:text-[var(--text-strong)]',
-            )}
-          >
-            {t.label}
-            {typeof t.count === 'number' && (
-              <span className={cx('ml-1.5 text-xs', on ? 'text-[var(--accent-text)]' : 'text-[var(--text-faint)]')}>
-                {t.count}
-              </span>
-            )}
-            <span
-              aria-hidden
+    <div className={cx('relative', className)}>
+      <div
+        role="tablist"
+        className="no-scrollbar -mx-1 flex gap-1 overflow-x-auto"
+      >
+        {tabs.map((t) => {
+          const on = t.id === active
+          return (
+            <button
+              key={t.id}
+              id={`${idPrefix}-${t.id}`}
+              role="tab"
+              aria-selected={on}
+              aria-controls={`${idPrefix}-panel-${t.id}`}
+              onClick={() => onChange(t.id)}
+              onPointerEnter={() => onPrefetch?.(t.id)}
+              onFocus={() => onPrefetch?.(t.id)}
               className={cx(
-                'absolute inset-x-2 bottom-0 h-[2px] rounded-full transition-all duration-300',
-                on ? 'bg-[var(--accent-solid)] opacity-100' : 'bg-current opacity-0',
+                'relative shrink-0 touch-manipulation px-3.5 py-2.5 text-sm font-semibold transition-colors duration-200 active:scale-[0.98] sm:px-4',
+                on
+                  ? 'text-[var(--text-strong)]'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text-strong)]',
               )}
-            />
-          </button>
-        )
-      })}
+            >
+              {t.label}
+              {typeof t.count === 'number' && (
+                <span className={cx('ml-1.5 text-xs', on ? 'text-[var(--accent-text)]' : 'text-[var(--text-faint)]')}>
+                  {t.count}
+                </span>
+              )}
+              <span
+                aria-hidden
+                className={cx(
+                  'absolute inset-x-2 bottom-0 h-[2px] rounded-full transition-all duration-200',
+                  on ? 'bg-[var(--accent-solid)] opacity-100' : 'bg-current opacity-0',
+                )}
+              />
+            </button>
+          )
+        })}
+      </div>
+      {loading && <LoadingBar active className="absolute inset-x-0 bottom-0" />}
     </div>
   )
 }

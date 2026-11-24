@@ -233,13 +233,77 @@ league.get(
   }),
 )
 
+interface CachedPublicImage {
+  buf: Buffer
+  mime: string
+  etag: string
+  v: string
+  cachedAt: number
+}
+
+const PUBLIC_IMG_MAX_BYTES = 18 * 1024 * 1024
+const PUBLIC_IMG_MAX_ITEMS = 120
+const PUBLIC_IMG_TTL_MS = 10 * 60_000
+const publicImageCache = new Map<string, CachedPublicImage>()
+let publicImageBytes = 0
+
+function putPublicImageCache(key: string, entry: CachedPublicImage) {
+  if (entry.buf.length > 4 * 1024 * 1024) return
+  const existing = publicImageCache.get(key)
+  if (existing) {
+    publicImageBytes -= existing.buf.length
+    publicImageCache.delete(key)
+  }
+  while (
+    publicImageCache.size >= PUBLIC_IMG_MAX_ITEMS ||
+    publicImageBytes + entry.buf.length > PUBLIC_IMG_MAX_BYTES
+  ) {
+    const oldestKey = publicImageCache.keys().next().value
+    if (!oldestKey) break
+    const oldest = publicImageCache.get(oldestKey)
+    if (oldest) publicImageBytes -= oldest.buf.length
+    publicImageCache.delete(oldestKey)
+  }
+  publicImageCache.set(key, entry)
+  publicImageBytes += entry.buf.length
+}
+
+function sendCachedPublicImage(req: any, res: any, entry: CachedPublicImage, hasVersion: boolean) {
+  res.removeHeader('Pragma')
+  res.removeHeader('Expires')
+  res.removeHeader('X-LiteSpeed-Cache-Control')
+  res.setHeader(
+    'Cache-Control',
+    hasVersion ? 'public, max-age=604800, immutable' : 'public, max-age=86400',
+  )
+  res.setHeader('ETag', entry.etag)
+  if (req.headers['if-none-match'] === entry.etag) {
+    res.status(304).end()
+    return
+  }
+  res.setHeader('Content-Type', entry.mime)
+  res.setHeader('Content-Length', String(entry.buf.length))
+  res.send(entry.buf)
+}
+
 league.get(
   '/clubs/:slug/logo',
   handler(async (req, res) => {
     const requestedSlug = req.params.slug
+    const reqV = typeof req.query?.v === 'string' ? req.query.v : ''
+    const cacheKey = `club:${requestedSlug}`
+    const now = Date.now()
+    const cached = publicImageCache.get(cacheKey)
+    if (cached && now - cached.cachedAt < PUBLIC_IMG_TTL_MS && (!reqV || cached.v === reqV)) {
+      publicImageCache.delete(cacheKey)
+      publicImageCache.set(cacheKey, cached)
+      sendCachedPublicImage(req, res, cached, Boolean(reqV))
+      return
+    }
+
     const asciiSlug = (requestedSlug || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
-    const row = await queryOne<{ logo: string | null }>(
-      'SELECT COALESCE(logo_local, logo_url) AS logo FROM clubs WHERE (slug = ? OR slug = ?) LIMIT 1',
+    const row = await queryOne<{ logo: string | null; v: number }>(
+      'SELECT COALESCE(logo_local, logo_url) AS logo, COALESCE(UNIX_TIMESTAMP(updated_at), 1) AS v FROM clubs WHERE (slug = ? OR slug = ?) LIMIT 1',
       [requestedSlug, asciiSlug],
     )
     const logo = row?.logo
@@ -247,15 +311,23 @@ league.get(
 
     const match = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/is.exec(logo)
     if (match) {
-      const mime = match[1]
-      const buf = Buffer.from(match[2], 'base64')
-      res.setHeader('Content-Type', mime)
-      res.setHeader('Cache-Control', 'public, max-age=86400')
-      res.send(buf)
+      const v = String(row?.v || 1)
+      const entry: CachedPublicImage = {
+        buf: Buffer.from(match[2], 'base64'),
+        mime: match[1],
+        etag: `"club-${requestedSlug}-${v}"`,
+        v,
+        cachedAt: now,
+      }
+      putPublicImageCache(cacheKey, entry)
+      sendCachedPublicImage(req, res, entry, Boolean(reqV))
       return
     }
 
     if (logo.startsWith('/') || /^https?:\/\//i.test(logo)) {
+      res.removeHeader('Pragma')
+      res.removeHeader('Expires')
+      res.removeHeader('X-LiteSpeed-Cache-Control')
       res.setHeader('Cache-Control', 'public, max-age=86400')
       res.redirect(302, logo)
       return
@@ -833,26 +905,47 @@ league.get(
 league.get(
   '/players/:slug/celebration',
   handler(async (req, res) => {
-    const row = await queryOne<{ image: string | null }>(
-      'SELECT celebration_image AS image FROM players WHERE slug = ? LIMIT 1',
-      [req.params.slug],
-    )
-    const img = row?.image
-    if (!img) return res.status(404).end()
+    const slug = req.params.slug
+    const reqV = typeof req.query?.v === 'string' ? req.query.v : ''
     res.setHeader('Access-Control-Allow-Origin', '*')
     res.setHeader('Vary', 'Origin')
 
+    const cacheKey = `celebration:${slug}`
+    const now = Date.now()
+    const cached = publicImageCache.get(cacheKey)
+    if (cached && now - cached.cachedAt < PUBLIC_IMG_TTL_MS && (!reqV || cached.v === reqV)) {
+      publicImageCache.delete(cacheKey)
+      publicImageCache.set(cacheKey, cached)
+      sendCachedPublicImage(req, res, cached, Boolean(reqV))
+      return
+    }
+
+    const row = await queryOne<{ image: string | null; v: number }>(
+      'SELECT celebration_image AS image, COALESCE(UNIX_TIMESTAMP(updated_at), 1) AS v FROM players WHERE slug = ? LIMIT 1',
+      [slug],
+    )
+    const img = row?.image
+    if (!img) return res.status(404).end()
+
     const match = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/is.exec(img)
     if (match) {
-      const mime = match[1]
-      const buf = Buffer.from(match[2], 'base64')
-      res.setHeader('Content-Type', mime)
-      res.setHeader('Cache-Control', 'public, max-age=86400')
-      res.send(buf)
+      const v = String(row?.v || 1)
+      const entry: CachedPublicImage = {
+        buf: Buffer.from(match[2], 'base64'),
+        mime: match[1],
+        etag: `"cel-${slug}-${v}"`,
+        v,
+        cachedAt: now,
+      }
+      putPublicImageCache(cacheKey, entry)
+      sendCachedPublicImage(req, res, entry, Boolean(reqV))
       return
     }
 
     if (img.startsWith('/') || /^https?:\/\//i.test(img)) {
+      res.removeHeader('Pragma')
+      res.removeHeader('Expires')
+      res.removeHeader('X-LiteSpeed-Cache-Control')
       res.setHeader('Cache-Control', 'public, max-age=86400')
       res.redirect(302, img)
       return

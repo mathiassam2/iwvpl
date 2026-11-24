@@ -1991,3 +1991,36 @@ select option {
     }
   }
 }
+
+
+/* Slim indeterminate volt progress bar for async tab/filter transitions */
+.loading-bar {
+  position: relative;
+  height: 2px;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.06);
+}
+.loading-bar::after {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 42%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, var(--accent-solid), transparent);
+  animation: loading-bar-slide 1.15s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  will-change: transform;
+}
+@keyframes loading-bar-slide {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(280%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .loading-bar::after {
+    width: 100%;
+    animation: none;
+    opacity: 0.65;
+  }
+}

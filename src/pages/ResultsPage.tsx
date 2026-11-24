@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { MatchRow, StatTile } from '@/components/league'
-import { Container, EmptyState, Section, Select } from '@/components/ui'
+import { Container, EmptyState, LoadingBar, Section, Select } from '@/components/ui'
 import { SITE, siteData } from '@/data'
 import { groupByDate, stripFlag, totalGoals } from '@/lib/format'
 import {
@@ -150,11 +150,6 @@ export default function ResultsPage() {
 
       <Section>
         <Container size="wide">
-          {loading && (
-            <p role="status" className="mb-4 text-sm text-[var(--text-muted)]">
-              Loading live results…
-            </p>
-          )}
           {error && (
             <div
               role="alert"
@@ -166,7 +161,7 @@ export default function ResultsPage() {
               </button>
             </div>
           )}
-          {!loading && !error && (
+          {!error && (
             <>
           {liveLeagueEnabled && seasons.length > 0 && (
             <label className="mb-6 flex max-w-sm flex-col gap-2 text-sm font-semibold text-[var(--text-muted)]">
@@ -206,7 +201,7 @@ export default function ResultsPage() {
           </div>
 
           {/* filter */}
-          <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center">
             <label
               htmlFor="team-filter"
               className="shrink-0 text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--text-faint)]"
@@ -239,7 +234,25 @@ export default function ResultsPage() {
             )}
           </div>
 
-          {grouped.length === 0 ? (
+          {loading && <LoadingBar active className="mb-6" label="Loading live results" />}
+
+          {loading ? (
+            <div className="surface divide-y divide-[var(--border)] overflow-hidden rounded-card" aria-busy="true" aria-label="Loading live results">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-4 py-4 sm:gap-5 sm:px-5">
+                  <div className="flex items-center justify-end gap-2.5">
+                    <div className="shimmer h-4 w-24 rounded sm:w-32" />
+                    <div className="shimmer h-8 w-8 rounded-full" />
+                  </div>
+                  <div className="shimmer h-7 w-14 rounded-lg" />
+                  <div className="flex items-center gap-2.5">
+                    <div className="shimmer h-8 w-8 rounded-full" />
+                    <div className="shimmer h-4 w-24 rounded sm:w-32" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : grouped.length === 0 ? (
             <EmptyState
               title="No results found"
               hint="Try another season or club filter."

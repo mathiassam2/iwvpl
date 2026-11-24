@@ -34,7 +34,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       credentials: 'include',
       headers: { 'content-type': 'application/json', ...(init?.headers ?? {}) },
     })
-  } catch {
+  } catch (err) {
+    if (init?.signal?.aborted || (err instanceof DOMException && err.name === 'AbortError')) {
+      throw err
+    }
     // fetch only rejects on a network-level failure. A wrong API URL and a
     // server that is asleep are indistinguishable here, and both mean "the
     // league API is unreachable" as far as the person clicking is concerned.
@@ -482,12 +485,108 @@ export interface TotwResponse {
 
 export const getTotwAccess = () => request<{ allowed: boolean }>('/api/totw/access')
 
-export const getTotw = (weekId?: number | null, divisionId?: number | null) => {
-  const params = new URLSearchParams()
-  if (weekId) params.set('week', String(weekId))
-  if (divisionId) params.set('division', String(divisionId))
-  const query = params.toString()
-  return request<TotwResponse>(`/api/totw${query ? `?${query}` : ''}`)
+const TOTW_FRESH_MS = 60_000
+const TOTW_REVALIDATE_MS = 15_000
+const totwCache = new Map<string, { data: TotwResponse; ts: number }>()
+const totwInFlight = new Map<string, Promise<TotwResponse>>()
+
+function totwKey(weekId?: number | null, divisionId?: number | null): string {
+  if (weekId) return `w:${weekId}`
+  if (divisionId) return `d:${divisionId}`
+  return 'default'
+}
+
+function storeTotw(key: string, res: TotwResponse, weekId?: number | null, divisionId?: number | null) {
+  const entry = { data: res, ts: Date.now() }
+  totwCache.set(key, entry)
+  if (res.week?.id) {
+    totwCache.set(`w:${res.week.id}`, entry)
+  }
+  if (!weekId && res.divisionId != null) {
+    totwCache.set(`d:${res.divisionId}`, entry)
+  }
+  if (!weekId && !divisionId) {
+    totwCache.set('default', entry)
+  }
+}
+
+export function clearTotwCache(): void {
+  totwCache.clear()
+  totwInFlight.clear()
+}
+
+export function peekTotw(
+  weekId?: number | null,
+  divisionId?: number | null,
+): TotwResponse | null {
+  const hit = totwCache.get(totwKey(weekId, divisionId))
+  if (!hit) return null
+  if (Date.now() - hit.ts > TOTW_FRESH_MS * 5) return null
+  return hit.data
+}
+
+export const getTotw = (
+  weekId?: number | null,
+  divisionId?: number | null,
+  opts?: { signal?: AbortSignal; force?: boolean },
+): Promise<TotwResponse> => {
+  const key = totwKey(weekId, divisionId)
+  const now = Date.now()
+  const cached = totwCache.get(key)
+
+  const fetchFresh = () => {
+    const existing = totwInFlight.get(key)
+    if (existing) return existing
+    const params = new URLSearchParams()
+    if (weekId) params.set('week', String(weekId))
+    if (divisionId) params.set('division', String(divisionId))
+    const query = params.toString()
+    const p = request<TotwResponse>(`/api/totw${query ? `?${query}` : ''}`)
+      .then((res) => {
+        storeTotw(key, res, weekId, divisionId)
+        return res
+      })
+      .finally(() => {
+        totwInFlight.delete(key)
+      })
+    totwInFlight.set(key, p)
+    return p
+  }
+
+  if (!opts?.force && cached && now - cached.ts < TOTW_FRESH_MS) {
+    if (now - cached.ts > TOTW_REVALIDATE_MS) {
+      void fetchFresh().catch(() => {})
+    }
+    return Promise.resolve(cached.data)
+  }
+
+  const p = fetchFresh()
+  const signal = opts?.signal
+  if (!signal) return p
+  if (signal.aborted) {
+    return Promise.reject(new DOMException('Aborted', 'AbortError'))
+  }
+  return new Promise<TotwResponse>((resolve, reject) => {
+    const onAbort = () => reject(new DOMException('Aborted', 'AbortError'))
+    signal.addEventListener('abort', onAbort, { once: true })
+    p.then(
+      (val) => {
+        signal.removeEventListener('abort', onAbort)
+        resolve(val)
+      },
+      (err) => {
+        signal.removeEventListener('abort', onAbort)
+        reject(err)
+      },
+    )
+  })
+}
+
+export function prefetchTotw(
+  weekId?: number | null,
+  divisionId?: number | null,
+): Promise<TotwResponse | null> {
+  return getTotw(weekId, divisionId).catch(() => null)
 }
 
 /* --------------------------------------------------------- transfer window */

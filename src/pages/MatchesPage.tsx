@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { MatchRow } from '@/components/league'
-import { Container, EmptyState, Section, Select, SmartImage } from '@/components/ui'
+import { Container, EmptyState, LoadingBar, Section, Select, SmartImage } from '@/components/ui'
 import { SITE, siteData } from '@/data'
 import { useAuth } from '@/lib/auth'
 import { CLUB_PLACEHOLDER, clubMatchesFilter, clubSlug, cx, isSameClub, normalizeSearch, slugify, stripFlag } from '@/lib/format'
@@ -11,6 +11,7 @@ import {
   getLiveSeasonClubs,
   getLiveSeasons,
   liveLeagueEnabled,
+  peekLiveMatches,
   type LeagueClub,
   type LeagueSeason,
 } from '@/lib/liveLeague'
@@ -707,7 +708,13 @@ export default function MatchesPage() {
   useEffect(() => {
     if (!liveLeagueEnabled || seasonId === null) return
     const controller = new AbortController()
-    setLoading(true)
+    const cached = peekLiveMatches({ seasonId, limit: 500 })
+    if (cached) {
+      setAllMatches(cached.matches)
+      setLoading(false)
+    } else {
+      setLoading(true)
+    }
     setError('')
 
     getLiveMatches(controller.signal, {
@@ -715,12 +722,12 @@ export default function MatchesPage() {
       limit: 500,
     })
       .then(({ matches }) => {
-        setAllMatches(matches)
+        if (!controller.signal.aborted) setAllMatches(matches)
       })
       .catch((cause: unknown) => {
         if (!controller.signal.aborted) {
           setError(cause instanceof Error ? cause.message : 'Could not load matches.')
-          setAllMatches(siteData.results)
+          if (!cached) setAllMatches(siteData.results)
         }
       })
       .finally(() => {
@@ -1054,7 +1061,7 @@ export default function MatchesPage() {
                 type="button"
                 onClick={() => handleDivisionChange('all')}
                 className={cx(
-                  'relative whitespace-nowrap pb-2 pt-1.5 px-3 text-xs sm:text-sm font-extrabold uppercase tracking-wider transition-colors',
+                  'relative touch-manipulation whitespace-nowrap pb-2 pt-1.5 px-3 text-xs sm:text-sm font-extrabold uppercase tracking-wider transition-colors active:scale-[0.98]',
                   divisionFilter === 'all'
                     ? 'text-white border-b-2 border-[#c4f82a]'
                     : 'text-[var(--text-muted)] hover:text-white border-b-2 border-transparent',
@@ -1068,7 +1075,7 @@ export default function MatchesPage() {
                   type="button"
                   onClick={() => handleDivisionChange(d.id)}
                   className={cx(
-                    'relative whitespace-nowrap pb-2 pt-1.5 px-3 text-xs sm:text-sm font-extrabold uppercase tracking-wider transition-colors',
+                    'relative touch-manipulation whitespace-nowrap pb-2 pt-1.5 px-3 text-xs sm:text-sm font-extrabold uppercase tracking-wider transition-colors active:scale-[0.98]',
                     divisionFilter === d.id
                       ? 'text-white border-b-2 border-[#c4f82a]'
                       : 'text-[var(--text-muted)] hover:text-white border-b-2 border-transparent',
@@ -1089,7 +1096,7 @@ export default function MatchesPage() {
                     type="button"
                     onClick={() => handleStatusChange(tab)}
                     className={cx(
-                      'rounded-md px-3 py-1.5 text-xs font-bold capitalize transition-colors',
+                      'touch-manipulation rounded-md px-3 py-1.5 text-xs font-bold capitalize transition-colors active:scale-[0.97]',
                       statusFilter === tab
                         ? 'bg-[var(--accent-solid)] text-[var(--on-volt)] shadow-sm'
                         : 'text-[var(--text-muted)] hover:text-white',
@@ -1137,17 +1144,33 @@ export default function MatchesPage() {
             </div>
           </div>
         </Container>
+        {loading && <LoadingBar active className="absolute inset-x-0 bottom-0" label="Loading matches" />}
       </div>
 
       <Section className="!pt-5 !pb-16 sm:!pt-5 sm:!pb-20 lg:!pt-5 lg:!pb-24">
         <Container size="wide">
           {/* Main Fixtures & Results Container */}
           {loading ? (
-            <div className="flex flex-col items-center justify-center py-20 text-center">
-              <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--accent-solid)] border-t-transparent" />
-              <p className="mt-4 text-xs font-semibold text-[var(--text-muted)]">
-                Loading fixtures and results…
-              </p>
+            <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface-1)]" aria-busy="true" aria-label="Loading fixtures and results">
+              <div className="flex items-center justify-between border-b border-[var(--border)] bg-[var(--surface-2)] px-4 py-3.5 sm:px-5">
+                <div className="shimmer h-5 w-36 rounded-full" />
+                <div className="shimmer h-4 w-24 rounded" />
+              </div>
+              <div className="divide-y divide-[var(--border)]">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <div key={i} className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-4 py-4 sm:gap-5 sm:px-5">
+                    <div className="flex items-center justify-end gap-2.5">
+                      <div className="shimmer h-4 w-24 rounded sm:w-32" />
+                      <div className="shimmer h-8 w-8 rounded-full sm:h-9 sm:w-9" />
+                    </div>
+                    <div className="shimmer h-7 w-14 rounded-lg" />
+                    <div className="flex items-center gap-2.5">
+                      <div className="shimmer h-8 w-8 rounded-full sm:h-9 sm:w-9" />
+                      <div className="shimmer h-4 w-24 rounded sm:w-32" />
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           ) : error && allMatches.length === 0 ? (
             <div className="py-12 text-center">

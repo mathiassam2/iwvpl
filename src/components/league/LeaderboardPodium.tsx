@@ -1,8 +1,59 @@
+import { useLayoutEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { Leaderboard } from '@/types/site'
 import { AVATAR_PLACEHOLDER, DEFAULT_PODIUM_IMAGES, cx, stripFlag } from '@/lib/format'
 import { boardTitle, boardUnit } from '@/lib/leaderboard'
 import { playerHref } from '@/lib/players'
+
+function PodiumCutoutImg({
+  src,
+  alt,
+  dimmed,
+}: {
+  src: string
+  alt: string
+  dimmed: boolean
+}) {
+  const ref = useRef<HTMLImageElement>(null)
+  const [loadedSrc, setLoadedSrc] = useState<string | null>(() =>
+    src.startsWith('data:') ? src : null,
+  )
+
+  useLayoutEffect(() => {
+    const img = ref.current
+    if (src.startsWith('data:') || (img && img.complete && img.naturalWidth > 0)) {
+      setLoadedSrc(src)
+    }
+  }, [src])
+
+  const ready = loadedSrc === src
+
+  return (
+    <>
+      {!ready && (
+        <div
+          aria-hidden="true"
+          className="shimmer absolute inset-x-6 bottom-2 top-4 rounded-2xl opacity-50"
+        />
+      )}
+      <img
+        key={src}
+        ref={ref}
+        src={src}
+        alt={alt}
+        loading="eager"
+        fetchPriority="high"
+        decoding="async"
+        onLoad={() => setLoadedSrc(src)}
+        onError={() => setLoadedSrc(src)}
+        className={cx(
+          'block w-auto h-full max-w-full object-contain object-bottom drop-shadow-[0_16px_32px_rgba(0,0,0,0.9)] filter transition-all duration-200 hover:scale-105',
+          ready ? (dimmed ? 'opacity-25' : 'opacity-100') : 'opacity-0',
+        )}
+      />
+    </>
+  )
+}
 
 function PodiumAwardIcon({ place, isFirst }: { place: number; isFirst: boolean }) {
   if (place === 1) {
@@ -164,15 +215,10 @@ export function LeaderboardPodium({ board }: { board: Leaderboard }) {
                       : 'h-36 sm:h-40 md:h-44 max-w-[240px]',
                 )}
               >
-                <img
+                <PodiumCutoutImg
                   src={cutout}
                   alt={row?.name || `Podium #${place}`}
-                  loading="lazy"
-                  decoding="async"
-                  className={cx(
-                    'block w-auto h-full max-w-full object-contain object-bottom drop-shadow-[0_16px_32px_rgba(0,0,0,0.9)] filter transition-transform duration-300 hover:scale-105',
-                    !row && 'opacity-25',
-                  )}
+                  dimmed={!row}
                 />
               </div>
 
@@ -223,8 +269,11 @@ export function LeaderboardPodium({ board }: { board: Leaderboard }) {
                   <div className="relative mt-2.5 flex items-center justify-center gap-1.5 px-1 min-w-0">
                     {row.avatarLocal && row.avatarLocal !== AVATAR_PLACEHOLDER && (
                       <img
+                        key={row.avatarLocal}
                         src={row.avatarLocal}
                         alt=""
+                        loading="eager"
+                        decoding="async"
                         className={cx(
                           'rounded-full object-cover ring-1 ring-white/20 shrink-0',
                           isFirst ? 'h-5 w-5 sm:h-6 sm:w-6' : 'h-4 w-4 sm:h-4.5 sm:w-4.5',

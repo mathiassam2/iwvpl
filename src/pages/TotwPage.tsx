@@ -1,9 +1,18 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { ApiError, getTotw, type TotwPlayer, type TotwResponse } from '@/lib/api'
+import {
+  ApiError,
+  clearTotwCache,
+  getTotw,
+  peekTotw,
+  prefetchTotw,
+  type TotwPlayer,
+  type TotwResponse,
+} from '@/lib/api'
 import { asset } from '@/lib/assets'
 import { useAuth } from '@/lib/auth'
 import { CLUB_PLACEHOLDER } from '@/lib/format'
+import { preloadImages, runWhenIdle, shouldPrefetch } from '@/lib/network'
 import {
   TOTW_ROWS,
   downloadBlob,
@@ -14,6 +23,7 @@ import {
   type TotwWeekInfo,
 } from '@/lib/totw'
 import { TotwPaint } from '@/components/totw/TotwPaint'
+import { LoadingBar } from '@/components/ui'
 import '@/styles/totw.css'
 
 function parseWeekNum(label: string): number {
@@ -35,6 +45,22 @@ function PlayerCard({ player }: { player: TotwPlayer }) {
   // backdrop the name sits on, so a player's league profile picture is never
   // used in its place.
   const backdrop = player.candidUrl ?? player.closeUrl
+  const resolvedPhoto = backdrop ? photoSrc(backdrop) : null
+  const photoRef = useRef<HTMLImageElement>(null)
+  const [photoLoaded, setPhotoLoaded] = useState(!resolvedPhoto)
+
+  useLayoutEffect(() => {
+    if (!resolvedPhoto) {
+      setPhotoLoaded(true)
+      return
+    }
+    const img = photoRef.current
+    if (img && img.complete && img.naturalWidth > 0) {
+      setPhotoLoaded(true)
+    } else {
+      setPhotoLoaded(false)
+    }
+  }, [resolvedPhoto])
 
   // Scale down font size for long player names so they are shown in full without truncation
   const maxWordLen = Math.max(...player.name.trim().split(/\s+/).map((w) => w.length))
@@ -52,10 +78,11 @@ function PlayerCard({ player }: { player: TotwPlayer }) {
       <TotwPaint variant={player.slot} />
       {logo && (
         <img
+          key={logo}
           className="totw-card__club-watermark"
           src={logo}
           alt=""
-          loading="lazy"
+          loading="eager"
           decoding="async"
           draggable={false}
           onError={(e) => {
@@ -63,14 +90,22 @@ function PlayerCard({ player }: { player: TotwPlayer }) {
           }}
         />
       )}
-      {backdrop && (
+      {resolvedPhoto && !photoLoaded && (
+        <div className="totw-card__photo-shimmer" aria-hidden />
+      )}
+      {resolvedPhoto && (
         <img
-          className="totw-card__photo"
-          src={photoSrc(backdrop)}
+          key={resolvedPhoto}
+          ref={photoRef}
+          className={`totw-card__photo ${photoLoaded ? 'totw-card__photo--ready' : 'totw-card__photo--loading'}`}
+          src={resolvedPhoto}
           alt=""
-          loading="lazy"
+          loading="eager"
+          fetchPriority={player.slot <= 5 ? 'high' : 'auto'}
           decoding="async"
           draggable={false}
+          onLoad={() => setPhotoLoaded(true)}
+          onError={() => setPhotoLoaded(true)}
         />
       )}
       <div className="totw-card__shade" aria-hidden />
@@ -122,21 +157,24 @@ export default function TotwPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const paramId = Number.parseInt(searchParams.get('week') ?? '', 10)
   const divisionParam = Number.parseInt(searchParams.get('division') ?? '', 10)
-  const [data, setData] = useState<TotwResponse | null>(null)
-  const [weekId, setWeekId] = useState<number | null>(
-    Number.isSafeInteger(paramId) && paramId > 0 ? paramId : null,
-  )
+  const initialWeekId = Number.isSafeInteger(paramId) && paramId > 0 ? paramId : null
+  const initialDivisionId =
+    Number.isSafeInteger(divisionParam) && divisionParam > 0 ? divisionParam : null
+  const initialCached = peekTotw(initialWeekId, initialDivisionId)
+
+  const [data, setData] = useState<TotwResponse | null>(initialCached)
+  const [weekId, setWeekId] = useState<number | null>(initialWeekId)
   const [divisionId, setDivisionId] = useState<number | null>(
-    Number.isSafeInteger(divisionParam) && divisionParam > 0 ? divisionParam : null,
+    initialDivisionId ?? initialCached?.divisionId ?? null,
   )
   const [menuOpen, setMenuOpen] = useState(false)
   const stepperRef = useRef<HTMLDivElement>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(!initialCached)
   const [locked, setLocked] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [downloadError, setDownloadError] = useState('')
-  const first = useRef(true)
+  const lastUserIdRef = useRef<number | undefined>(user?.id)
 
   useEffect(() => {
     document.title = 'Team of the Week | IWVPL'
@@ -155,22 +193,30 @@ export default function TotwPage() {
   }, [menuOpen])
 
   const load = useCallback(
-    async (id: number | null, division: number | null) => {
-      if (first.current) setLoading(true)
+    async (id: number | null, division: number | null, signal: AbortSignal) => {
+      const cached = peekTotw(id, division)
+      if (cached) {
+        setData(cached)
+        if (cached.divisionId != null) setDivisionId(cached.divisionId)
+        setLoading(false)
+      } else {
+        setLoading(true)
+      }
       setError('')
       setLocked(false)
       try {
-        const res = await getTotw(id, division)
+        const res = await getTotw(id, division, { signal })
+        if (signal.aborted) return
         setData(res)
         // The server decides which division a week belongs to, so the tab
         // follows it rather than the other way round.
         if (res.divisionId != null) setDivisionId(res.divisionId)
       } catch (err) {
+        if (signal.aborted || (err instanceof DOMException && err.name === 'AbortError')) return
         if (err instanceof ApiError && err.status === 403) setLocked(true)
         else setError(err instanceof Error ? err.message : 'Could not load Team of the Week.')
       } finally {
-        first.current = false
-        setLoading(false)
+        if (!signal.aborted) setLoading(false)
       }
     },
     [],
@@ -178,7 +224,13 @@ export default function TotwPage() {
 
   // Reload on week or division change and when the visitor signs in or out.
   useEffect(() => {
-    void load(weekId, divisionId)
+    if (lastUserIdRef.current !== user?.id) {
+      lastUserIdRef.current = user?.id
+      clearTotwCache()
+    }
+    const controller = new AbortController()
+    void load(weekId, divisionId, controller.signal)
+    return () => controller.abort()
   }, [load, weekId, divisionId, user?.id])
 
   const week = data?.week ?? null
@@ -202,13 +254,69 @@ export default function TotwPage() {
       ? chronologicalWeeks[activeIndex + 1]
       : null
 
+  const warmTotwResponseAssets = useCallback((res: TotwResponse | null) => {
+    if (!res?.week?.players?.length) return
+    const urls: Array<string | null> = []
+    for (const p of res.week.players) {
+      const photo = p.candidUrl ?? p.closeUrl
+      if (photo) urls.push(photoSrc(photo))
+      if (p.clubLogo) urls.push(asset(p.clubLogo))
+    }
+    preloadImages(urls, 22)
+  }, [])
+
+  const prefetchDivision = useCallback(
+    (id: number) => {
+      if (!shouldPrefetch() || id === divisionId) return
+      void prefetchTotw(null, id).then(warmTotwResponseAssets)
+    },
+    [divisionId, warmTotwResponseAssets],
+  )
+
+  const prefetchWeek = useCallback(
+    (id: number | undefined) => {
+      if (!shouldPrefetch() || id == null || id === week?.id) return
+      void prefetchTotw(id, null).then(warmTotwResponseAssets)
+    },
+    [week?.id, warmTotwResponseAssets],
+  )
+
+  // Gently prefetch sibling divisions and adjacent weeks during idle time so
+  // subsequent tab switches feel instantaneous.
+  useEffect(() => {
+    if (loading || !data || !shouldPrefetch()) return
+    const cancel = runWhenIdle(() => {
+      const otherDivs = (data.divisions ?? [])
+        .filter((d) => d.id !== divisionId && d.weekCount > 0)
+        .slice(0, 3)
+      for (const d of otherDivs) {
+        void prefetchTotw(null, d.id).then(warmTotwResponseAssets)
+      }
+      if (prevWeek?.id) {
+        void prefetchTotw(prevWeek.id, null).then(warmTotwResponseAssets)
+      }
+      if (nextWeek?.id) {
+        void prefetchTotw(nextWeek.id, null).then(warmTotwResponseAssets)
+      }
+    })
+    return cancel
+  }, [loading, data, divisionId, prevWeek?.id, nextWeek?.id, warmTotwResponseAssets])
+
+  const activeDivisionName = useMemo(
+    () => data?.divisions?.find((d) => d.id === divisionId)?.name ?? null,
+    [data?.divisions, divisionId],
+  )
+
   const handleSelectWeek = (id: number | undefined) => {
-    if (id == null) return
+    if (id == null || id === weekId) return
+    setMenuOpen(false)
     setWeekId(id)
     setSearchParams({ week: String(id) }, { replace: true })
   }
 
   const handleSelectDivision = (id: number) => {
+    if (id === divisionId && weekId === null) return
+    setMenuOpen(false)
     setDivisionId(id)
     setWeekId(null)
     const next = new URLSearchParams(searchParams)
@@ -254,7 +362,7 @@ export default function TotwPage() {
           </p>
         </header>
 
-        <section className="totw__board" aria-live="polite">
+        <section className="totw__board" aria-live="polite" aria-busy={loading || undefined}>
           {(data?.divisions?.length ?? 0) > 1 && (
             <nav className="totw__divisions" aria-label="Divisions">
               {data?.divisions.map((d) => (
@@ -264,6 +372,8 @@ export default function TotwPage() {
                   className="totw__division-tab"
                   aria-current={d.id === divisionId ? 'true' : undefined}
                   onClick={() => handleSelectDivision(d.id)}
+                  onPointerEnter={() => prefetchDivision(d.id)}
+                  onFocus={() => prefetchDivision(d.id)}
                 >
                   <span>{d.name}</span>
                   {d.weekCount > 0 && <b>{d.weekCount}</b>}
@@ -272,15 +382,26 @@ export default function TotwPage() {
             </nav>
           )}
 
+          {loading && (
+            <div className="totw__progress-wrap">
+              <LoadingBar
+                active
+                label={activeDivisionName ? `Loading ${activeDivisionName}` : 'Loading Team of the Week'}
+              />
+            </div>
+          )}
+
           {week && data?.weeks && data.weeks.length > 0 && (
-            <div className="totw__board-header">
+            <div className={`totw__board-header ${loading ? 'totw__board-header--loading' : ''}`}>
               {/* Matches-style Matchweek Stepper (left/right navigation) */}
               <div className="totw-stepper" ref={stepperRef}>
                 <button
                   type="button"
                   className="totw-stepper__arrow"
                   onClick={() => handleSelectWeek(prevWeek?.id)}
-                  disabled={!prevWeek}
+                  onPointerEnter={() => prefetchWeek(prevWeek?.id)}
+                  onFocus={() => prefetchWeek(prevWeek?.id)}
+                  disabled={!prevWeek || loading}
                   title={prevWeek ? `Previous: ${prevWeek.label}` : 'No earlier matchweek'}
                   aria-label="Previous matchweek"
                 >
@@ -355,7 +476,9 @@ export default function TotwPage() {
                   type="button"
                   className="totw-stepper__arrow"
                   onClick={() => handleSelectWeek(nextWeek?.id)}
-                  disabled={!nextWeek}
+                  onPointerEnter={() => prefetchWeek(nextWeek?.id)}
+                  onFocus={() => prefetchWeek(nextWeek?.id)}
+                  disabled={!nextWeek || loading}
                   title={nextWeek ? `Next: ${nextWeek.label}` : 'No later matchweek'}
                   aria-label="Next matchweek"
                 >
@@ -407,13 +530,18 @@ export default function TotwPage() {
             </div>
           )}
 
-          {week && (
+          {loading ? (
+            <p className="totw__context totw__context--loading" role="status">
+              <span className="totw__loading-dot" aria-hidden />
+              {activeDivisionName ? `Loading ${activeDivisionName}…` : 'Loading Best XI…'}
+            </p>
+          ) : week ? (
             <p className="totw__context">
               {[week.divisionName, week.gameWeek != null ? `Game Week ${week.gameWeek}` : null]
                 .filter(Boolean)
                 .join(' · ')}
             </p>
-          )}
+          ) : null}
 
           {downloadError && (
             <p role="alert" className="totw__error-msg">
@@ -475,9 +603,9 @@ export default function TotwPage() {
                   {row.map((slot) => {
                     const p = bySlot.get(slot)
                     return p ? (
-                      <PlayerCard key={slot} player={p} />
+                      <PlayerCard key={`${week.id}-${slot}-${p.id}`} player={p} />
                     ) : (
-                      <div key={slot} className="totw__skeleton" style={{ animation: 'none' }} />
+                      <div key={`${week.id}-${slot}-empty`} className="totw__skeleton" style={{ animation: 'none' }} />
                     )
                   })}
                 </div>

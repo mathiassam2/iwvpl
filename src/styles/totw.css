@@ -274,7 +274,11 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   cursor: pointer;
-  transition: all 0.2s ease;
+  touch-action: manipulation;
+  transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease, transform 0.12s ease;
+}
+.totw__division-tab:active {
+  transform: scale(0.97);
 }
 .totw__division-tab:hover {
   border-color: rgb(200 255 61 / 0.5);
@@ -297,6 +301,15 @@
 }
 
 /* Which division and game week the board is showing. */
+.totw__progress-wrap {
+  width: 100%;
+  max-width: min(50rem, calc((100dvh - 160px) * 0.95));
+  margin: -0.25rem auto 0.5rem;
+}
+.totw__board-header--loading {
+  opacity: 0.55;
+  transition: opacity 0.15s ease;
+}
 .totw__context {
   width: 100%;
   max-width: min(50rem, calc((100dvh - 160px) * 0.95));
@@ -307,6 +320,25 @@
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: rgb(255 255 255 / 0.5);
+}
+.totw__context--loading {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  color: var(--totw-volt);
+}
+.totw__loading-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--totw-volt);
+  box-shadow: 0 0 10px var(--totw-volt);
+  animation: totw-pulse 1s ease-in-out infinite;
+}
+@keyframes totw-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.75); }
 }
 
 /* Matchweek Stepper (matches-style navigation) */
@@ -683,6 +715,20 @@
   opacity: 0.9;
 }
 
+.totw-card__photo-shimmer {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background: linear-gradient(
+    110deg,
+    rgb(255 255 255 / 0.02) 30%,
+    rgb(255 255 255 / 0.09) 50%,
+    rgb(255 255 255 / 0.02) 70%
+  );
+  background-size: 200% 100%;
+  animation: totw-shimmer 1.3s linear infinite;
+}
 .totw-card__photo {
   position: absolute;
   inset: 0;
@@ -696,8 +742,14 @@
   -webkit-user-drag: none;
   -webkit-mask-image: linear-gradient(to bottom, #000 68%, transparent 100%);
   mask-image: linear-gradient(to bottom, #000 68%, transparent 100%);
-  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.22s ease-out;
   z-index: 2;
+}
+.totw-card__photo--loading {
+  opacity: 0;
+}
+.totw-card__photo--ready {
+  opacity: 1;
 }
 .totw-card:hover .totw-card__photo,
 .totw-card:focus-visible .totw-card__photo {

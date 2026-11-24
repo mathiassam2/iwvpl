@@ -2,30 +2,59 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { StandingsTable, StatTile, type StandingSortKey } from '@/components/league'
-import { Container, Section, Select, Tabs } from '@/components/ui'
+import { Container, LoadingBar, Section, Select, Tabs } from '@/components/ui'
 import { SITE, siteData } from '@/data'
 import {
   getLiveSeasons,
   getLiveStandings,
   liveLeagueEnabled,
   orderedStandingDivisions,
+  peekLiveStandings,
   type LeagueSeason,
 } from '@/lib/liveLeague'
+import { preloadImages, runWhenIdle } from '@/lib/network'
 import type { StandingDivision } from '@/types/site'
 
+function StandingsSkeleton() {
+  return (
+    <div className="surface overflow-hidden rounded-card" aria-busy="true" aria-label="Loading standings">
+      <div className="border-b border-[var(--border)] bg-[var(--surface-2)] px-5 py-3.5">
+        <div className="shimmer h-3 w-40 rounded" />
+      </div>
+      <div className="divide-y divide-[var(--border)]">
+        {Array.from({ length: 10 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-4 px-5 py-3.5">
+            <div className="shimmer h-4 w-5 rounded" />
+            <div className="shimmer h-7 w-7 rounded-full" />
+            <div className="shimmer h-4 flex-1 max-w-[14rem] rounded" />
+            <div className="ml-auto flex items-center gap-4">
+              <div className="shimmer hidden h-3.5 w-8 rounded sm:block" />
+              <div className="shimmer hidden h-3.5 w-8 rounded sm:block" />
+              <div className="shimmer h-4 w-8 rounded" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function StandingsPage() {
+  const initialStandings = liveLeagueEnabled ? peekLiveStandings() : null
   const [liveStandings, setLiveStandings] = useState<{
     season: LeagueSeason
     divisions: Record<string, StandingDivision>
-  } | null>(null)
+  } | null>(initialStandings)
   const [seasons, setSeasons] = useState<LeagueSeason[]>([])
-  const [seasonId, setSeasonId] = useState<number | null>(null)
-  const [loading, setLoading] = useState(liveLeagueEnabled)
+  const [seasonId, setSeasonId] = useState<number | null>(initialStandings?.season.id ?? null)
+  const [loading, setLoading] = useState(liveLeagueEnabled && !initialStandings)
   const [error, setError] = useState('')
   const [reload, setReload] = useState(0)
   const [searchParams] = useSearchParams()
   const requestedDivision = searchParams.get('division') ?? ''
-  const initialDivisions = orderedStandingDivisions(siteData.standingsByDivision).map(([name]) => name)
+  const initialDivisions = orderedStandingDivisions(
+    initialStandings?.divisions ?? siteData.standingsByDivision,
+  ).map(([name]) => name)
   const [div, setDiv] = useState(
     requestedDivision && initialDivisions.includes(requestedDivision)
       ? requestedDivision
@@ -40,7 +69,7 @@ export default function StandingsPage() {
   useEffect(() => {
     if (!liveLeagueEnabled) return
     const controller = new AbortController()
-    setLoading(true)
+    if (!peekLiveStandings()) setLoading(true)
     setError('')
 
     getLiveSeasons(controller.signal)
@@ -67,11 +96,24 @@ export default function StandingsPage() {
   useEffect(() => {
     if (!liveLeagueEnabled || seasonId === null) return
     const controller = new AbortController()
-    setLoading(true)
+    const cached = peekLiveStandings(seasonId)
+    if (cached) {
+      setLiveStandings(cached)
+      const cachedDivs = orderedStandingDivisions(cached.divisions).map(([name]) => name)
+      setDiv((current) => {
+        if (hasChosenDivision.current && cachedDivs.includes(current)) return current
+        if (requestedDivision && cachedDivs.includes(requestedDivision)) return requestedDivision
+        return cachedDivs[0] ?? ''
+      })
+      setLoading(false)
+    } else {
+      setLoading(true)
+    }
     setError('')
 
     getLiveStandings(controller.signal, seasonId)
       .then((standings) => {
+        if (controller.signal.aborted) return
         setLiveStandings(standings)
         const divisions = orderedStandingDivisions(standings.divisions).map(([name]) => name)
         setDiv((current) => {
@@ -98,6 +140,21 @@ export default function StandingsPage() {
 
     return () => controller.abort()
   }, [reload, seasonId])
+
+  // Preload club crests for sibling divisions during idle time so switching tabs is crisp.
+  useEffect(() => {
+    if (!liveStandings) return
+    return runWhenIdle(() => {
+      const logos: string[] = []
+      for (const [name, d] of Object.entries(liveStandings.divisions)) {
+        if (name === div) continue
+        for (const row of d.rows) {
+          if (row.logo) logos.push(row.logo)
+        }
+      }
+      preloadImages(logos, 24)
+    })
+  }, [liveStandings, div])
 
   const divisions = liveStandings
     ? orderedStandingDivisions(liveStandings.divisions).map(([name]) => name)
@@ -157,11 +214,6 @@ export default function StandingsPage() {
               />
             </label>
           )}
-          {loading && (
-            <p role="status" className="mb-4 text-sm text-[var(--text-muted)]">
-              Loading live standings…
-            </p>
-          )}
           {error && (
             <div
               role="alert"
@@ -173,7 +225,7 @@ export default function StandingsPage() {
               </button>
             </div>
           )}
-          {!loading && !error && divisions.length > 1 && (
+          {!error && divisions.length > 1 && (
             <div className="mb-6 border-b border-[var(--border)]">
               <Tabs
                 tabs={divisions.map((d) => ({
@@ -186,12 +238,18 @@ export default function StandingsPage() {
                   hasChosenDivision.current = true
                   setDiv(value)
                 }}
+                loading={loading}
                 idPrefix="div"
               />
             </div>
           )}
+          {!error && divisions.length <= 1 && loading && (
+            <LoadingBar active className="mb-6" label="Loading live standings" />
+          )}
 
-          {!loading && !error && (
+          {loading ? (
+            <StandingsSkeleton />
+          ) : !error && (
             <>
               {division?.promotionCount || division?.relegationCount ? (
                 <p className="mb-3 text-xs text-[var(--text-muted)]">

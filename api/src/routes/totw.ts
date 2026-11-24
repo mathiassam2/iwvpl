@@ -53,7 +53,13 @@ interface TotwAccess {
   userIds: number[]
 }
 
+let accessMemo: { value: TotwAccess; expiresAt: number } | null = null
+
 async function readAccess(): Promise<TotwAccess> {
+  const now = Date.now()
+  if (accessMemo && now < accessMemo.expiresAt) {
+    return accessMemo.value
+  }
   const rows = await queryAll<{ setting_key: string; setting_value: string }>(
     `SELECT setting_key, setting_value FROM system_settings
       WHERE setting_key IN ('totw_access_mode', 'totw_access_users')`,
@@ -69,7 +75,9 @@ async function readAccess(): Promise<TotwAccess> {
   } catch {
     userIds = []
   }
-  return { mode, userIds }
+  const value: TotwAccess = { mode, userIds }
+  accessMemo = { value, expiresAt: now + 15_000 }
+  return value
 }
 
 async function writeSetting(key: string, value: string): Promise<void> {
@@ -79,6 +87,7 @@ async function writeSetting(key: string, value: string): Promise<void> {
      ON DUPLICATE KEY UPDATE setting_value = ?, updated_at = NOW()`,
     [key, value, value],
   )
+  accessMemo = null
 }
 
 async function canView(req: any): Promise<boolean> {
@@ -420,30 +429,118 @@ function parseKind(value: unknown): PhotoKind {
   fail(404, 'Not found')
 }
 
+interface CachedTotwPhoto {
+  buf: Buffer
+  mime: string
+  etag: string
+  status: string
+  v: string
+  cachedAt: number
+}
+
+const PHOTO_CACHE_MAX_BYTES = 28 * 1024 * 1024
+const PHOTO_CACHE_MAX_ITEMS = 60
+const PHOTO_CACHE_TTL_MS = 5 * 60_000
+const photoCache = new Map<string, CachedTotwPhoto>()
+let photoCacheBytes = 0
+
+function putPhotoCache(key: string, entry: CachedTotwPhoto) {
+  if (entry.buf.length > 6 * 1024 * 1024) return
+  const existing = photoCache.get(key)
+  if (existing) {
+    photoCacheBytes -= existing.buf.length
+    photoCache.delete(key)
+  }
+  while (
+    photoCache.size >= PHOTO_CACHE_MAX_ITEMS ||
+    photoCacheBytes + entry.buf.length > PHOTO_CACHE_MAX_BYTES
+  ) {
+    const oldestKey = photoCache.keys().next().value
+    if (!oldestKey) break
+    const oldest = photoCache.get(oldestKey)
+    if (oldest) photoCacheBytes -= oldest.buf.length
+    photoCache.delete(oldestKey)
+  }
+  photoCache.set(key, entry)
+  photoCacheBytes += entry.buf.length
+}
+
 /** Streams a stored data-URL photo. Anything else is a 404. */
-async function sendPhoto(res: any, playerRowId: number, kind: PhotoKind, onlyPublished: boolean) {
-  const column = KINDS[kind]
-  const row = await queryOne<{ img: string | null; status: string }>(
-    `SELECT p.${column} AS img, w.status
-       FROM totw_players p JOIN totw_weeks w ON w.id = p.week_id
-      WHERE p.id = ? LIMIT 1`,
-    [playerRowId],
-  )
-  if (!row?.img || (onlyPublished && row.status !== 'published')) {
+async function sendPhoto(
+  req: any,
+  res: any,
+  playerRowId: number,
+  kind: PhotoKind,
+  onlyPublished: boolean,
+) {
+  const reqV = typeof req.query?.v === 'string' ? req.query.v : ''
+  const cacheKey = `${playerRowId}:${kind}`
+  const now = Date.now()
+
+  const cached = photoCache.get(cacheKey)
+  let entry: CachedTotwPhoto | null = null
+  if (
+    cached &&
+    now - cached.cachedAt < PHOTO_CACHE_TTL_MS &&
+    (!reqV || cached.v === reqV)
+  ) {
+    // Touch LRU order
+    photoCache.delete(cacheKey)
+    photoCache.set(cacheKey, cached)
+    entry = cached
+  } else {
+    const column = KINDS[kind]
+    const row = await queryOne<{ img: string | null; status: string; v: number }>(
+      `SELECT p.${column} AS img, w.status, COALESCE(UNIX_TIMESTAMP(p.updated_at), 1) AS v
+         FROM totw_players p JOIN totw_weeks w ON w.id = p.week_id
+        WHERE p.id = ? LIMIT 1`,
+      [playerRowId],
+    )
+    if (!row?.img) {
+      res.status(404).end()
+      return
+    }
+    const match = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/is.exec(row.img)
+    if (!match) {
+      res.status(404).end()
+      return
+    }
+    const v = String(row.v || 1)
+    entry = {
+      buf: Buffer.from(match[2], 'base64'),
+      mime: match[1],
+      etag: `"totw-${playerRowId}-${kind}-${v}"`,
+      status: row.status,
+      v,
+      cachedAt: now,
+    }
+    putPhotoCache(cacheKey, entry)
+  }
+
+  if (onlyPublished && entry.status !== 'published') {
     res.status(404).end()
     return
   }
-  const match = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/is.exec(row.img)
-  if (!match) {
-    res.status(404).end()
-    return
-  }
-  res.setHeader('Content-Type', match[1])
-  // The URL carries ?v=<updated_at>, so a long private cache is safe.
-  res.setHeader('Cache-Control', 'private, max-age=86400')
-  res.setHeader('Pragma', 'cache')
+
+  // Override the global /api no-cache headers so browsers & mobile caches keep
+  // versioned (?v=) photos instead of re-downloading megabytes on every tab switch.
+  res.removeHeader('Pragma')
   res.removeHeader('Expires')
-  res.send(Buffer.from(match[2], 'base64'))
+  res.removeHeader('X-LiteSpeed-Cache-Control')
+  res.setHeader(
+    'Cache-Control',
+    reqV ? 'private, max-age=604800, immutable' : 'private, max-age=86400',
+  )
+  res.setHeader('ETag', entry.etag)
+
+  if (req.headers['if-none-match'] === entry.etag) {
+    res.status(304).end()
+    return
+  }
+
+  res.setHeader('Content-Type', entry.mime)
+  res.setHeader('Content-Length', String(entry.buf.length))
+  res.send(entry.buf)
 }
 
 /* ------------------------------------------------------------------ public */
@@ -574,7 +671,7 @@ totw.get(
       res.status(404).end()
       return
     }
-    await sendPhoto(res, id, parseKind(req.params.kind), true)
+    await sendPhoto(req, res, id, parseKind(req.params.kind), true)
   }),
 )
 
@@ -1149,6 +1246,6 @@ totwAdmin.get(
       res.status(404).end()
       return
     }
-    await sendPhoto(res, id, parseKind(req.params.kind), false)
+    await sendPhoto(req, res, id, parseKind(req.params.kind), false)
   }),
 )

@@ -272,6 +272,44 @@ export async function getLiveResults(
   return page.matches
 }
 
+const cachedMatchesByKey = new Map<
+  string,
+  { matches: Match[]; total: number; pendingTotal: number; completedTotal: number }
+>()
+
+function liveMatchesCacheKey(opts?: {
+  seasonId?: number
+  clubSlug?: string
+  status?: string
+  result?: 'all' | 'pending' | 'completed'
+  sort?: 'latest' | 'priority'
+  limit?: number
+  offset?: number
+}): string {
+  const params = new URLSearchParams({
+    limit: String(opts?.limit ?? 500),
+    offset: String(opts?.offset ?? 0),
+  })
+  if (opts?.seasonId != null) params.set('seasonId', String(opts.seasonId))
+  if (opts?.clubSlug) params.set('clubSlug', opts.clubSlug)
+  if (opts?.status && opts.status !== 'all') params.set('status', opts.status)
+  if (opts?.result && opts.result !== 'all') params.set('result', opts.result)
+  if (opts?.sort) params.set('sort', opts.sort)
+  return `/api/matches?${params}`
+}
+
+export function peekLiveMatches(opts?: {
+  seasonId?: number
+  clubSlug?: string
+  status?: string
+  result?: 'all' | 'pending' | 'completed'
+  sort?: 'latest' | 'priority'
+  limit?: number
+  offset?: number
+}): { matches: Match[]; total: number; pendingTotal: number; completedTotal: number } | null {
+  return cachedMatchesByKey.get(liveMatchesCacheKey(opts)) ?? null
+}
+
 export async function getLiveMatches(
   signal: AbortSignal,
   opts?: {
@@ -284,29 +322,23 @@ export async function getLiveMatches(
     offset?: number
   },
 ): Promise<{ matches: Match[]; total: number; pendingTotal: number; completedTotal: number }> {
-  const params = new URLSearchParams({
-    limit: String(opts?.limit ?? 500),
-    offset: String(opts?.offset ?? 0),
-  })
-  if (opts?.seasonId != null) params.set('seasonId', String(opts.seasonId))
-  if (opts?.clubSlug) params.set('clubSlug', opts.clubSlug)
-  if (opts?.status && opts.status !== 'all') params.set('status', opts.status)
-  if (opts?.result && opts.result !== 'all') params.set('result', opts.result)
-  if (opts?.sort) params.set('sort', opts.sort)
+  const path = liveMatchesCacheKey(opts)
 
   const response = await get<{
     matches: ApiMatch[]
     total: number
     pendingTotal?: number
     completedTotal?: number
-  }>(`/api/matches?${params}`, signal)
+  }>(path, signal)
 
-  return {
+  const result = {
     matches: response.matches.map(toMatch),
     total: response.total,
     pendingTotal: response.pendingTotal ?? 0,
     completedTotal: response.completedTotal ?? 0,
   }
+  cachedMatchesByKey.set(path, result)
+  return result
 }
 
 export async function getLiveResultsPage(
@@ -342,8 +374,12 @@ export async function getLiveResultsPage(
 }
 
 let cachedLiveStandings: LiveStandings | null = null
+const cachedLiveStandingsBySeason = new Map<number, LiveStandings>()
 
-export function peekLiveStandings(): LiveStandings | null {
+export function peekLiveStandings(seasonId?: number | null): LiveStandings | null {
+  if (seasonId != null) {
+    return cachedLiveStandingsBySeason.get(seasonId) ?? null
+  }
   return cachedLiveStandings
 }
 
@@ -351,11 +387,8 @@ export async function getLiveStandings(
   signal: AbortSignal,
   seasonId?: number,
 ): Promise<LiveStandings> {
-  const response = await get<{ season: LeagueSeason; standings: ApiStanding[] }>(
-    `/api/standings${seasonId == null ? '' : `?seasonId=${seasonId}`}`,
-    signal,
-  )
-  const divisionResponse = await get<{
+  type StandingsApiRes = { season: LeagueSeason; standings: ApiStanding[] }
+  type DivisionsApiRes = {
     divisions: Array<{
       id: number
       name: string
@@ -363,10 +396,22 @@ export async function getLiveStandings(
       promotion_count: number | null
       relegation_count: number | null
     }>
-  }>(
-    `/api/divisions?seasonId=${response.season.id}`,
-    signal,
-  )
+  }
+
+  let response: StandingsApiRes
+  let divisionResponse: DivisionsApiRes
+  if (seasonId != null) {
+    ;[response, divisionResponse] = await Promise.all([
+      get<StandingsApiRes>(`/api/standings?seasonId=${seasonId}`, signal),
+      get<DivisionsApiRes>(`/api/divisions?seasonId=${seasonId}`, signal),
+    ])
+  } else {
+    response = await get<StandingsApiRes>('/api/standings', signal)
+    divisionResponse = await get<DivisionsApiRes>(
+      `/api/divisions?seasonId=${response.season.id}`,
+      signal,
+    )
+  }
   const movementByDivision = new Map(
     divisionResponse.divisions.map((division) => [
       division.name,
@@ -442,6 +487,8 @@ export async function getLiveStandings(
 
   const result = { season: response.season, divisions }
   cachedLiveStandings = result
+  cachedLiveStandingsBySeason.set(response.season.id, result)
+  if (seasonId != null) cachedLiveStandingsBySeason.set(seasonId, result)
   return result
 }
 
@@ -751,8 +798,19 @@ export interface LiveLeaderboardSummary {
 }
 
 let cachedLiveLeaderboards: LiveLeaderboardSummary | null = null
+const cachedLeaderboardsByKey = new Map<string, LiveLeaderboardSummary>()
 
-export function peekLiveLeaderboards(): LiveLeaderboardSummary | null {
+function leaderboardCacheKey(seasonId?: number | null, divisionId?: number | null): string {
+  return `${seasonId ?? 'current'}:${divisionId ?? 'all'}`
+}
+
+export function peekLiveLeaderboards(
+  seasonId?: number | null,
+  divisionId?: number | null,
+): LiveLeaderboardSummary | null {
+  if (seasonId !== undefined || divisionId !== undefined) {
+    return cachedLeaderboardsByKey.get(leaderboardCacheKey(seasonId, divisionId)) ?? null
+  }
   return cachedLiveLeaderboards
 }
 
@@ -762,15 +820,30 @@ export async function getLiveLeaderboardSummary(
   divisionId?: number | null,
 ): Promise<LiveLeaderboardSummary | null> {
   try {
-    const params = new URLSearchParams({ _: String(Date.now()) })
+    const params = new URLSearchParams()
     if (seasonId) params.set('seasonId', String(seasonId))
     if (divisionId) params.set('divisionId', String(divisionId))
-    const res = await get<LiveLeaderboardSummary>(`/api/leaderboards/summary?${params}`, signal)
+    const query = params.toString()
+    const res = await get<LiveLeaderboardSummary>(
+      `/api/leaderboards/summary${query ? `?${query}` : ''}`,
+      signal,
+    )
     cachedLiveLeaderboards = res
+    cachedLeaderboardsByKey.set(leaderboardCacheKey(seasonId, divisionId), res)
+    if (res.season?.id) {
+      cachedLeaderboardsByKey.set(leaderboardCacheKey(res.season.id, divisionId), res)
+    }
     return res
   } catch {
     return null
   }
+}
+
+export function prefetchLiveLeaderboardSummary(
+  seasonId?: number | null,
+  divisionId?: number | null,
+): Promise<LiveLeaderboardSummary | null> {
+  return getLiveLeaderboardSummary(undefined, seasonId, divisionId)
 }
 
 /** Divisions belonging to one season, used by the leaderboard filter. */
